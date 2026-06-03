@@ -10,8 +10,8 @@ from eg_rsa.diagnostics.attribution import RewardAttributionAnalyzer
 from eg_rsa.diagnostics.hack_detectors import RewardHackDetector
 from eg_rsa.memory.memory_card import MemoryCard
 from eg_rsa.memory.memory_store import MemoryStore
-from eg_rsa.reward.compiler import RewardCompiler
 from eg_rsa.reward.operators import RewardEditOperatorApplier
+from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema import RewardSchema
 
 
@@ -39,7 +39,7 @@ class EGRSARunner:
         schema = self._load_schema(Path(self.config["eg_rsa"]["initial_schema_path"]))
         trajectories = self._load_trajectories(Path(self.config["eg_rsa"]["trajectory_path"]))
 
-        compiled_code = RewardCompiler.compile(schema)
+        compiled_code = SafeRewardCompiler.compile(schema)
         self._write_text(self.output_dir / "compiled_reward.py", compiled_code)
 
         attribution = RewardAttributionAnalyzer.analyze(trajectories)
