@@ -8,6 +8,7 @@ import yaml
 
 from eg_rsa.diagnostics.attribution import RewardAttributionAnalyzer
 from eg_rsa.diagnostics.hack_detectors import RewardHackDetector
+from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.llm.edit_agent import EditAgent
 from eg_rsa.memory.memory_card import MemoryCard
 from eg_rsa.memory.memory_store import MemoryStore
@@ -27,7 +28,7 @@ class EGRSARunner:
         self.config = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
         self.output_dir = Path(self.config["experiment"]["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.edit_agent = EditAgent(llm_client=None)
+        self.edit_agent = EditAgent(llm_client=build_llm_client(self.config))
 
     def run(self) -> None:
         schema = self._load_schema(Path(self.config["eg_rsa"]["initial_schema_path"]))
