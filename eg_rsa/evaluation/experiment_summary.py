@@ -44,9 +44,19 @@ class ExperimentSummary:
         edit_validation = ExperimentSummary._read_json(iter_dir / "edit_validation.json", {})
         edit_plan = ExperimentSummary._read_json(iter_dir / "edit_plan.json", {})
         memory_card = ExperimentSummary._read_json(iter_dir / "memory_card.json", {})
+        edit_response = ExperimentSummary._read_json(iter_dir / "edit_response.json", {})
 
         diagnostics = diagnostic.get("diagnostics", {})
         attribution = diagnostic.get("attribution", {})
+        edit_count = len(edit_plan.get("edit_plan", []))
+        edit_generated = bool(memory_card.get("metadata", {}).get("edit_generated", edit_count > 0))
+        if not edit_generated:
+            edit_status = "skipped"
+        elif bool(edit_validation.get("is_valid")):
+            edit_status = "valid"
+        else:
+            edit_status = "invalid_or_fallback"
+
         row = {
             "iteration": idx,
             "task_score": None,
@@ -57,10 +67,14 @@ class ExperimentSummary:
             "posthoc_return_mean": posthoc.get("return_mean"),
             "posthoc_return_std": posthoc.get("return_std"),
             "posthoc_episode_length_mean": posthoc.get("episode_length_mean"),
-            "edit_valid": edit_validation.get("is_valid"),
+            "edit_generated": edit_generated,
+            "edit_status": edit_status,
+            "edit_valid": edit_validation.get("is_valid") if edit_generated else "skipped",
             "edit_errors": ";".join(edit_validation.get("errors", [])),
-            "edit_count": len(edit_plan.get("edit_plan", [])),
+            "edit_count": edit_count,
+            "edit_diagnosis": edit_response.get("diagnosis", ""),
             "memory_failure_modes": ";".join(memory_card.get("failure_modes", [])),
+            "memory_outcome_status": memory_card.get("outcome", {}).get("status", ""),
         }
         row.update(ExperimentSummary._task_score_from_memory(memory_card))
         row.update(ExperimentSummary._component_ratios(attribution))
@@ -69,7 +83,12 @@ class ExperimentSummary:
     @staticmethod
     def _task_score_from_memory(memory_card: Dict[str, Any]) -> Dict[str, Any]:
         outcome = memory_card.get("outcome", {})
-        return {"task_score": outcome.get("task_score_before")}
+        before = outcome.get("before", {})
+        return {
+            "task_score": outcome.get("task_score_before", before.get("task_score")),
+            "outcome_task_delta": outcome.get("delta", {}).get("task_score"),
+            "outcome_hack_delta": outcome.get("delta", {}).get("hack_score"),
+        }
 
     @staticmethod
     def _component_ratios(attribution: Dict[str, Any]) -> Dict[str, Any]:
