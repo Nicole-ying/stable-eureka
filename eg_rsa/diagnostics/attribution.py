@@ -8,22 +8,13 @@ import numpy as np
 class RewardAttributionAnalyzer:
     """Compute reward-component attribution from recorded trajectories.
 
-    Expected trajectory format:
-    [
-        {
-            "episode_id": 0,
-            "steps": [
-                {
-                    "reward": 1.0,
-                    "components": {"r_progress": 0.8, "r_energy": -0.1},
-                    "task_metrics": {...},
-                    "events": {...}
-                }
-            ],
-            "summary": {...}
-        }
-    ]
+    Important: the aggregate field named ``reward`` is not treated as an editable
+    reward component.  It is the total generated reward and would otherwise be
+    double-counted, causing the system to select ``reward`` as the dominant
+    component even though no such editable component exists in the schema.
     """
+
+    AGGREGATE_KEYS = {"reward", "total_reward", "oracle_reward", "oracle_reward_posthoc"}
 
     @staticmethod
     def analyze(trajectories: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
@@ -35,6 +26,8 @@ class RewardAttributionAnalyzer:
             for step in episode.get("steps", []):
                 ep_reward += float(step.get("reward", 0.0))
                 for name, value in step.get("components", {}).items():
+                    if name in RewardAttributionAnalyzer.AGGREGATE_KEYS:
+                        continue
                     component_values.setdefault(name, []).append(float(value))
             episode_rewards.append(ep_reward)
 
