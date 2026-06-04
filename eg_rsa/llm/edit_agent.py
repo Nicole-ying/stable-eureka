@@ -25,7 +25,7 @@ class EditAgent:
         retrieved_memories: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         if self.llm_client is None:
-            return self._fallback_response(diagnostic_report)
+            return self._fallback_response(diagnostic_report, current_reward_schema)
 
         prompt = build_edit_prompt(
             task_description=task_description,
@@ -40,18 +40,42 @@ class EditAgent:
         return parsed
 
     @staticmethod
-    def _fallback_response(diagnostic_report: Dict[str, Any]) -> Dict[str, Any]:
+    def _fallback_response(diagnostic_report: Dict[str, Any], reward_schema: Dict[str, Any]) -> Dict[str, Any]:
         diagnostics = diagnostic_report.get("diagnostics", diagnostic_report)
         target = diagnostics.get("dominant_component")
         modes = set(diagnostics.get("failure_modes", []))
+        target_info = EditAgent._find_reward_item(reward_schema, target)
         edits: List[Dict[str, Any]] = []
-        if target and "single_component_dominance" in modes:
-            edits.append({"operator": "decrease_weight", "target": target, "factor": 0.5})
-        if target and "repeated_event_exploitation" in modes:
-            edits.append({"operator": "convert_to_one_time_event", "target": target})
-        if not edits and target:
-            edits.append({"operator": "clip_component", "target": target, "clip": [-1.0, 1.0]})
+
+        if target and target_info is not None:
+            item_kind = target_info.get("kind")
+            item_type = target_info.get("type")
+            is_event_like = item_kind == "event_rule" or item_type == "event_bonus"
+
+            if "single_component_dominance" in modes:
+                edits.append({"operator": "decrease_weight", "target": target, "factor": 0.5})
+            elif "repeated_event_exploitation" in modes and is_event_like:
+                edits.append({"operator": "convert_to_one_time_event", "target": target})
+            elif item_kind == "component":
+                edits.append({"operator": "clip_component", "target": target, "clip": [-1.0, 1.0]})
+
         return {
-            "diagnosis": "Fallback edit policy generated a conservative edit plan from diagnostics.",
+            "diagnosis": "Fallback edit policy generated a schema-aware conservative edit plan from diagnostics.",
             "edit_plan": edits,
         }
+
+    @staticmethod
+    def _find_reward_item(reward_schema: Dict[str, Any], target: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not target:
+            return None
+        for component in reward_schema.get("components", []):
+            if component.get("name") == target:
+                item = dict(component)
+                item["kind"] = "component"
+                return item
+        for rule in reward_schema.get("event_rules", []):
+            if rule.get("name") == target:
+                item = dict(rule)
+                item["kind"] = "event_rule"
+                return item
+        return None
