@@ -86,6 +86,14 @@ class EditPlanValidator:
                 return False, "clip_component requires clip=[min,max]"
             if schema.get_component(edit.get("target")) is None:
                 return False, "clip_component target must be a component"
+        if op == "convert_to_one_time_event":
+            target = edit.get("target")
+            component = schema.get_component(target)
+            rule = schema.get_event_rule(target)
+            if component is not None and component.type != "event_bonus":
+                return False, "convert_to_one_time_event requires an event_bonus component or event rule"
+            if rule is None and component is None:
+                return False, f"target not found: {target}"
         if op == "add_component":
             component = edit.get("component")
             if not isinstance(component, dict):
