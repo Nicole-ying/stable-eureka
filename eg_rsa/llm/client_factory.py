@@ -34,4 +34,10 @@ def build_llm_client(config: Dict[str, Any]) -> Optional[Any]:
             api_key=edit_cfg.get("api_key"),
             temperature=float(edit_cfg.get("temperature", 0.2)),
         )
+    if backend == "deepseek":
+        return DeepSeekClient(
+            model=edit_cfg.get("model", "deepseek-v4-pro"),
+            credential_env=edit_cfg.get("credential_env", "DEEPSEEK_API_KEY"),
+            temperature=float(edit_cfg.get("temperature", 0.2)),
+        )
     raise ValueError(f"Unsupported EG-RSA edit agent backend: {backend}")
