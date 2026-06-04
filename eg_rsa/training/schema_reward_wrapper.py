@@ -31,6 +31,11 @@ class SchemaRewardWrapper(gym.Wrapper):
         self.obs_adapter = obs_adapter
         self.task_metric_evaluator = task_metric_evaluator
         self.event_evaluator = event_evaluator
+        self._fired_event_rules = set()
+
+    def reset(self, **kwargs):
+        self._fired_event_rules = set()
+        return self.env.reset(**kwargs)
 
     def step(self, action: Any):
         obs, oracle_reward, terminated, truncated, info = self.env.step(action)
@@ -71,7 +76,12 @@ class SchemaRewardWrapper(gym.Wrapper):
                 if key == "duration_steps":
                     continue
                 ok = ok and (events.get(key, False) == expected)
-            value = float(rule.weight) if ok else 0.0
+            if rule.one_time and rule.name in self._fired_event_rules:
+                value = 0.0
+            else:
+                value = float(rule.weight) if ok else 0.0
+                if rule.one_time and ok:
+                    self._fired_event_rules.add(rule.name)
             components[rule.name] = value
             total += value
         components["reward"] = float(total)
