@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from eg_rsa.llm.deepseek_client import DeepSeekClient
 from eg_rsa.llm.ollama_client import OllamaClient
 from eg_rsa.llm.openai_client import OpenAIClient
 
@@ -13,6 +14,7 @@ def build_llm_client(config: Dict[str, Any]) -> Optional[Any]:
       - fallback: no LLM client, deterministic edit policy
       - ollama: local Ollama HTTP API
       - openai: OpenAI chat completions API
+      - deepseek: DeepSeek chat API
     """
 
     edit_cfg = config.get("eg_rsa", {}).get("edit_agent", {}) or {}
