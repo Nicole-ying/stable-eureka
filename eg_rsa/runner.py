@@ -28,9 +28,11 @@ class EGRSARunner:
         self.config_path = Path(config_path)
         if not self.config_path.exists():
             raise FileNotFoundError(f"Config not found: {self.config_path}")
+
         self.config = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
         self.output_dir = Path(self.config["experiment"]["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
         self.mode = ExperimentMode.from_config(self.config)
         llm_client = build_llm_client(self.config) if self.mode.use_llm_edit else None
         self.edit_agent = EditAgent(llm_client=llm_client)
@@ -38,27 +40,33 @@ class EGRSARunner:
     def run(self) -> None:
         schema = self._load_schema(Path(self.config["eg_rsa"]["initial_schema_path"]))
         iterations = int(self.config.get("eg_rsa", {}).get("iterations", 1))
+
+        # one-shot baseline: train only once and do not generate reward edits
         if self.mode.one_shot:
             iterations = 1
+
         memory_store = MemoryStore(self.output_dir / "memory" / "memory_cards.jsonl")
         run_history = []
         best_schema = schema
         best_score = -float("inf")
         task_description = self._load_task_description()
+
         self._write_json(self.output_dir / "experiment_mode.json", self.mode.to_dict())
 
         for iteration in range(iterations):
             iter_dir = self.output_dir / f"iteration_{iteration:03d}"
             iter_dir.mkdir(parents=True, exist_ok=True)
+
             self._write_json(iter_dir / "reward_schema.json", schema.to_dict())
             self._write_text(iter_dir / "compiled_reward.py", SafeRewardCompiler.compile(schema))
 
             trainer = EGRSATrainer(self.config, iter_dir)
             trajectories = trainer.train_and_record(schema)
 
-            attribution = RewardAttributionAnalyzer.analyze(trajectories)
-            diagnostics = self._diagnose(trajectories, attribution)
-            diagnostic_report = self._diagnostic_report(attribution, diagnostics)
+            raw_attribution = RewardAttributionAnalyzer.analyze(trajectories)
+            diagnostics = self._diagnose(trajectories, raw_attribution)
+            diagnostic_report = self._diagnostic_report(raw_attribution, diagnostics)
+
             self._write_json(iter_dir / "diagnostic_report.json", diagnostic_report)
 
             task_score = self._task_score(trajectories, diagnostics)
@@ -75,26 +83,46 @@ class EGRSARunner:
                     top_k=int(self.config.get("memory", {}).get("top_k", 3)),
                 )
                 retrieved_dicts = [card.to_dict() for card in retrieved]
+
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
 
-            edit_response = self.edit_agent.generate_edit_plan(
-                task_description=task_description,
-                current_reward_schema=schema.to_dict(),
-                diagnostic_report=diagnostic_report,
-                retrieved_memories=retrieved_dicts,
-            )
-            raw_edit_plan = edit_response.get("edit_plan", [])
-            validation = EditPlanValidator.validate(schema, raw_edit_plan)
-            if validation.valid_edits:
-                edit_plan = validation.valid_edits
+            # Do not generate an edit plan on the final iteration.
+            # This keeps one-shot and the last iteration semantically clean.
+            should_edit = iteration < iterations - 1
+
+            if should_edit:
+                edit_response = self.edit_agent.generate_edit_plan(
+                    task_description=task_description,
+                    current_reward_schema=schema.to_dict(),
+                    diagnostic_report=diagnostic_report,
+                    retrieved_memories=retrieved_dicts,
+                )
+
+                raw_edit_plan = edit_response.get("edit_plan", [])
+                validation = EditPlanValidator.validate(schema, raw_edit_plan)
+
+                if validation.valid_edits:
+                    edit_plan = validation.valid_edits
+                elif diagnostics.get("dominant_component"):
+                    edit_plan = EditPlanValidator.safe_fallback(schema, diagnostics)
+                    validation.errors.append("No valid edit remained; used safe fallback edit plan.")
+                else:
+                    edit_plan = []
+                    validation.errors.append("No dominant component available; skipped component-directed edit.")
+
+                if not self.mode.use_operator_constraints:
+                    validation.errors.append(
+                        "Operator constraints disabled for ablation; no schema edit was applied."
+                    )
+                    edit_plan = []
             else:
-                edit_plan = EditPlanValidator.safe_fallback(schema, diagnostics)
-                validation.errors.append("No valid edit remained; used safe fallback edit plan.")
-            if not self.mode.use_operator_constraints:
-                # The runner still cannot safely execute arbitrary code rewrites.
-                # We record the free-rewrite response but do not apply unsafe code.
-                validation.errors.append("Operator constraints disabled for ablation; arbitrary code execution is intentionally not supported by this runner.")
+                edit_response = {
+                    "diagnosis": "Final iteration; edit generation skipped.",
+                    "edit_plan": [],
+                }
                 edit_plan = []
+                validation = EditPlanValidator.validate(schema, [])
+
             self._write_json(iter_dir / "edit_response.json", edit_response)
             self._write_json(iter_dir / "edit_validation.json", validation.to_dict())
             self._write_json(iter_dir / "edit_plan.json", {"edit_plan": edit_plan})
@@ -103,7 +131,7 @@ class EGRSARunner:
                 memory_id=f"iter_{iteration:03d}_to_{iteration + 1:03d}",
                 env_family=self.config.get("environment", {}).get("family", "unknown"),
                 failure_modes=diagnostics.get("failure_modes", []),
-                reward_attribution=attribution if self.mode.use_attribution else {},
+                reward_attribution=raw_attribution if self.mode.use_attribution else {},
                 edit_plan=edit_plan,
                 outcome={
                     "note": "Outcome is measured after training the edited schema in the next iteration.",
@@ -116,10 +144,13 @@ class EGRSARunner:
                     "iteration": iteration,
                     "validation_errors": validation.errors,
                     "experiment_mode": self.mode.to_dict(),
+                    "edit_generated": should_edit,
                 },
             )
+
             if self.mode.use_memory:
                 memory_store.append(memory_card)
+
             self._write_json(iter_dir / "memory_card.json", memory_card.to_dict())
 
             run_history.append(
@@ -133,18 +164,26 @@ class EGRSARunner:
                     "edit_plan": edit_plan,
                     "edit_diagnosis": edit_response.get("diagnosis", ""),
                     "edit_validation_errors": validation.errors,
+                    "edit_generated": should_edit,
                     "experiment_mode": self.mode.to_dict(),
                 }
             )
+
             self._write_json(self.output_dir / "run_history.json", run_history)
 
-            if iteration < iterations - 1:
+            if should_edit:
                 if not edit_plan:
                     break
                 schema = RewardEditOperatorApplier.apply(schema, edit_plan)
                 self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
 
-        self._write_json(self.output_dir / "best_summary.json", {"best_score": best_score, "best_schema": best_schema.to_dict()})
+        self._write_json(
+            self.output_dir / "best_summary.json",
+            {
+                "best_score": best_score,
+                "best_schema": best_schema.to_dict(),
+            },
+        )
         ExperimentSummary.save(self.output_dir)
         print(f"EG-RSA multi-iteration run finished. Outputs saved to: {self.output_dir}")
 
@@ -156,11 +195,24 @@ class EGRSARunner:
                 "hack_score": 0.0,
                 "suspected_components": [],
                 "dominant_component": attribution.get("dominant_component") if self.mode.use_attribution else None,
-                "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0) if self.mode.use_attribution else 0.0,
+                "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0)
+                if self.mode.use_attribution
+                else 0.0,
                 "repeated_event_details": {},
             }
+
         detector = RewardHackDetector(**self.config.get("hack_detector", {}))
-        return detector.detect(trajectories, attribution)
+        diagnostics = detector.detect(trajectories, attribution)
+
+        # Strict w/o-attribution ablation:
+        # keep high-level failure modes from trajectories, but remove component-level editing hints.
+        if not self.mode.use_attribution:
+            diagnostics = dict(diagnostics)
+            diagnostics["dominant_component"] = None
+            diagnostics["dominant_component_ratio"] = 0.0
+            diagnostics["suspected_components"] = []
+
+        return diagnostics
 
     def _diagnostic_report(self, attribution: dict, diagnostics: dict) -> dict:
         return {
@@ -180,13 +232,16 @@ class EGRSARunner:
     def _task_score(trajectories: List[dict], diagnostics: dict) -> float:
         if not trajectories:
             return -float("inf")
+
         successes = [float(t.get("summary", {}).get("success", 0.0)) for t in trajectories]
         progresses = [float(t.get("summary", {}).get("progress_score", 0.0)) for t in trajectories]
         lengths = [float(t.get("summary", {}).get("episode_length", 0.0)) for t in trajectories]
+
         success_mean = sum(successes) / max(1, len(successes))
         progress_mean = sum(progresses) / max(1, len(progresses))
         length_penalty = 0.0001 * (sum(lengths) / max(1, len(lengths)))
         hack_penalty = float(diagnostics.get("hack_score", 0.0))
+
         return float(success_mean * 2.0 + progress_mean - hack_penalty - length_penalty)
 
     @staticmethod
