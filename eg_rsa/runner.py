@@ -8,6 +8,7 @@ import yaml
 
 from eg_rsa.diagnostics.attribution import RewardAttributionAnalyzer
 from eg_rsa.diagnostics.hack_detectors import RewardHackDetector
+from eg_rsa.evaluation.experiment_summary import ExperimentSummary
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.llm.edit_agent import EditAgent
 from eg_rsa.memory.memory_card import MemoryCard
@@ -125,6 +126,7 @@ class EGRSARunner:
                 self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
 
         self._write_json(self.output_dir / "best_summary.json", {"best_score": best_score, "best_schema": best_schema.to_dict()})
+        ExperimentSummary.save(self.output_dir)
         print(f"EG-RSA multi-iteration run finished. Outputs saved to: {self.output_dir}")
 
     def _load_task_description(self) -> str:
