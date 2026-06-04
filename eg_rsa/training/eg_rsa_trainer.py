@@ -12,6 +12,7 @@ from eg_rsa.diagnostics.event_evaluator import EventEvaluator
 from eg_rsa.diagnostics.task_metrics import TaskMetricEvaluator
 from eg_rsa.diagnostics.trajectory_recorder import TrajectoryRecorder
 from eg_rsa.env_adapters.box_obs_adapter import BoxObsAdapter
+from eg_rsa.evaluation.posthoc_evaluator import PosthocEvaluator
 from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.training.schema_reward_wrapper import SchemaRewardWrapper
 
@@ -31,7 +32,8 @@ class EGRSATrainer:
         model = self._make_model(env)
         total_timesteps = int(self.config["rl"]["training"].get("total_timesteps", 100000))
         model.learn(total_timesteps=total_timesteps)
-        model.save(self.output_dir / "model")
+        model_path = self.output_dir / "model"
+        model.save(model_path)
 
         eval_env = self._make_env(reward_schema)
         recorder = self._make_recorder()
@@ -40,6 +42,17 @@ class EGRSATrainer:
         trajectories = recorder.record_policy(model, eval_env, n_episodes=n_episodes, seed=seed)
         TrajectoryRecorder.save_jsonl(self.output_dir / "trajectories.jsonl", trajectories)
         self._write_json(self.output_dir / "trajectories.json", trajectories)
+
+        if bool(self.config.get("posthoc_eval", {}).get("enabled", True)):
+            posthoc = PosthocEvaluator(
+                env_id=self.config["environment"]["gym_id"],
+                env_kwargs=self.config["environment"].get("kwargs") or {},
+            )
+            posthoc_episodes = int(self.config.get("posthoc_eval", {}).get("num_episodes", n_episodes))
+            posthoc_seed = self.config.get("posthoc_eval", {}).get("seed", seed)
+            posthoc_result = posthoc.evaluate_model(model, gym.make(self.config["environment"]["gym_id"], **(self.config["environment"].get("kwargs") or {})), n_episodes=posthoc_episodes, seed=posthoc_seed)
+            PosthocEvaluator.save(self.output_dir / "posthoc_eval.json", posthoc_result)
+
         return trajectories
 
     def _make_env(self, reward_schema: RewardSchema):
