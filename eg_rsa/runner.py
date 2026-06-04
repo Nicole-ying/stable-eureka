@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -28,11 +28,9 @@ class EGRSARunner:
         self.config_path = Path(config_path)
         if not self.config_path.exists():
             raise FileNotFoundError(f"Config not found: {self.config_path}")
-
         self.config = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
         self.output_dir = Path(self.config["experiment"]["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
         self.mode = ExperimentMode.from_config(self.config)
         llm_client = build_llm_client(self.config) if self.mode.use_llm_edit else None
         self.edit_agent = EditAgent(llm_client=llm_client)
@@ -40,8 +38,6 @@ class EGRSARunner:
     def run(self) -> None:
         schema = self._load_schema(Path(self.config["eg_rsa"]["initial_schema_path"]))
         iterations = int(self.config.get("eg_rsa", {}).get("iterations", 1))
-
-        # one-shot baseline: train only once and do not generate reward edits
         if self.mode.one_shot:
             iterations = 1
 
@@ -50,13 +46,14 @@ class EGRSARunner:
         best_schema = schema
         best_score = -float("inf")
         task_description = self._load_task_description()
-
         self._write_json(self.output_dir / "experiment_mode.json", self.mode.to_dict())
+
+        pending_memory_id: Optional[str] = None
+        pending_before: Optional[Dict[str, float]] = None
 
         for iteration in range(iterations):
             iter_dir = self.output_dir / f"iteration_{iteration:03d}"
             iter_dir.mkdir(parents=True, exist_ok=True)
-
             self._write_json(iter_dir / "reward_schema.json", schema.to_dict())
             self._write_text(iter_dir / "compiled_reward.py", SafeRewardCompiler.compile(schema))
 
@@ -66,10 +63,21 @@ class EGRSARunner:
             raw_attribution = RewardAttributionAnalyzer.analyze(trajectories)
             diagnostics = self._diagnose(trajectories, raw_attribution)
             diagnostic_report = self._diagnostic_report(raw_attribution, diagnostics)
-
             self._write_json(iter_dir / "diagnostic_report.json", diagnostic_report)
 
             task_score = self._task_score(trajectories, diagnostics)
+            current_metrics = {
+                "task_score": float(task_score),
+                "hack_score": float(diagnostics.get("hack_score", 0.0)),
+            }
+
+            if self.mode.use_memory and pending_memory_id and pending_before:
+                transition = self._make_outcome(before=pending_before, after=current_metrics)
+                memory_store.update_outcome(pending_memory_id, transition)
+                self._write_json(iter_dir / "memory_transition.json", {"memory_id": pending_memory_id, "outcome": transition})
+                pending_memory_id = None
+                pending_before = None
+
             if task_score > best_score:
                 best_score = task_score
                 best_schema = schema
@@ -83,13 +91,9 @@ class EGRSARunner:
                     top_k=int(self.config.get("memory", {}).get("top_k", 3)),
                 )
                 retrieved_dicts = [card.to_dict() for card in retrieved]
-
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
 
-            # Do not generate an edit plan on the final iteration.
-            # This keeps one-shot and the last iteration semantically clean.
             should_edit = iteration < iterations - 1
-
             if should_edit:
                 edit_response = self.edit_agent.generate_edit_plan(
                     task_description=task_description,
@@ -97,10 +101,8 @@ class EGRSARunner:
                     diagnostic_report=diagnostic_report,
                     retrieved_memories=retrieved_dicts,
                 )
-
                 raw_edit_plan = edit_response.get("edit_plan", [])
                 validation = EditPlanValidator.validate(schema, raw_edit_plan)
-
                 if validation.valid_edits:
                     edit_plan = validation.valid_edits
                 elif diagnostics.get("dominant_component"):
@@ -109,17 +111,11 @@ class EGRSARunner:
                 else:
                     edit_plan = []
                     validation.errors.append("No dominant component available; skipped component-directed edit.")
-
                 if not self.mode.use_operator_constraints:
-                    validation.errors.append(
-                        "Operator constraints disabled for ablation; no schema edit was applied."
-                    )
+                    validation.errors.append("Operator constraints disabled for ablation; no schema edit was applied.")
                     edit_plan = []
             else:
-                edit_response = {
-                    "diagnosis": "Final iteration; edit generation skipped.",
-                    "edit_plan": [],
-                }
+                edit_response = {"diagnosis": "Final iteration; edit generation skipped.", "edit_plan": []}
                 edit_plan = []
                 validation = EditPlanValidator.validate(schema, [])
 
@@ -127,17 +123,20 @@ class EGRSARunner:
             self._write_json(iter_dir / "edit_validation.json", validation.to_dict())
             self._write_json(iter_dir / "edit_plan.json", {"edit_plan": edit_plan})
 
+            outcome = {
+                "status": "pending" if should_edit and edit_plan else "not_applicable",
+                "before": current_metrics,
+                "after": {},
+                "delta": {},
+                "note": "Pending until the edited schema is trained in the next iteration." if should_edit and edit_plan else "No edit was generated for this iteration.",
+            }
             memory_card = MemoryCard(
                 memory_id=f"iter_{iteration:03d}_to_{iteration + 1:03d}",
                 env_family=self.config.get("environment", {}).get("family", "unknown"),
                 failure_modes=diagnostics.get("failure_modes", []),
                 reward_attribution=raw_attribution if self.mode.use_attribution else {},
                 edit_plan=edit_plan,
-                outcome={
-                    "note": "Outcome is measured after training the edited schema in the next iteration.",
-                    "hack_score_before": diagnostics.get("hack_score", 0.0),
-                    "task_score_before": task_score,
-                },
+                outcome=outcome,
                 lesson=edit_response.get("diagnosis", "Generated by EG-RSA edit agent."),
                 metadata={
                     "config_path": str(self.config_path),
@@ -148,9 +147,10 @@ class EGRSARunner:
                 },
             )
 
-            if self.mode.use_memory:
+            if self.mode.use_memory and should_edit and edit_plan:
                 memory_store.append(memory_card)
-
+                pending_memory_id = memory_card.memory_id
+                pending_before = current_metrics
             self._write_json(iter_dir / "memory_card.json", memory_card.to_dict())
 
             run_history.append(
@@ -168,7 +168,6 @@ class EGRSARunner:
                     "experiment_mode": self.mode.to_dict(),
                 }
             )
-
             self._write_json(self.output_dir / "run_history.json", run_history)
 
             if should_edit:
@@ -179,13 +178,23 @@ class EGRSARunner:
 
         self._write_json(
             self.output_dir / "best_summary.json",
-            {
-                "best_score": best_score,
-                "best_schema": best_schema.to_dict(),
-            },
+            {"best_score": best_score, "best_schema": best_schema.to_dict()},
         )
         ExperimentSummary.save(self.output_dir)
         print(f"EG-RSA multi-iteration run finished. Outputs saved to: {self.output_dir}")
+
+    @staticmethod
+    def _make_outcome(before: Dict[str, float], after: Dict[str, float]) -> Dict[str, Any]:
+        return {
+            "status": "measured",
+            "before": before,
+            "after": after,
+            "delta": {
+                "task_score": float(after.get("task_score", 0.0) - before.get("task_score", 0.0)),
+                "hack_score": float(after.get("hack_score", 0.0) - before.get("hack_score", 0.0)),
+            },
+            "note": "Measured after training the edited schema in the next iteration.",
+        }
 
     def _diagnose(self, trajectories: List[dict], attribution: dict) -> dict:
         if not self.mode.use_hack_detector:
@@ -195,31 +204,20 @@ class EGRSARunner:
                 "hack_score": 0.0,
                 "suspected_components": [],
                 "dominant_component": attribution.get("dominant_component") if self.mode.use_attribution else None,
-                "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0)
-                if self.mode.use_attribution
-                else 0.0,
+                "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0) if self.mode.use_attribution else 0.0,
                 "repeated_event_details": {},
             }
-
         detector = RewardHackDetector(**self.config.get("hack_detector", {}))
         diagnostics = detector.detect(trajectories, attribution)
-
-        # Strict w/o-attribution ablation:
-        # keep high-level failure modes from trajectories, but remove component-level editing hints.
         if not self.mode.use_attribution:
             diagnostics = dict(diagnostics)
             diagnostics["dominant_component"] = None
             diagnostics["dominant_component_ratio"] = 0.0
             diagnostics["suspected_components"] = []
-
         return diagnostics
 
     def _diagnostic_report(self, attribution: dict, diagnostics: dict) -> dict:
-        return {
-            "attribution": attribution if self.mode.use_attribution else {},
-            "diagnostics": diagnostics,
-            "experiment_mode": self.mode.to_dict(),
-        }
+        return {"attribution": attribution if self.mode.use_attribution else {}, "diagnostics": diagnostics, "experiment_mode": self.mode.to_dict()}
 
     def _load_task_description(self) -> str:
         path = self.config.get("eg_rsa", {}).get("task_description_path")
@@ -232,16 +230,13 @@ class EGRSARunner:
     def _task_score(trajectories: List[dict], diagnostics: dict) -> float:
         if not trajectories:
             return -float("inf")
-
         successes = [float(t.get("summary", {}).get("success", 0.0)) for t in trajectories]
         progresses = [float(t.get("summary", {}).get("progress_score", 0.0)) for t in trajectories]
         lengths = [float(t.get("summary", {}).get("episode_length", 0.0)) for t in trajectories]
-
         success_mean = sum(successes) / max(1, len(successes))
         progress_mean = sum(progresses) / max(1, len(progresses))
         length_penalty = 0.0001 * (sum(lengths) / max(1, len(lengths)))
         hack_penalty = float(diagnostics.get("hack_score", 0.0))
-
         return float(success_mean * 2.0 + progress_mean - hack_penalty - length_penalty)
 
     @staticmethod
