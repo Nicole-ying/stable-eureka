@@ -33,10 +33,14 @@ class SchemaRewardWrapper(gym.Wrapper):
         self.event_evaluator = event_evaluator
         self._fired_event_rules = set()
         self._event_rule_duration_counts: Dict[str, int] = {}
+        self._prev_task_metrics: Dict[str, float] = {}
+        self._metric_stagnation_counts: Dict[str, int] = {}
 
     def reset(self, **kwargs):
         self._fired_event_rules = set()
         self._event_rule_duration_counts = {}
+        self._prev_task_metrics = {}
+        self._metric_stagnation_counts = {}
         return self.env.reset(**kwargs)
 
     def step(self, action: Any):
@@ -45,7 +49,8 @@ class SchemaRewardWrapper(gym.Wrapper):
         obs_map = self.obs_adapter.obs_to_map(obs)
         events = self.event_evaluator.evaluate(obs_map, action)
         task_metrics = self.task_metric_evaluator.evaluate(obs_map, action, events)
-        reward, components = self._compute_schema_reward(obs_map, action, events)
+        reward, components = self._compute_schema_reward(obs_map, action, events, task_metrics)
+        self._prev_task_metrics = dict(task_metrics)
         info["oracle_reward_posthoc"] = float(oracle_reward)
         info["components"] = components
         info["task_metrics"] = task_metrics
@@ -58,13 +63,14 @@ class SchemaRewardWrapper(gym.Wrapper):
         obs_map: Dict[str, float],
         action: Optional[Any],
         events: Dict[str, bool],
+        task_metrics: Dict[str, float],
     ) -> Tuple[float, Dict[str, float]]:
         total = 0.0
         components: Dict[str, float] = {}
         for component in self.reward_schema.components:
             if not component.enabled:
                 continue
-            raw = self._component_raw(component.type, component.inputs, component.params, obs_map, action, events)
+            raw = self._component_raw(component.name, component.type, component.inputs, component.params, obs_map, action, events, task_metrics)
             if component.clip is not None:
                 raw = min(max(raw, float(component.clip[0])), float(component.clip[1]))
             value = float(component.weight) * float(raw)
@@ -100,8 +106,7 @@ class SchemaRewardWrapper(gym.Wrapper):
             return base_ok
         return base_ok and self._event_rule_duration_counts.get(rule_name, 0) >= duration_steps
 
-    @staticmethod
-    def _component_raw(typ, inputs, params, obs_map, action, events) -> float:
+    def _component_raw(self, name, typ, inputs, params, obs_map, action, events, task_metrics) -> float:
         import math
         import numpy as np
 
@@ -120,4 +125,35 @@ class SchemaRewardWrapper(gym.Wrapper):
             return float(params.get("value", 1.0))
         if typ == "event_bonus":
             return 1.0 if bool(events.get(params.get("event", ""), False)) else 0.0
+        if typ == "metric_value":
+            return float(task_metrics.get(params.get("metric", ""), 0.0))
+        if typ == "metric_delta":
+            metric = params.get("metric", "")
+            current = float(task_metrics.get(metric, 0.0))
+            previous = float(self._prev_task_metrics.get(metric, current))
+            delta = current - previous
+            if bool(params.get("positive_only", True)):
+                delta = max(0.0, delta)
+            return float(delta)
+        if typ == "metric_threshold_bonus":
+            metric = params.get("metric", "")
+            threshold = float(params.get("threshold", 0.0))
+            direction = params.get("direction", "ge")
+            value = float(task_metrics.get(metric, 0.0))
+            if direction == "le":
+                return 1.0 if value <= threshold else 0.0
+            return 1.0 if value >= threshold else 0.0
+        if typ == "metric_stagnation_penalty":
+            metric = params.get("metric", "")
+            threshold = float(params.get("threshold", 1e-3))
+            window = int(params.get("window", 20))
+            current = float(task_metrics.get(metric, 0.0))
+            previous = float(self._prev_task_metrics.get(metric, current))
+            delta = abs(current - previous)
+            key = name
+            if delta < threshold:
+                self._metric_stagnation_counts[key] = self._metric_stagnation_counts.get(key, 0) + 1
+            else:
+                self._metric_stagnation_counts[key] = 0
+            return -1.0 if self._metric_stagnation_counts.get(key, 0) >= window else 0.0
         return 0.0
