@@ -8,7 +8,7 @@ import numpy as np
 class RewardHackDetector:
     """Generic reward-task misalignment detectors.
 
-    The detector intentionally avoids environment-specific hack rules.  It only
+    The detector intentionally avoids environment-specific hack rules. It only
     checks generic patterns:
       1. high reward but low task progress;
       2. single component dominance;
@@ -73,12 +73,20 @@ class RewardHackDetector:
         reward = float(sum(step.get("reward", 0.0) for step in steps))
         if "summary" in episode:
             summary = episode["summary"]
-            progress = float(summary.get("progress_score", summary.get("progress", 0.0)))
+            progress = float(
+                summary.get(
+                    "progress_score",
+                    summary.get(
+                        "landing_quality_final",
+                        summary.get("approach_region_final", summary.get("progress", 0.0)),
+                    ),
+                )
+            )
             success = float(summary.get("success", 0.0))
             return reward, progress, success
 
         progress_values = [
-            float(step.get("task_metrics", {}).get("progress", 0.0))
+            RewardHackDetector._step_progress(step)
             for step in steps
         ]
         success_values = [
@@ -88,6 +96,20 @@ class RewardHackDetector:
         progress = float(progress_values[-1]) if progress_values else 0.0
         success = float(np.max(success_values)) if success_values else 0.0
         return reward, progress, success
+
+    @staticmethod
+    def _step_progress(step: Dict[str, Any]) -> float:
+        metrics = step.get("task_metrics", {})
+        for key in [
+            "landing_quality",
+            "approach_and_stability",
+            "approach_region_score",
+            "landing_region_score",
+            "progress",
+        ]:
+            if key in metrics:
+                return float(metrics.get(key, 0.0))
+        return 0.0
 
     def _detect_high_reward_low_progress(self, episodes: List[Dict[str, Any]]) -> bool:
         if len(episodes) < 2:
@@ -101,12 +123,18 @@ class RewardHackDetector:
         return bool(np.mean(suspicious) >= 0.4)
 
     def _detect_repeated_events(self, episodes: List[Dict[str, Any]]) -> Dict[str, Any]:
+        # Only contact-like events are useful for generic repeated-event hack
+        # detection. Region/progress diagnostic events naturally toggle during
+        # normal control and should not be treated as exploitation by default.
+        tracked_keywords = ("contact", "landing")
         event_toggle_counts: Dict[str, int] = {}
         for episode in episodes:
             last_values: Dict[str, Any] = {}
             for step in episode.get("steps", []):
                 events = step.get("events", {})
                 for key, value in events.items():
+                    if not any(word in key for word in tracked_keywords):
+                        continue
                     value = bool(value)
                     if key in last_values and bool(last_values[key]) != value:
                         event_toggle_counts[key] = event_toggle_counts.get(key, 0) + 1
