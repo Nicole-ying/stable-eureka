@@ -12,6 +12,7 @@ from eg_rsa.evaluation.experiment_summary import ExperimentSummary
 from eg_rsa.experiments.modes import ExperimentMode
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.llm.edit_agent import EditAgent
+from eg_rsa.llm.structural_search_agent import StructuralSearchAgent
 from eg_rsa.memory.lesson_store import LessonStore, build_lesson_from_memory_card
 from eg_rsa.memory.memory_card import MemoryCard
 from eg_rsa.memory.memory_store import MemoryStore
@@ -36,6 +37,8 @@ class EGRSARunner:
         self.mode = ExperimentMode.from_config(self.config)
         llm_client = build_llm_client(self.config) if self.mode.use_llm_edit else None
         self.edit_agent = EditAgent(llm_client=llm_client)
+        self.structural_search_agent = StructuralSearchAgent(llm_client=llm_client)
+        self.structural_context = self._load_structural_context()
 
     def run(self) -> None:
         schema = self._load_schema(Path(self.config["eg_rsa"]["initial_schema_path"]))
@@ -50,6 +53,7 @@ class EGRSARunner:
         best_score = -float("inf")
         task_description = self._load_task_description()
         self._write_json(self.output_dir / "experiment_mode.json", self.mode.to_dict())
+        self._write_json(self.output_dir / "structural_context.json", self.structural_context)
 
         pending_memory_id: Optional[str] = None
         pending_before: Optional[Dict[str, float]] = None
@@ -109,6 +113,7 @@ class EGRSARunner:
             should_edit = iteration < iterations - 1
             next_action = "final_iteration"
             gate_result = None
+            structural_response: Dict[str, Any] = {}
             if should_edit:
                 edit_response = self.edit_agent.generate_edit_plan(
                     task_description=task_description,
@@ -120,40 +125,38 @@ class EGRSARunner:
                 raw_edit_plan = edit_response.get("edit_plan", [])
                 edit_decision = self._extract_edit_decision(edit_response)
                 next_action = self._extract_next_action(edit_response)
-                if edit_decision in {"no_edit", "need_more_evidence"} or raw_edit_plan == []:
-                    edit_plan = []
-                    validation = EditPlanValidator.validate(schema, [])
-                    validation.errors.append(f"LLM chose {edit_decision} with next_action={next_action}; no schema edit applied.")
-                else:
-                    validation = EditPlanValidator.validate(schema, raw_edit_plan)
-                    if validation.valid_edits:
-                        gate_result = EditDecisionGate.apply(
-                            schema=schema,
-                            edit_plan=validation.valid_edits,
-                            diagnostic_report=diagnostic_report,
-                            gate_config=self.config.get("edit_gate", {}),
-                        )
-                        edit_plan = gate_result.accepted_edits
-                        if edit_plan:
-                            next_action = "apply_edit"
-                        else:
-                            validation.errors.extend(gate_result.warnings)
-                            next_action = "structural_search"
-                    elif diagnostics.get("dominant_component") and not self.mode.use_llm_edit:
-                        edit_plan = EditPlanValidator.safe_fallback(schema, diagnostics)
-                        next_action = "apply_edit"
-                        validation.errors.append("No valid edit remained; used non-LLM safe fallback edit plan.")
-                    else:
-                        edit_plan = []
-                        validation.errors.append("No valid edit remained; skipped schema edit.")
-                if not self.mode.use_operator_constraints:
-                    validation.errors.append("Operator constraints disabled for ablation; no schema edit was applied.")
-                    edit_plan = []
+                edit_plan, validation, gate_result, next_action = self._validate_and_gate_edit_plan(
+                    schema=schema,
+                    raw_edit_plan=raw_edit_plan,
+                    diagnostic_report=diagnostic_report,
+                    edit_decision=edit_decision,
+                    next_action=next_action,
+                )
+
+                if not edit_plan and next_action == "structural_search":
+                    structural_response = self.structural_search_agent.generate_structural_edit(
+                        task_description=task_description,
+                        current_reward_schema=schema.to_dict(),
+                        diagnostic_report=diagnostic_report,
+                        retrieved_lessons=retrieved_lessons,
+                        structural_context=self.structural_context,
+                    )
+                    self._write_json(iter_dir / "structural_search_response.json", structural_response)
+                    structural_decision = self._extract_edit_decision(structural_response)
+                    structural_next_action = self._extract_next_action(structural_response)
+                    edit_plan, validation, gate_result, next_action = self._validate_and_gate_edit_plan(
+                        schema=schema,
+                        raw_edit_plan=structural_response.get("edit_plan", []),
+                        diagnostic_report=diagnostic_report,
+                        edit_decision=structural_decision,
+                        next_action=structural_next_action,
+                    )
+                    edit_response["structural_search_response"] = structural_response
             else:
                 edit_response = {"diagnosis": "Final iteration; edit generation skipped.", "edit_plan": []}
                 edit_decision = "final"
                 edit_plan = []
-                validation = EditPlanValidator.validate(schema, [])
+                validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
 
             self._write_json(iter_dir / "edit_response.json", edit_response)
             self._write_json(iter_dir / "edit_validation.json", validation.to_dict())
@@ -161,7 +164,13 @@ class EGRSARunner:
                 self._write_json(iter_dir / "edit_gate.json", gate_result.to_dict())
             self._write_json(iter_dir / "edit_plan.json", {"edit_plan": edit_plan})
 
-            outcome = {"status": "pending" if should_edit and edit_plan else "not_applicable", "before": current_metrics, "after": {}, "delta": {}, "note": "Pending until the edited schema is trained in the next iteration." if should_edit and edit_plan else "No edit was generated for this iteration."}
+            outcome = {
+                "status": "pending" if should_edit and edit_plan else "not_applicable",
+                "before": current_metrics,
+                "after": {},
+                "delta": {},
+                "note": "Pending until the edited schema is trained in the next iteration." if should_edit and edit_plan else "No edit was generated for this iteration.",
+            }
             memory_card = MemoryCard(
                 memory_id=f"iter_{iteration:03d}_to_{iteration + 1:03d}",
                 env_family=self.config.get("environment", {}).get("family", "unknown"),
@@ -170,7 +179,24 @@ class EGRSARunner:
                 edit_plan=edit_plan,
                 outcome=outcome,
                 lesson=edit_response.get("diagnosis", "Generated by EG-RSA edit agent."),
-                metadata={"config_path": str(self.config_path), "iteration": iteration, "validation_errors": validation.errors, "gate_result": gate_result.to_dict() if gate_result is not None else {}, "experiment_mode": self.mode.to_dict(), "edit_generated": should_edit, "edit_decision": edit_decision, "next_action": next_action, "agent_analysis": {"diagnostic_analysis": edit_response.get("diagnostic_analysis", {}), "memory_reflection": edit_response.get("memory_reflection", {}), "reward_editor": edit_response.get("reward_editor", {}), "auditor_check": edit_response.get("auditor_check", {}), "distilled_lessons": edit_response.get("distilled_lessons", {})}},
+                metadata={
+                    "config_path": str(self.config_path),
+                    "iteration": iteration,
+                    "validation_errors": validation.errors,
+                    "gate_result": gate_result.to_dict() if gate_result is not None else {},
+                    "structural_response": structural_response,
+                    "experiment_mode": self.mode.to_dict(),
+                    "edit_generated": should_edit,
+                    "edit_decision": edit_decision,
+                    "next_action": next_action,
+                    "agent_analysis": {
+                        "diagnostic_analysis": edit_response.get("diagnostic_analysis", {}),
+                        "memory_reflection": edit_response.get("memory_reflection", {}),
+                        "reward_editor": edit_response.get("reward_editor", {}),
+                        "auditor_check": edit_response.get("auditor_check", {}),
+                        "distilled_lessons": edit_response.get("distilled_lessons", {}),
+                    },
+                },
             )
 
             if self.mode.use_memory and should_edit and edit_plan:
@@ -180,7 +206,23 @@ class EGRSARunner:
                 pending_card_dict = memory_card.to_dict()
             self._write_json(iter_dir / "memory_card.json", memory_card.to_dict())
 
-            run_history.append({"iteration": iteration, "task_score": task_score, "hack_score": diagnostics.get("hack_score", 0.0), "failure_modes": diagnostics.get("failure_modes", []), "dominant_component": diagnostics.get("dominant_component"), "dominant_component_ratio": diagnostics.get("dominant_component_ratio", 0.0), "edit_plan": edit_plan, "edit_decision": edit_decision, "next_action": next_action, "edit_diagnosis": edit_response.get("diagnosis", ""), "edit_validation_errors": validation.errors, "edit_gate": gate_result.to_dict() if gate_result is not None else {}, "edit_generated": should_edit, "experiment_mode": self.mode.to_dict()})
+            run_history.append({
+                "iteration": iteration,
+                "task_score": task_score,
+                "hack_score": diagnostics.get("hack_score", 0.0),
+                "failure_modes": diagnostics.get("failure_modes", []),
+                "dominant_component": diagnostics.get("dominant_component"),
+                "dominant_component_ratio": diagnostics.get("dominant_component_ratio", 0.0),
+                "edit_plan": edit_plan,
+                "edit_decision": edit_decision,
+                "next_action": next_action,
+                "structural_search_used": bool(structural_response),
+                "edit_diagnosis": edit_response.get("diagnosis", ""),
+                "edit_validation_errors": validation.errors,
+                "edit_gate": gate_result.to_dict() if gate_result is not None else {},
+                "edit_generated": should_edit,
+                "experiment_mode": self.mode.to_dict(),
+            })
             self._write_json(self.output_dir / "run_history.json", run_history)
 
             if should_edit:
@@ -195,6 +237,48 @@ class EGRSARunner:
         self._write_json(self.output_dir / "best_summary.json", {"best_score": best_score, "best_schema": best_schema.to_dict(), "stop_reason": stop_reason})
         ExperimentSummary.save(self.output_dir)
         print(f"EG-RSA multi-iteration run finished. Outputs saved to: {self.output_dir}")
+
+    def _validate_and_gate_edit_plan(
+        self,
+        schema: RewardSchema,
+        raw_edit_plan: List[Dict[str, Any]],
+        diagnostic_report: Dict[str, Any],
+        edit_decision: str,
+        next_action: str,
+    ):
+        if edit_decision in {"no_edit", "need_more_evidence"} or raw_edit_plan == []:
+            edit_plan: List[Dict[str, Any]] = []
+            validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
+            validation.errors.append(f"LLM chose {edit_decision} with next_action={next_action}; no schema edit applied.")
+            return edit_plan, validation, None, next_action
+
+        validation = EditPlanValidator.validate(schema, raw_edit_plan, structural_context=self.structural_context)
+        gate_result = None
+        if validation.valid_edits:
+            gate_result = EditDecisionGate.apply(
+                schema=schema,
+                edit_plan=validation.valid_edits,
+                diagnostic_report=diagnostic_report,
+                gate_config=self.config.get("edit_gate", {}),
+            )
+            edit_plan = gate_result.accepted_edits
+            if edit_plan:
+                next_action = "apply_edit"
+            else:
+                validation.errors.extend(gate_result.warnings)
+                next_action = "structural_search"
+        elif diagnostic_report.get("diagnostics", {}).get("dominant_component") and not self.mode.use_llm_edit:
+            edit_plan = EditPlanValidator.safe_fallback(schema, diagnostic_report.get("diagnostics", {}))
+            next_action = "apply_edit"
+            validation.errors.append("No valid edit remained; used non-LLM safe fallback edit plan.")
+        else:
+            edit_plan = []
+            validation.errors.append("No valid edit remained; skipped schema edit.")
+
+        if not self.mode.use_operator_constraints:
+            validation.errors.append("Operator constraints disabled for ablation; no schema edit was applied.")
+            edit_plan = []
+        return edit_plan, validation, gate_result, next_action
 
     @staticmethod
     def _extract_edit_decision(edit_response: Dict[str, Any]) -> str:
@@ -221,7 +305,16 @@ class EGRSARunner:
 
     @staticmethod
     def _make_outcome(before: Dict[str, float], after: Dict[str, float]) -> Dict[str, Any]:
-        return {"status": "measured", "before": before, "after": after, "delta": {"task_score": float(after.get("task_score", 0.0) - before.get("task_score", 0.0)), "hack_score": float(after.get("hack_score", 0.0) - before.get("hack_score", 0.0))}, "note": "Measured after training the edited schema in the next iteration."}
+        return {
+            "status": "measured",
+            "before": before,
+            "after": after,
+            "delta": {
+                "task_score": float(after.get("task_score", 0.0) - before.get("task_score", 0.0)),
+                "hack_score": float(after.get("hack_score", 0.0) - before.get("hack_score", 0.0)),
+            },
+            "note": "Measured after training the edited schema in the next iteration.",
+        }
 
     def _diagnose(self, trajectories: List[dict], attribution: dict) -> dict:
         if not self.mode.use_hack_detector:
@@ -244,6 +337,22 @@ class EGRSARunner:
             return self.config.get("environment", {}).get("name", "")
         p = Path(path)
         return p.read_text(encoding="utf-8") if p.exists() else ""
+
+    def _load_structural_context(self) -> Dict[str, Any]:
+        path = Path(self.config.get("eg_rsa", {}).get("diagnostic_spec_path", ""))
+        if not path.exists():
+            return {"available_events": [], "available_task_metrics": [], "preferred_success_events": []}
+        spec = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        events = spec.get("events", {}) or {}
+        metrics = spec.get("task_metrics", {}) or {}
+        preferred_success_events = [cfg.get("event") for cfg in metrics.values() if isinstance(cfg, dict) and cfg.get("type") == "event_success" and cfg.get("event")]
+        return {
+            "available_events": sorted(events.keys()),
+            "event_specs": events,
+            "available_task_metrics": sorted(metrics.keys()),
+            "task_metric_specs": metrics,
+            "preferred_success_events": preferred_success_events,
+        }
 
     @staticmethod
     def _task_score(trajectories: List[dict], diagnostics: dict) -> float:
