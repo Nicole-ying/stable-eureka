@@ -22,7 +22,7 @@ Return one JSON object only.
 Hard constraints:
 1. Do NOT use environment oracle reward or official reward values.
 2. Do NOT write Python code.
-3. Do NOT invent variables, events, or operators.
+3. Do NOT invent variables, events, metrics, or operators.
 4. You may only use allowed operators and the available events/metrics listed in structural_context.
 5. Prefer one minimal structural edit. The execution gate will keep at most one edit.
 6. Do not add unprotected repeatable event bonuses. Use one_time=true and/or duration_steps when adding event rules.
@@ -30,8 +30,32 @@ Hard constraints:
 
 Structural search purpose:
 - If a known exploit was removed but task guidance remains weak, add a non-exploitable positive or shaping signal using configured events/metrics.
+- If a terminal success event is too sparse or previously failed to trigger, prefer an intermediate metric-based process signal.
 - If current local edits failed, avoid repeating them.
 - If no safe structural edit exists, return edit_decision="no_edit" and next_action="early_stop".
+
+Preferred generic structural edits:
+1. metric_delta: rewards improvement in a configured task metric; useful when terminal success is too sparse.
+2. metric_value: rewards maintaining a high configured task metric; useful for dense guidance.
+3. metric_threshold_bonus: rewards crossing a configured metric threshold; use cautiously.
+4. metric_stagnation_penalty: penalizes lack of progress in a configured metric.
+5. add_event_rule: adds a one-time/duration-gated configured event rule; useful only when the event is realistically reachable.
+
+Required add_component schema for metric components:
+{{
+  "operator": "add_component",
+  "component": {{
+    "name": "r_unique_metric_component",
+    "type": "metric_delta | metric_value | metric_threshold_bonus | metric_stagnation_penalty",
+    "weight": 1.0,
+    "inputs": [],
+    "params": {{"metric": "one_available_task_metric_name"}},
+    "clip": [0.0, 1.0],
+    "enabled": true
+  }}
+}}
+For metric_threshold_bonus, params must include threshold and optional direction="ge" or "le".
+For metric_stagnation_penalty, params must include threshold and window.
 
 Required add_event_rule schema:
 When using add_event_rule, event_rule MUST contain all fields below:
