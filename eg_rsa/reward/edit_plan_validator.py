@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,17 +13,24 @@ class EditPlanValidationResult:
     valid_edits: List[Dict[str, Any]] = field(default_factory=list)
     rejected_edits: List[Dict[str, Any]] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
     @property
     def is_valid(self) -> bool:
         return len(self.errors) == 0 and len(self.valid_edits) > 0
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"is_valid": self.is_valid, "valid_edits": self.valid_edits, "rejected_edits": self.rejected_edits, "errors": self.errors}
+        return {
+            "is_valid": self.is_valid,
+            "valid_edits": self.valid_edits,
+            "rejected_edits": self.rejected_edits,
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }
 
 
 class EditPlanValidator:
-    """Validate LLM/fallback edit plans before applying operators."""
+    """Validate and normalize LLM/fallback edit plans before applying operators."""
 
     @classmethod
     def validate(
@@ -31,16 +39,19 @@ class EditPlanValidator:
         edit_plan: List[Dict[str, Any]],
         structural_context: Optional[Dict[str, Any]] = None,
     ) -> EditPlanValidationResult:
+        structural_context = structural_context or {}
         result = EditPlanValidationResult()
         if not isinstance(edit_plan, list):
             result.errors.append("edit_plan must be a list")
             return result
         for idx, edit in enumerate(edit_plan):
-            ok, error = cls._validate_one(schema, edit, structural_context or {})
+            normalized_edit, notes = cls._normalize_edit(edit, structural_context)
+            result.warnings.extend(notes)
+            ok, error = cls._validate_one(schema, normalized_edit, structural_context)
             if ok:
-                result.valid_edits.append(edit)
+                result.valid_edits.append(normalized_edit)
             else:
-                rejected = dict(edit) if isinstance(edit, dict) else {"raw_edit": edit}
+                rejected = dict(normalized_edit) if isinstance(normalized_edit, dict) else {"raw_edit": normalized_edit}
                 rejected["index"] = idx
                 result.rejected_edits.append(rejected)
                 result.errors.append(error)
@@ -58,6 +69,97 @@ class EditPlanValidator:
             if component.enabled:
                 return [{"operator": "clip_component", "target": component.name, "clip": [-1.0, 1.0]}]
         return []
+
+    @classmethod
+    def _normalize_edit(cls, edit: Any, structural_context: Dict[str, Any]) -> Tuple[Any, List[str]]:
+        if not isinstance(edit, dict):
+            return edit, []
+        op = edit.get("operator") or edit.get("op")
+        if op == "add_event_rule":
+            return cls._normalize_add_event_rule(edit, structural_context)
+        if op == "add_component":
+            return cls._normalize_add_component(edit)
+        return edit, []
+
+    @classmethod
+    def _normalize_add_event_rule(cls, edit: Dict[str, Any], structural_context: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+        notes: List[str] = []
+        normalized = dict(edit)
+        rule = normalized.get("event_rule")
+        if not isinstance(rule, dict):
+            return normalized, notes
+        rule = dict(rule)
+        available_events = set(structural_context.get("available_events", []))
+
+        # Compact form: {event: "x", weight: ...} -> complete EventRule.
+        event_name = rule.get("event") or rule.get("event_name") or rule.get("metric")
+        if ("condition" not in rule or not isinstance(rule.get("condition"), dict)) and event_name:
+            if not available_events or event_name in available_events:
+                rule["condition"] = {event_name: True}
+                rule.setdefault("name", cls._safe_rule_name(event_name, bool(rule.get("one_time", True))))
+                rule.setdefault("type", "event_bonus")
+                rule.setdefault("enabled", True)
+                rule.setdefault("one_time", True)
+                notes.append(f"Normalized compact add_event_rule for event {event_name!r}.")
+
+        # Some LLM responses put duration_steps at event_rule top level. The
+        # executable EventRule schema stores it inside condition.
+        if "duration_steps" in rule:
+            condition = dict(rule.get("condition", {}))
+            if "duration_steps" not in condition and rule.get("duration_steps") is not None:
+                try:
+                    duration = int(rule.get("duration_steps"))
+                    if duration > 1:
+                        condition["duration_steps"] = duration
+                        notes.append("Moved event_rule.duration_steps into event_rule.condition.duration_steps.")
+                except (TypeError, ValueError):
+                    notes.append("Ignored invalid event_rule.duration_steps during normalization.")
+            rule.pop("duration_steps", None)
+            rule["condition"] = condition
+
+        if "condition" in rule and isinstance(rule["condition"], dict):
+            condition = dict(rule["condition"])
+            if "duration_steps" in condition:
+                try:
+                    duration = int(condition["duration_steps"])
+                    if duration <= 1:
+                        condition.pop("duration_steps", None)
+                    else:
+                        condition["duration_steps"] = duration
+                except (TypeError, ValueError):
+                    condition.pop("duration_steps", None)
+                    notes.append("Removed invalid condition.duration_steps during normalization.")
+            rule["condition"] = condition
+
+        rule.setdefault("type", "event_bonus")
+        rule.setdefault("enabled", True)
+        rule.setdefault("one_time", False)
+        normalized["event_rule"] = rule
+        normalized["operator"] = "add_event_rule"
+        return normalized, notes
+
+    @staticmethod
+    def _normalize_add_component(edit: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+        notes: List[str] = []
+        normalized = dict(edit)
+        component = normalized.get("component")
+        if not isinstance(component, dict):
+            return normalized, notes
+        component = dict(component)
+        component_type = component.get("type")
+        if component_type in RewardEditOperatorApplier.METRIC_COMPONENT_TYPES:
+            params = dict(component.get("params", {}))
+            if "metric" not in params and component.get("metric"):
+                params["metric"] = component.get("metric")
+                notes.append("Moved component.metric into component.params.metric.")
+            component["params"] = params
+            component.setdefault("inputs", [])
+            component.setdefault("enabled", True)
+            if component.get("clip") is None and component_type in {"metric_value", "metric_delta", "metric_threshold_bonus"}:
+                component["clip"] = [0.0, 1.0]
+        normalized["component"] = component
+        normalized["operator"] = "add_component"
+        return normalized, notes
 
     @classmethod
     def _validate_one(cls, schema: RewardSchema, edit: Any, structural_context: Dict[str, Any]) -> Tuple[bool, str]:
@@ -168,3 +270,9 @@ class EditPlanValidator:
             if key not in available_events:
                 unknown.append(key)
         return unknown
+
+    @staticmethod
+    def _safe_rule_name(event_name: str, one_time: bool) -> str:
+        safe = re.sub(r"[^a-zA-Z0-9_]+", "_", str(event_name)).strip("_")
+        suffix = "once" if one_time else "event"
+        return f"r_{safe}_{suffix}"
