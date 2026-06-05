@@ -65,9 +65,9 @@
   },
   "edit_plan": [
     {
-      "operator": "decrease_weight",
-      "target": "r_distance",
-      "factor": 0.5
+      "operator": "add_duration_condition",
+      "target": "r_contact_one_time",
+      "duration_steps": 10
     }
   ],
   "outcome": {
@@ -80,7 +80,7 @@
     "delta": {},
     "note": "Pending until the edited schema is trained in the next iteration."
   },
-  "lesson": "The agent exploits dense distance penalties by loitering near the landing pad without landing, causing shaping goal mismatch and repeated event toggling. Decreasing r_distance weight should shift the balance toward the sparse landing reward.",
+  "lesson": "The main issue is shaping goal mismatch: the agent is not incentivised to stay in contact after touching down, leading to bouncing and low landing frequency. Adding a duration condition to the one‑time contact bonus addresses this by rewarding only a stable landing.",
   "metadata": {
     "config_path": "configs/eg_rsa_deepseek_memory_test.yml",
     "iteration": 1,
@@ -94,6 +94,83 @@
       "free_rewrite": false,
       "one_shot": false
     },
-    "edit_generated": true
+    "edit_generated": true,
+    "agent_analysis": {
+      "diagnostic_analysis": {
+        "observed_facts": [
+          "Episode reward mean is -88.73 with std 11.27, indicating poor and fairly consistent performance.",
+          "r_distance dominates with mean -0.934 per step and ratio 0.513, contributing most of the negative reward.",
+          "r_contact_one_time (one‑time event) has sum 100, mean 0.282, trigger_rate 0.014, meaning only ~5 contacts across all episodes.",
+          "Repeated event exploitation flag is true, but r_contact is already one‑time; the flag may be caused by event toggles (contact toggle count 8) from bouncing.",
+          "Shaping goal mismatch flag is true: the dense penalties do not align with achieving a stable landing, and no reward for sustained contact.",
+          "Other hack flags (high_reward_low_progress, component_dominance) are false.",
+          "r_energy penalty is negligible (sum -0.36), agent rarely uses engines (trigger_rate 0.034)."
+        ],
+        "likely_true_failures": [
+          "Shaping goal mismatch is likely true because the dense penalties are always negative and the only positive signal is a one‑time contact bonus that does not require sustained contact, so the agent may bounce or abort rather than finishing a stable landing.",
+          "The agent likely learns a policy that minimises penalties (e.g., hovering) without reliably landing, causing very low episode reward and few contact events."
+        ],
+        "likely_false_positives": [
+          "Repeated event exploitation flag is likely a false positive now: the r_contact bonus is already one‑time, so repeated contact toggles do not yield additional reward; the flag is merely triggered by raw event counts.",
+          "Component dominance flag is false, as confirmed."
+        ],
+        "root_cause_hypotheses": [
+          "The one‑time contact bonus (weight 20) is too small relative to the cumulative dense penalties over a long episode, and it requires no duration, so the agent may get the bonus on a brief touch without learning to stay, leading to a policy that hovers or bounces.",
+          "The lack of a reward for sustained contact (soft landing) fails to clearly communicate the terminal goal, causing shaping goal mismatch."
+        ],
+        "edit_need": "optional_edit",
+        "confidence": 0.75
+      },
+      "memory_reflection": {
+        "reusable_lessons": [
+          "Memory iter_000_to_001 recommends adding a terminal success reward (e.g., both legs on ground and low velocity) to give a clear signal for completing the task. This can be approximated by adding a duration condition to the one‑time contact event, rewarding only a stable landing.",
+          "The previous edit (convert to one‑time) successfully reduced hack score from 0.75 to 0.5, confirming that limiting repeated exploitation is effective."
+        ],
+        "failed_or_weak_lessons": [],
+        "avoid_actions": [
+          "Do not add large repeatable event bonuses without one‑time or duration constraints, as they encourage exploitation cycles."
+        ],
+        "recommended_actions": [
+          "Add a duration condition to r_contact_one_time to require sustained contact (e.g., 10 steps) before awarding the bonus, creating a soft landing incentive.",
+          "If performance still does not improve, consider increasing the weight of the contact bonus or reducing the distance penalty weight to avoid overly punitive shaping."
+        ],
+        "memory_confidence": 0.85
+      },
+      "reward_editor": {
+        "edit_decision": "edit",
+        "rationale": "The diagnostic shows shaping_goal_mismatch and poor landing frequency. The reusable memory lesson recommends a terminal success signal for landing. Adding a duration condition to the existing one‑time contact event will reward a stable landing (sustained contact) and directly address the mismatch, while still preventing repeated exploitation. This aligns with the observed need for a clear success signal.",
+        "expected_effect": "The agent will be encouraged to maintain contact for at least K steps to receive the +20 bonus, leading to more stable landings. Bouncing behaviour should decrease. Over time, episodes should terminate closer to the pad with lower velocity, improving task proxies and reducing the dominance of distance penalty. The repeated event exploitation flag may remain due to raw toggles but will become even less of a real hack.",
+        "risk_analysis": "Setting duration too high (e.g., >20) may make the bonus unreachable early in training, causing the agent to ignore it and collapse to a local optimum driven by dense penalties. A moderate duration like 10 steps balances difficulty: the agent can learn to hover near the pad and then settle. If this fails, the weight of the bonus could be increased later or a separate dense progress reward added.",
+        "edit_plan": [
+          {
+            "operator": "add_duration_condition",
+            "target": "r_contact_one_time",
+            "duration_steps": 10
+          }
+        ]
+      },
+      "auditor_check": {
+        "approved": true,
+        "issues": [],
+        "final_action": "apply_edit"
+      },
+      "distilled_lessons": {
+        "what_worked": [
+          "Converting a repeatable event_bonus to one‑time (iter_000_to_001) reduced repeated exploitation hack score by 0.25."
+        ],
+        "what_failed": [],
+        "avoid_next": [
+          "Avoid adding large positive bonuses without any duration or one‑time constraint, as they can trigger bouncing exploitation even if meant as terminal reward."
+        ],
+        "recommend_next": [
+          "If landing rate still low, consider increasing the weight of the one‑time contact event to make the success signal stronger.",
+          "Monitor distance penalty dominance; if it blocks exploration, reduce its weight slightly."
+        ],
+        "applicability_notes": [
+          "add_duration_condition is especially useful for contact‑based completion events (e.g., landing) to require stability.",
+          "When a one‑time event already exists, adding duration further shapes a soft‑landing behaviour without risking repeated exploitation."
+        ]
+      }
+    }
   }
 }
