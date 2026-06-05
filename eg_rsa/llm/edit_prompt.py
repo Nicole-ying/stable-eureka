@@ -12,33 +12,33 @@ def build_edit_prompt(
     diagnostic_report: Dict[str, Any],
     retrieved_memories: List[Dict[str, Any]],
 ) -> str:
-    """Build the constrained prompt for the EG-RSA edit agent.
-
-    The model is explicitly forbidden from generating Python code.  It must only
-    emit an edit-plan JSON object whose operators are executed by trusted code.
-    """
+    """Build the constrained prompt for the EG-RSA edit agent."""
 
     allowed_ops = RewardEditOperatorApplier.allowed_operator_descriptions()
     return f"""
-You are the EG-RSA Reward Editing Agent.
+You are EG-RSA, an experience-guided reward search agent.
+You must act through four internal roles and return one JSON object only.
 
 Hard constraints:
-1. You must NOT write Python code.
-2. You must NOT invent new edit operators.
-3. You must return exactly one valid JSON object and no Markdown.
-4. Every edit must use one of the allowed operators.
-5. Every target must exist in the current reward schema.
-6. If you are uncertain, prefer a conservative single edit or return an empty edit_plan.
+1. Do NOT write Python code.
+2. Do NOT invent new edit operators.
+3. Do NOT use environment oracle reward or official reward values for decisions.
+4. Every edit must use allowed operators and existing targets.
+5. No edit is a valid decision. If evidence is weak, use edit_decision="no_edit" and edit_plan=[].
+6. Detector flags are hypotheses, not facts. You must decide whether each flag is likely true, uncertain, or likely false positive.
 
-Editing principles:
-1. First identify active failure_modes and the dominant reward component from diagnostics.
-2. Then inspect retrieved memory cards. Prefer edits that improved similar failure modes before.
-3. Avoid edits that previously worsened hack_score or task_score.
-4. convert_to_one_time_event is only valid for event_bonus components or event rules.
-5. Dense shaping components such as distance_penalty, velocity_penalty, angle_penalty, and action_penalty should usually use clip_component, decrease_weight, or disable_component, not one-time conversion.
-6. If repeated_event_exploitation is active and the dominant component is event-like, consider convert_to_one_time_event.
-7. If single_component_dominance is active, consider decrease_weight or clip_component on the dominant component.
-8. Keep the edit_plan short: one edit is preferred unless diagnostics strongly support multiple edits.
+Role duties:
+A. Diagnostic Analyst: separate observed facts from inferred causes; decide whether the reward actually needs editing.
+B. Memory Reflector: extract reusable lessons from retrieved memory, including what worked, what failed, and what should be avoided.
+C. Reward Editor: propose a minimal edit only if the diagnostic and memory evidence support it.
+D. Reward Auditor: check whether the proposed edit is consistent with diagnosis, memory, and operator constraints. If risk is high, choose no_edit.
+
+Decision rules:
+1. If a retrieved memory shows an edit improved task proxies and reduced hack risk, reuse the lesson only when its applicability matches the current case.
+2. If a retrieved memory shows an edit had weak or negative outcome, do not repeat similar edits unless you provide strong evidence.
+3. If the current schema already fixed the main failure and remaining detector flags look weak or ambiguous, prefer no_edit.
+4. convert_to_one_time_event is valid only for event_bonus components or event rules.
+5. Dense shaping components should usually use conservative edits, but repeated weak dense edits should be avoided.
 
 Task description:
 {task_description}
@@ -57,12 +57,41 @@ Allowed edit operators:
 
 Return exactly this JSON format:
 {{
-  "failure_analysis": "what failure modes are active and why",
-  "memory_usage": "how retrieved memory influenced the edit; say no relevant memory if empty",
-  "operator_reasoning": "why this operator is valid for this target",
+  "diagnostic_analysis": {{
+    "observed_facts": [],
+    "likely_true_failures": [],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [],
+    "edit_need": "must_edit | optional_edit | no_edit",
+    "confidence": 0.0
+  }},
+  "memory_reflection": {{
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  }},
+  "reward_editor": {{
+    "edit_decision": "edit | no_edit | need_more_evidence",
+    "rationale": "why edit or no_edit is chosen",
+    "expected_effect": "expected change in task proxies and hack risk",
+    "risk_analysis": "what could go wrong",
+    "edit_plan": []
+  }},
+  "auditor_check": {{
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit | no_edit | reject_edit"
+  }},
+  "distilled_lessons": {{
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  }},
   "diagnosis": "short final diagnosis",
-  "edit_plan": [
-    {{"operator": "decrease_weight", "target": "component_name", "factor": 0.5}}
-  ]
+  "edit_plan": []
 }}
 """.strip()
