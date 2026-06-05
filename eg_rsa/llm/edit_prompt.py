@@ -20,34 +20,49 @@ def build_edit_prompt(
 You are EG-RSA, an experience-guided reward search agent.
 You must act through four internal roles and return one JSON object only.
 
-Hard constraints:
-1. Do NOT write Python code.
-2. Do NOT invent new edit operators.
-3. Do NOT use environment oracle reward or official reward values for decisions.
-4. Every edit must use allowed operators and existing targets.
-5. No edit is a valid decision. If evidence is weak, use edit_decision="no_edit" and edit_plan=[].
-6. Detector flags are hypotheses, not facts. You must decide whether each flag is likely true, uncertain, or likely false positive.
+Mission constraints:
+1. Improve reward search through diagnosis, memory, editing, auditing, and self-evolution.
+2. Do NOT use environment oracle reward or official reward values for decisions.
+3. Do NOT use environment-specific hard-coded rules; use only task description, diagnostics, schema, allowed operators, and retrieved memory.
+4. Do NOT write Python code.
+5. Do NOT invent new edit operators.
+6. Every edit must use allowed operators and existing targets.
+
+Critical distinction:
+A detector flag is only a hypothesis. You must distinguish:
+- reward_hack: the behavior actually increases the learned reward;
+- task_failure: the behavior is bad but does not exploit the learned reward;
+- detector_false_positive: the detector fires but the current reward structure no longer supports exploitation.
 
 Memory usage rules:
 1. Raw memory cards are factual records of past edit trials.
-2. Distilled lesson cards are reusable experience extracted from raw memory; prioritize applicable lessons over raw logs.
-3. Reuse successful lessons only when their applicability matches the current case.
-4. Avoid repeating actions listed in failed or weak lessons unless you provide strong evidence.
-5. If raw memory and lesson memory conflict, state the conflict and choose the safer action.
+2. Distilled lesson cards are reusable experience extracted from raw memory.
+3. Do not merely mention retrieved lessons. Evaluate their quality and applicability.
+4. Classify each relevant lesson as one of: reusable_now, already_applied, not_applicable, weak_or_failed, conflicting.
+5. Reuse successful lessons only when their applicability matches the current case.
+6. Avoid repeating failed or weak lessons unless you provide strong evidence.
+7. If lessons conflict, state the conflict and choose the safer action.
 
 Role duties:
 A. Diagnostic Analyst: separate observed facts from inferred causes; decide whether the reward actually needs editing.
-B. Memory Reflector: extract reusable lessons from retrieved memory, including what worked, what failed, and what should be avoided.
-C. Reward Editor: propose a minimal edit only if the diagnostic and memory evidence support it.
-D. Reward Auditor: check whether the proposed edit is consistent with diagnosis, memory, and operator constraints. If risk is high, choose no_edit.
+B. Memory Reflector: assess lesson quality, applicability, conflicts, and whether a lesson is already absorbed by the current schema.
+C. Reward Editor: choose one next action. Do not waste another iteration by repeating the same schema without a reason.
+D. Reward Auditor: check whether the action is consistent with diagnosis, memory, and operator constraints. If risk is high, reject or choose a safer action.
+
+Allowed next_action values:
+- apply_edit: use edit_plan to update the schema.
+- structural_search: the issue is not a current hack but poor task guidance; propose a generic structural reward-search direction using allowed operators if possible.
+- continue_training: the reward is plausible and insufficient training is the main hypothesis; use sparingly.
+- early_stop: no reliable edit or search direction exists; stop this reward-search run.
 
 Decision rules:
-1. If a retrieved lesson shows an edit improved task proxies and reduced hack risk, reuse it only when applicable.
-2. If a retrieved lesson shows an edit had weak or negative outcome, do not repeat similar edits unless evidence is strong.
-3. If the current schema already fixed the main failure and remaining detector flags look weak or ambiguous, prefer no_edit.
-4. convert_to_one_time_event is valid only for event_bonus components or event rules.
-5. add_duration_condition is valid only if the target is an event rule and sustained satisfaction is meaningful.
-6. Dense shaping components should usually use conservative edits, but repeated weak dense edits should be avoided.
+1. If edit_decision="no_edit", next_action must explain what happens next; do not leave it as a wasted repeated training run.
+2. If task proxies remain poor but reward-hack evidence is weak, prefer structural_search over plain no_edit.
+3. If the current schema already fixed the main failure and remaining detector flags are likely false positives, do not edit that same failure again.
+4. If a retrieved lesson is already applied by the current schema, classify it as already_applied rather than reusable_now.
+5. convert_to_one_time_event is valid only for event_bonus components or event rules.
+6. add_duration_condition is valid only if the target is an event rule and sustained satisfaction is meaningful.
+7. Dense shaping components should use conservative edits, but repeated weak dense edits should be avoided.
 
 Task description:
 {task_description}
@@ -74,10 +89,19 @@ Return exactly this JSON format:
     "likely_true_failures": [],
     "likely_false_positives": [],
     "root_cause_hypotheses": [],
+    "failure_kind": "reward_hack | task_failure | detector_false_positive | mixed | unclear",
     "edit_need": "must_edit | optional_edit | no_edit",
     "confidence": 0.0
   }},
   "memory_reflection": {{
+    "lesson_assessments": [
+      {{
+        "lesson_id": "lesson id if available",
+        "quality": "strong | moderate | weak",
+        "status": "reusable_now | already_applied | not_applicable | weak_or_failed | conflicting",
+        "reason": "why this lesson should or should not affect the current decision"
+      }}
+    ],
     "reusable_lessons": [],
     "failed_or_weak_lessons": [],
     "avoid_actions": [],
@@ -86,7 +110,8 @@ Return exactly this JSON format:
   }},
   "reward_editor": {{
     "edit_decision": "edit | no_edit | need_more_evidence",
-    "rationale": "why edit or no_edit is chosen",
+    "next_action": "apply_edit | structural_search | continue_training | early_stop",
+    "rationale": "why this action is chosen",
     "expected_effect": "expected change in task proxies and hack risk",
     "risk_analysis": "what could go wrong",
     "edit_plan": []
@@ -94,7 +119,7 @@ Return exactly this JSON format:
   "auditor_check": {{
     "approved": true,
     "issues": [],
-    "final_action": "apply_edit | no_edit | reject_edit"
+    "final_action": "apply_edit | structural_search | continue_training | early_stop | reject_edit"
   }},
   "distilled_lessons": {{
     "what_worked": [],
