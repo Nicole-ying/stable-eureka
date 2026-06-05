@@ -1,43 +1,57 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "Episode reward mean is -12.69, indicating poor task performance.",
-      "r_contact (event_bonus, weight 20) dominates reward composition (ratio 0.47) despite low trigger rate (0.068).",
-      "r_distance, r_velocity, r_angle are always active and produce consistent penalties.",
-      "r_energy (action_penalty) has zero trigger rate, suggesting no engine use.",
-      "Repeated event exploitation flag is true; contact event toggled 8 times per episode on average.",
-      "Shaping goal mismatch flag is true; the bonuses may not align with fast, fuel-efficient landing."
+      "Mean episode reward is 17.85, but standard deviation is 99.6, indicating high variance and some episodes exploiting large rewards.",
+      "r_contact (event_bonus for any contact) contributes 53.7% of total absolute reward, dominating the dense shaping components.",
+      "r_contact trigger rate is 0.088 (about 8.8% of steps), but induces repeated toggle counts (7 per episode) suggesting multiple ground contacts per episode.",
+      "Detector flags: high_reward_low_progress, repeated_event_exploitation, and shaping_goal_mismatch are all true.",
+      "Dense shaping components (r_distance, r_velocity, r_angle, r_energy) are active but their average per‑step penalties are relatively small compared to the largesse of the repeatable contact bonus.",
+      "No previous edits have been applied; the schema is identical to the one in the successful memory lesson."
     ],
     "likely_true_failures": [
-      "r_contact incentivises repeated leg contacts (bouncing) rather than stable landing.",
-      "The agent has not learned to land; high negative mean reward suggests crashes or out-of-bounds."
+      "r_contact is being exploited by the agent bouncing on the ground repeatedly to collect the 20‑point bonus multiple times per episode, inflating episode returns without learning a stable controlled landing.",
+      "The sparse, repeatable contact bonus overwhelms the dense shaping signals, causing the agent to ignore fuel efficiency and precise landing (shaping_goal_mismatch)."
     ],
     "likely_false_positives": [
-      "Component dominance flag is false, as the ratio (0.47) is below the detector threshold, which is correct.",
-      "High reward low progress flag may be partly true but is supported by observed behavior."
+      "The component_dominance flag is false despite the ratio being above 0.5; the diagnostic system considers this borderline, but the other hack flags provide strong evidence.",
+      "None of the dense shaping components are individually responsible for the hack; the problem is the structure of r_contact, not the other components."
     ],
     "root_cause_hypotheses": [
-      "The per-step event_bonus for 'contact' allows the agent to collect reward multiple times per episode by repeatedly touching and lifting off, creating a reward hack.",
-      "The dominance of r_contact over shaping penalties may lead to a local optimum of bouncing instead of landing."
+      "A large, repeatable event bonus for any ground contact encourages bouncing behavior rather than a controlled, sustained landing. This is a classic reward hacking scenario where the agent finds a cheap way to trigger the reward multiple times."
     ],
     "failure_kind": "reward_hack",
     "edit_need": "must_edit",
     "confidence": 0.85
   },
   "memory_reflection": {
-    "lesson_assessments": [],
-    "reusable_lessons": [],
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "The current schema is identical to the pre‑edit schema in that memory (r_contact is an event_bonus, no one‑time conversion applied). The memory shows a strong positive outcome: task_score increased from 0.059 to 0.458 after converting r_contact to one‑time. The same failure modes (high_reward_low_progress, repeated_event_exploitation, shaping_goal_mismatch) are present in the current diagnostics. The lesson is directly applicable and has not been applied yet."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
     "failed_or_weak_lessons": [],
-    "avoid_actions": [],
-    "recommended_actions": [],
-    "memory_confidence": 0.0
+    "avoid_actions": [
+      "Do not disable r_contact or any dense components; the lesson shows that converting to one‑time preserves the positive incentive while removing exploitation.",
+      "Do not add new dense components before closing the known exploit, as the agent may ignore them while still exploiting the contact bonus."
+    ],
+    "recommended_actions": [
+      "Apply convert_to_one_time_event on r_contact.",
+      "After training, monitor whether the dense shaping penalties need weight adjustments to further guide stable landing."
+    ],
+    "memory_confidence": 0.85
   },
   "reward_editor": {
     "edit_decision": "edit",
     "next_action": "apply_edit",
-    "rationale": "r_contact is an event_bonus that can be triggered multiple times per episode. Converting it to a one-time event eliminates repeated exploitation without removing the landing incentive entirely. This is a minimal, low-risk first step aligned with the diagnostic evidence.",
-    "expected_effect": "The agent will receive at most one contact bonus per episode, removing the incentive to bounce. The remaining dense penalties (distance, velocity, angle) should then guide it toward a stable landing.",
-    "risk_analysis": "The agent might still learn to crash just to get the one-time contact reward, but the distance and velocity penalties should outweigh that. If the contact event fires on crashes, a one‑time bonus may still be given, but other shaping terms will likely discourage crashing. Sparse reward may make learning harder; monitoring is needed.",
+    "rationale": "The strong retrieved lesson proves that converting r_contact to a one‑time event is a safe and effective first step to eliminate repeated exploitation. The current diagnostics mirror the pre‑edit state of that successful trial, so reusing the edit is the most reliable action. This will remove the incentive to bounce and allow the dense shaping components to exert more influence on task progress.",
+    "expected_effect": "The episode returns will likely decrease because the repeated large bonuses are removed. The r_contact component will no longer dominate the reward; dense penalties (distance, velocity, etc.) will become the primary per‑step signal, guiding the agent toward faster, more precise landings. Based on the memory, task_score should improve significantly (previous delta +0.4). Hack risk should drop, though residual issues (e.g., one‑time bonus without stable landing) may remain.",
+    "risk_analysis": "The agent may still collect the one‑time bonus without a proper landing (e.g., touch and crash), but this is a necessary trade‑off to stop repeated exploitation. If the dense penalties are too weak, landing quality might degrade; further weight increases for r_distance or adding a sustained‑landing reward can be considered in subsequent iterations. This edit is low‑risk and aligned with the memory’s recommendation.",
     "edit_plan": [
       {
         "operator": "convert_to_one_time_event",
@@ -51,19 +65,24 @@
     "final_action": "apply_edit"
   },
   "distilled_lessons": {
-    "what_worked": [],
+    "what_worked": [
+      "Converting a repeatable event bonus to a one‑time event eliminated repeated contact exploitation and significantly improved task progress."
+    ],
     "what_failed": [],
     "avoid_next": [
-      "Per‑step event bonuses for contact events are easy to exploit."
+      "Avoid re‑applying convert_to_one_time_event on r_contact after it has been changed.",
+      "Avoid disabling r_contact entirely; the one‑time bonus still provides a useful success signal."
     ],
     "recommend_next": [
-      "If landing still fails, consider a sparse terminal landing bonus based on both legs, near pad, and low speed, or add a duration condition."
+      "Monitor whether the dense shaping components (especially r_distance) need weight increases if landing remains slow or unstable.",
+      "Consider adding a sustained‑contact reward (e.g., both legs on ground for a minimum duration) if the agent learns to trigger the one‑time bonus without stable settling."
     ],
     "applicability_notes": [
-      "The convert_to_one_time_event operator directly addresses the repeated event exploitation flag and is the simplest safe edit."
+      "convert_to_one_time_event is directly applicable to any event_bonus component that is being exploited via repeated triggering.",
+      "This edit alone may not fix all task failures; additional structural changes may be needed after the exploit is closed."
     ]
   },
-  "diagnosis": "r_contact event_bonus causes repeated leg‑contact exploitation; converting to one‑time reduces the hack and allows dense shaping to drive proper landing behavior.",
+  "diagnosis": "Repeatable contact bonus (r_contact) dominates reward and induces bouncing exploitation. Convert to one‑time event to close the reward hack, then re‑evaluate dense shaping.",
   "edit_plan": [
     {
       "operator": "convert_to_one_time_event",

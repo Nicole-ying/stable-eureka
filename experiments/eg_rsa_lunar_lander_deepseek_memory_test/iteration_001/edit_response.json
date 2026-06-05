@@ -1,29 +1,33 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "Episode reward mean is -88.73, very poor task performance.",
-      "r_distance dominates reward composition (ratio 0.51), r_velocity 0.28, r_angle 0.05, r_energy negligible.",
-      "r_contact_one_time (one-time event) contributes ratio 0.155 and fires in only ~1.4% of episodes.",
-      "The agent rarely uses engine (r_energy trigger rate 0.034).",
-      "repeated_event_exploitation flag is true, but the only event-based reward is one-time; the detector may be seeing harmless toggling of low_angle and contact without reward.",
-      "shaping_goal_mismatch flag is true; the dense shaping alone is not guiding the agent to a successful landing.",
-      "The agent likely crashes or goes out of bounds in most episodes."
+      "Episode reward mean is very negative (-88.25, std 10.91), indicating poor task performance.",
+      "r_distance dominates reward (51.5% contribution), r_velocity contributes 28.2%, r_angle 4.5%, r_energy negligible.",
+      "r_contact_one_time triggers rarely (trigger_rate 0.014), meaning successful landings are rare.",
+      "Dense per‑step penalties (r_distance, r_velocity) accumulate large negative values throughout the episode.",
+      "The previous edit (convert r_contact to one‑time) eliminated repeated exploitation but task performance remains poor.",
+      "Repeated event exploitation flag is likely false positive because internal event flags are not tied to any reward component.",
+      "High_reward_low_progress flag is inconsistent with the very negative mean reward; likely a detector false positive.",
+      "No reward component currently provides a dense positive signal for making progress toward a stable landing."
     ],
     "likely_true_failures": [
-      "Task failure: the agent fails to learn a stable landing policy; only 1.4% of episodes trigger the one-time contact bonus.",
-      "The sole positive reward (contact_one_time) is too sparse and uninformative; it may fire on brief leg contact without a proper landing."
+      "Task failure: The agent terminates episodes early (likely crashing) to avoid accumulating large per‑step penalties, rather than learning a controlled landing.",
+      "Shaping‑goal mismatch: The dense penalties incentivise ending the episode quickly, which leads to crash‑early behaviour instead of precise, fuel‑efficient landing.",
+      "Sparse success signal: The one‑time contact bonus is too rare (1.4% trigger rate) to guide exploration out of the early‑termination local optimum."
     ],
     "likely_false_positives": [
-      "repeated_event_exploitation is likely a detector false positive because the only event reward is already one-time and not being exploited repeatedly.",
-      "component_dominance flag is false; ratio 0.51 is below typical dominance threshold."
+      "Repeated event exploitation: Internal event flags (e.g. low_angle, contact) are not rewarded, so their high toggle counts do not constitute exploitation.",
+      "High_reward_low_progress: The mean reward is strongly negative, making the ‘high reward’ condition irrelevant.",
+      "Component_dominance flag is false, which is consistent with no single component being exploited."
     ],
     "root_cause_hypotheses": [
-      "The reward lacks a clear terminal bonus for a correct landing, making the task too hard to learn from dense penalties alone.",
-      "The one-time contact bonus may be awarded on sub-optimal contacts (e.g., one leg touch, crashes) and does not distinguish a stable, successful landing."
+      "The dense penalty components (distance, velocity) build up over time, creating an implicit incentive to end the episode as soon as possible (e.g. crash).",
+      "The only positive reward (r_contact_one_time) is extremely sparse and cannot overcome the local optimum of early termination.",
+      "The reward structure lacks a dense or sustained positive signal that rewards progress toward a stable landing."
     ],
     "failure_kind": "task_failure",
-    "edit_need": "optional_edit",
-    "confidence": 0.9
+    "edit_need": "must_edit",
+    "confidence": 0.8
   },
   "memory_reflection": {
     "lesson_assessments": [
@@ -31,81 +35,165 @@
         "lesson_id": "lesson_iter_000_to_001",
         "quality": "strong",
         "status": "already_applied",
-        "reason": "The convert_to_one_time_event edit was applied in the previous iteration and is reflected in the current schema with r_contact_one_time. The hack score improved, but task performance remains poor, indicating that this edit alone was insufficient."
+        "reason": "The convert_to_one_time_event edit has been applied (r_contact disabled, r_contact_one_time enabled). The exploit is closed; the main lesson’s edit cannot be re‑used directly."
+      },
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "already_applied",
+        "reason": "Duplicate of the same lesson; same edit already absorbed."
+      },
+      {
+        "lesson_id": "iter_001_to_002",
+        "quality": "moderate",
+        "status": "reusable_now",
+        "reason": "This raw memory proposes adding a sustained‑contact reward and reducing r_distance weight, exactly addressing the current task‑failure diagnosis. The plan was never applied but is highly relevant."
       }
     ],
-    "reusable_lessons": [],
+    "reusable_lessons": [
+      "iter_001_to_002 edit plan: add r_stable_landing (both_contact, duration_steps=10) and decrease r_distance weight by 0.7."
+    ],
     "failed_or_weak_lessons": [],
     "avoid_actions": [
-      "Do not revert to per‑step contact bonuses; they were exploited."
+      "Do not re‑apply convert_to_one_time_event on r_contact.",
+      "Do not disable the dense shaping components entirely.",
+      "Do not increase r_distance weight."
     ],
     "recommended_actions": [
-      "As suggested by the lesson, add a sparse terminal landing bonus using both legs, near pad, and low speed, or add a duration condition to enforce sustained contact."
+      "Add a sustained contact reward (both_contact for at least 10 consecutive steps) to provide a strong positive signal for stable landing.",
+      "Decrease the dominant r_distance penalty (factor 0.7) to reduce the early‑termination incentive while preserving goal‑seeking.",
+      "Monitor task proxies after training to decide if further dense tuning is needed."
     ],
-    "memory_confidence": 0.85
+    "memory_confidence": 0.75
   },
   "reward_editor": {
-    "edit_decision": "edit",
-    "next_action": "apply_edit",
-    "rationale": "The current one-time contact bonus is insufficient for learning a proper landing. Following the previous lesson's recommendation, we add a new one-time event rule that rewards a successful landing defined by both legs in contact, near the goal, and low velocities. This provides a clear terminal signal aligned with the task objective, without reintroducing repeated exploitation because it requires multiple conditions simultaneously.",
-    "expected_effect": "The agent will receive a sparse but well-defined positive reward when it performs a successful landing (both legs down, near pad, low speed). This should increase the landing rate and episode reward mean. Dense penalties still guide overall approach.",
-    "risk_analysis": "The new bonus might be too sparse, making learning slow, but the dense shaping penalties provide intermediate feedback. There is a minor risk that the agent learns to satisfy the conditions only partially (e.g., low velocity but still crashing), but the requirement for both_contact and near_goal should align with the intended landing state.",
+    "edit_decision": "need_more_evidence",
+    "next_action": "structural_search",
+    "rationale": "The agent is in a task‑failure regime where dense penalties encourage early termination. A structural search is needed to add a sustained‑landing bonus and adjust penalty weights. This follows the reusable plan from iter_001_to_002 and the distilled lesson’s recommendation. The plan uses allowed operators (add_event_rule, decrease_weight) and targets the root cause: lack of positive guidance for stable landing and overly strong distance penalty.",
+    "expected_effect": "Adding r_stable_landing will reward sustained both‑leg contact, incentivising the agent to remain on the pad after landing. Reducing r_distance weight will lower the implicit incentive to crash early. Together they should increase the number of successful stable landings and improve task progress proxies.",
+    "risk_analysis": "Risk 1: Reducing r_distance too much could lead to aimless wandering, but the existing velocity/angle penalties and the new bonus will keep behaviour goal‑directed. Risk 2: The agent might find an unlikely physics loophole to trigger sustained both_contact without a clean landing; however, the environment makes this extremely difficult, keeping hack risk low. Risk 3: The stable landing bonus might remain sparse if the duration requirement is too high; 10 steps is a conservative threshold that should be achievable after a normal landing.",
     "edit_plan": [
       {
         "operator": "add_event_rule",
         "event_rule": {
-          "name": "r_successful_landing",
+          "name": "r_stable_landing",
           "type": "event_bonus",
-          "weight": 20.0,
+          "weight": 30.0,
           "condition": {
-            "both_contact": true,
-            "near_goal": true,
-            "low_vx": true,
-            "low_vy": true
+            "both_contact": true
           },
-          "one_time": true,
+          "one_time": false,
+          "duration_steps": 10,
           "enabled": true
         }
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_distance",
+        "factor": 0.7
       }
     ]
   },
   "auditor_check": {
     "approved": true,
     "issues": [],
-    "final_action": "apply_edit"
+    "final_action": "structural_search"
   },
   "distilled_lessons": {
     "what_worked": [
-      "Converting r_contact to one-time reduced exploitation and allowed dense shaping to start working."
+      "Converting a repeatable contact bonus to a one‑time event eliminated repeated contact exploitation and improved task score."
     ],
     "what_failed": [],
     "avoid_next": [
-      "Do not add per‑step event rewards; they risk repeated exploitation."
+      "Re‑applying convert_to_one_time_event on already converted rules.",
+      "Disabling all dense components.",
+      "Increasing r_distance weight."
     ],
     "recommend_next": [
-      "If landing still fails, consider tuning weights of dense shaping, or adding a duration condition to the one-time contact rule to require sustained contact."
+      "Add a sustained landing reward (e.g., both_contact for duration_steps=10) to stabilise landing.",
+      "Moderately decrease r_distance weight to reduce early‑termination bias while keeping goal‑seeking."
     ],
     "applicability_notes": [
-      "The new successful_landing event rule uses only available event flags and follows the recommended sparse terminal bonus approach."
+      "Sustained‑contact bonuses are useful when the agent can learn to land but needs extra incentive to stay on the ground.",
+      "Decrease_weight on dominant penalties is a safe structural change when the penalty creates a local optimum."
     ]
   },
-  "diagnosis": "Task failure: agent rarely lands. One-time contact bonus insufficient. Adding a proper terminal landing bonus for both_contact, near_goal, low speed should improve learning without exploitation.",
+  "diagnosis": "Task failure due to early‑termination local optimum; structural search to add sustained landing reward and reduce distance penalty.",
   "edit_plan": [
     {
       "operator": "add_event_rule",
       "event_rule": {
-        "name": "r_successful_landing",
+        "name": "r_stable_landing",
         "type": "event_bonus",
-        "weight": 20.0,
+        "weight": 30.0,
         "condition": {
-          "both_contact": true,
-          "near_goal": true,
-          "low_vx": true,
-          "low_vy": true
+          "both_contact": true
         },
-        "one_time": true,
+        "one_time": false,
+        "duration_steps": 10,
         "enabled": true
       }
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_distance",
+      "factor": 0.7
     }
-  ]
+  ],
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "No reward encourages the agent to maintain stable ground contact after landing; the current one‑time contact bonus does not prevent bouncing, and all dense components are penalties that stifle progress.",
+      "why_local_edit_is_insufficient": "Increasing shaping weights or reclipping would not provide a new positive signal; modifying the existing one‑time contact rule cannot enforce sustained stability without a duration gating pattern.",
+      "memory_constraints": [
+        "Lesson iter_000_to_001 recommends adding a sustained‑contact reward to stabilise landing after one‑time bonus conversion."
+      ],
+      "safety_constraints": [
+        "New rule must be one‑time and/or gated by duration_steps to avoid repeated exploitation.",
+        "Only configured events and operators may be used – no environment‑specific variables."
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Add a one‑time, duration‑gated bonus for both_contact to reward stable two‑leg ground contact. This directly addresses post‑landing instability without creating a repeatable exploit, and is supported by prior successful lesson card.",
+      "edit_plan": [
+        {
+          "operator": "add_event_rule",
+          "event_rule": {
+            "name": "r_stable_contact_bonus",
+            "type": "event_bonus",
+            "weight": 30.0,
+            "condition": {
+              "both_contact": true,
+              "duration_steps": 3
+            },
+            "one_time": true,
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Dense penalty‑only shaping plus one‑time contact leaves no incentive for stable settling. Adding a sustained both_contact bonus with duration gating closes the guidance gap without introducing new exploits.",
+    "edit_plan": [
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_stable_contact_bonus",
+          "type": "event_bonus",
+          "weight": 30.0,
+          "condition": {
+            "both_contact": true,
+            "duration_steps": 3
+          },
+          "one_time": true,
+          "enabled": true
+        }
+      }
+    ]
+  }
 }

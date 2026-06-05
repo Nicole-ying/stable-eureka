@@ -1,1 +1,525 @@
-[]
+[
+  {
+    "memory_id": "iter_000_to_001",
+    "env_family": "landing_control",
+    "failure_modes": [
+      "high_reward_low_progress",
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "reward_attribution": {
+      "episode_reward_mean": 17.85335327518004,
+      "episode_reward_std": 99.64672475303564,
+      "component_stats": {
+        "r_distance": {
+          "sum": -334.2565203515581,
+          "abs_sum": 334.2565203515581,
+          "mean": -0.9182871438229618,
+          "std": 0.41055679946945856,
+          "min": -1.4394692717462547,
+          "max": -0.09559983490623476,
+          "ratio": 0.2807148661956965,
+          "trigger_rate": 1.0
+        },
+        "r_velocity": {
+          "sum": -181.09354284789316,
+          "abs_sum": 181.09354284789316,
+          "mean": -0.4975097330986076,
+          "std": 0.2476421970357711,
+          "min": -0.9829799796264966,
+          "max": -0.061283385973201786,
+          "ratio": 0.1520857382108328,
+          "trigger_rate": 1.0
+        },
+        "r_angle": {
+          "sum": -34.57317042464855,
+          "abs_sum": 34.57317042464855,
+          "mean": -0.09498123743035317,
+          "std": 0.11470340151563994,
+          "min": -0.6,
+          "max": -0.009057891718111931,
+          "ratio": 0.029035193986668303,
+          "trigger_rate": 1.0
+        },
+        "r_energy": {
+          "sum": -0.81,
+          "abs_sum": 0.81,
+          "mean": -0.0022252747252747254,
+          "std": 0.007861704278036362,
+          "min": -0.03,
+          "max": -0.0,
+          "ratio": 0.000680253122300698,
+          "trigger_rate": 0.07417582417582418
+        },
+        "r_contact": {
+          "sum": 640.0,
+          "abs_sum": 640.0,
+          "mean": 1.7582417582417582,
+          "std": 5.663340099659396,
+          "min": 0.0,
+          "max": 20.0,
+          "ratio": 0.5374839484845021,
+          "trigger_rate": 0.08791208791208792
+        }
+      },
+      "dominant_component": "r_contact",
+      "dominant_component_ratio": 0.5374839484845021
+    },
+    "edit_plan": [
+      {
+        "operator": "convert_to_one_time_event",
+        "target": "r_contact"
+      }
+    ],
+    "outcome": {
+      "status": "measured",
+      "before": {
+        "task_score": 0.058569109497334244,
+        "hack_score": 0.75
+      },
+      "after": {
+        "task_score": 0.4584439913923587,
+        "hack_score": 0.75
+      },
+      "delta": {
+        "task_score": 0.39987488189502446,
+        "hack_score": 0.0
+      },
+      "note": "Measured after training the edited schema in the next iteration."
+    },
+    "lesson": "reward_hack due to repeatable contact bonus; convert to one-time to stop exploitation.",
+    "metadata": {
+      "config_path": "configs/eg_rsa_deepseek_memory_test.yml",
+      "iteration": 0,
+      "validation_errors": [],
+      "validation_warnings": [],
+      "candidate_evaluation": {
+        "accepted_edits": [
+          {
+            "operator": "convert_to_one_time_event",
+            "target": "r_contact"
+          }
+        ],
+        "rejected_edits": [],
+        "reports": [],
+        "warnings": []
+      },
+      "gate_result": {
+        "accepted_edits": [
+          {
+            "operator": "convert_to_one_time_event",
+            "target": "r_contact"
+          }
+        ],
+        "rejected_edits": [],
+        "warnings": []
+      },
+      "structural_response": {},
+      "experiment_mode": {
+        "use_memory": true,
+        "use_attribution": true,
+        "use_hack_detector": true,
+        "use_llm_edit": true,
+        "use_operator_constraints": true,
+        "free_rewrite": false,
+        "one_shot": false
+      },
+      "edit_generated": true,
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "agent_analysis": {
+        "diagnostic_analysis": {
+          "observed_facts": [
+            "mean episode reward 17.85, but very large standard deviation 99.6",
+            "r_contact contributes 53.7% of total absolute reward, dominating the shaping components",
+            "r_contact toggle count of 7 per episode indicates multiple ground contacts",
+            "hack flags: high_reward_low_progress true, repeated_event_exploitation true, shaping_goal_mismatch true",
+            "dense components (distance, velocity, angle, energy) are all active but produce relatively small per-step penalties"
+          ],
+          "likely_true_failures": [
+            "r_contact event_bonus is being exploited via repeated bouncing on the ground, artificially inflating episode return without stable landing",
+            "the sparse contact bonus overwhelms the dense task-related shaping, allowing the agent to ignore fuel efficiency and precise landing"
+          ],
+          "likely_false_positives": [
+            "component_dominance flag is false despite a 0.537 ratio; this may be a borderline case but does not change the core conclusion"
+          ],
+          "root_cause_hypotheses": [
+            "a large, repeatable event bonus for any ground contact encourages bouncing behavior rather than a controlled, sustained landing"
+          ],
+          "failure_kind": "reward_hack",
+          "edit_need": "must_edit",
+          "confidence": 0.8
+        },
+        "memory_reflection": {
+          "lesson_assessments": [],
+          "reusable_lessons": [],
+          "failed_or_weak_lessons": [],
+          "avoid_actions": [],
+          "recommended_actions": [],
+          "memory_confidence": 0.0
+        },
+        "reward_editor": {
+          "edit_decision": "edit",
+          "next_action": "apply_edit",
+          "rationale": "Converting r_contact to a one‑time event directly eliminates repeated exploitation of the contact bonus. Once per episode, the agent can receive the bonus, removing the incentive to bounce multiple times. The dense shaping components will then provide the main per‑step signal, guiding faster and more precise landings.",
+          "expected_effect": "Episode returns will decrease overall; r_contact will no longer dominate; shaping components will have a larger relative influence, promoting task progress. Hack risk should drop significantly.",
+          "risk_analysis": "The agent could still collect the one‑time bonus without completing a proper landing, e.g., by touching briefly and then crashing. If the dense penalties are too weak, landing quality might degrade. However, this edit is a necessary first step, and subsequent adjustments to dense weights or additional termination rewards can address residual issues.",
+          "edit_plan": [
+            {
+              "operator": "convert_to_one_time_event",
+              "target": "r_contact"
+            }
+          ]
+        },
+        "auditor_check": {
+          "approved": true,
+          "issues": [],
+          "final_action": "apply_edit"
+        },
+        "distilled_lessons": {
+          "what_worked": [],
+          "what_failed": [],
+          "avoid_next": [],
+          "recommend_next": [
+            "monitor whether dense shaping needs weight increases after one‑time conversion",
+            "consider adding a separate reward for sustained ground contact if landing remains unstable"
+          ],
+          "applicability_notes": [
+            "convert_to_one_time_event is directly applicable to event_bonus components; it is the simplest fix for repeated event exploitation"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "memory_id": "iter_001_to_002",
+    "env_family": "landing_control",
+    "failure_modes": [
+      "high_reward_low_progress",
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "reward_attribution": {
+      "episode_reward_mean": -88.25340437677116,
+      "episode_reward_std": 10.91447515239137,
+      "component_stats": {
+        "r_distance": {
+          "sum": -330.58526489215444,
+          "abs_sum": 330.58526489215444,
+          "mean": -0.931226098287759,
+          "std": 0.4075481970494804,
+          "min": -1.4394692717462547,
+          "max": -0.09559983490623476,
+          "ratio": 0.5155188924591687,
+          "trigger_rate": 1.0
+        },
+        "r_velocity": {
+          "sum": -181.05928397706103,
+          "abs_sum": 181.05928397706103,
+          "mean": -0.5100261520480592,
+          "std": 0.24376242418287325,
+          "min": -0.9829799796264966,
+          "max": -0.028397165790219635,
+          "ratio": 0.2823461643874369,
+          "trigger_rate": 1.0
+        },
+        "r_angle": {
+          "sum": -29.112473014640397,
+          "abs_sum": 29.112473014640397,
+          "mean": -0.08200696623842366,
+          "std": 0.11474913166387349,
+          "min": -0.6,
+          "max": -0.006041929987259209,
+          "ratio": 0.04539836296137054,
+          "trigger_rate": 1.0
+        },
+        "r_energy": {
+          "sum": -0.51,
+          "abs_sum": 0.51,
+          "mean": -0.0014366197183098592,
+          "std": 0.006405834476027231,
+          "min": -0.03,
+          "max": -0.0,
+          "ratio": 0.0007953005262952228,
+          "trigger_rate": 0.04788732394366197
+        },
+        "r_contact_one_time": {
+          "sum": 100.0,
+          "abs_sum": 100.0,
+          "mean": 0.28169014084507044,
+          "std": 2.3567888071382406,
+          "min": 0.0,
+          "max": 20.0,
+          "ratio": 0.15594127966572993,
+          "trigger_rate": 0.014084507042253521
+        }
+      },
+      "dominant_component": "r_distance",
+      "dominant_component_ratio": 0.5155188924591687
+    },
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_progress_delta",
+          "type": "metric_delta",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "metric": "progress"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ],
+    "outcome": {
+      "status": "pending",
+      "before": {
+        "task_score": 0.4584439913923587,
+        "hack_score": 0.75
+      },
+      "after": {},
+      "delta": {},
+      "note": "Pending until the edited schema is trained in the next iteration."
+    },
+    "lesson": "The agent fails to learn landing due to severe per‑step penalties encouraging early termination. A structural search for better guidance via sustained‑landing bonus and penalty adjustment is warranted.",
+    "metadata": {
+      "config_path": "configs/eg_rsa_deepseek_memory_test.yml",
+      "iteration": 1,
+      "validation_errors": [],
+      "validation_warnings": [],
+      "candidate_evaluation": {
+        "accepted_edits": [
+          {
+            "operator": "add_component",
+            "component": {
+              "name": "r_progress_delta",
+              "type": "metric_delta",
+              "weight": 1.0,
+              "inputs": [],
+              "params": {
+                "metric": "progress"
+              },
+              "clip": [
+                0.0,
+                1.0
+              ],
+              "enabled": true
+            }
+          }
+        ],
+        "rejected_edits": [],
+        "reports": [
+          {
+            "candidate_type": "metric_process",
+            "metric": "progress",
+            "component_type": "metric_delta",
+            "metric_variation": 0.5028167850787801,
+            "active_rate": 0.9293785310734464,
+            "signal_density": "dense",
+            "recommendation": "accept",
+            "reason": "Metric component r_progress_delta has variation=0.502817, active_rate=0.929379 on current rollouts."
+          }
+        ],
+        "warnings": []
+      },
+      "gate_result": {
+        "accepted_edits": [
+          {
+            "operator": "add_component",
+            "component": {
+              "name": "r_progress_delta",
+              "type": "metric_delta",
+              "weight": 1.0,
+              "inputs": [],
+              "params": {
+                "metric": "progress"
+              },
+              "clip": [
+                0.0,
+                1.0
+              ],
+              "enabled": true
+            }
+          }
+        ],
+        "rejected_edits": [],
+        "warnings": []
+      },
+      "structural_response": {
+        "structural_analysis": {
+          "missing_signal_hypothesis": "The agent lacks dense positive guidance toward the landing pad. The only positive reward is a rare one‑time contact bonus, while all other components are penalties. This discourages exploration and leads to very low average returns.",
+          "why_local_edit_is_insufficient": "Local operators (weight adjustments, clipping, disable, convert_to_one_time) cannot add a new dense shaping signal. The existing sparse event bonus does not effectively shape progress because it triggers too infrequently. A metric‑based shaping component is needed.",
+          "memory_constraints": [],
+          "safety_constraints": [
+            "Metric delta is bounded by distance travelled; cumulative reward equals sparse terminal distance improvement, preventing unbounded exploitation."
+          ]
+        },
+        "reward_editor": {
+          "edit_decision": "edit",
+          "next_action": "apply_edit",
+          "rationale": "Adding a metric_delta component on the 'progress' metric rewards the agent for moving closer to the landing pad at each step. This provides a dense, positive signal that directly encourages progress, is non‑exploitable (cumulative delta equals sparse terminal distance improvement), and complements the existing distance penalty without conflicting with it.",
+          "edit_plan": [
+            {
+              "operator": "add_component",
+              "component": {
+                "name": "r_progress_delta",
+                "type": "metric_delta",
+                "weight": 1.0,
+                "inputs": [],
+                "params": {
+                  "metric": "progress"
+                },
+                "clip": [
+                  0.0,
+                  1.0
+                ],
+                "enabled": true
+              }
+            }
+          ]
+        },
+        "auditor_check": {
+          "approved": true,
+          "issues": [],
+          "final_action": "apply_edit"
+        },
+        "diagnosis": "Sparse success bonus insufficient; need dense progress shaping",
+        "edit_plan": [
+          {
+            "operator": "add_component",
+            "component": {
+              "name": "r_progress_delta",
+              "type": "metric_delta",
+              "weight": 1.0,
+              "inputs": [],
+              "params": {
+                "metric": "progress"
+              },
+              "clip": [
+                0.0,
+                1.0
+              ],
+              "enabled": true
+            }
+          }
+        ]
+      },
+      "experiment_mode": {
+        "use_memory": true,
+        "use_attribution": true,
+        "use_hack_detector": true,
+        "use_llm_edit": true,
+        "use_operator_constraints": true,
+        "free_rewrite": false,
+        "one_shot": false
+      },
+      "edit_generated": true,
+      "edit_decision": "need_more_evidence",
+      "next_action": "apply_edit",
+      "agent_analysis": {
+        "diagnostic_analysis": {
+          "observed_facts": [
+            "Episode reward mean is -88.25 (std 10.91), indicating poor task performance and largely negative per-step returns.",
+            "Dense shaping components (r_distance, r_velocity, r_angle, r_energy) dominate the reward; r_distance accounts for 51.6% of total absolute reward.",
+            "The one‑time contact bonus (r_contact_one_time) is triggered in only ~1.4% of episodes (trigger_rate 0.014), meaning successful landings are very rare.",
+            "Detector flags high_reward_low_progress, repeated_event_exploitation, and shaping_goal_mismatch are all true.",
+            "Repeated event toggle counts are high (e.g., low_angle: 8, contact: 7), but none of these internal events are directly rewarded in the current schema.",
+            "The current schema already incorporates the previous memory edit: r_contact is disabled, r_contact_one_time (one_time: true) is enabled.",
+            "No component currently gives a positive reward for sustained stable landing."
+          ],
+          "likely_true_failures": [
+            "Task failure: the agent is not learning a controlled landing; it likely terminates episodes early (e.g., by crashing) to avoid accumulating large per‑step penalties from r_distance and r_velocity.",
+            "Shaping‑goal mismatch: the per‑step penalties incentivise ending the episode as quickly as possible, not flying and landing precisely – this promotes crash‑early behaviour rather than the desired outcome."
+          ],
+          "likely_false_positives": [
+            "Repeated_event_exploitation flag: the high toggle counts refer to internal event flags that are not tied to any reward component; therefore they do not constitute reward hacking.",
+            "High_reward_low_progress may be a false positive in the context of a negative mean reward; the agent is not achieving high returns, and the ‘high reward’ condition probably reflects an internal detector threshold rather than actual reward exploitation."
+          ],
+          "root_cause_hypotheses": [
+            "The dense penalty components (distance, velocity, angle) build up over time, creating an implicit incentive to terminate the episode early (by crashing) instead of learning a slow, controlled descent.",
+            "The single one‑time contact bonus (20 points) is too sparse to overcome the early‑termination local optimum; the agent rarely experiences the bonus and therefore does not receive enough positive signal to guide exploration toward stable landing."
+          ],
+          "failure_kind": "mixed",
+          "edit_need": "must_edit",
+          "confidence": 0.8
+        },
+        "memory_reflection": {
+          "lesson_assessments": [
+            {
+              "lesson_id": "lesson_iter_000_to_001",
+              "quality": "strong",
+              "status": "already_applied",
+              "reason": "The edit (convert r_contact to one‑time event) is fully applied in the current schema: r_contact is disabled and r_contact_one_time is enabled. The resulting task‑score improvement (from 0.059 to 0.458) was already achieved; further application of the same edit is unnecessary."
+            }
+          ],
+          "reusable_lessons": [],
+          "failed_or_weak_lessons": [],
+          "avoid_actions": [
+            "Do not re‑apply the convert_to_one_time_event on r_contact; it is already absorbed."
+          ],
+          "recommended_actions": [
+            "Per the memory’s own recommendation, consider adding a separate reward for sustained ground contact to stabilise landing.",
+            "Evaluate whether the dense shaping penalties (especially r_distance) are too strong and may be reduced to mitigate the early‑termination incentive."
+          ],
+          "memory_confidence": 0.7
+        },
+        "reward_editor": {
+          "edit_decision": "need_more_evidence",
+          "next_action": "structural_search",
+          "rationale": "The repeated‑contact exploitation has been fixed, yet task performance remains poor (very negative mean reward, low landing rate). The main hypothesis is that the dense per‑step penalties encourage early episode termination (crashing) as a local optimum. To address this, a structural search is needed: exploring modifications that better guide the agent toward a stable landing while discouraging premature termination. Proposed direction: add a sustained‑contact bonus (both legs on ground for a minimum duration) and moderately reduce the dominant r_distance penalty. This follows the memory’s advice and uses generic reward‑shaping principles.",
+          "expected_effect": "If the structural search succeeds, the new reward will provide a clearer positive signal for controlled landings, reducing the attractiveness of crash‑early behaviour. Task success rates (landing on pad) should improve. Hack risk should stay low because the sustained‑contact bonus is difficult to obtain without a genuine landing.",
+          "risk_analysis": "A sustained‑contact bonus could be exploited if the agent finds a way to hover with both legs barely touching the ground for the required duration without settling. However, the physics make this unlikely. Reducing r_distance weight too much could lead to aimless wandering, but a moderate reduction combined with velocity and fuel penalties should keep the agent goal‑directed. The contact bonus weight may need tuning to avoid overshadowing other components.",
+          "edit_plan": [
+            {
+              "operator": "add_event_rule",
+              "event_rule": {
+                "name": "r_stable_landing",
+                "type": "event_bonus",
+                "weight": 30.0,
+                "condition": {
+                  "both_contact": true
+                },
+                "one_time": false,
+                "duration_steps": 10,
+                "enabled": true
+              }
+            },
+            {
+              "operator": "decrease_weight",
+              "target": "r_distance",
+              "factor": 0.7
+            }
+          ]
+        },
+        "auditor_check": {
+          "approved": true,
+          "issues": [],
+          "final_action": "structural_search"
+        },
+        "distilled_lessons": {
+          "what_worked": [
+            "One‑time conversion of r_contact successfully stopped repeat‑bouncing exploitation and improved task score significantly."
+          ],
+          "what_failed": [],
+          "avoid_next": [
+            "Avoid further edits to r_contact or r_contact_one_time; the current one‑time structure is adequate.",
+            "Do not disable dense components entirely – they provide necessary per‑step guidance."
+          ],
+          "recommend_next": [
+            "Try adding a sustained‑contact reward (e.g., both_contact for at least 10 consecutive steps) to encourage stable landings.",
+            "Consider moderate decreases in the weight of r_distance (distance penalty) to reduce the early‑termination bias, while preserving the general incentive to approach the pad."
+          ],
+          "applicability_notes": [
+            "add_event_rule with duration_steps is a generic operator that can be used whenever sustained condition satisfaction is meaningful.",
+            "decrease_weight is safe for dense shaping components when the current weight creates undesired local optima; it must be paired with monitoring to ensure progress does not collapse."
+          ]
+        }
+      }
+    }
+  }
+]
