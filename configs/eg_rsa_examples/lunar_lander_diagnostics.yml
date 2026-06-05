@@ -23,48 +23,108 @@ events:
   both_contact:
     type: all
     events: [left_contact, right_contact]
-  near_x:
+
+  # The landing pad is a safe region, not a single mathematical point.
+  # These events are coarse phase markers used for diagnostics and event rules.
+  within_pad_x:
     type: threshold_abs
     var: x
-    threshold: 0.25
-  near_y:
+    threshold: 0.20
+  near_pad_x:
+    type: threshold_abs
+    var: x
+    threshold: 0.45
+  near_ground_y:
     type: threshold_abs
     var: y
     threshold: 0.25
-  near_goal:
+  approach_region:
     type: all
-    events: [near_x, near_y]
+    events: [near_pad_x, near_ground_y]
+  landing_region:
+    type: all
+    events: [within_pad_x, near_ground_y]
+
+  # Safe contact should depend on velocity and attitude, not contact alone.
   low_angle:
     type: threshold_abs
     var: angle
-    threshold: 0.10
+    threshold: 0.20
+  low_angular_velocity:
+    type: threshold_abs
+    var: angular_velocity
+    threshold: 0.20
   low_vx:
     type: threshold_abs
     var: vx
-    threshold: 0.10
+    threshold: 0.20
   low_vy:
     type: threshold_abs
     var: vy
-    threshold: 0.10
+    threshold: 0.25
   stable_motion:
     type: all
-    events: [low_angle, low_vx, low_vy]
+    events: [low_angle, low_angular_velocity, low_vx, low_vy]
+
+  safe_contact:
+    type: all
+    events: [contact, landing_region, stable_motion]
+  stable_both_contact:
+    type: all
+    events: [both_contact, landing_region, stable_motion]
   stable_landing_condition:
     type: all
-    events: [both_contact, near_goal, stable_motion]
+    events: [stable_both_contact]
+
   engine_on:
     type: action_nonzero
 
 task_metrics:
-  progress:
-    type: distance_to_target
+  # Region-aware approach score. It is 1 inside the safe landing region and
+  # decays smoothly outside the region. This replaces over-penalizing every
+  # step's Euclidean distance to the exact point (0,0).
+  landing_region_score:
+    type: target_region
     inputs: [x, y]
-    target: [0.0, 0.0]
+    center: [0.0, 0.0]
+    tolerance: [0.20, 0.25]
+
+  approach_region_score:
+    type: target_region
+    inputs: [x, y]
+    center: [0.0, 0.0]
+    tolerance: [0.45, 0.40]
+
+  # Stability scores are scaled so that safe velocity and attitude are rewarded
+  # as process signals before final contact occurs.
   stability:
     type: bounded_stability
     inputs: [vx, vy, angle, angular_velocity]
+    scales: [0.50, 0.50, 0.30, 0.30]
+
+  horizontal_alignment:
+    type: raw_abs_inverse
+    inputs: [x]
+
+  vertical_safety:
+    type: raw_abs_inverse
+    inputs: [vy]
+
   energy_cost:
     type: action_cost
+
+  approach_and_stability:
+    type: metric_product
+    metrics: [approach_region_score, stability]
+
+  landing_quality:
+    type: metric_product
+    metrics: [landing_region_score, stability]
+
+  safe_contact_score:
+    type: event_score
+    event: safe_contact
+
   success:
     type: event_success
     event: stable_landing_condition
