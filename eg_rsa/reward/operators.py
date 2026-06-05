@@ -19,6 +19,7 @@ class RewardEditOperatorApplier:
         "clip_component",
         "disable_component",
         "add_component",
+        "add_event_rule",
         "convert_to_one_time_event",
         "add_duration_condition",
         "reshape_sparse_to_dense",
@@ -38,46 +39,15 @@ class RewardEditOperatorApplier:
     @staticmethod
     def allowed_operator_descriptions() -> List[Dict[str, Any]]:
         return [
-            {
-                "operator": "increase_weight",
-                "required": ["target", "factor"],
-                "description": "Multiply a component or event rule weight by factor > 1.",
-            },
-            {
-                "operator": "decrease_weight",
-                "required": ["target", "factor"],
-                "description": "Multiply a component or event rule weight by 0 < factor < 1.",
-            },
-            {
-                "operator": "clip_component",
-                "required": ["target", "clip"],
-                "description": "Set component clip range [min, max].",
-            },
-            {
-                "operator": "disable_component",
-                "required": ["target"],
-                "description": "Disable a harmful or redundant component.",
-            },
-            {
-                "operator": "add_component",
-                "required": ["component"],
-                "description": "Add a new component following RewardComponent schema.",
-            },
-            {
-                "operator": "convert_to_one_time_event",
-                "required": ["target"],
-                "description": "Convert an event rule into one-time reward to reduce repeated event exploitation.",
-            },
-            {
-                "operator": "add_duration_condition",
-                "required": ["target", "duration_steps"],
-                "description": "Require an event rule to remain true for K steps.",
-            },
-            {
-                "operator": "reshape_sparse_to_dense",
-                "required": ["target", "new_type"],
-                "description": "Change a sparse event-like component into a dense shaping component type.",
-            },
+            {"operator": "increase_weight", "required": ["target", "factor"], "description": "Multiply a component or event rule weight by factor > 1."},
+            {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply a component or event rule weight by 0 < factor < 1."},
+            {"operator": "clip_component", "required": ["target", "clip"], "description": "Set component clip range [min, max]."},
+            {"operator": "disable_component", "required": ["target"], "description": "Disable a harmful or redundant component."},
+            {"operator": "add_component", "required": ["component"], "description": "Add a new dense component following RewardComponent schema."},
+            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Add a gated event reward rule. The rule condition must reference available event flags; supports one_time and duration_steps."},
+            {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert an event rule or event_bonus component into one-time reward to reduce repeated event exploitation."},
+            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Require an event rule to remain true for K steps."},
+            {"operator": "reshape_sparse_to_dense", "required": ["target", "new_type"], "description": "Change a sparse event-like component into a dense shaping component type."},
         ]
 
     @staticmethod
@@ -129,6 +99,17 @@ class RewardEditOperatorApplier:
         schema.components.append(component)
 
     @staticmethod
+    def _add_event_rule(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        rule = EventRule.from_dict(edit["event_rule"])
+        if schema.get_component(rule.name) or schema.get_event_rule(rule.name):
+            raise ValueError(f"Reward item already exists: {rule.name}")
+        if rule.type != "event_bonus":
+            raise ValueError("add_event_rule currently supports event_bonus rules only")
+        if not rule.condition:
+            raise ValueError("event_rule condition cannot be empty")
+        schema.event_rules.append(rule)
+
+    @staticmethod
     def _convert_to_one_time_event(schema: RewardSchema, edit: Dict[str, Any]) -> None:
         target = edit["target"]
         rule = schema.get_event_rule(target)
@@ -141,16 +122,7 @@ class RewardEditOperatorApplier:
         if component.type != "event_bonus":
             raise ValueError("convert_to_one_time_event requires event_bonus component or event rule")
         event_name = component.params.get("event", component.name)
-        schema.event_rules.append(
-            EventRule(
-                name=f"{component.name}_one_time",
-                type="event_bonus",
-                weight=component.weight,
-                condition={event_name: True},
-                one_time=True,
-                enabled=True,
-            )
-        )
+        schema.event_rules.append(EventRule(name=f"{component.name}_one_time", type="event_bonus", weight=component.weight, condition={event_name: True}, one_time=True, enabled=True))
         component.enabled = False
 
     @staticmethod
