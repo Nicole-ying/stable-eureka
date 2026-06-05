@@ -23,6 +23,7 @@ class EditAgent:
         current_reward_schema: Dict[str, Any],
         diagnostic_report: Dict[str, Any],
         retrieved_memories: List[Dict[str, Any]],
+        retrieved_lessons: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         if self.llm_client is None:
             return self._fallback_response(diagnostic_report, current_reward_schema)
@@ -32,6 +33,7 @@ class EditAgent:
             current_reward_schema=current_reward_schema,
             diagnostic_report=diagnostic_report,
             retrieved_memories=retrieved_memories,
+            retrieved_lessons=retrieved_lessons or [],
         )
         response_text = self.llm_client.generate(prompt)
         parsed = extract_json_object(response_text)
