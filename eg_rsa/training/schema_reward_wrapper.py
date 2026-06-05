@@ -13,7 +13,7 @@ from eg_rsa.reward.schema import RewardSchema
 class SchemaRewardWrapper(gym.Wrapper):
     """Replace environment reward with EG-RSA schema reward.
 
-    This wrapper does not use the original reward for training.  The original
+    This wrapper does not use the original reward for training. The original
     reward is preserved in `info['oracle_reward_posthoc']` only for later
     reporting.
     """
@@ -32,9 +32,11 @@ class SchemaRewardWrapper(gym.Wrapper):
         self.task_metric_evaluator = task_metric_evaluator
         self.event_evaluator = event_evaluator
         self._fired_event_rules = set()
+        self._event_rule_duration_counts: Dict[str, int] = {}
 
     def reset(self, **kwargs):
         self._fired_event_rules = set()
+        self._event_rule_duration_counts = {}
         return self.env.reset(**kwargs)
 
     def step(self, action: Any):
@@ -71,11 +73,7 @@ class SchemaRewardWrapper(gym.Wrapper):
         for rule in self.reward_schema.event_rules:
             if not rule.enabled:
                 continue
-            ok = True
-            for key, expected in rule.condition.items():
-                if key == "duration_steps":
-                    continue
-                ok = ok and (events.get(key, False) == expected)
+            ok = self._event_rule_condition_ok(rule.name, rule.condition, events)
             if rule.one_time and rule.name in self._fired_event_rules:
                 value = 0.0
             else:
@@ -86,6 +84,21 @@ class SchemaRewardWrapper(gym.Wrapper):
             total += value
         components["reward"] = float(total)
         return float(total), components
+
+    def _event_rule_condition_ok(self, rule_name: str, condition: Dict[str, Any], events: Dict[str, bool]) -> bool:
+        duration_steps = int(condition.get("duration_steps", 1) or 1)
+        base_ok = True
+        for key, expected in condition.items():
+            if key == "duration_steps":
+                continue
+            base_ok = base_ok and (events.get(key, False) == expected)
+        if base_ok:
+            self._event_rule_duration_counts[rule_name] = self._event_rule_duration_counts.get(rule_name, 0) + 1
+        else:
+            self._event_rule_duration_counts[rule_name] = 0
+        if duration_steps <= 1:
+            return base_ok
+        return base_ok and self._event_rule_duration_counts.get(rule_name, 0) >= duration_steps
 
     @staticmethod
     def _component_raw(typ, inputs, params, obs_map, action, events) -> float:
