@@ -33,6 +33,21 @@ Structural search purpose:
 - If current local edits failed, avoid repeating them.
 - If no safe structural edit exists, return edit_decision="no_edit" and next_action="early_stop".
 
+Required add_event_rule schema:
+When using add_event_rule, event_rule MUST contain all fields below:
+{{
+  "operator": "add_event_rule",
+  "event_rule": {{
+    "name": "r_unique_rule_name",
+    "type": "event_bonus",
+    "weight": 20.0,
+    "condition": {{"one_available_event_name": true, "duration_steps": 3}},
+    "one_time": true,
+    "enabled": true
+  }}
+}}
+Do NOT return compact forms such as {{"event": "...", "weight": 100}}.
+
 Task description:
 {task_description}
 
