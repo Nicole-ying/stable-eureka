@@ -114,14 +114,53 @@ class TrajectoryRecorder:
         last_metrics = steps[-1].get("task_metrics", {})
         success = max(float(step.get("task_metrics", {}).get("success", 0.0)) for step in steps)
         repeated_event_count = TrajectoryRecorder._max_event_toggle_count(steps)
+        progress_score = TrajectoryRecorder._task_progress_score(last_metrics)
+        landing_quality_values = [float(step.get("task_metrics", {}).get("landing_quality", 0.0)) for step in steps]
+        approach_values = [float(step.get("task_metrics", {}).get("approach_region_score", 0.0)) for step in steps]
+        stability_values = [float(step.get("task_metrics", {}).get("stability", 0.0)) for step in steps]
+        event_rates = TrajectoryRecorder._event_rates(steps)
         return {
             "episode_reward": float(total_reward),
             "oracle_reward_posthoc": float(total_oracle_reward),
             "episode_length": len(steps),
-            "progress_score": float(last_metrics.get("progress", 0.0)),
+            "progress_score": float(progress_score),
             "success": float(success),
+            "landing_quality_final": float(last_metrics.get("landing_quality", 0.0)),
+            "landing_quality_max": float(max(landing_quality_values) if landing_quality_values else 0.0),
+            "approach_region_final": float(last_metrics.get("approach_region_score", 0.0)),
+            "approach_region_max": float(max(approach_values) if approach_values else 0.0),
+            "stability_final": float(last_metrics.get("stability", 0.0)),
+            "stability_mean": float(np.mean(stability_values) if stability_values else 0.0),
+            "contact_rate": float(event_rates.get("contact", 0.0)),
+            "both_contact_rate": float(event_rates.get("both_contact", 0.0)),
+            "safe_contact_rate": float(event_rates.get("safe_contact", 0.0)),
+            "stable_landing_rate": float(event_rates.get("stable_landing_condition", 0.0)),
             "max_event_toggle_count": int(repeated_event_count),
         }
+
+    @staticmethod
+    def _task_progress_score(metrics: Dict[str, Any]) -> float:
+        # Prefer aligned composite task proxies, then fall back to older names.
+        for key in [
+            "landing_quality",
+            "approach_and_stability",
+            "approach_region_score",
+            "landing_region_score",
+            "progress",
+        ]:
+            if key in metrics:
+                return float(metrics.get(key, 0.0))
+        return 0.0
+
+    @staticmethod
+    def _event_rates(steps: List[Dict[str, Any]]) -> Dict[str, float]:
+        if not steps:
+            return {}
+        totals: Dict[str, int] = {}
+        for step in steps:
+            for key, value in step.get("events", {}).items():
+                totals[key] = totals.get(key, 0) + int(bool(value))
+        return {key: value / max(1, len(steps)) for key, value in totals.items()}
 
     @staticmethod
     def _max_event_toggle_count(steps: List[Dict[str, Any]]) -> int:
