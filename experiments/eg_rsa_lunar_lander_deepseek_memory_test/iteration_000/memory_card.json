@@ -64,69 +64,38 @@
     "dominant_component": "r_contact",
     "dominant_component_ratio": 0.46900174940537354
   },
-  "edit_plan": [],
+  "edit_plan": [
+    {
+      "operator": "convert_to_one_time_event",
+      "target": "r_contact"
+    }
+  ],
   "outcome": {
-    "status": "not_applicable",
+    "status": "pending",
     "before": {
       "task_score": 0.05828165053533671,
       "hack_score": 0.75
     },
     "after": {},
     "delta": {},
-    "note": "No edit was generated for this iteration."
+    "note": "Pending until the edited schema is trained in the next iteration."
   },
-  "lesson": "Initial hand-crafted reward relies solely on punitive dense shaping and a single sparse landing bonus; the punishment-heavy design causes high negative reward, large variance, and failure to learn the landing task. No evidence of actual reward hacking detected. Recommend structural search for a richer reward structure with positive guidance.",
+  "lesson": "The reward schema is dominated by a repeatable event bonus for contact, leading to reward hacking (high reward but poor task progress). Converting r_contact to a one‑time event will prevent repeated exploitation and incentivize a single successful landing.",
   "metadata": {
     "config_path": "configs/eg_rsa_deepseek_memory_test.yml",
     "iteration": 0,
-    "validation_errors": [
-      "event_rule requires name",
-      "No valid edit remained; skipped schema edit."
-    ],
-    "gate_result": {},
-    "structural_response": {
-      "structural_analysis": {
-        "missing_signal_hypothesis": "A sparse or dense success signal for stable landing is missing; current contact bonus leads to high reward without goal fulfillment.",
-        "why_local_edit_is_insufficient": "Local edits like weight adjustments cannot introduce a new event rule for stable landing; adding an event rule is a structural change.",
-        "memory_constraints": [],
-        "safety_constraints": []
-      },
-      "reward_editor": {
-        "edit_decision": "edit",
-        "next_action": "apply_edit",
-        "rationale": "Adding a one-time success bonus for stable_landing_condition addresses shaping_goal_mismatch and high_reward_low_progress by providing a clear sparse reward for the true goal, while avoiding repeated exploitation through one_time flag. The event uses preferred stable_landing_condition, generic and environment-independent.",
-        "edit_plan": [
-          {
-            "operator": "add_event_rule",
-            "event_rule": {
-              "event": "stable_landing_condition",
-              "weight": 100,
-              "one_time": true,
-              "duration_steps": null,
-              "clip": null
-            }
-          }
-        ]
-      },
-      "auditor_check": {
-        "approved": true,
-        "issues": [],
-        "final_action": "apply_edit"
-      },
-      "diagnosis": "Repeated exploitation of contact event and shaping_goal_mismatch require introduction of a one-time success bonus for stable_landing_condition.",
-      "edit_plan": [
+    "validation_errors": [],
+    "gate_result": {
+      "accepted_edits": [
         {
-          "operator": "add_event_rule",
-          "event_rule": {
-            "event": "stable_landing_condition",
-            "weight": 100,
-            "one_time": true,
-            "duration_steps": null,
-            "clip": null
-          }
+          "operator": "convert_to_one_time_event",
+          "target": "r_contact"
         }
-      ]
+      ],
+      "rejected_edits": [],
+      "warnings": []
     },
+    "structural_response": {},
     "experiment_mode": {
       "use_memory": true,
       "use_attribution": true,
@@ -137,32 +106,37 @@
       "one_shot": false
     },
     "edit_generated": true,
-    "edit_decision": "no_edit",
+    "edit_decision": "edit",
     "next_action": "apply_edit",
     "agent_analysis": {
       "diagnostic_analysis": {
         "observed_facts": [
-          "Episode reward mean is -12.69, with high standard deviation 61.46.",
-          "All dense shaping components (distance, velocity, angle) have high trigger rates and provide constant negative rewards.",
-          "The r_contact event bonus has mean 1.36 and trigger rate 0.068, making it the dominant component at 47% of total absolute reward.",
-          "r_energy action penalty never triggered (trigger rate 0.0).",
-          "Hack flags: high_reward_low_progress, repeated_event_exploitation, shaping_goal_mismatch are true; component_dominance is false.",
-          "Repeated event toggles observed (e.g., contact 8 toggles, low_angle 9), but overall reward remains deeply negative."
+          "Episode reward mean is -12.69, with a high standard deviation of 61.46, indicating wide variability and mostly negative outcomes.",
+          "Component r_distance (distance penalty) is always active, contributing -0.93 mean per step, with trigger rate 1.0.",
+          "Component r_velocity (velocity penalty) is always active, contributing -0.51 mean per step, with trigger rate 1.0.",
+          "Component r_angle (angle penalty) is always active, contributing -0.09 mean per step, with trigger rate 1.0.",
+          "Component r_energy (action penalty) has trigger rate 0.0, contributing nothing to the reward.",
+          "Component r_contact (event bonus for contact) has trigger rate 0.068, mean 1.36, and total absolute sum accounts for 46.9% of the total absolute reward sum, dominating the episodic reward.",
+          "Detector flags ‘high_reward_low_progress’, ‘repeated_event_exploitation’, and ‘shaping_goal_mismatch’ are all true, with a hack score of 0.75.",
+          "Repeated event toggle count shows contact event triggered 8 times, but the maximum toggle count is for ‘low_angle’ at 9, indicating event toggling may be frequent but not exclusively contact.",
+          "The environment’s true task is to land softly and quickly at the pad while minimizing fuel; the current schema provides a large, repeatable bonus for making contact, which could be gamed by bouncing or crashing."
         ],
         "likely_true_failures": [
-          "Dense shaping penalties are punishing all motion without positive guidance, leading to poor task learning.",
-          "The sparse landing bonus is too rare to effectively shape the behavior early in training."
+          "The contact bonus (weight 20) is too large relative to the negative shaping penalties, creating a dominant incentive to trigger the contact event even at the expense of safe landing.",
+          "The agent can obtain the contact bonus repeatedly (e.g., by bouncing) and still fail the episode, causing episodes with high total rewards but poor landing performance (reward hacking).",
+          "The shaping components (distance, velocity, angle) are too weak to counteract the exploitation of the contact bonus, leading to task failure."
         ],
         "likely_false_positives": [
-          "high_reward_low_progress – the mean episode reward is actually low, so this flag is misleading.",
-          "repeated_event_exploitation – toggle counts are likely due to failure-mode bouncing, not reward hacking, as the agent is not obtaining high reward."
+          "The detector’s ‘component_dominance’ flag is false, so that specific flag is not a concern.",
+          "The repeated event flag for events other than contact may be spurious; the core issue is the repeatability and magnitude of the contact bonus itself."
         ],
         "root_cause_hypotheses": [
-          "The reward schema relies entirely on punitive dense components (distance, velocity, angle) and a single sparse landing bonus. The penalties dominate, making total reward strongly negative, discouraging exploration, and failing to provide meaningful direction."
+          "The contact bonus is an event bonus that can fire multiple times per episode, allowing the agent to collect large, sparse rewards from brief or unstable contacts while ignoring proper descent and landing behavior.",
+          "The shaping penalties, while active, sum to a modest per-step penalty, and the agent may learn that quickly making contact (even if it later crashes) can still result in a net positive episode reward, thus encouraging a hack."
         ],
-        "failure_kind": "task_failure",
-        "edit_need": "optional_edit",
-        "confidence": 0.8
+        "failure_kind": "reward_hack",
+        "edit_need": "must_edit",
+        "confidence": 0.9
       },
       "memory_reflection": {
         "lesson_assessments": [],
@@ -170,29 +144,32 @@
         "failed_or_weak_lessons": [],
         "avoid_actions": [],
         "recommended_actions": [],
-        "memory_confidence": 0.5
+        "memory_confidence": 0.0
       },
       "reward_editor": {
-        "edit_decision": "no_edit",
-        "next_action": "structural_search",
-        "rationale": "The current reward is not being hacked; the agent is simply failing the task because the shaping is both punitive and uninformative. Tuning weights alone may not fix the fundamental misalignment. Instead, we propose a structural search for a richer reward structure that provides positive guidance, e.g., by adding gated event milestones for safe descent (low vertical velocity, low angle near ground) using the add_event_rule operator, and potentially reshaping sparse bonuses into denser forms where appropriate. This approach addresses the shaping_goal_mismatch directly.",
-        "expected_effect": "A well-designed event-based reward structure can provide intermediate guidance, helping the agent learn a landing trajectory that satisfies safety conditions. Hack risk remains low if event rules are configured as one-time or with duration conditions.",
-        "risk_analysis": "Adding many untested event rules could introduce new reward hacking vectors if gates are not carefully designed, but the structural search phase allows exploration without committing a permanent edit. The existing contact bonus may be exploited if left as a repeatable event, but that can be fixed in a later safeguard edit.",
-        "edit_plan": []
+        "edit_decision": "edit",
+        "next_action": "apply_edit",
+        "rationale": "The diagnostic strongly indicates a reward hack via repeated exploitation of the contact bonus. Converting the existing r_contact event_bonus component to a one‑time event will remove the ability to repeatedly collect the bonus, thereby aligning the reward with a single successful landing contact while preserving a meaningful terminal incentive.",
+        "expected_effect": "The agent will no longer be able to exploit multiple contact events; episode reward will better correlate with successful sustained landing. The shaping penalties will more directly guide descent, and the overall learned policy should favor a stable, fuel‑efficient landing.",
+        "risk_analysis": "A one‑time contact bonus may still be too large relative to the ongoing shaping penalties, possibly leading to sparse‑reward issues if the agent fails to ever achieve contact. However, the mean episode reward is currently negative, so the dense penalties provide a baseline gradient. The edit is conservative and should not break the learning signal.",
+        "edit_plan": [
+          {
+            "operator": "convert_to_one_time_event",
+            "target": "r_contact"
+          }
+        ]
       },
       "auditor_check": {
         "approved": true,
         "issues": [],
-        "final_action": "structural_search"
+        "final_action": "apply_edit"
       },
       "distilled_lessons": {
         "what_worked": [],
         "what_failed": [],
         "avoid_next": [],
         "recommend_next": [],
-        "applicability_notes": [
-          "First iteration, no prior memory to distill."
-        ]
+        "applicability_notes": []
       }
     }
   }

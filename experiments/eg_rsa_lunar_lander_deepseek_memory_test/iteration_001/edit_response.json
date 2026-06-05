@@ -1,67 +1,131 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "Episode reward mean is -12.69 with high variance (σ=61.46).",
-      "r_contact contributes 46.9% of total absolute reward, though its trigger rate is only 6.78%.",
-      "Contact event toggled 8 times per episode, indicating repeated or multiple contacts.",
-      "r_energy triggered zero times, suggesting the agent never used engine actions.",
-      "All dense shaping components (distance, velocity, angle) have trigger rate 1.0 and consistently negative means."
+      "Current schema contains one-time contact event rule r_contact_one_time (weight 20, one_time true, enabled) and disabled original r_contact component.",
+      "Episode reward mean is -88.73 with std 11.27, indicating consistent highly negative returns.",
+      "Dense components dominate the reward sum: r_distance mean -0.93, r_velocity -0.51, r_angle -0.09, r_energy -0.001 (trigger_rate 0.034).",
+      "r_contact_one_time sum is 100.0, mean 0.282, trigger_rate 0.014, meaning contact is achieved in a very small fraction of steps.",
+      "Hack flags 'repeated_event_exploitation' and 'shaping_goal_mismatch' are true; others false.",
+      "Repeated event toggle counts show contact toggled 8 times, but the one-time rule prevents repeated bonuses; thus the flag likely reflects physical contact events, not reward exploitation.",
+      "Agent likely fails to land properly: extreme negative reward suggests it crashes quickly or avoids actions that could lead to landing."
     ],
     "likely_true_failures": [
-      "Repeated event exploitation: r_contact is an unclipped per‑step event_bonus that grants reward each step the lander is in contact, encouraging the agent to maximise contact duration instead of performing a single clean landing."
+      "Dense penalties (distance, velocity, angle) are too harsh relative to the one-time terminal bonus, creating a poorly shaped learning signal that fails to guide successful landing.",
+      "The energy penalty may discourage engine use (trigger_rate 0.034), preventing the agent from controlling descent.",
+      "The contact bonus (20) cannot offset large cumulative penalties (often >200 per episode), so even successful landings yield negative returns, eliminating incentive to complete the task."
     ],
     "likely_false_positives": [
-      "‘Component dominance’ flag may be a consequence of the repeated bonus rather than an independent issue; r_contact’s high ratio is exactly the symptom of the reward hack."
+      "repeated_event_exploitation: the one-time rule removes the ability to collect the contact bonus multiple times; physical contact toggles still occur but do not yield repeated reward, so this hack is no longer exploitable under the current schema.",
+      "component_dominance flag is false, correctly indicating no single component dominates in a hacking sense."
     ],
     "root_cause_hypotheses": [
-      "The r_contact component is defined as a per‑step event_bonus with weight 20.0 and no one‑time or duration constraint. This allows the agent to collect a large positive reward simply by staying on the ground, contrary to the task goal of a fast, efficient landing."
+      "The dense shaping components are too heavy (or poorly scaled) and do not provide a smooth gradient toward a soft, fuel-efficient landing.",
+      "The one-time contact bonus is insufficient to counterbalance the dense penalties, causing the episode reward to remain negative even on successful landings, thus failing to incentivize completion.",
+      "The energy penalty, though small, may be triggered in a way that discourages necessary engine firing, but it is minor; the core issue is the misalignment between dense penalties and the task goal."
     ],
-    "failure_kind": "reward_hack",
-    "edit_need": "must_edit",
-    "confidence": 0.9
+    "failure_kind": "task_failure",
+    "edit_need": "optional_edit",
+    "confidence": 0.85
   },
   "memory_reflection": {
-    "lesson_assessments": [],
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "already_applied",
+        "reason": "The edit (convert r_contact to one-time event) is already present in the current schema (r_contact_one_time enabled, r_contact disabled). This lesson addressed a reward hack, but the current failure is task shaping, not repeated exploitation."
+      }
+    ],
     "reusable_lessons": [],
     "failed_or_weak_lessons": [],
     "avoid_actions": [],
     "recommended_actions": [],
-    "memory_confidence": 0.0
+    "memory_confidence": 0.3
   },
   "reward_editor": {
-    "edit_decision": "edit",
-    "next_action": "apply_edit",
-    "rationale": "The dominant reward hack is the unbounded per‑step bonus for the ‘contact’ event. Converting it to a one‑time event aligns the reward with the true goal (successful landing) and removes the incentive to artificially prolong contact. This is a minimal, standard fix that directly addresses the highest‑confidence failure.",
-    "expected_effect": "Episode reward sum will decrease initially because the repeated bonus is removed; the one‑time 20.0 bonus will be granted only the first time contact becomes true. The agent will then have to minimise the dense shaping penalties (distance, velocity, angle) by landing quickly and safely. The action penalty will become the sole source of fuel‑efficiency pressure.",
-    "risk_analysis": "Removing the repeated bonus may make the learning problem harder: the shaping penalties are all negative, so the agent must learn to land to get the one‑time bonus. If the shaping is not well‑tuned, the agent could converge to a local optimum (e.g., hovering near the pad to keep penalties low). This can be addressed in later iterations if necessary.",
-    "edit_plan": [
-      {
-        "operator": "convert_to_one_time_event",
-        "target": "r_contact"
-      }
-    ]
+    "edit_decision": "no_edit",
+    "next_action": "structural_search",
+    "rationale": "The current schema has already eliminated repeated contact exploitation, but task performance is very poor (episode reward mean -88.7) because dense shaping components are likely too punitive or poorly aligned with the goal of a fast, fuel-efficient landing. There is no strong evidence of a new reward hack; the 'repeated_event_exploitation' flag is likely a false positive. The main problem is task guidance, requiring a structural rethink rather than a targeted edit. Therefore, we propose a structural search direction that rebalances dense shaping to better incentivize progress toward a soft landing while keeping the one-time terminal bonus.",
+    "expected_effect": "A structural redesign of the shaping components (e.g., decreasing weight of distance/velocity penalties, adding a velocity damping bonus for touchdown, or reshaping to a potential-based distance reward) should improve task scores without reintroducing a reward hack. The agent should learn to land softly and consistently.",
+    "risk_analysis": "Removing or drastically weakening dense penalties could lead to a sparse-reward problem where the agent fails to explore landing behaviors. The structural search must ensure a smooth learning gradient remains. No immediate risk of reward hacking from the proposed direction, as the one-time terminal bonus is still capped.",
+    "edit_plan": []
   },
   "auditor_check": {
     "approved": true,
     "issues": [],
-    "final_action": "apply_edit"
+    "final_action": "structural_search"
   },
   "distilled_lessons": {
-    "what_worked": [],
-    "what_failed": [],
-    "avoid_next": [],
-    "recommend_next": [
-      "After applying this edit, monitor whether the agent learns to land reliably. If it still struggles, consider adjusting the weights of the dense shaping components or strengthening the action penalty to encourage fuel‑efficient engine use."
+    "what_worked": [
+      "Converting a repeatable event bonus to one-time effectively curbed reward hacking without breaking learning."
     ],
-    "applicability_notes": [
-      "convert_to_one_time_event is particularly effective for landing tasks where contact should happen at most once per episode."
-    ]
+    "what_failed": [
+      "The dense shaping suite (distance, velocity, angle penalties) is not providing adequate guidance for landing, leading to task failure."
+    ],
+    "avoid_next": [
+      "Do not re-enable repeatable contact bonuses.",
+      "Do not increase the weight of existing dense penalties further."
+    ],
+    "recommend_next": [
+      "Focus on structural alignment: consider reducing distance/velocity penalty weights, adding a positive shaping component for low velocity near the pad, or converting distance penalty to a potential-based reward that rewards progress toward (0,0) without punishing all movement."
+    ],
+    "applicability_notes": "The previous lesson is fully applied; the current problem is a separate shaping failure, so future edits should address the dense components, not the terminal event."
   },
-  "diagnosis": "The current reward schema contains a clear reward hack: r_contact’s per‑step event bonus encourages repeated contact exploitation. The agent likely avoids engine use to minimise penalties and instead stays on the ground. The fix is to make the contact bonus one‑time.",
-  "edit_plan": [
-    {
-      "operator": "convert_to_one_time_event",
-      "target": "r_contact"
-    }
-  ]
+  "diagnosis": "The one-time contact edit successfully reduced reward hacking, but the dense shaping components remain too harsh/unaligned, resulting in very low episode rewards and task failure. The reward structure now needs a structural overhaul to guide the agent toward a successful landing, not another targeted hack fix.",
+  "edit_plan": [],
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "A success bonus for a stable landing is missing; the current dense penalties (distance, velocity, angle, action) strongly discourage any motion, while the existing one-time contact bonus is insufficient to guide the agent to a precise, stable landing on the pad. The episode remains heavily negative, lacking a clear positive terminal incentive.",
+      "why_local_edit_is_insufficient": "Local edits like increasing the contact weight or clipping penalties cannot introduce a success signal tied specifically to the landing quality; they would either amplify noise or fail to distinguish between a crash touching a leg and a controlled landing. Only a new event rule using the pre-defined stable_landing_condition can provide the precise terminal guidance needed.",
+      "memory_constraints": [
+        "Lesson card indicates that converting repeatable event bonus to one-time solved exploitation but did not fully fix the underlying reward scale; a further structural edit for terminal success is warranted."
+      ],
+      "safety_constraints": [
+        "New rule must use one_time and a duration condition to prevent any repeated exploitation or brief false-positive triggering."
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a one-time event bonus for stable_landing_condition with duration_steps=3 ensures the agent receives a large, definitive positive reward only upon achieving the true task goal (both legs on ground, near center, low velocities and angle). This makes successful episodes net positive, directly aligns the reward with the mission, and overcomes the overwhelming negative penalties. It is safe because it cannot repeat and requires sustained stable landing.",
+      "edit_plan": [
+        {
+          "operator": "add_event_rule",
+          "event_rule": {
+            "name": "r_stable_landing",
+            "type": "event_bonus",
+            "weight": 100.0,
+            "condition": {
+              "stable_landing_condition": true,
+              "duration_steps": 3
+            },
+            "one_time": true,
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Structural edit adds a robust, one-time, duration-gated success bonus for the verified stable landing event, directly resolving the missing positive terminal signal and the shaping-goal mismatch without risking exploitation.",
+    "edit_plan": [
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_stable_landing",
+          "type": "event_bonus",
+          "weight": 100.0,
+          "condition": {
+            "stable_landing_condition": true,
+            "duration_steps": 3
+          },
+          "one_time": true,
+          "enabled": true
+        }
+      }
+    ]
+  }
 }
