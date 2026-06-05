@@ -14,6 +14,7 @@ class EventEvaluator:
       - threshold_lt: var < threshold
       - all: all child events true
       - any: any child events true
+      - not: child event false
       - action_nonzero: action contains any non-zero value
     """
 
@@ -50,6 +51,9 @@ class EventEvaluator:
             result = all(self._eval_one(child, obs_map, action, cache) for child in spec.get("events", []))
         elif typ == "any":
             result = any(self._eval_one(child, obs_map, action, cache) for child in spec.get("events", []))
+        elif typ == "not":
+            child = spec.get("event")
+            result = not self._eval_one(child, obs_map, action, cache) if child else False
         elif typ == "action_nonzero":
             result = False if action is None else bool(np.any(np.asarray(action) != 0))
         else:
