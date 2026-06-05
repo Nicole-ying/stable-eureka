@@ -87,7 +87,7 @@
       },
       "note": "Measured after training the edited schema in the next iteration."
     },
-    "lesson": "Repeated event exploitation of r_contact bonus causing high hacking score; converting to one‑time event will remove the ability to farm the bonus while preserving a single strong signal for first contact. Shaping penalties will then guide the agent to maintain contact and achieve a stable, efficient landing.",
+    "lesson": "r_contact event_bonus is exploited via bouncing, causing repeated large rewards. Convert to one-time event to mitigate exploitation.",
     "metadata": {
       "config_path": "configs/eg_rsa_deepseek_memory_test.yml",
       "iteration": 0,
@@ -105,29 +105,26 @@
       "agent_analysis": {
         "diagnostic_analysis": {
           "observed_facts": [
-            "Episode reward mean is -12.69 with std 61.46, indicating high variation likely from r_contact bonus.",
-            "r_contact is an event_bonus with weight 20 and trigger_rate 0.0678, giving a mean contribution of +1.356 per step.",
-            "r_contact sum is 480, meaning 24 trigger events over the episode, with contact toggle count 8 and other events also toggling repeatedly.",
-            "Shaping components (distance, velocity, angle) are always negative, averaging -1.534 per step.",
-            "r_energy (action_penalty) sum is 0, indicating no penalty for actions taken.",
-            "Repeated event exploitation flag is true, high_reward_low_progress true, shaping_goal_mismatch true.",
-            "Hack score is 0.75, dominant component ratio 0.469 (r_contact)."
+            "Episode reward mean is -12.69 with a high standard deviation of 61.46, indicating some episodes achieve very high returns.",
+            "r_contact (event_bonus) has a trigger rate of ~6.8% but a high toggle count of 8, meaning it activates multiple times per episode.",
+            "The shaping components (r_distance, r_velocity, r_angle) fire every step and contribute small negative values.",
+            "r_energy has zero contribution (trigger_rate 0.0), suggesting it fails to penalize actions as intended.",
+            "The hack detector flags repeated_event_exploitation and shaping_goal_mismatch."
           ],
           "likely_true_failures": [
-            "Repeated event exploitation of r_contact bonus: agent likely touches down repeatedly to farm the 20‑point reward.",
-            "High reward from exploitation does not correspond to a stable, efficient landing (high_reward_low_progress).",
-            "Shaping penalties alone are insufficient to prevent the agent from lifting off again after contact."
+            "Repeated event exploitation: the lander can bounce and repeatedly trigger the 20-point contact bonus, causing excessive episode returns with little progress.",
+            "Shaping goal mismatch: the existing dense penalties do not adequately discourage unstable bouncing or incentivize a stable, fast landing."
           ],
           "likely_false_positives": [
-            "Component dominance flag is false, so dominance alone not concerning.",
-            "r_energy not triggering is not itself a hack flag; it reflects that action penalty was never applied perhaps due to implementation, but it is not causing the exploitation."
+            "Repeated toggling of unrewarded events (e.g., low_angle) is irrelevant and does not indicate exploitation.",
+            "The high_reward_low_progress flag may be triggered by occasional high-reward episodes from bouncing, but the overall negative mean reduces its seriousness."
           ],
           "root_cause_hypotheses": [
-            "The event_bonus for contact provides a large, repeatable reward without a one‑time constraint, strongly incentivizing the agent to break contact and re‑contact repeatedly instead of achieving a final, stable landing.",
-            "Absence of a terminal success reward or episode termination condition for successful landing allows the agent to cycle the event indefinitely within an episode."
+            "r_contact can be triggered multiple times per episode, enabling bouncing agents to accumulate large bonuses.",
+            "The dense shaping components are too weak or misaligned to counteract the exploitation of the sparse event."
           ],
           "edit_need": "must_edit",
-          "confidence": 0.9
+          "confidence": 0.8
         },
         "memory_reflection": {
           "reusable_lessons": [],
@@ -138,9 +135,9 @@
         },
         "reward_editor": {
           "edit_decision": "edit",
-          "rationale": "The primary hack is repeated exploitation of the r_contact event bonus. Converting it to a one‑time event will prevent the agent from farming the bonus multiple times per episode, while still providing a strong signal when contact first occurs. This directly addresses the repeated event exploitation and high‑reward‑low‑progress failures. Shaping penalties will then dominate the per‑step cost, encouraging the agent to move to contact and stay there (where penalties are minimal).",
-          "expected_effect": "After the edit, the agent must achieve and maintain contact to avoid accumulating negative shaping rewards, as repeated contacts will no longer yield additional bonuses. The episode reward will decrease initially but the agent will be forced to learn a stable landing strategy. Hack risk (repeated event exploitation) is eliminated; high_reward_low_progress will likely resolve as reward becomes proportional to landing quality.",
-          "risk_analysis": "The reward may become very sparse, making exploration harder. The agent might get stuck in a local optimum if the initial contact is hard to reach without intermediate rewards. However, the existing dense shaping penalties (distance, velocity, angle) still provide a dense signal toward the landing pad, so this risk is moderate. If performance degrades too much, a supplementary dense progress reward could be added later.",
+          "rationale": "The r_contact event_bonus can be triggered multiple times per episode through bouncing, giving large rewards without requiring proper landing. Making it a one‑time event will grant the bonus only on the first leg contact, eliminating the exploitation while retaining a strong terminal signal for successful landing.",
+          "expected_effect": "Hack risk from repeated event exploitation will drop sharply. The agent will no longer be able to farm the bonus by bouncing. Short‑term task proxy (landing success) may fluctuate, but long‑term the policy should learn to land and remain stable.",
+          "risk_analysis": "The agent might settle for a risky first contact without then stabilising, but the ongoing shaping penalties will still apply afterwards. The large bonus could still cause overvaluation of the first touch, but this risk is lower than the current exploitation.",
           "edit_plan": [
             {
               "operator": "convert_to_one_time_event",
@@ -154,19 +151,15 @@
           "final_action": "apply_edit"
         },
         "distilled_lessons": {
-          "what_worked": [],
+          "what_worked": [
+            "convert_to_one_time_event can neutralise repeated exploitation of a sparse event bonus."
+          ],
           "what_failed": [],
-          "avoid_next": [
-            "Do not use large repeatable event bonuses without one‑time or episode‑termination constraints, as they strongly encourage exploitation cycles."
-          ],
+          "avoid_next": [],
           "recommend_next": [
-            "Consider adding a terminal success reward for landing (e.g., both legs on ground and low velocity) to give a clear signal for completing the task.",
-            "Monitor the agent after this edit; if exploration collapses, add a moderate dense progress reward near the pad."
+            "When repeated event exploitation is flagged on an event_bonus, consider making the reward one‑time as a first response."
           ],
-          "applicability_notes": [
-            "convert_to_one_time_event is effective for event_bonus components that represent a rare ‘completion’ event, not for continuous feedback.",
-            "This lesson applies to any environment with episodic bonuses that can be triggered repeatedly without episode termination."
-          ]
+          "applicability_notes": "This lesson applies to event‑based rewards that are triggered more than once per episode due to the agent gaming the condition (e.g., bouncing)."
         }
       }
     }
