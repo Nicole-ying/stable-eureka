@@ -50,12 +50,20 @@ class ExperimentSummary:
         attribution = diagnostic.get("attribution", {})
         edit_count = len(edit_plan.get("edit_plan", []))
         edit_generated = bool(memory_card.get("metadata", {}).get("edit_generated", edit_count > 0))
+        edit_decision = ExperimentSummary._extract_edit_decision(edit_response)
+        edit_errors = edit_validation.get("errors", [])
         if not edit_generated:
             edit_status = "skipped"
+            edit_valid = "skipped"
+        elif edit_decision in {"no_edit", "need_more_evidence"} and edit_count == 0:
+            edit_status = edit_decision
+            edit_valid = edit_decision
         elif bool(edit_validation.get("is_valid")):
             edit_status = "valid"
+            edit_valid = True
         else:
             edit_status = "invalid_or_fallback"
+            edit_valid = False
 
         row = {
             "iteration": idx,
@@ -68,9 +76,10 @@ class ExperimentSummary:
             "posthoc_return_std": posthoc.get("return_std"),
             "posthoc_episode_length_mean": posthoc.get("episode_length_mean"),
             "edit_generated": edit_generated,
+            "edit_decision": edit_decision,
             "edit_status": edit_status,
-            "edit_valid": edit_validation.get("is_valid") if edit_generated else "skipped",
-            "edit_errors": ";".join(edit_validation.get("errors", [])),
+            "edit_valid": edit_valid,
+            "edit_errors": ";".join(edit_errors),
             "edit_count": edit_count,
             "edit_diagnosis": edit_response.get("diagnosis", ""),
             "memory_failure_modes": ";".join(memory_card.get("failure_modes", [])),
@@ -79,6 +88,15 @@ class ExperimentSummary:
         row.update(ExperimentSummary._task_score_from_memory(memory_card))
         row.update(ExperimentSummary._component_ratios(attribution))
         return row
+
+    @staticmethod
+    def _extract_edit_decision(edit_response: Dict[str, Any]) -> str:
+        editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
+        if isinstance(editor, dict):
+            decision = editor.get("edit_decision")
+            if isinstance(decision, str) and decision:
+                return decision
+        return "edit"
 
     @staticmethod
     def _task_score_from_memory(memory_card: Dict[str, Any]) -> Dict[str, Any]:
