@@ -12,6 +12,7 @@ from eg_rsa.evaluation.experiment_summary import ExperimentSummary
 from eg_rsa.experiments.modes import ExperimentMode
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.llm.edit_agent import EditAgent
+from eg_rsa.memory.lesson_store import LessonStore, build_lesson_from_memory_card
 from eg_rsa.memory.memory_card import MemoryCard
 from eg_rsa.memory.memory_store import MemoryStore
 from eg_rsa.reward.edit_plan_validator import EditPlanValidator
@@ -42,6 +43,7 @@ class EGRSARunner:
             iterations = 1
 
         memory_store = MemoryStore(self.output_dir / "memory" / "memory_cards.jsonl")
+        lesson_store = LessonStore(self.output_dir / "memory" / "lesson_cards.jsonl")
         run_history = []
         best_schema = schema
         best_score = -float("inf")
@@ -50,6 +52,7 @@ class EGRSARunner:
 
         pending_memory_id: Optional[str] = None
         pending_before: Optional[Dict[str, float]] = None
+        pending_card_dict: Optional[Dict[str, Any]] = None
 
         for iteration in range(iterations):
             iter_dir = self.output_dir / f"iteration_{iteration:03d}"
@@ -68,19 +71,28 @@ class EGRSARunner:
             task_score = self._task_score(trajectories, diagnostics)
             current_metrics = {"task_score": float(task_score), "hack_score": float(diagnostics.get("hack_score", 0.0))}
 
-            if self.mode.use_memory and pending_memory_id and pending_before:
+            if self.mode.use_memory and pending_memory_id and pending_before and pending_card_dict:
                 transition = self._make_outcome(before=pending_before, after=current_metrics)
                 memory_store.update_outcome(pending_memory_id, transition)
-                self._write_json(iter_dir / "memory_transition.json", {"memory_id": pending_memory_id, "outcome": transition})
+                measured_card = dict(pending_card_dict)
+                measured_card["outcome"] = transition
+                lesson_card = build_lesson_from_memory_card(measured_card)
+                lesson_store.append(lesson_card)
+                self._write_json(
+                    iter_dir / "memory_transition.json",
+                    {"memory_id": pending_memory_id, "outcome": transition, "lesson_card": lesson_card},
+                )
                 pending_memory_id = None
                 pending_before = None
+                pending_card_dict = None
 
             if task_score > best_score:
                 best_score = task_score
                 best_schema = schema
                 self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
 
-            retrieved_dicts = []
+            retrieved_dicts: List[Dict[str, Any]] = []
+            retrieved_lessons: List[Dict[str, Any]] = []
             if self.mode.use_memory:
                 retrieved = memory_store.retrieve(
                     diagnostics.get("failure_modes", []),
@@ -88,7 +100,12 @@ class EGRSARunner:
                     top_k=int(self.config.get("memory", {}).get("top_k", 3)),
                 )
                 retrieved_dicts = [card.to_dict() for card in retrieved]
+                retrieved_lessons = lesson_store.retrieve(
+                    diagnostics.get("failure_modes", []),
+                    top_k=int(self.config.get("memory", {}).get("lesson_top_k", 5)),
+                )
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
+            self._write_json(iter_dir / "retrieved_lessons.json", retrieved_lessons)
 
             should_edit = iteration < iterations - 1
             if should_edit:
@@ -97,6 +114,7 @@ class EGRSARunner:
                     current_reward_schema=schema.to_dict(),
                     diagnostic_report=diagnostic_report,
                     retrieved_memories=retrieved_dicts,
+                    retrieved_lessons=retrieved_lessons,
                 )
                 raw_edit_plan = edit_response.get("edit_plan", [])
                 edit_decision = self._extract_edit_decision(edit_response)
@@ -161,6 +179,7 @@ class EGRSARunner:
                 memory_store.append(memory_card)
                 pending_memory_id = memory_card.memory_id
                 pending_before = current_metrics
+                pending_card_dict = memory_card.to_dict()
             self._write_json(iter_dir / "memory_card.json", memory_card.to_dict())
 
             run_history.append(
