@@ -103,6 +103,9 @@ class EditPlanValidator:
                 return False, "new component requires name"
             if schema.get_component(name) or schema.get_event_rule(name):
                 return False, f"reward item already exists: {name}"
+            metric_error = cls._validate_metric_component(component, structural_context)
+            if metric_error:
+                return False, metric_error
         if op == "add_event_rule":
             rule = edit.get("event_rule")
             if not isinstance(rule, dict):
@@ -126,6 +129,32 @@ class EditPlanValidator:
             if int(edit.get("duration_steps", 0)) <= 0:
                 return False, "duration_steps must be positive"
         return True, ""
+
+    @staticmethod
+    def _validate_metric_component(component: Dict[str, Any], structural_context: Dict[str, Any]) -> str:
+        component_type = component.get("type")
+        metric_types = RewardEditOperatorApplier.METRIC_COMPONENT_TYPES
+        if component_type not in metric_types:
+            return ""
+        params = component.get("params", {})
+        metric = params.get("metric")
+        if not metric:
+            return f"{component_type} requires params.metric"
+        available_metrics = set(structural_context.get("available_task_metrics", []))
+        if available_metrics and metric not in available_metrics:
+            return f"{component_type} references unknown task metric: {metric}"
+        if component_type == "metric_threshold_bonus":
+            if "threshold" not in params:
+                return "metric_threshold_bonus requires params.threshold"
+            direction = params.get("direction", "ge")
+            if direction not in {"ge", "le"}:
+                return "metric_threshold_bonus params.direction must be ge or le"
+        if component_type == "metric_stagnation_penalty":
+            if int(params.get("window", 0)) <= 0:
+                return "metric_stagnation_penalty requires positive params.window"
+            if float(params.get("threshold", -1.0)) < 0:
+                return "metric_stagnation_penalty requires non-negative params.threshold"
+        return ""
 
     @staticmethod
     def _unknown_condition_events(condition: Dict[str, Any], structural_context: Dict[str, Any]) -> List[str]:
