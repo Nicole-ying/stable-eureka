@@ -11,6 +11,7 @@ def build_edit_prompt(
     current_reward_schema: Dict[str, Any],
     diagnostic_report: Dict[str, Any],
     retrieved_memories: List[Dict[str, Any]],
+    retrieved_lessons: List[Dict[str, Any]] | None = None,
 ) -> str:
     """Build the constrained prompt for the EG-RSA edit agent."""
 
@@ -27,6 +28,13 @@ Hard constraints:
 5. No edit is a valid decision. If evidence is weak, use edit_decision="no_edit" and edit_plan=[].
 6. Detector flags are hypotheses, not facts. You must decide whether each flag is likely true, uncertain, or likely false positive.
 
+Memory usage rules:
+1. Raw memory cards are factual records of past edit trials.
+2. Distilled lesson cards are reusable experience extracted from raw memory; prioritize applicable lessons over raw logs.
+3. Reuse successful lessons only when their applicability matches the current case.
+4. Avoid repeating actions listed in failed or weak lessons unless you provide strong evidence.
+5. If raw memory and lesson memory conflict, state the conflict and choose the safer action.
+
 Role duties:
 A. Diagnostic Analyst: separate observed facts from inferred causes; decide whether the reward actually needs editing.
 B. Memory Reflector: extract reusable lessons from retrieved memory, including what worked, what failed, and what should be avoided.
@@ -34,11 +42,12 @@ C. Reward Editor: propose a minimal edit only if the diagnostic and memory evide
 D. Reward Auditor: check whether the proposed edit is consistent with diagnosis, memory, and operator constraints. If risk is high, choose no_edit.
 
 Decision rules:
-1. If a retrieved memory shows an edit improved task proxies and reduced hack risk, reuse the lesson only when its applicability matches the current case.
-2. If a retrieved memory shows an edit had weak or negative outcome, do not repeat similar edits unless you provide strong evidence.
+1. If a retrieved lesson shows an edit improved task proxies and reduced hack risk, reuse it only when applicable.
+2. If a retrieved lesson shows an edit had weak or negative outcome, do not repeat similar edits unless evidence is strong.
 3. If the current schema already fixed the main failure and remaining detector flags look weak or ambiguous, prefer no_edit.
 4. convert_to_one_time_event is valid only for event_bonus components or event rules.
-5. Dense shaping components should usually use conservative edits, but repeated weak dense edits should be avoided.
+5. add_duration_condition is valid only if the target is an event rule and sustained satisfaction is meaningful.
+6. Dense shaping components should usually use conservative edits, but repeated weak dense edits should be avoided.
 
 Task description:
 {task_description}
@@ -49,8 +58,11 @@ Current reward schema:
 Diagnostic report:
 {json.dumps(diagnostic_report, indent=2, ensure_ascii=False)}
 
-Retrieved memory cards:
+Raw memory cards:
 {json.dumps(retrieved_memories, indent=2, ensure_ascii=False)}
+
+Distilled lesson cards:
+{json.dumps(retrieved_lessons or [], indent=2, ensure_ascii=False)}
 
 Allowed edit operators:
 {json.dumps(allowed_ops, indent=2, ensure_ascii=False)}
