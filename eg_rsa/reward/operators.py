@@ -25,6 +25,13 @@ class RewardEditOperatorApplier:
         "reshape_sparse_to_dense",
     }
 
+    METRIC_COMPONENT_TYPES = {
+        "metric_value",
+        "metric_delta",
+        "metric_threshold_bonus",
+        "metric_stagnation_penalty",
+    }
+
     @classmethod
     def apply(cls, schema: RewardSchema, edit_plan: Iterable[Dict[str, Any]]) -> RewardSchema:
         new_schema = copy.deepcopy(schema)
@@ -43,7 +50,11 @@ class RewardEditOperatorApplier:
             {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply a component or event rule weight by 0 < factor < 1."},
             {"operator": "clip_component", "required": ["target", "clip"], "description": "Set component clip range [min, max]."},
             {"operator": "disable_component", "required": ["target"], "description": "Disable a harmful or redundant component."},
-            {"operator": "add_component", "required": ["component"], "description": "Add a new dense component following RewardComponent schema."},
+            {
+                "operator": "add_component",
+                "required": ["component"],
+                "description": "Add a new dense or metric-based component following RewardComponent schema. Metric component types may include metric_value, metric_delta, metric_threshold_bonus, metric_stagnation_penalty and must reference configured task_metrics via params.metric.",
+            },
             {"operator": "add_event_rule", "required": ["event_rule"], "description": "Add a gated event reward rule. The rule condition must reference available event flags; supports one_time and duration_steps."},
             {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert an event rule or event_bonus component into one-time reward to reduce repeated event exploitation."},
             {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Require an event rule to remain true for K steps."},
