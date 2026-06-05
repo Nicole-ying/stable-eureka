@@ -66,8 +66,8 @@
   },
   "edit_plan": [
     {
-      "operator": "convert_to_one_time_event",
-      "target": "r_contact"
+      "operator": "disable_component",
+      "target": "r_energy"
     }
   ],
   "outcome": {
@@ -80,7 +80,7 @@
     "delta": {},
     "note": "Pending until the edited schema is trained in the next iteration."
   },
-  "lesson": "r_contact event_bonus is exploited via bouncing, causing repeated large rewards. Convert to one-time event to mitigate exploitation.",
+  "lesson": "Task failure due to action penalty discouraging engine use, combined with heavy shaping penalties; not a reward hack.",
   "metadata": {
     "config_path": "configs/eg_rsa_deepseek_memory_test.yml",
     "iteration": 0,
@@ -95,31 +95,38 @@
       "one_shot": false
     },
     "edit_generated": true,
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
     "agent_analysis": {
       "diagnostic_analysis": {
         "observed_facts": [
-          "Episode reward mean is -12.69 with a high standard deviation of 61.46, indicating some episodes achieve very high returns.",
-          "r_contact (event_bonus) has a trigger rate of ~6.8% but a high toggle count of 8, meaning it activates multiple times per episode.",
-          "The shaping components (r_distance, r_velocity, r_angle) fire every step and contribute small negative values.",
-          "r_energy has zero contribution (trigger_rate 0.0), suggesting it fails to penalize actions as intended.",
-          "The hack detector flags repeated_event_exploitation and shaping_goal_mismatch."
+          "Episode reward mean is -12.69, indicating poor performance.",
+          "High reward variance (std 61.46) suggests inconsistent episodes.",
+          "r_energy (action_penalty) has zero trigger rate and contributed 0.0, meaning it never penalized any action.",
+          "r_contact (event_bonus) is sparse (trigger rate 0.068) but contributes 46.9% of total reward magnitude.",
+          "Dominant component is r_contact, which is task-aligned (landing reward).",
+          "Hack flags: high_reward_low_progress, repeated_event_exploitation, shaping_goal_mismatch."
         ],
         "likely_true_failures": [
-          "Repeated event exploitation: the lander can bounce and repeatedly trigger the 20-point contact bonus, causing excessive episode returns with little progress.",
-          "Shaping goal mismatch: the existing dense penalties do not adequately discourage unstable bouncing or incentivize a stable, fast landing."
+          "Heavy distance, velocity, and angle penalties discourage exploration and cause high negative average.",
+          "Action penalty (r_energy) may have led the agent to avoid using main engine, leading to passive crashing.",
+          "Sparse success bonus fails to provide effective credit assignment for landing behavior.",
+          "Shaping penalties do not properly guide towards the landing task (shaping_goal_mismatch)."
         ],
         "likely_false_positives": [
-          "Repeated toggling of unrewarded events (e.g., low_angle) is irrelevant and does not indicate exploitation.",
-          "The high_reward_low_progress flag may be triggered by occasional high-reward episodes from bouncing, but the overall negative mean reduces its seriousness."
+          "high_reward_low_progress: overall episode reward is low, not high; the flag may fire due to occasional high bonus but average is negative.",
+          "repeated_event_exploitation: toggled events (e.g., low_angle) are not used in the reward schema; no reward component exploits them.",
+          "component_dominance of r_contact: it is the only positive component for a successful outcome, not a hack."
         ],
         "root_cause_hypotheses": [
-          "r_contact can be triggered multiple times per episode, enabling bouncing agents to accumulate large bonuses.",
-          "The dense shaping components are too weak or misaligned to counteract the exploitation of the sparse event."
+          "Reward structure weakly guides the agent and disincentivizes necessary actions (engine use), causing task failure, not reward hacking."
         ],
+        "failure_kind": "task_failure",
         "edit_need": "must_edit",
-        "confidence": 0.8
+        "confidence": 0.85
       },
       "memory_reflection": {
+        "lesson_assessments": [],
         "reusable_lessons": [],
         "failed_or_weak_lessons": [],
         "avoid_actions": [],
@@ -128,13 +135,14 @@
       },
       "reward_editor": {
         "edit_decision": "edit",
-        "rationale": "The r_contact event_bonus can be triggered multiple times per episode through bouncing, giving large rewards without requiring proper landing. Making it a one‑time event will grant the bonus only on the first leg contact, eliminating the exploitation while retaining a strong terminal signal for successful landing.",
-        "expected_effect": "Hack risk from repeated event exploitation will drop sharply. The agent will no longer be able to farm the bonus by bouncing. Short‑term task proxy (landing success) may fluctuate, but long‑term the policy should learn to land and remain stable.",
-        "risk_analysis": "The agent might settle for a risky first contact without then stabilising, but the ongoing shaping penalties will still apply afterwards. The large bonus could still cause overvaluation of the first touch, but this risk is lower than the current exploitation.",
+        "next_action": "apply_edit",
+        "rationale": "Remove the action penalty (r_energy) to allow the agent to freely use engines. The zero trigger rate and the inherent penalty for any engine use likely caused the agent to learn a passive crashing policy. Since fuel is infinite per task description, action penalty is unnecessary and harmful.",
+        "expected_effect": "Agent will explore engine usage, leading to better distance and velocity control and eventually more successful landings, reducing the large negative shaping penalties.",
+        "risk_analysis": "Removing action cost may lead to excessive engine firing or erratic behavior, but fuel consumption is not a primary metric and task emphasizes landing as fast as possible. Overly aggressive firing could still result in crashes, but the shaping penalties should penalize that behavior. Low risk.",
         "edit_plan": [
           {
-            "operator": "convert_to_one_time_event",
-            "target": "r_contact"
+            "operator": "disable_component",
+            "target": "r_energy"
           }
         ]
       },
@@ -144,15 +152,11 @@
         "final_action": "apply_edit"
       },
       "distilled_lessons": {
-        "what_worked": [
-          "convert_to_one_time_event can neutralise repeated exploitation of a sparse event bonus."
-        ],
+        "what_worked": [],
         "what_failed": [],
         "avoid_next": [],
-        "recommend_next": [
-          "When repeated event exploitation is flagged on an event_bonus, consider making the reward one‑time as a first response."
-        ],
-        "applicability_notes": "This lesson applies to event‑based rewards that are triggered more than once per episode due to the agent gaming the condition (e.g., bouncing)."
+        "recommend_next": [],
+        "applicability_notes": []
       }
     }
   }
