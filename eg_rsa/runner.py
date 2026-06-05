@@ -66,10 +66,7 @@ class EGRSARunner:
             self._write_json(iter_dir / "diagnostic_report.json", diagnostic_report)
 
             task_score = self._task_score(trajectories, diagnostics)
-            current_metrics = {
-                "task_score": float(task_score),
-                "hack_score": float(diagnostics.get("hack_score", 0.0)),
-            }
+            current_metrics = {"task_score": float(task_score), "hack_score": float(diagnostics.get("hack_score", 0.0))}
 
             if self.mode.use_memory and pending_memory_id and pending_before:
                 transition = self._make_outcome(before=pending_before, after=current_metrics)
@@ -102,15 +99,21 @@ class EGRSARunner:
                     retrieved_memories=retrieved_dicts,
                 )
                 raw_edit_plan = edit_response.get("edit_plan", [])
-                validation = EditPlanValidator.validate(schema, raw_edit_plan)
-                if validation.valid_edits:
-                    edit_plan = validation.valid_edits
-                elif diagnostics.get("dominant_component"):
-                    edit_plan = EditPlanValidator.safe_fallback(schema, diagnostics)
-                    validation.errors.append("No valid edit remained; used safe fallback edit plan.")
-                else:
+                edit_decision = self._extract_edit_decision(edit_response)
+                if edit_decision in {"no_edit", "need_more_evidence"} or raw_edit_plan == []:
                     edit_plan = []
-                    validation.errors.append("No dominant component available; skipped component-directed edit.")
+                    validation = EditPlanValidator.validate(schema, [])
+                    validation.errors.append(f"LLM chose {edit_decision}; no schema edit applied.")
+                else:
+                    validation = EditPlanValidator.validate(schema, raw_edit_plan)
+                    if validation.valid_edits:
+                        edit_plan = validation.valid_edits
+                    elif diagnostics.get("dominant_component") and not self.mode.use_llm_edit:
+                        edit_plan = EditPlanValidator.safe_fallback(schema, diagnostics)
+                        validation.errors.append("No valid edit remained; used non-LLM safe fallback edit plan.")
+                    else:
+                        edit_plan = []
+                        validation.errors.append("No valid edit remained; skipped schema edit.")
                 if not self.mode.use_operator_constraints:
                     validation.errors.append("Operator constraints disabled for ablation; no schema edit was applied.")
                     edit_plan = []
@@ -144,6 +147,13 @@ class EGRSARunner:
                     "validation_errors": validation.errors,
                     "experiment_mode": self.mode.to_dict(),
                     "edit_generated": should_edit,
+                    "agent_analysis": {
+                        "diagnostic_analysis": edit_response.get("diagnostic_analysis", {}),
+                        "memory_reflection": edit_response.get("memory_reflection", {}),
+                        "reward_editor": edit_response.get("reward_editor", {}),
+                        "auditor_check": edit_response.get("auditor_check", {}),
+                        "distilled_lessons": edit_response.get("distilled_lessons", {}),
+                    },
                 },
             )
 
@@ -172,16 +182,22 @@ class EGRSARunner:
 
             if should_edit:
                 if not edit_plan:
-                    break
+                    continue
                 schema = RewardEditOperatorApplier.apply(schema, edit_plan)
                 self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
 
-        self._write_json(
-            self.output_dir / "best_summary.json",
-            {"best_score": best_score, "best_schema": best_schema.to_dict()},
-        )
+        self._write_json(self.output_dir / "best_summary.json", {"best_score": best_score, "best_schema": best_schema.to_dict()})
         ExperimentSummary.save(self.output_dir)
         print(f"EG-RSA multi-iteration run finished. Outputs saved to: {self.output_dir}")
+
+    @staticmethod
+    def _extract_edit_decision(edit_response: Dict[str, Any]) -> str:
+        editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
+        if isinstance(editor, dict):
+            decision = editor.get("edit_decision")
+            if isinstance(decision, str) and decision:
+                return decision
+        return "edit"
 
     @staticmethod
     def _make_outcome(before: Dict[str, float], after: Dict[str, float]) -> Dict[str, Any]:
@@ -198,15 +214,7 @@ class EGRSARunner:
 
     def _diagnose(self, trajectories: List[dict], attribution: dict) -> dict:
         if not self.mode.use_hack_detector:
-            return {
-                "hack_flags": {},
-                "failure_modes": [],
-                "hack_score": 0.0,
-                "suspected_components": [],
-                "dominant_component": attribution.get("dominant_component") if self.mode.use_attribution else None,
-                "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0) if self.mode.use_attribution else 0.0,
-                "repeated_event_details": {},
-            }
+            return {"hack_flags": {}, "failure_modes": [], "hack_score": 0.0, "suspected_components": [], "dominant_component": attribution.get("dominant_component") if self.mode.use_attribution else None, "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0) if self.mode.use_attribution else 0.0, "repeated_event_details": {}}
         detector = RewardHackDetector(**self.config.get("hack_detector", {}))
         diagnostics = detector.detect(trajectories, attribution)
         if not self.mode.use_attribution:
