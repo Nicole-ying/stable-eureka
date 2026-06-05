@@ -20,6 +20,7 @@ from eg_rsa.reward.candidate_evaluator import RewardCandidateEvaluator
 from eg_rsa.reward.edit_decision_gate import EditDecisionGate
 from eg_rsa.reward.edit_plan_validator import EditPlanValidator
 from eg_rsa.reward.operators import RewardEditOperatorApplier
+from eg_rsa.reward.outcome_acceptor import OutcomeAcceptor
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.training.eg_rsa_trainer import EGRSATrainer
@@ -78,22 +79,59 @@ class EGRSARunner:
             task_score = self._task_score(trajectories, diagnostics)
             current_metrics = {"task_score": float(task_score), "hack_score": float(diagnostics.get("hack_score", 0.0))}
 
+            rollback_applied = False
+            skip_edit_due_to_rollback = False
+            outcome_decision_dict: Dict[str, Any] = {}
+
             if self.mode.use_memory and pending_memory_id and pending_before and pending_card_dict:
                 transition = self._make_outcome(before=pending_before, after=current_metrics)
+                outcome_decision = OutcomeAcceptor.decide(
+                    before=pending_before,
+                    after=current_metrics,
+                    config=self.config.get("outcome_acceptor", {}),
+                )
+                outcome_decision_dict = outcome_decision.to_dict()
+                transition["outcome_decision"] = outcome_decision_dict
+
                 memory_store.update_outcome(pending_memory_id, transition)
                 measured_card = dict(pending_card_dict)
                 measured_card["outcome"] = transition
+                measured_card.setdefault("metadata", {})["outcome_decision"] = outcome_decision_dict
                 lesson_card = build_lesson_from_memory_card(measured_card)
                 lesson_store.append(lesson_card)
-                self._write_json(iter_dir / "memory_transition.json", {"memory_id": pending_memory_id, "outcome": transition, "lesson_card": lesson_card})
+                self._write_json(
+                    iter_dir / "memory_transition.json",
+                    {"memory_id": pending_memory_id, "outcome": transition, "outcome_decision": outcome_decision_dict, "lesson_card": lesson_card},
+                )
+
+                if outcome_decision.accepted_for_best and task_score > best_score:
+                    best_score = task_score
+                    best_schema = schema
+                    self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
+
+                if outcome_decision.rollback_recommended:
+                    rollback_applied = True
+                    skip_edit_due_to_rollback = True
+                    rollback_payload = {
+                        "iteration": iteration,
+                        "pending_memory_id": pending_memory_id,
+                        "outcome_decision": outcome_decision_dict,
+                        "rollback_target": "best_accepted_schema",
+                        "best_score": best_score,
+                        "reason": outcome_decision.reason,
+                    }
+                    self._write_json(iter_dir / "rollback_decision.json", rollback_payload)
+                    schema = best_schema
+                    self._write_json(iter_dir / "reward_schema_after_rollback.json", schema.to_dict())
+
                 pending_memory_id = None
                 pending_before = None
                 pending_card_dict = None
-
-            if task_score > best_score:
-                best_score = task_score
-                best_schema = schema
-                self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
+            else:
+                if task_score > best_score:
+                    best_score = task_score
+                    best_schema = schema
+                    self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
 
             retrieved_dicts: List[Dict[str, Any]] = []
             retrieved_lessons: List[Dict[str, Any]] = []
@@ -111,7 +149,7 @@ class EGRSARunner:
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
             self._write_json(iter_dir / "retrieved_lessons.json", retrieved_lessons)
 
-            should_edit = iteration < iterations - 1
+            should_edit = iteration < iterations - 1 and not skip_edit_due_to_rollback
             next_action = "final_iteration"
             gate_result = None
             candidate_result = None
@@ -157,8 +195,13 @@ class EGRSARunner:
                     )
                     edit_response["structural_search_response"] = structural_response
             else:
-                edit_response = {"diagnosis": "Final iteration; edit generation skipped.", "edit_plan": []}
-                edit_decision = "final"
+                if skip_edit_due_to_rollback:
+                    edit_response = {"diagnosis": "Rollback applied after mixed/rejected previous edit; edit generation skipped to rebase on best accepted schema.", "edit_plan": []}
+                    edit_decision = "rollback"
+                    next_action = "rollback_to_best_schema"
+                else:
+                    edit_response = {"diagnosis": "Final iteration; edit generation skipped.", "edit_plan": []}
+                    edit_decision = "final"
                 edit_plan = []
                 validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
 
@@ -193,6 +236,8 @@ class EGRSARunner:
                     "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {},
                     "gate_result": gate_result.to_dict() if gate_result is not None else {},
                     "structural_response": structural_response,
+                    "outcome_decision": outcome_decision_dict,
+                    "rollback_applied": rollback_applied,
                     "experiment_mode": self.mode.to_dict(),
                     "edit_generated": should_edit,
                     "edit_decision": edit_decision,
@@ -230,6 +275,9 @@ class EGRSARunner:
                 "edit_validation_warnings": getattr(validation, "warnings", []),
                 "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {},
                 "edit_gate": gate_result.to_dict() if gate_result is not None else {},
+                "outcome_decision": outcome_decision_dict,
+                "rollback_applied": rollback_applied,
+                "best_score": best_score,
                 "edit_generated": should_edit,
                 "experiment_mode": self.mode.to_dict(),
             })
