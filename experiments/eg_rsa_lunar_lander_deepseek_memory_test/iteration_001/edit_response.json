@@ -1,78 +1,67 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "Episode reward mean is -107.18, standard deviation 11.81.",
-      "r_distance is dominant with ratio 0.606; r_velocity ratio 0.330; r_angle ratio 0.044; r_energy ratio 0.019.",
-      "r_contact is disabled (enabled: false) in current schema.",
-      "Hack flags: high_reward_low_progress true, repeated_event_exploitation true, shaping_goal_mismatch true; component_dominance false.",
-      "Suspected components list is empty.",
-      "Repeated event toggles reported (max low_vx toggles 16) but no reward component corresponds."
+      "Episode reward mean is -12.69 with high variance (σ=61.46).",
+      "r_contact contributes 46.9% of total absolute reward, though its trigger rate is only 6.78%.",
+      "Contact event toggled 8 times per episode, indicating repeated or multiple contacts.",
+      "r_energy triggered zero times, suggesting the agent never used engine actions.",
+      "All dense shaping components (distance, velocity, angle) have trigger rate 1.0 and consistently negative means."
     ],
     "likely_true_failures": [
-      "task_failure: Agent does not complete landing successfully; purely negative dense reward may provide weak positive guidance, leading to poor task progress."
+      "Repeated event exploitation: r_contact is an unclipped per‑step event_bonus that grants reward each step the lander is in contact, encouraging the agent to maximise contact duration instead of performing a single clean landing."
     ],
     "likely_false_positives": [
-      "repeated_event_exploitation flag is likely false positive because the component that rewarded events (r_contact) is disabled and no other event rewards exist.",
-      "high_reward_low_progress flag is likely false positive given the actual low reward (-107) and no evidence of current reward hacking (suspected_components empty).",
-      "shaping_goal_mismatch may be partly real (no explicit terminal reward) but is not causing a reward hack."
+      "‘Component dominance’ flag may be a consequence of the repeated bonus rather than an independent issue; r_contact’s high ratio is exactly the symptom of the reward hack."
     ],
     "root_cause_hypotheses": [
-      "Lack of positive terminal reward discourages successful landing; the agent receives only dense penalties, which may encourage crashing early to minimize cumulative penalty rather than attempting a precise landing.",
-      "The previous removal of the exploitable contact bonus eliminated a hack but left no positive signal for the desired final state."
+      "The r_contact component is defined as a per‑step event_bonus with weight 20.0 and no one‑time or duration constraint. This allows the agent to collect a large positive reward simply by staying on the ground, contrary to the task goal of a fast, efficient landing."
     ],
-    "failure_kind": "task_failure",
-    "edit_need": "optional_edit",
-    "confidence": 0.7
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.9
   },
   "memory_reflection": {
-    "lesson_assessments": [
-      {
-        "lesson_id": "lesson_iter_000_to_001",
-        "quality": "weak",
-        "status": "already_applied",
-        "reason": "The lesson recommended disabling r_contact, which is already applied in the current schema. The measured outcome (task delta near zero, hack delta zero) shows that the edit alone did not improve task performance. Therefore, the lesson is already absorbed and not reusable for further improvement."
-      }
-    ],
+    "lesson_assessments": [],
     "reusable_lessons": [],
-    "failed_or_weak_lessons": [
-      "lesson_iter_000_to_001"
-    ],
-    "avoid_actions": [
-      "Re‑enable r_contact or add any unprotected event‑bonus component without proper gating (e.g., one‑time terminal semantics)."
-    ],
-    "recommended_actions": [
-      "Perform a structural search to explore adding a non‑exploitable one‑time landing reward (e.g., via an event rule with a terminal condition) or to introduce new operator types that can create such a component."
-    ],
-    "memory_confidence": 0.6
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
   },
   "reward_editor": {
-    "edit_decision": "no_edit",
-    "next_action": "structural_search",
-    "rationale": "The current schema has removed the known exploit but fails to guide the agent to successful landing due to the absence of a positive terminal reward. The available edit operators do not support adding a properly gated one‑time landing bonus (e.g., a terminal event rule). Therefore, a structural search is the appropriate next step to investigate design patterns or new operator types that can provide a non‑exploitable positive reward.",
-    "expected_effect": "The structural search may yield a new operator or schema capability (e.g., adding a one‑time event rule) that allows the reward to include a conclusive landing bonus, improving task learning without reintroducing repeated‑event exploitation.",
-    "risk_analysis": "Without a positive signal, the agent may continue to fail at the task. However, any edit attempted now could inadvertently create new exploits or waste training iterations. The structural search is a safer, more informed path.",
-    "edit_plan": []
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "The dominant reward hack is the unbounded per‑step bonus for the ‘contact’ event. Converting it to a one‑time event aligns the reward with the true goal (successful landing) and removes the incentive to artificially prolong contact. This is a minimal, standard fix that directly addresses the highest‑confidence failure.",
+    "expected_effect": "Episode reward sum will decrease initially because the repeated bonus is removed; the one‑time 20.0 bonus will be granted only the first time contact becomes true. The agent will then have to minimise the dense shaping penalties (distance, velocity, angle) by landing quickly and safely. The action penalty will become the sole source of fuel‑efficiency pressure.",
+    "risk_analysis": "Removing the repeated bonus may make the learning problem harder: the shaping penalties are all negative, so the agent must learn to land to get the one‑time bonus. If the shaping is not well‑tuned, the agent could converge to a local optimum (e.g., hovering near the pad to keep penalties low). This can be addressed in later iterations if necessary.",
+    "edit_plan": [
+      {
+        "operator": "convert_to_one_time_event",
+        "target": "r_contact"
+      }
+    ]
   },
   "auditor_check": {
     "approved": true,
     "issues": [],
-    "final_action": "structural_search"
+    "final_action": "apply_edit"
   },
   "distilled_lessons": {
     "what_worked": [],
-    "what_failed": [
-      "Simply disabling the exploitable contact bonus without adding alternative positive guidance did not improve task performance (task delta ~0)."
-    ],
-    "avoid_next": [
-      "Do not reintroduce unprotected event bonuses that can fire repeatedly; if a one‑time landing reward is needed, it must be structurally gated (terminal or first‑time only)."
-    ],
+    "what_failed": [],
+    "avoid_next": [],
     "recommend_next": [
-      "Pursue structural search for a one‑time landing reward mechanism, either via a new operator or by extending the event‑rule schema to support terminal events."
+      "After applying this edit, monitor whether the agent learns to land reliably. If it still struggles, consider adjusting the weights of the dense shaping components or strengthening the action penalty to encourage fuel‑efficient engine use."
     ],
     "applicability_notes": [
-      "Current operator set lacks direct support for creating a one‑time terminal reward; future iterations may benefit from an operator like 'add_terminal_event_rule' or 'convert_to_one_time_event' applied to a properly defined rule."
+      "convert_to_one_time_event is particularly effective for landing tasks where contact should happen at most once per episode."
     ]
   },
-  "diagnosis": "The disabled contact bonus eliminated the known reward hack, but the agent still fails to land properly due to insufficient positive guidance. Hack flags are likely false positives; focus is now on structural improvements to reward design.",
-  "edit_plan": []
+  "diagnosis": "The current reward schema contains a clear reward hack: r_contact’s per‑step event bonus encourages repeated contact exploitation. The agent likely avoids engine use to minimise penalties and instead stays on the ground. The fix is to make the contact bonus one‑time.",
+  "edit_plan": [
+    {
+      "operator": "convert_to_one_time_event",
+      "target": "r_contact"
+    }
+  ]
 }
