@@ -1,119 +1,78 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "Episode reward mean is -52.5, indicating extremely poor learning.",
-      "High episode reward std (18.66) suggests high variance in outcomes.",
-      "r_distance dominates total reward magnitude (37.6%), always triggered with mean penalty -0.946.",
-      "r_velocity and r_angle also always triggered, summing to a large negative baseline.",
-      "r_contact is sparse (trigger rate 0.0437) but provides the only positive reward (mean 0.875).",
-      "r_energy is already disabled and contributes zero.",
-      "Hack flags: high_reward_low_progress true, repeated_event_exploitation true, shaping_goal_mismatch true.",
-      "Repeated event details show high toggle counts (low_vx 11) but no corresponding reward components exist.",
-      "Overall reward structure strongly penalizes the agent at every step, with rare positive reinforcement."
+      "Episode reward mean is -107.18, standard deviation 11.81.",
+      "r_distance is dominant with ratio 0.606; r_velocity ratio 0.330; r_angle ratio 0.044; r_energy ratio 0.019.",
+      "r_contact is disabled (enabled: false) in current schema.",
+      "Hack flags: high_reward_low_progress true, repeated_event_exploitation true, shaping_goal_mismatch true; component_dominance false.",
+      "Suspected components list is empty.",
+      "Repeated event toggles reported (max low_vx toggles 16) but no reward component corresponds."
     ],
     "likely_true_failures": [
-      "The dense penalty components (distance, velocity, angle) create an overwhelming negative baseline that discourages exploration.",
-      "The sparse contact bonus does not provide sufficient credit assignment for landing behavior.",
-      "The shaping penalties are not well-aligned with the landing task, penalizing necessary states (e.g., descent velocity).",
-      "The agent fails to learn a landing policy because the reward signal is dominated by punishment."
+      "task_failure: Agent does not complete landing successfully; purely negative dense reward may provide weak positive guidance, leading to poor task progress."
     ],
     "likely_false_positives": [
-      "high_reward_low_progress: the average episode reward is very low, not high; this flag may be triggered by occasional high-variance bonus episodes but is misleading.",
-      "repeated_event_exploitation: events are toggling, but no reward component uses them; therefore no actual reward exploitation is possible.",
-      "component_dominance flag is already false, confirming no single component is dangerously dominant."
+      "repeated_event_exploitation flag is likely false positive because the component that rewarded events (r_contact) is disabled and no other event rewards exist.",
+      "high_reward_low_progress flag is likely false positive given the actual low reward (-107) and no evidence of current reward hacking (suspected_components empty).",
+      "shaping_goal_mismatch may be partly real (no explicit terminal reward) but is not causing a reward hack."
     ],
     "root_cause_hypotheses": [
-      "The dense penalty components are too heavily weighted, making the reward overwhelmingly negative and preventing effective learning.",
-      "The sparse contact bonus alone is insufficient to guide the agent through the necessary intermediate states.",
-      "The reward structure fails to provide meaningful gradient toward landing, causing task failure rather than reward hacking."
+      "Lack of positive terminal reward discourages successful landing; the agent receives only dense penalties, which may encourage crashing early to minimize cumulative penalty rather than attempting a precise landing.",
+      "The previous removal of the exploitable contact bonus eliminated a hack but left no positive signal for the desired final state."
     ],
     "failure_kind": "task_failure",
-    "edit_need": "must_edit",
-    "confidence": 0.9
+    "edit_need": "optional_edit",
+    "confidence": 0.7
   },
   "memory_reflection": {
     "lesson_assessments": [
       {
         "lesson_id": "lesson_iter_000_to_001",
-        "quality": "strong",
-        "status": "reusable_now",
-        "reason": "The insight that heavy shaping penalties are a core problem remains highly applicable to the current schema. Disabling r_energy helped but did not alleviate the dominant dense penalties, so the lesson's warning about heavy penalties still guides action."
+        "quality": "weak",
+        "status": "already_applied",
+        "reason": "The lesson recommended disabling r_contact, which is already applied in the current schema. The measured outcome (task delta near zero, hack delta zero) shows that the edit alone did not improve task performance. Therefore, the lesson is already absorbed and not reusable for further improvement."
       }
     ],
-    "reusable_lessons": [
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [
       "lesson_iter_000_to_001"
     ],
-    "failed_or_weak_lessons": [],
     "avoid_actions": [
-      "Adding new event_bonus components that could be toggled without duration conditions.",
-      "Drastically disabling all penalties, as some shaping is needed."
+      "Re‑enable r_contact or add any unprotected event‑bonus component without proper gating (e.g., one‑time terminal semantics)."
     ],
     "recommended_actions": [
-      "Decrease the weight of the dense penalty components to reduce the negative magnitude."
+      "Perform a structural search to explore adding a non‑exploitable one‑time landing reward (e.g., via an event rule with a terminal condition) or to introduce new operator types that can create such a component."
     ],
-    "memory_confidence": 0.8
+    "memory_confidence": 0.6
   },
   "reward_editor": {
-    "edit_decision": "edit",
-    "next_action": "apply_edit",
-    "rationale": "Reducing the weights of r_distance, r_velocity, and r_angle will lower the overall negative pressure, allowing the sparse contact bonus to have relatively more impact. This directly addresses the root cause hypothesis that heavy shaping penalties hinder learning. The edit is safe, uses allowed operators, and aligns with the lesson from memory that heavy penalties are detrimental.",
-    "expected_effect": "Episode reward mean should become less negative, and the agent may survive longer, increasing the chance of accidental landings. Task proxies (episode length, landing frequency) should improve slowly. Hack score may remain unchanged or decrease as the reward becomes less punishing.",
-    "risk_analysis": "If weights are decreased too much, the agent may ignore important stability signals and crash more. However, the chosen factors (0.5, 0.4, 0.333) retain a non-zero penalty while significantly reducing magnitude. The risk of worse performance is low given the current near-failure baseline.",
-    "edit_plan": [
-      {
-        "operator": "decrease_weight",
-        "target": "r_distance",
-        "factor": 0.5
-      },
-      {
-        "operator": "decrease_weight",
-        "target": "r_velocity",
-        "factor": 0.4
-      },
-      {
-        "operator": "decrease_weight",
-        "target": "r_angle",
-        "factor": 0.333
-      }
-    ]
+    "edit_decision": "no_edit",
+    "next_action": "structural_search",
+    "rationale": "The current schema has removed the known exploit but fails to guide the agent to successful landing due to the absence of a positive terminal reward. The available edit operators do not support adding a properly gated one‑time landing bonus (e.g., a terminal event rule). Therefore, a structural search is the appropriate next step to investigate design patterns or new operator types that can provide a non‑exploitable positive reward.",
+    "expected_effect": "The structural search may yield a new operator or schema capability (e.g., adding a one‑time event rule) that allows the reward to include a conclusive landing bonus, improving task learning without reintroducing repeated‑event exploitation.",
+    "risk_analysis": "Without a positive signal, the agent may continue to fail at the task. However, any edit attempted now could inadvertently create new exploits or waste training iterations. The structural search is a safer, more informed path.",
+    "edit_plan": []
   },
   "auditor_check": {
     "approved": true,
     "issues": [],
-    "final_action": "apply_edit"
+    "final_action": "structural_search"
   },
   "distilled_lessons": {
-    "what_worked": [
-      "Disabling r_energy improved task score slightly, confirming that removing unnecessary penalties helps."
+    "what_worked": [],
+    "what_failed": [
+      "Simply disabling the exploitable contact bonus without adding alternative positive guidance did not improve task performance (task delta ~0)."
     ],
-    "what_failed": [],
     "avoid_next": [
-      "Avoid adding new event_bonus components without anti-exploitation safeguards, given high repeated_event_exploitation detector flag."
+      "Do not reintroduce unprotected event bonuses that can fire repeatedly; if a one‑time landing reward is needed, it must be structurally gated (terminal or first‑time only)."
     ],
     "recommend_next": [
-      "If weight reduction improves performance but still insufficient, consider adding dense progress-based shaping (e.g., delta-distance reward) using allowed component types."
+      "Pursue structural search for a one‑time landing reward mechanism, either via a new operator or by extending the event‑rule schema to support terminal events."
     ],
     "applicability_notes": [
-      "The lesson from iter_000_to_001 about heavy shaping penalties remains valid; weight reduction is a natural next step.",
-      "The detector false positives for repeated_event_exploitation do not indicate a real hack, so event-based components could be added later if carefully designed with duration conditions once event_rules are editable."
+      "Current operator set lacks direct support for creating a one‑time terminal reward; future iterations may benefit from an operator like 'add_terminal_event_rule' or 'convert_to_one_time_event' applied to a properly defined rule."
     ]
   },
-  "diagnosis": "Current reward is dominated by dense penalties that prevent the agent from learning to land. Reducing their weights should improve reward signal without introducing new risks.",
-  "edit_plan": [
-    {
-      "operator": "decrease_weight",
-      "target": "r_distance",
-      "factor": 0.5
-    },
-    {
-      "operator": "decrease_weight",
-      "target": "r_velocity",
-      "factor": 0.4
-    },
-    {
-      "operator": "decrease_weight",
-      "target": "r_angle",
-      "factor": 0.333
-    }
-  ]
+  "diagnosis": "The disabled contact bonus eliminated the known reward hack, but the agent still fails to land properly due to insufficient positive guidance. Hack flags are likely false positives; focus is now on structural improvements to reward design.",
+  "edit_plan": []
 }
