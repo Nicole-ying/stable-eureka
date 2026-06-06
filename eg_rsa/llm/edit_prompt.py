@@ -12,21 +12,31 @@ def build_edit_prompt(
     diagnostic_report: Dict[str, Any],
     retrieved_memories: List[Dict[str, Any]],
     retrieved_lessons: List[Dict[str, Any]] | None = None,
+    reflection_report: Dict[str, Any] | None = None,
 ) -> str:
     """Build the constrained prompt for the EG-RSA edit agent."""
 
     allowed_ops = RewardEditOperatorApplier.allowed_operator_descriptions()
     return f"""
-You are EG-RSA, an experience-guided reward search agent.
-You must act through four internal roles and return one JSON object only.
+You are the Reward EditAgent of EG-RSA.
+A separate ReflectionAgent has already analyzed the diagnostics and memory. Your job is to turn
+that reflection strategy into a concrete executable reward edit plan.
+Return one JSON object only.
 
 Mission constraints:
-1. Improve reward search through diagnosis, memory, editing, auditing, and self-evolution.
+1. Improve reward search through memory-guided and reflection-guided editing.
 2. Do NOT use environment oracle reward or official reward values for decisions.
-3. Do NOT use environment-specific hard-coded rules; use only task description, diagnostics, schema, allowed operators, and retrieved memory.
+3. Do NOT use environment-specific hard-coded rules; use only task description, diagnostics, schema, allowed operators, retrieved memory, and reflection report.
 4. Do NOT write Python code.
 5. Do NOT invent new edit operators.
-6. Every edit must use allowed operators and existing targets.
+6. Every edit must use allowed operators and existing targets, except add_component/add_event_rule may create new schema items using configured metrics/events.
+
+Reflection alignment rules:
+1. Follow the ReflectionAgent strategy unless you explicitly explain why it is unsafe.
+2. If reflection says plan_type="coupled_rebalancing" and atomicity="atomic", output a coherent package and mark it atomic.
+3. Do NOT let a coupled package degrade into only the negative/decrease edit. If you decrease one dense shaping component to reduce dominance, pair it with the intended positive/completion/process support edits.
+4. If failed lessons say "solo decrease_weight failed", avoid repeating solo decrease_weight.
+5. If you cannot form a safe package, choose structural_search or continue_training rather than a weak single edit.
 
 Critical distinction:
 A detector flag is only a hypothesis. You must distinguish:
@@ -38,31 +48,14 @@ Memory usage rules:
 1. Raw memory cards are factual records of past edit trials.
 2. Distilled lesson cards are reusable experience extracted from raw memory.
 3. Do not merely mention retrieved lessons. Evaluate their quality and applicability.
-4. Classify each relevant lesson as one of: reusable_now, already_applied, not_applicable, weak_or_failed, conflicting.
-5. Reuse successful lessons only when their applicability matches the current case.
-6. Avoid repeating failed or weak lessons unless you provide strong evidence.
-7. If lessons conflict, state the conflict and choose the safer action.
-
-Role duties:
-A. Diagnostic Analyst: separate observed facts from inferred causes; decide whether the reward actually needs editing.
-B. Memory Reflector: assess lesson quality, applicability, conflicts, and whether a lesson is already absorbed by the current schema.
-C. Reward Editor: choose one next action. Do not waste another iteration by repeating the same schema without a reason.
-D. Reward Auditor: check whether the action is consistent with diagnosis, memory, and operator constraints. If risk is high, reject or choose a safer action.
+4. Reuse successful lessons only when their applicability matches the current case.
+5. Avoid repeating failed or weak lessons unless you provide strong evidence and a materially different package.
 
 Allowed next_action values:
 - apply_edit: use edit_plan to update the schema.
 - structural_search: the issue is not a current hack but poor task guidance; propose a generic structural reward-search direction using allowed operators if possible.
 - continue_training: the reward is plausible and insufficient training is the main hypothesis; use sparingly.
 - early_stop: no reliable edit or search direction exists; stop this reward-search run.
-
-Decision rules:
-1. If edit_decision="no_edit", next_action must explain what happens next; do not leave it as a wasted repeated training run.
-2. If task proxies remain poor but reward-hack evidence is weak, prefer structural_search over plain no_edit.
-3. If the current schema already fixed the main failure and remaining detector flags are likely false positives, do not edit that same failure again.
-4. If a retrieved lesson is already applied by the current schema, classify it as already_applied rather than reusable_now.
-5. convert_to_one_time_event is valid only for event_bonus components or event rules.
-6. add_duration_condition is valid only if the target is an event rule and sustained satisfaction is meaningful.
-7. Dense shaping components should use conservative edits, but repeated weak dense edits should be avoided.
 
 Task description:
 {task_description}
@@ -72,6 +65,9 @@ Current reward schema:
 
 Diagnostic report:
 {json.dumps(diagnostic_report, indent=2, ensure_ascii=False)}
+
+Reflection report:
+{json.dumps(reflection_report or {}, indent=2, ensure_ascii=False)}
 
 Raw memory cards:
 {json.dumps(retrieved_memories, indent=2, ensure_ascii=False)}
@@ -97,7 +93,7 @@ Return exactly this JSON format:
     "lesson_assessments": [
       {{
         "lesson_id": "lesson id if available",
-        "quality": "strong | moderate | weak",
+        "quality": "strong | moderate | weak | failed",
         "status": "reusable_now | already_applied | not_applicable | weak_or_failed | conflicting",
         "reason": "why this lesson should or should not affect the current decision"
       }}
@@ -111,6 +107,9 @@ Return exactly this JSON format:
   "reward_editor": {{
     "edit_decision": "edit | no_edit | need_more_evidence",
     "next_action": "apply_edit | structural_search | continue_training | early_stop",
+    "plan_type": "single_edit | coupled_rebalancing | structural_search | continue_training | early_stop",
+    "atomicity": "atomic | separable",
+    "max_reasonable_edits": 1,
     "rationale": "why this action is chosen",
     "expected_effect": "expected change in task proxies and hack risk",
     "risk_analysis": "what could go wrong",
@@ -129,6 +128,9 @@ Return exactly this JSON format:
     "applicability_notes": []
   }},
   "diagnosis": "short final diagnosis",
-  "edit_plan": []
+  "edit_plan": [],
+  "plan_type": "single_edit | coupled_rebalancing | structural_search | continue_training | early_stop",
+  "atomicity": "atomic | separable",
+  "max_reasonable_edits": 1
 }}
 """.strip()
