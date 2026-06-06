@@ -12,6 +12,7 @@ from eg_rsa.evaluation.experiment_summary import ExperimentSummary
 from eg_rsa.experiments.modes import ExperimentMode
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.llm.edit_agent import EditAgent
+from eg_rsa.llm.reflection_agent import ReflectionAgent
 from eg_rsa.llm.structural_search_agent import StructuralSearchAgent
 from eg_rsa.memory.lesson_store import LessonStore, build_lesson_from_memory_card
 from eg_rsa.memory.memory_card import MemoryCard
@@ -38,6 +39,7 @@ class EGRSARunner:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.mode = ExperimentMode.from_config(self.config)
         llm_client = build_llm_client(self.config) if self.mode.use_llm_edit else None
+        self.reflection_agent = ReflectionAgent(llm_client=llm_client)
         self.edit_agent = EditAgent(llm_client=llm_client)
         self.structural_search_agent = StructuralSearchAgent(llm_client=llm_client)
         self.structural_context = self._load_structural_context()
@@ -154,17 +156,29 @@ class EGRSARunner:
             gate_result = None
             candidate_result = None
             structural_response: Dict[str, Any] = {}
+            reflection_report: Dict[str, Any] = {}
             if should_edit:
-                edit_response = self.edit_agent.generate_edit_plan(
+                reflection_report = self.reflection_agent.reflect(
                     task_description=task_description,
                     current_reward_schema=schema.to_dict(),
                     diagnostic_report=diagnostic_report,
                     retrieved_memories=retrieved_dicts,
                     retrieved_lessons=retrieved_lessons,
                 )
+                self._write_json(iter_dir / "reflection_report.json", reflection_report)
+
+                edit_response = self.edit_agent.generate_edit_plan(
+                    task_description=task_description,
+                    current_reward_schema=schema.to_dict(),
+                    diagnostic_report=diagnostic_report,
+                    retrieved_memories=retrieved_dicts,
+                    retrieved_lessons=retrieved_lessons,
+                    reflection_report=reflection_report,
+                )
                 raw_edit_plan = edit_response.get("edit_plan", [])
                 edit_decision = self._extract_edit_decision(edit_response)
                 next_action = self._extract_next_action(edit_response)
+                plan_metadata = self._extract_plan_metadata(edit_response, reflection_report)
                 edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
                     schema=schema,
                     raw_edit_plan=raw_edit_plan,
@@ -172,6 +186,7 @@ class EGRSARunner:
                     trajectories=trajectories,
                     edit_decision=edit_decision,
                     next_action=next_action,
+                    plan_metadata=plan_metadata,
                 )
 
                 if not edit_plan and next_action == "structural_search":
@@ -185,6 +200,7 @@ class EGRSARunner:
                     self._write_json(iter_dir / "structural_search_response.json", structural_response)
                     structural_decision = self._extract_edit_decision(structural_response)
                     structural_next_action = self._extract_next_action(structural_response)
+                    structural_plan_metadata = self._extract_plan_metadata(structural_response, reflection_report)
                     edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
                         schema=schema,
                         raw_edit_plan=structural_response.get("edit_plan", []),
@@ -192,6 +208,7 @@ class EGRSARunner:
                         trajectories=trajectories,
                         edit_decision=structural_decision,
                         next_action=structural_next_action,
+                        plan_metadata=structural_plan_metadata,
                     )
                     edit_response["structural_search_response"] = structural_response
             else:
@@ -235,6 +252,7 @@ class EGRSARunner:
                     "validation_warnings": getattr(validation, "warnings", []),
                     "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {},
                     "gate_result": gate_result.to_dict() if gate_result is not None else {},
+                    "reflection_report": reflection_report,
                     "structural_response": structural_response,
                     "outcome_decision": outcome_decision_dict,
                     "rollback_applied": rollback_applied,
@@ -243,6 +261,7 @@ class EGRSARunner:
                     "edit_decision": edit_decision,
                     "next_action": next_action,
                     "agent_analysis": {
+                        "reflection_report": reflection_report,
                         "diagnostic_analysis": edit_response.get("diagnostic_analysis", {}),
                         "memory_reflection": edit_response.get("memory_reflection", {}),
                         "reward_editor": edit_response.get("reward_editor", {}),
@@ -266,6 +285,7 @@ class EGRSARunner:
                 "failure_modes": diagnostics.get("failure_modes", []),
                 "dominant_component": diagnostics.get("dominant_component"),
                 "dominant_component_ratio": diagnostics.get("dominant_component_ratio", 0.0),
+                "reflection_strategy": reflection_report.get("strategy", {}) if reflection_report else {},
                 "edit_plan": edit_plan,
                 "edit_decision": edit_decision,
                 "next_action": next_action,
@@ -304,6 +324,7 @@ class EGRSARunner:
         trajectories: List[Dict[str, Any]],
         edit_decision: str,
         next_action: str,
+        plan_metadata: Optional[Dict[str, Any]] = None,
     ):
         if edit_decision in {"no_edit", "need_more_evidence"} or raw_edit_plan == []:
             edit_plan: List[Dict[str, Any]] = []
@@ -329,6 +350,7 @@ class EGRSARunner:
                 edit_plan=candidate_result.accepted_edits,
                 diagnostic_report=diagnostic_report,
                 gate_config=self.config.get("edit_gate", {}),
+                plan_metadata=plan_metadata or {},
             )
             edit_plan = gate_result.accepted_edits
             if edit_plan:
@@ -371,6 +393,22 @@ class EGRSARunner:
             if isinstance(action, str) and action:
                 return action
         return "apply_edit"
+
+    @staticmethod
+    def _extract_plan_metadata(edit_response: Dict[str, Any], reflection_report: Dict[str, Any]) -> Dict[str, Any]:
+        editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
+        strategy = reflection_report.get("strategy", {}) if isinstance(reflection_report, dict) else {}
+        metadata = {
+            "plan_type": edit_response.get("plan_type") or editor.get("plan_type") or strategy.get("plan_type") or "single_edit",
+            "atomicity": edit_response.get("atomicity") or editor.get("atomicity") or strategy.get("atomicity") or "separable",
+            "max_reasonable_edits": edit_response.get("max_reasonable_edits") or editor.get("max_reasonable_edits") or strategy.get("max_reasonable_edits") or 1,
+            "reflection_strategy": strategy,
+        }
+        try:
+            metadata["max_reasonable_edits"] = int(metadata["max_reasonable_edits"])
+        except (TypeError, ValueError):
+            metadata["max_reasonable_edits"] = 1
+        return metadata
 
     @staticmethod
     def _make_outcome(before: Dict[str, float], after: Dict[str, float]) -> Dict[str, Any]:
