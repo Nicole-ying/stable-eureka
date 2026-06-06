@@ -1,0 +1,134 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean is high (2066.8) with large standard deviation (1334.0).",
+      "r_approach_region is the dominant component (ratio 0.446), contributing almost half of the total reward sum.",
+      "r_approach_progress has very low contribution (ratio 0.0007) and low trigger rate (12.5%), indicating the agent rarely improves its approach region score per step.",
+      "Event rules r_safe_contact_once and r_stable_landing_once never triggered (sum = 0), despite frequent leg contact toggles (left_contact toggled up to 22 times per episode).",
+      "Detector flagged repeated_event_exploitation and shaping_goal_mismatch as failure modes; hack_score is 0.5.",
+      "r_landing_quality and r_stability have decent contributions but are overshadowed by r_approach_region."
+    ],
+    "likely_true_failures": [
+      "Shaping_goal_mismatch: the reward structure overemphasises staying in the safe approach region, leading to slow, fuel-inefficient landings instead of the true objective (fast landing with minimal fuel)."
+    ],
+    "likely_false_positives": [
+      "Repeated_event_exploitation: event rules are already one-time and require sustained conditions (duration 2/5), none of which were met; the high leg‑toggle counts are physical contact changes that do not produce reward. Thus the detector flag is a false positive."
+    ],
+    "root_cause_hypotheses": [
+      "The dense shaping component r_approach_region has a relatively high weight (1.5) compared to terminal rewards, encouraging the agent to loiter in the approach zone rather than executing a swift, efficient landing.",
+      "The progress‑based component r_approach_progress has minimal effect because the approach_region_score is already near its maximum early in the episode, leaving little room for positive deltas.",
+      "The lack of a penalty for stagnation allows the agent to hover without progress."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.7
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "The dominant approach region component promotes hovering rather than fast landing. Lowering its weight, increasing terminal rewards, and adding a stagnation penalty directly address the shaping_goal_mismatch without affecting the false positive event exploit flag.",
+    "expected_effect": "Reward will shift toward stable, high‑quality landings and away from in‑region loitering. The stagnation penalty will create a mild urgency to improve the approach score, encouraging faster descent. This should reduce episode length and fuel consumption while maintaining landing success.",
+    "risk_analysis": "Reducing r_approach_region may slow initial learning of the safe approach zone. The stagnation penalty could push the agent into reckless descents that end in crashes if not balanced by the increased stability/landing weights. The weight changes are moderate (factor 0.5/1.5) to avoid drastic shifts.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.5,
+        "note": "Reduce approach region incentive to lower dominance and decrease hovering."
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_landing_quality",
+        "factor": 1.5,
+        "note": "Boost reward for good landing quality to align with task goal."
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stability",
+        "factor": 1.5,
+        "note": "Increase reward for stable attitude, supporting safe landings."
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_approach_stagnation",
+          "type": "metric_stagnation_penalty",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "metric": "approach_region_score"
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true
+        },
+        "note": "Add a small penalty when approach region score does not improve, discouraging loitering."
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [
+      "If stagnation penalty and weight shifts succeed, consider adding structural exploration for direct time- or velocity‑based shaping metrics to further improve landing speed."
+    ],
+    "applicability_notes": [
+      "Edits target the shaping_goal_mismatch fault; event rules are left untouched as they are already one‑time and suit the task."
+    ]
+  },
+  "diagnosis": "Shaping reward overemphasises approach region, causing task failure due to slow and fuel‑inefficient landings. Current event rules already prevent exploitation, but the agent never triggers them. Adjusting dense component weights and adding a stagnation penalty will better align the learned reward with the true goal of fast, safe landing.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5,
+      "note": "Reduce approach region incentive to lower dominance and decrease hovering."
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_landing_quality",
+      "factor": 1.5,
+      "note": "Boost reward for good landing quality to align with task goal."
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stability",
+      "factor": 1.5,
+      "note": "Increase reward for stable attitude, supporting safe landings."
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_approach_stagnation",
+        "type": "metric_stagnation_penalty",
+        "weight": 0.5,
+        "inputs": [],
+        "params": {
+          "metric": "approach_region_score"
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true
+      },
+      "note": "Add a small penalty when approach region score does not improve, discouraging loitering."
+    }
+  ]
+}

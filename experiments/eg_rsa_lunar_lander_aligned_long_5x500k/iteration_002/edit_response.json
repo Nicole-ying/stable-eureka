@@ -1,0 +1,183 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean is high (2066.8) but with large standard deviation (1334.0).",
+      "r_approach_region contributes 44.6% of total reward, heavily dominating other components.",
+      "r_approach_progress contributes negligibly (0.07%) and triggers only 12.5% of the time.",
+      "Event rules r_safe_contact_once and r_stable_landing_once never trigger (sum = 0).",
+      "Leg contact toggles occur frequently (e.g., left_contact toggles up to 22 times per episode), but no event reward is collected.",
+      "Detector flags repeated_event_exploitation and shaping_goal_mismatch with hack_score 0.5.",
+      "Stability and landing quality components have decent magnitude but are overshadowed by approach region.",
+      "Energy penalty is minimal (ratio 0.45%) and trigger rate 68.9%, indicating moderate fuel use."
+    ],
+    "likely_true_failures": [
+      "Shaping_goal_mismatch: The reward over-emphasizes staying in the safe approach region, leading to slow, fuel-inefficient landings instead of the true objective (fast, safe landing)."
+    ],
+    "likely_false_positives": [
+      "Repeated_event_exploitation: Event rules are already one-time and require sustained conditions (duration 2/5); none are met. The high leg-toggle counts are physical contact changes that do not yield reward. The detector flag is a false positive."
+    ],
+    "root_cause_hypotheses": [
+      "The r_approach_region metric_value component has high weight (1.5) relative to terminal landing rewards, encouraging prolonged hovering.",
+      "r_approach_progress is ineffective because approach_region_score is already near its maximum early in the episode.",
+      "Lack of an urgency penalty (e.g., stagnation penalty) allows the agent to loiter without cost."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "weak",
+        "status": "weak_or_failed",
+        "reason": "The lesson's single edit (decrease r_approach_region weight) led to a small task-score decline; however, the underlying root cause analysis is sound and the full planned combination was not applied. Repeating the same solo edit would be ineffective, but the insight can guide a more comprehensive edit."
+      }
+    ],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "avoid_actions": [
+      "Repeating a solo decrease of r_approach_region weight without complementary changes."
+    ],
+    "recommended_actions": [
+      "Reduce r_approach_region weight more aggressively, but simultaneously increase landing quality and stability weights, and add a stagnation penalty to discourage loitering."
+    ],
+    "memory_confidence": 0.4
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "The current schema causes task failure by heavily rewarding the approach region, leading to hovering. To align with the goal of fast, safe landing, we need to shift reward emphasis toward completing the landing. The edit plan reduces the approach region incentive, boosts landing quality and stability, penalizes stagnation in the approach zone, and adds a one-time bonus for both legs touching ground to encourage terminal completion. This multi-faceted adjustment directly addresses the root cause without requiring new metrics.",
+    "expected_effect": "Reduced hovering and faster descent; reward balance shifts from dense region shaping to terminal landing quality. The one-time both_contact bonus provides a strong completion signal without enabling exploitation.",
+    "risk_analysis": "Lowering r_approach_region too much may initially slow learning of the safe approach. The stagnation penalty and lower region weight could induce riskier landings if landing quality/stability incentives are insufficient. However, the boosted landing and stability weights should guide a safe trajectory. The both_contact bonus could be triggered early without a stable landing, but the landing quality metric will penalize poor final states. Overall risk is moderate and limited by the one-time nature of the bonus and the conservative weight factors.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.3,
+        "note": "Aggressively reduce dominance of approach region to discourage loitering."
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_landing_quality",
+        "factor": 2.0,
+        "note": "Boost reward for high-quality landings to align with task goal."
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stability",
+        "factor": 1.5,
+        "note": "Increase stability reward to maintain safe attitude during descent."
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_approach_stagnation",
+          "type": "metric_stagnation_penalty",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "metric": "approach_region_score",
+            "window": 10
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true
+        },
+        "note": "Penalize lack of improvement in approach region score, discouraging loitering."
+      },
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_both_contact_bonus",
+          "type": "event_bonus",
+          "weight": 20.0,
+          "condition": {
+            "both_contact": true
+          },
+          "one_time": true,
+          "enabled": true
+        },
+        "note": "Provide a strong one-time bonus when both legs touch ground, incentivizing landing completion."
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [
+      "decrease_weight on r_approach_region alone"
+    ],
+    "avoid_next": [
+      "Solo weight reduction on dense shaping without auxiliary incentives."
+    ],
+    "recommend_next": [
+      "Combine weight shifts on dense components with a stagnation penalty and event-based completion bonus to accelerate landing."
+    ],
+    "applicability_notes": [
+      "The failed lesson's root cause hypothesis remains valid; the failure was due to insufficient implementation – applying the full combination, along with a new both_contact bonus, should address the task failure."
+    ]
+  },
+  "diagnosis": "Shaping_goal_mismatch due to dominant approach region component; repeated event exploitation flag is a false positive. Need to rebalance toward landing completion and speed.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.3,
+      "note": "Aggressively reduce dominance of approach region to discourage loitering."
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_landing_quality",
+      "factor": 2.0,
+      "note": "Boost reward for high-quality landings to align with task goal."
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stability",
+      "factor": 1.5,
+      "note": "Increase stability reward to maintain safe attitude during descent."
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_approach_stagnation",
+        "type": "metric_stagnation_penalty",
+        "weight": 0.5,
+        "inputs": [],
+        "params": {
+          "metric": "approach_region_score",
+          "window": 10
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true
+      },
+      "note": "Penalize lack of improvement in approach region score, discouraging loitering."
+    },
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_both_contact_bonus",
+        "type": "event_bonus",
+        "weight": 20.0,
+        "condition": {
+          "both_contact": true
+        },
+        "one_time": true,
+        "enabled": true
+      },
+      "note": "Provide a strong one-time bonus when both legs touch ground, incentivizing landing completion."
+    }
+  ]
+}
