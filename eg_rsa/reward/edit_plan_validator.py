@@ -152,11 +152,25 @@ class EditPlanValidator:
             if "metric" not in params and component.get("metric"):
                 params["metric"] = component.get("metric")
                 notes.append("Moved component.metric into component.params.metric.")
+            if component_type == "metric_stagnation_penalty":
+                if int(params.get("window", 0) or 0) <= 0:
+                    params["window"] = 50
+                    notes.append("Filled missing/invalid metric_stagnation_penalty params.window with default 50.")
+                try:
+                    threshold = float(params.get("threshold", 1e-3))
+                except (TypeError, ValueError):
+                    threshold = 1e-3
+                if threshold < 0:
+                    threshold = 1e-3
+                    notes.append("Filled invalid metric_stagnation_penalty params.threshold with default 1e-3.")
+                params["threshold"] = threshold
             component["params"] = params
             component.setdefault("inputs", [])
             component.setdefault("enabled", True)
             if component.get("clip") is None and component_type in {"metric_value", "metric_delta", "metric_threshold_bonus"}:
                 component["clip"] = [0.0, 1.0]
+            if component.get("clip") is None and component_type == "metric_stagnation_penalty":
+                component["clip"] = [-1.0, 0.0]
         normalized["component"] = component
         normalized["operator"] = "add_component"
         return normalized, notes
