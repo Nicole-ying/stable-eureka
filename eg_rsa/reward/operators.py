@@ -9,7 +9,7 @@ from eg_rsa.reward.schema import EventRule, RewardComponent, RewardSchema
 class RewardEditOperatorApplier:
     """Apply a constrained edit plan to a RewardSchema.
 
-    LLM outputs must be edit instructions, not executable code.  This class is
+    LLM outputs must be edit instructions, not executable code. This class is
     the trusted executor. Unsupported operators fail fast.
     """
 
@@ -32,6 +32,12 @@ class RewardEditOperatorApplier:
         "metric_stagnation_penalty",
     }
 
+    # LLM-created components must be executable by both SchemaRewardWrapper and
+    # SafeRewardCompiler. Built-in hand-written schemas may contain other legacy
+    # component types, but add_component is intentionally limited to the generic
+    # metric-based operator family.
+    ADDABLE_COMPONENT_TYPES = set(METRIC_COMPONENT_TYPES)
+
     @classmethod
     def apply(cls, schema: RewardSchema, edit_plan: Iterable[Dict[str, Any]]) -> RewardSchema:
         new_schema = copy.deepcopy(schema)
@@ -46,19 +52,19 @@ class RewardEditOperatorApplier:
     @staticmethod
     def allowed_operator_descriptions() -> List[Dict[str, Any]]:
         return [
-            {"operator": "increase_weight", "required": ["target", "factor"], "description": "Multiply a component or event rule weight by factor > 1."},
-            {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply a component or event rule weight by 0 < factor < 1."},
-            {"operator": "clip_component", "required": ["target", "clip"], "description": "Set component clip range [min, max]."},
-            {"operator": "disable_component", "required": ["target"], "description": "Disable a harmful or redundant component."},
+            {"operator": "increase_weight", "required": ["target", "factor"], "description": "Multiply an existing component or event rule weight by factor > 1."},
+            {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply an existing component or event rule weight by 0 < factor < 1."},
+            {"operator": "clip_component", "required": ["target", "clip"], "description": "Set existing component clip range [min, max]."},
+            {"operator": "disable_component", "required": ["target"], "description": "Disable a harmful or redundant existing component or event rule."},
             {
                 "operator": "add_component",
                 "required": ["component"],
-                "description": "Add a new dense or metric-based component following RewardComponent schema. Metric component types may include metric_value, metric_delta, metric_threshold_bonus, metric_stagnation_penalty and must reference configured task_metrics via params.metric.",
+                "description": "Add a new generic metric-based component only. Supported component.type values are metric_value, metric_delta, metric_threshold_bonus, metric_stagnation_penalty. Do not propose step_penalty or arbitrary custom component types.",
             },
-            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Add a gated event reward rule. The rule condition must reference available event flags; supports one_time and duration_steps."},
+            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Add a gated event reward rule. The rule condition must reference available event flags; supports one_time and condition.duration_steps."},
             {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert an event rule or event_bonus component into one-time reward to reduce repeated event exploitation."},
-            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Require an event rule to remain true for K steps."},
-            {"operator": "reshape_sparse_to_dense", "required": ["target", "new_type"], "description": "Change a sparse event-like component into a dense shaping component type."},
+            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Set an event rule duration requirement. duration_steps=1 makes the event trigger immediately when its condition is true."},
+            {"operator": "reshape_sparse_to_dense", "required": ["target", "new_type"], "description": "Change a sparse event-like component into a supported dense shaping component type."},
         ]
 
     @staticmethod
@@ -105,6 +111,11 @@ class RewardEditOperatorApplier:
     @staticmethod
     def _add_component(schema: RewardSchema, edit: Dict[str, Any]) -> None:
         component = RewardComponent.from_dict(edit["component"])
+        if component.type not in RewardEditOperatorApplier.ADDABLE_COMPONENT_TYPES:
+            raise ValueError(
+                f"Unsupported add_component type: {component.type}. "
+                f"Supported: {sorted(RewardEditOperatorApplier.ADDABLE_COMPONENT_TYPES)}"
+            )
         if schema.get_component(component.name) or schema.get_event_rule(component.name):
             raise ValueError(f"Reward item already exists: {component.name}")
         schema.components.append(component)
@@ -151,7 +162,12 @@ class RewardEditOperatorApplier:
         component = schema.get_component(edit["target"])
         if component is None:
             raise ValueError("reshape_sparse_to_dense target must be a component")
-        component.type = edit["new_type"]
+        new_type = edit["new_type"]
+        if new_type not in RewardEditOperatorApplier.ADDABLE_COMPONENT_TYPES:
+            raise ValueError(
+                f"reshape_sparse_to_dense new_type must be supported metric type; got {new_type}"
+            )
+        component.type = new_type
         if "params" in edit:
             component.params.update(edit["params"])
         component.enabled = True
