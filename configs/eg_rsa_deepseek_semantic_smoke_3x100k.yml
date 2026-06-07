@@ -1,0 +1,79 @@
+experiment:
+  output_dir: experiments/eg_rsa_lunar_lander_semantic_smoke_3x100k
+
+environment:
+  name: lunar_lander
+  family: landing_control
+  gym_id: LunarLander-v2
+  kwargs: {}
+
+eg_rsa:
+  iterations: 3
+  experiment_mode:
+    preset: full
+  initial_schema_path: configs/eg_rsa_examples/lunar_lander_initial_schema.json
+  diagnostic_spec_path: configs/eg_rsa_examples/lunar_lander_diagnostics.yml
+  task_description_path: envs/lunar_lander/task_description.txt
+  edit_agent:
+    backend: deepseek
+    model: deepseek-v4-pro
+    credential_env: DEEPSEEK_API_KEY
+    temperature: 0.2
+
+memory:
+  top_k: 3
+  lesson_top_k: 5
+
+hack_detector:
+  dominance_threshold: 0.70
+  event_toggle_threshold: 6
+  low_success_threshold: 0.20
+
+candidate_evaluator:
+  min_event_trigger_rate: 0.001
+  min_metric_variation: 0.0001
+  min_metric_active_rate: 0.01
+  reject_zero_signal: true
+
+edit_gate:
+  # Semantic smoke test: preserve small atomic coupled packages while keeping
+  # execution attribution manageable.
+  max_edits_per_iteration: 3
+  min_target_ratio: 0.02
+  min_target_trigger_rate: 0.01
+
+outcome_acceptor:
+  min_task_improvement: 0.02
+  max_task_drop: 0.05
+  min_semantic_improvement: 0.05
+  max_semantic_drop: 0.05
+  min_hack_improvement: 0.10
+  max_hack_increase: 0.05
+
+rl:
+  algo: ppo
+  algo_params:
+    policy: MlpPolicy
+    learning_rate: 0.0003
+    n_steps: 1024
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.0
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+  training:
+    total_timesteps: 100000
+    seed: 0
+    device: auto
+    verbose: 1
+  evaluation:
+    seed: 10
+    num_episodes: 6
+
+posthoc_eval:
+  enabled: true
+  seed: 20
+  num_episodes: 6
