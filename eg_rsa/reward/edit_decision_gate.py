@@ -25,9 +25,10 @@ class EditDecisionGateResult:
 class EditDecisionGate:
     """Plan-level evidence gate for reward edits.
 
-    The validator checks syntactic legality. This gate checks evidence and
-    execution boundaries. It should not destroy an LLM's explicitly atomic
-    coupled rebalancing plan by selecting only the top single edit.
+    Validator checks legality. CandidateEvaluator checks new candidate signal.
+    This gate only enforces execution boundaries. Atomic coupled packages are
+    preserved as packages, especially when the package is trying to repair
+    currently zero-trigger terminal event rules.
     """
 
     TARGETED_OPERATORS = {
@@ -39,6 +40,8 @@ class EditDecisionGate:
         "add_duration_condition",
         "reshape_sparse_to_dense",
     }
+
+    TERMINAL_REPAIR_OPERATORS = {"increase_weight", "add_duration_condition", "convert_to_one_time_event"}
 
     @classmethod
     def apply(
@@ -54,16 +57,24 @@ class EditDecisionGate:
         result = EditDecisionGateResult(plan_metadata=dict(plan_metadata))
         configured_max = int(gate_config.get("max_edits_per_iteration", 1))
         plan_max = int(plan_metadata.get("max_reasonable_edits", configured_max) or configured_max)
-        max_edits = max(1, min(max(configured_max, plan_max), int(gate_config.get("absolute_max_edits", 6))))
+        max_edits = max(1, min(max(configured_max, plan_max), int(gate_config.get("absolute_max_edits", 8))))
         min_ratio = float(gate_config.get("min_target_ratio", 0.02))
         min_trigger = float(gate_config.get("min_target_trigger_rate", 0.01))
         atomicity = plan_metadata.get("atomicity", "separable")
         plan_type = plan_metadata.get("plan_type", "single_edit")
+        is_atomic_package = atomicity == "atomic" and plan_type == "coupled_rebalancing"
 
         stats = diagnostic_report.get("attribution", {}).get("component_stats", {})
         scored: List[Tuple[float, Dict[str, Any]]] = []
         for edit in edit_plan:
-            ok, reason = cls._has_target_evidence(schema, edit, stats, min_ratio, min_trigger)
+            ok, reason = cls._has_target_evidence(
+                schema=schema,
+                edit=edit,
+                stats=stats,
+                min_ratio=min_ratio,
+                min_trigger=min_trigger,
+                allow_terminal_repair=is_atomic_package,
+            )
             if not ok:
                 rejected = dict(edit)
                 rejected["gate_reason"] = reason
@@ -72,17 +83,20 @@ class EditDecisionGate:
                 continue
             scored.append((cls._evidence_score(edit, stats), edit))
 
-        if atomicity == "atomic" and plan_type == "coupled_rebalancing":
+        if is_atomic_package:
+            if len(scored) != len(edit_plan):
+                result.warnings.append("Atomic package rejected because at least one edit failed the execution-boundary gate.")
+                for _, edit in scored:
+                    rejected = dict(edit)
+                    rejected["gate_reason"] = "atomic_package_partial_gate_failure"
+                    result.rejected_edits.append(rejected)
+                result.accepted_edits = []
+                return result
             if len(scored) <= max_edits:
                 result.accepted_edits = [edit for _, edit in scored]
-                if len(scored) > 1:
-                    result.warnings.append(
-                        f"Accepted atomic coupled package with {len(scored)} edits; gate preserved package coherence."
-                    )
+                result.warnings.append(f"Accepted atomic coupled package with {len(scored)} edits; gate preserved package coherence.")
                 return result
-            result.warnings.append(
-                f"Atomic package had {len(scored)} edits exceeding max_edits={max_edits}; rejected whole package to avoid partial execution."
-            )
+            result.warnings.append(f"Atomic package had {len(scored)} edits exceeding max_edits={max_edits}; rejected whole package.")
             for _, edit in scored:
                 rejected = dict(edit)
                 rejected["gate_reason"] = "atomic_package_exceeds_max_edits"
@@ -91,9 +105,7 @@ class EditDecisionGate:
 
         scored.sort(key=lambda item: item[0], reverse=True)
         if len(scored) > max_edits:
-            result.warnings.append(
-                f"Edit plan had {len(scored)} evidence-supported edits; kept top {max_edits}."
-            )
+            result.warnings.append(f"Edit plan had {len(scored)} evidence-supported edits; kept top {max_edits}.")
         for idx, (_, edit) in enumerate(scored):
             if idx < max_edits:
                 result.accepted_edits.append(edit)
@@ -111,6 +123,7 @@ class EditDecisionGate:
         stats: Dict[str, Any],
         min_ratio: float,
         min_trigger: float,
+        allow_terminal_repair: bool = False,
     ) -> Tuple[bool, str]:
         op = edit.get("operator") or edit.get("op")
         if op in {"add_component", "add_event_rule"}:
@@ -121,19 +134,20 @@ class EditDecisionGate:
         if not target:
             return False, f"Edit {op} has no target."
 
-        item_exists = schema.get_component(target) is not None or schema.get_event_rule(target) is not None
-        if not item_exists:
+        component = schema.get_component(target)
+        rule = schema.get_event_rule(target)
+        if component is None and rule is None:
             return False, f"Target {target} does not exist in schema."
+
+        if allow_terminal_repair and rule is not None and op in cls.TERMINAL_REPAIR_OPERATORS:
+            return True, ""
         if target not in stats:
             return True, ""
 
         ratio = abs(float(stats.get(target, {}).get("ratio", 0.0) or 0.0))
         trigger = float(stats.get(target, {}).get("trigger_rate", 0.0) or 0.0)
         if ratio < min_ratio and trigger < min_trigger:
-            return False, (
-                f"Rejected edit on low-evidence target {target}: ratio={ratio:.4f}, "
-                f"trigger_rate={trigger:.4f}."
-            )
+            return False, f"Rejected edit on low-evidence target {target}: ratio={ratio:.4f}, trigger_rate={trigger:.4f}."
         return True, ""
 
     @staticmethod
