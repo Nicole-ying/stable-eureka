@@ -8,6 +8,7 @@ import yaml
 
 from eg_rsa.diagnostics.attribution import RewardAttributionAnalyzer
 from eg_rsa.diagnostics.hack_detectors import RewardHackDetector
+from eg_rsa.diagnostics.semantic_outcome import SemanticOutcomeAnalyzer
 from eg_rsa.evaluation.experiment_summary import ExperimentSummary
 from eg_rsa.experiments.modes import ExperimentMode
 from eg_rsa.llm.client_factory import build_llm_client
@@ -52,7 +53,7 @@ class EGRSARunner:
 
         memory_store = MemoryStore(self.output_dir / "memory" / "memory_cards.jsonl")
         lesson_store = LessonStore(self.output_dir / "memory" / "lesson_cards.jsonl")
-        run_history = []
+        run_history: List[Dict[str, Any]] = []
         best_schema = schema
         best_score = -float("inf")
         task_description = self._load_task_description()
@@ -60,7 +61,7 @@ class EGRSARunner:
         self._write_json(self.output_dir / "structural_context.json", self.structural_context)
 
         pending_memory_id: Optional[str] = None
-        pending_before: Optional[Dict[str, float]] = None
+        pending_before: Optional[Dict[str, Any]] = None
         pending_card_dict: Optional[Dict[str, Any]] = None
         stop_reason: Optional[str] = None
 
@@ -72,26 +73,25 @@ class EGRSARunner:
 
             trainer = EGRSATrainer(self.config, iter_dir)
             trajectories = trainer.train_and_record(schema)
-
             raw_attribution = RewardAttributionAnalyzer.analyze(trajectories)
-            diagnostics = self._diagnose(trajectories, raw_attribution)
-            diagnostic_report = self._diagnostic_report(raw_attribution, diagnostics)
+            semantic_outcome = SemanticOutcomeAnalyzer.analyze(trajectories, schema, self.structural_context)
+            self._write_json(iter_dir / "semantic_outcome.json", semantic_outcome)
+
+            diagnostics = self._diagnose(trajectories, raw_attribution, semantic_outcome)
+            diagnostic_report = self._diagnostic_report(raw_attribution, diagnostics, semantic_outcome)
             self._write_json(iter_dir / "diagnostic_report.json", diagnostic_report)
 
-            task_score = self._task_score(trajectories, diagnostics)
-            current_metrics = {"task_score": float(task_score), "hack_score": float(diagnostics.get("hack_score", 0.0))}
+            task_score = self._task_score(trajectories)
+            current_metrics = self._current_metrics(task_score, diagnostics, semantic_outcome)
+            current_selection_score = float(current_metrics.get("selection_score", task_score))
 
             rollback_applied = False
             skip_edit_due_to_rollback = False
             outcome_decision_dict: Dict[str, Any] = {}
 
             if self.mode.use_memory and pending_memory_id and pending_before and pending_card_dict:
-                transition = self._make_outcome(before=pending_before, after=current_metrics)
-                outcome_decision = OutcomeAcceptor.decide(
-                    before=pending_before,
-                    after=current_metrics,
-                    config=self.config.get("outcome_acceptor", {}),
-                )
+                transition = self._make_outcome(pending_before, current_metrics)
+                outcome_decision = OutcomeAcceptor.decide(pending_before, current_metrics, self.config.get("outcome_acceptor", {}))
                 outcome_decision_dict = outcome_decision.to_dict()
                 transition["outcome_decision"] = outcome_decision_dict
 
@@ -99,128 +99,65 @@ class EGRSARunner:
                 measured_card = dict(pending_card_dict)
                 measured_card["outcome"] = transition
                 measured_card.setdefault("metadata", {})["outcome_decision"] = outcome_decision_dict
+                measured_card.setdefault("metadata", {})["semantic_after"] = semantic_outcome
                 lesson_card = build_lesson_from_memory_card(measured_card)
                 lesson_store.append(lesson_card)
-                self._write_json(
-                    iter_dir / "memory_transition.json",
-                    {"memory_id": pending_memory_id, "outcome": transition, "outcome_decision": outcome_decision_dict, "lesson_card": lesson_card},
-                )
+                self._write_json(iter_dir / "memory_transition.json", {"memory_id": pending_memory_id, "outcome": transition, "outcome_decision": outcome_decision_dict, "lesson_card": lesson_card})
 
-                if outcome_decision.accepted_for_best and task_score > best_score:
-                    best_score = task_score
+                if outcome_decision.accepted_for_best and current_selection_score > best_score:
+                    best_score = current_selection_score
                     best_schema = schema
                     self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
-
                 if outcome_decision.rollback_recommended:
                     rollback_applied = True
                     skip_edit_due_to_rollback = True
-                    rollback_payload = {
-                        "iteration": iteration,
-                        "pending_memory_id": pending_memory_id,
-                        "outcome_decision": outcome_decision_dict,
-                        "rollback_target": "best_accepted_schema",
-                        "best_score": best_score,
-                        "reason": outcome_decision.reason,
-                    }
-                    self._write_json(iter_dir / "rollback_decision.json", rollback_payload)
+                    self._write_json(iter_dir / "rollback_decision.json", {"iteration": iteration, "pending_memory_id": pending_memory_id, "outcome_decision": outcome_decision_dict, "rollback_target": "best_accepted_schema", "best_score": best_score, "current_selection_score": current_selection_score, "reason": outcome_decision.reason})
                     schema = best_schema
                     self._write_json(iter_dir / "reward_schema_after_rollback.json", schema.to_dict())
 
                 pending_memory_id = None
                 pending_before = None
                 pending_card_dict = None
-            else:
-                if task_score > best_score:
-                    best_score = task_score
-                    best_schema = schema
-                    self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
+            elif current_selection_score > best_score:
+                best_score = current_selection_score
+                best_schema = schema
+                self._write_json(self.output_dir / "best_reward_schema.json", best_schema.to_dict())
 
             retrieved_dicts: List[Dict[str, Any]] = []
             retrieved_lessons: List[Dict[str, Any]] = []
             if self.mode.use_memory:
-                retrieved = memory_store.retrieve(
-                    diagnostics.get("failure_modes", []),
-                    env_family=self.config.get("environment", {}).get("family", "unknown"),
-                    top_k=int(self.config.get("memory", {}).get("top_k", 3)),
-                )
+                retrieved = memory_store.retrieve(diagnostics.get("failure_modes", []), env_family=self.config.get("environment", {}).get("family", "unknown"), top_k=int(self.config.get("memory", {}).get("top_k", 3)))
                 retrieved_dicts = [card.to_dict() for card in retrieved]
-                retrieved_lessons = lesson_store.retrieve(
-                    diagnostics.get("failure_modes", []),
-                    top_k=int(self.config.get("memory", {}).get("lesson_top_k", 5)),
-                )
+                retrieved_lessons = lesson_store.retrieve(diagnostics.get("failure_modes", []), top_k=int(self.config.get("memory", {}).get("lesson_top_k", 5)))
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
             self._write_json(iter_dir / "retrieved_lessons.json", retrieved_lessons)
 
             should_edit = iteration < iterations - 1 and not skip_edit_due_to_rollback
-            next_action = "final_iteration"
             gate_result = None
             candidate_result = None
             structural_response: Dict[str, Any] = {}
             reflection_report: Dict[str, Any] = {}
-            if should_edit:
-                reflection_report = self.reflection_agent.reflect(
-                    task_description=task_description,
-                    current_reward_schema=schema.to_dict(),
-                    diagnostic_report=diagnostic_report,
-                    retrieved_memories=retrieved_dicts,
-                    retrieved_lessons=retrieved_lessons,
-                )
-                self._write_json(iter_dir / "reflection_report.json", reflection_report)
+            validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
+            edit_plan: List[Dict[str, Any]] = []
+            edit_decision = "final" if iteration == iterations - 1 else "rollback"
+            next_action = "final_iteration" if iteration == iterations - 1 else "rollback_to_best_schema"
 
-                edit_response = self.edit_agent.generate_edit_plan(
-                    task_description=task_description,
-                    current_reward_schema=schema.to_dict(),
-                    diagnostic_report=diagnostic_report,
-                    retrieved_memories=retrieved_dicts,
-                    retrieved_lessons=retrieved_lessons,
-                    reflection_report=reflection_report,
-                )
-                raw_edit_plan = edit_response.get("edit_plan", [])
+            if should_edit:
+                reflection_report = self.reflection_agent.reflect(task_description, schema.to_dict(), diagnostic_report, retrieved_dicts, retrieved_lessons)
+                self._write_json(iter_dir / "reflection_report.json", reflection_report)
+                edit_response = self.edit_agent.generate_edit_plan(task_description, schema.to_dict(), diagnostic_report, retrieved_dicts, retrieved_lessons, reflection_report)
                 edit_decision = self._extract_edit_decision(edit_response)
                 next_action = self._extract_next_action(edit_response)
                 plan_metadata = self._extract_plan_metadata(edit_response, reflection_report)
-                edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
-                    schema=schema,
-                    raw_edit_plan=raw_edit_plan,
-                    diagnostic_report=diagnostic_report,
-                    trajectories=trajectories,
-                    edit_decision=edit_decision,
-                    next_action=next_action,
-                    plan_metadata=plan_metadata,
-                )
-
+                edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(schema, edit_response.get("edit_plan", []), diagnostic_report, trajectories, edit_decision, next_action, plan_metadata)
                 if not edit_plan and next_action == "structural_search":
-                    structural_response = self.structural_search_agent.generate_structural_edit(
-                        task_description=task_description,
-                        current_reward_schema=schema.to_dict(),
-                        diagnostic_report=diagnostic_report,
-                        retrieved_lessons=retrieved_lessons,
-                        structural_context=self.structural_context,
-                    )
+                    structural_response = self.structural_search_agent.generate_structural_edit(task_description, schema.to_dict(), diagnostic_report, retrieved_lessons, self.structural_context)
                     self._write_json(iter_dir / "structural_search_response.json", structural_response)
-                    structural_decision = self._extract_edit_decision(structural_response)
-                    structural_next_action = self._extract_next_action(structural_response)
-                    structural_plan_metadata = self._extract_plan_metadata(structural_response, reflection_report)
-                    edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
-                        schema=schema,
-                        raw_edit_plan=structural_response.get("edit_plan", []),
-                        diagnostic_report=diagnostic_report,
-                        trajectories=trajectories,
-                        edit_decision=structural_decision,
-                        next_action=structural_next_action,
-                        plan_metadata=structural_plan_metadata,
-                    )
+                    sp_meta = self._extract_plan_metadata(structural_response, reflection_report)
+                    edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(schema, structural_response.get("edit_plan", []), diagnostic_report, trajectories, self._extract_edit_decision(structural_response), self._extract_next_action(structural_response), sp_meta)
                     edit_response["structural_search_response"] = structural_response
             else:
-                if skip_edit_due_to_rollback:
-                    edit_response = {"diagnosis": "Rollback applied after mixed/rejected previous edit; edit generation skipped to rebase on best accepted schema.", "edit_plan": []}
-                    edit_decision = "rollback"
-                    next_action = "rollback_to_best_schema"
-                else:
-                    edit_response = {"diagnosis": "Final iteration; edit generation skipped.", "edit_plan": []}
-                    edit_decision = "final"
-                edit_plan = []
-                validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
+                edit_response = {"diagnosis": "Rollback/final iteration; edit generation skipped.", "edit_plan": []}
 
             self._write_json(iter_dir / "edit_response.json", edit_response)
             self._write_json(iter_dir / "edit_validation.json", validation.to_dict())
@@ -230,46 +167,8 @@ class EGRSARunner:
                 self._write_json(iter_dir / "edit_gate.json", gate_result.to_dict())
             self._write_json(iter_dir / "edit_plan.json", {"edit_plan": edit_plan})
 
-            outcome = {
-                "status": "pending" if should_edit and edit_plan else "not_applicable",
-                "before": current_metrics,
-                "after": {},
-                "delta": {},
-                "note": "Pending until the edited schema is trained in the next iteration." if should_edit and edit_plan else "No edit was generated for this iteration.",
-            }
-            memory_card = MemoryCard(
-                memory_id=f"iter_{iteration:03d}_to_{iteration + 1:03d}",
-                env_family=self.config.get("environment", {}).get("family", "unknown"),
-                failure_modes=diagnostics.get("failure_modes", []),
-                reward_attribution=raw_attribution if self.mode.use_attribution else {},
-                edit_plan=edit_plan,
-                outcome=outcome,
-                lesson=edit_response.get("diagnosis", "Generated by EG-RSA edit agent."),
-                metadata={
-                    "config_path": str(self.config_path),
-                    "iteration": iteration,
-                    "validation_errors": validation.errors,
-                    "validation_warnings": getattr(validation, "warnings", []),
-                    "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {},
-                    "gate_result": gate_result.to_dict() if gate_result is not None else {},
-                    "reflection_report": reflection_report,
-                    "structural_response": structural_response,
-                    "outcome_decision": outcome_decision_dict,
-                    "rollback_applied": rollback_applied,
-                    "experiment_mode": self.mode.to_dict(),
-                    "edit_generated": should_edit,
-                    "edit_decision": edit_decision,
-                    "next_action": next_action,
-                    "agent_analysis": {
-                        "reflection_report": reflection_report,
-                        "diagnostic_analysis": edit_response.get("diagnostic_analysis", {}),
-                        "memory_reflection": edit_response.get("memory_reflection", {}),
-                        "reward_editor": edit_response.get("reward_editor", {}),
-                        "auditor_check": edit_response.get("auditor_check", {}),
-                        "distilled_lessons": edit_response.get("distilled_lessons", {}),
-                    },
-                },
-            )
+            outcome = {"status": "pending" if should_edit and edit_plan else "not_applicable", "before": current_metrics, "after": {}, "delta": {}, "note": "Pending until the edited schema is trained in the next iteration." if should_edit and edit_plan else "No edit was generated for this iteration."}
+            memory_card = MemoryCard(memory_id=f"iter_{iteration:03d}_to_{iteration + 1:03d}", env_family=self.config.get("environment", {}).get("family", "unknown"), failure_modes=diagnostics.get("failure_modes", []), reward_attribution=raw_attribution if self.mode.use_attribution else {}, edit_plan=edit_plan, outcome=outcome, lesson=edit_response.get("diagnosis", "Generated by EG-RSA edit agent."), metadata={"config_path": str(self.config_path), "iteration": iteration, "validation_errors": validation.errors, "validation_warnings": getattr(validation, "warnings", []), "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {}, "gate_result": gate_result.to_dict() if gate_result is not None else {}, "reflection_report": reflection_report, "semantic_outcome": semantic_outcome, "structural_response": structural_response, "outcome_decision": outcome_decision_dict, "rollback_applied": rollback_applied, "experiment_mode": self.mode.to_dict(), "edit_generated": should_edit, "edit_decision": edit_decision, "next_action": next_action, "agent_analysis": {"reflection_report": reflection_report, "diagnostic_analysis": edit_response.get("diagnostic_analysis", {}), "memory_reflection": edit_response.get("memory_reflection", {}), "reward_editor": edit_response.get("reward_editor", {}), "auditor_check": edit_response.get("auditor_check", {}), "distilled_lessons": edit_response.get("distilled_lessons", {})}})
 
             if self.mode.use_memory and should_edit and edit_plan:
                 memory_store.append(memory_card)
@@ -278,29 +177,7 @@ class EGRSARunner:
                 pending_card_dict = memory_card.to_dict()
             self._write_json(iter_dir / "memory_card.json", memory_card.to_dict())
 
-            run_history.append({
-                "iteration": iteration,
-                "task_score": task_score,
-                "hack_score": diagnostics.get("hack_score", 0.0),
-                "failure_modes": diagnostics.get("failure_modes", []),
-                "dominant_component": diagnostics.get("dominant_component"),
-                "dominant_component_ratio": diagnostics.get("dominant_component_ratio", 0.0),
-                "reflection_strategy": reflection_report.get("strategy", {}) if reflection_report else {},
-                "edit_plan": edit_plan,
-                "edit_decision": edit_decision,
-                "next_action": next_action,
-                "structural_search_used": bool(structural_response),
-                "edit_diagnosis": edit_response.get("diagnosis", ""),
-                "edit_validation_errors": validation.errors,
-                "edit_validation_warnings": getattr(validation, "warnings", []),
-                "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {},
-                "edit_gate": gate_result.to_dict() if gate_result is not None else {},
-                "outcome_decision": outcome_decision_dict,
-                "rollback_applied": rollback_applied,
-                "best_score": best_score,
-                "edit_generated": should_edit,
-                "experiment_mode": self.mode.to_dict(),
-            })
+            run_history.append({"iteration": iteration, "task_score": task_score, "semantic_score": semantic_outcome.get("semantic_score", 0.0), "selection_score": current_metrics.get("selection_score", current_selection_score), "hack_score": diagnostics.get("hack_score", 0.0), "failure_modes": diagnostics.get("failure_modes", []), "dominant_component": diagnostics.get("dominant_component"), "dominant_component_ratio": diagnostics.get("dominant_component_ratio", 0.0), "benign_terminal_dominance": diagnostics.get("benign_terminal_dominance", False), "semantic_outcome": semantic_outcome, "reflection_strategy": reflection_report.get("strategy", {}) if reflection_report else {}, "edit_plan": edit_plan, "edit_decision": edit_decision, "next_action": next_action, "structural_search_used": bool(structural_response), "edit_diagnosis": edit_response.get("diagnosis", ""), "edit_validation_errors": validation.errors, "edit_validation_warnings": getattr(validation, "warnings", []), "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {}, "edit_gate": gate_result.to_dict() if gate_result is not None else {}, "outcome_decision": outcome_decision_dict, "rollback_applied": rollback_applied, "best_score": best_score, "edit_generated": should_edit, "experiment_mode": self.mode.to_dict()})
             self._write_json(self.output_dir / "run_history.json", run_history)
 
             if should_edit:
@@ -316,56 +193,31 @@ class EGRSARunner:
         ExperimentSummary.save(self.output_dir)
         print(f"EG-RSA multi-iteration run finished. Outputs saved to: {self.output_dir}")
 
-    def _validate_evaluate_and_gate_edit_plan(
-        self,
-        schema: RewardSchema,
-        raw_edit_plan: List[Dict[str, Any]],
-        diagnostic_report: Dict[str, Any],
-        trajectories: List[Dict[str, Any]],
-        edit_decision: str,
-        next_action: str,
-        plan_metadata: Optional[Dict[str, Any]] = None,
-    ):
+    def _validate_evaluate_and_gate_edit_plan(self, schema: RewardSchema, raw_edit_plan: List[Dict[str, Any]], diagnostic_report: Dict[str, Any], trajectories: List[Dict[str, Any]], edit_decision: str, next_action: str, plan_metadata: Optional[Dict[str, Any]] = None):
         if edit_decision in {"no_edit", "need_more_evidence"} or raw_edit_plan == []:
-            edit_plan: List[Dict[str, Any]] = []
             validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
             validation.errors.append(f"LLM chose {edit_decision} with next_action={next_action}; no schema edit applied.")
-            return edit_plan, validation, None, None, next_action
-
+            return [], validation, None, None, next_action
         validation = EditPlanValidator.validate(schema, raw_edit_plan, structural_context=self.structural_context)
         candidate_result = None
         gate_result = None
+        edit_plan: List[Dict[str, Any]] = []
         if validation.valid_edits:
-            candidate_result = RewardCandidateEvaluator.evaluate(
-                edit_plan=validation.valid_edits,
-                trajectories=trajectories,
-                config=self.config.get("candidate_evaluator", {}),
-            )
+            candidate_result = RewardCandidateEvaluator.evaluate(validation.valid_edits, trajectories, self.config.get("candidate_evaluator", {}))
             if not candidate_result.accepted_edits:
                 validation.errors.extend(candidate_result.warnings)
                 return [], validation, candidate_result, None, "structural_search"
-
-            gate_result = EditDecisionGate.apply(
-                schema=schema,
-                edit_plan=candidate_result.accepted_edits,
-                diagnostic_report=diagnostic_report,
-                gate_config=self.config.get("edit_gate", {}),
-                plan_metadata=plan_metadata or {},
-            )
+            gate_result = EditDecisionGate.apply(schema, candidate_result.accepted_edits, diagnostic_report, self.config.get("edit_gate", {}), plan_metadata or {})
             edit_plan = gate_result.accepted_edits
-            if edit_plan:
-                next_action = "apply_edit"
-            else:
+            next_action = "apply_edit" if edit_plan else "structural_search"
+            if not edit_plan:
                 validation.errors.extend(gate_result.warnings)
-                next_action = "structural_search"
         elif diagnostic_report.get("diagnostics", {}).get("dominant_component") and not self.mode.use_llm_edit:
             edit_plan = EditPlanValidator.safe_fallback(schema, diagnostic_report.get("diagnostics", {}))
             next_action = "apply_edit"
             validation.errors.append("No valid edit remained; used non-LLM safe fallback edit plan.")
         else:
-            edit_plan = []
             validation.errors.append("No valid edit remained; skipped schema edit.")
-
         if not self.mode.use_operator_constraints:
             validation.errors.append("Operator constraints disabled for ablation; no schema edit was applied.")
             edit_plan = []
@@ -374,60 +226,39 @@ class EGRSARunner:
     @staticmethod
     def _extract_edit_decision(edit_response: Dict[str, Any]) -> str:
         editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
-        if isinstance(editor, dict):
-            decision = editor.get("edit_decision")
-            if isinstance(decision, str) and decision:
-                return decision
-        return "edit"
+        return editor.get("edit_decision", "edit") if isinstance(editor, dict) else "edit"
 
     @staticmethod
     def _extract_next_action(edit_response: Dict[str, Any]) -> str:
         editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
-        if isinstance(editor, dict):
-            action = editor.get("next_action")
-            if isinstance(action, str) and action:
-                return action
+        if isinstance(editor, dict) and isinstance(editor.get("next_action"), str):
+            return editor["next_action"]
         auditor = edit_response.get("auditor_check", {}) if isinstance(edit_response, dict) else {}
-        if isinstance(auditor, dict):
-            action = auditor.get("final_action")
-            if isinstance(action, str) and action:
-                return action
+        if isinstance(auditor, dict) and isinstance(auditor.get("final_action"), str):
+            return auditor["final_action"]
         return "apply_edit"
 
     @staticmethod
     def _extract_plan_metadata(edit_response: Dict[str, Any], reflection_report: Dict[str, Any]) -> Dict[str, Any]:
         editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
         strategy = reflection_report.get("strategy", {}) if isinstance(reflection_report, dict) else {}
-        metadata = {
-            "plan_type": edit_response.get("plan_type") or editor.get("plan_type") or strategy.get("plan_type") or "single_edit",
-            "atomicity": edit_response.get("atomicity") or editor.get("atomicity") or strategy.get("atomicity") or "separable",
-            "max_reasonable_edits": edit_response.get("max_reasonable_edits") or editor.get("max_reasonable_edits") or strategy.get("max_reasonable_edits") or 1,
-            "reflection_strategy": strategy,
-        }
+        value = edit_response.get("max_reasonable_edits") or editor.get("max_reasonable_edits") or strategy.get("max_reasonable_edits") or 1
         try:
-            metadata["max_reasonable_edits"] = int(metadata["max_reasonable_edits"])
+            value = int(value)
         except (TypeError, ValueError):
-            metadata["max_reasonable_edits"] = 1
-        return metadata
+            value = 1
+        return {"plan_type": edit_response.get("plan_type") or editor.get("plan_type") or strategy.get("plan_type") or "single_edit", "atomicity": edit_response.get("atomicity") or editor.get("atomicity") or strategy.get("atomicity") or "separable", "max_reasonable_edits": value, "reflection_strategy": strategy}
 
     @staticmethod
-    def _make_outcome(before: Dict[str, float], after: Dict[str, float]) -> Dict[str, Any]:
-        return {
-            "status": "measured",
-            "before": before,
-            "after": after,
-            "delta": {
-                "task_score": float(after.get("task_score", 0.0) - before.get("task_score", 0.0)),
-                "hack_score": float(after.get("hack_score", 0.0) - before.get("hack_score", 0.0)),
-            },
-            "note": "Measured after training the edited schema in the next iteration.",
-        }
+    def _make_outcome(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, Any]:
+        keys = ["task_score", "semantic_score", "selection_score", "hack_score", "success_episode_rate", "terminal_reward_paid_episode_rate", "stable_landing_episode_rate", "safe_contact_episode_rate"]
+        delta = {key: float(after.get(key, 0.0) or 0.0) - float(before.get(key, 0.0) or 0.0) for key in keys}
+        return {"status": "measured", "before": before, "after": after, "delta": delta, "note": "Measured after training the edited schema in the next iteration."}
 
-    def _diagnose(self, trajectories: List[dict], attribution: dict) -> dict:
+    def _diagnose(self, trajectories: List[dict], attribution: dict, semantic_outcome: Dict[str, Any]) -> dict:
         if not self.mode.use_hack_detector:
-            return {"hack_flags": {}, "failure_modes": [], "hack_score": 0.0, "suspected_components": [], "dominant_component": attribution.get("dominant_component") if self.mode.use_attribution else None, "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0) if self.mode.use_attribution else 0.0, "repeated_event_details": {}}
-        detector = RewardHackDetector(**self.config.get("hack_detector", {}))
-        diagnostics = detector.detect(trajectories, attribution)
+            return {"hack_flags": {}, "failure_modes": [], "hack_score": 0.0, "suspected_components": [], "dominant_component": attribution.get("dominant_component") if self.mode.use_attribution else None, "dominant_component_ratio": attribution.get("dominant_component_ratio", 0.0) if self.mode.use_attribution else 0.0, "repeated_event_details": {}, "semantic_notes": []}
+        diagnostics = RewardHackDetector(**self.config.get("hack_detector", {})).detect(trajectories, attribution, semantic_outcome=semantic_outcome)
         if not self.mode.use_attribution:
             diagnostics = dict(diagnostics)
             diagnostics["dominant_component"] = None
@@ -435,8 +266,8 @@ class EGRSARunner:
             diagnostics["suspected_components"] = []
         return diagnostics
 
-    def _diagnostic_report(self, attribution: dict, diagnostics: dict) -> dict:
-        return {"attribution": attribution if self.mode.use_attribution else {}, "diagnostics": diagnostics, "experiment_mode": self.mode.to_dict()}
+    def _diagnostic_report(self, attribution: dict, diagnostics: dict, semantic_outcome: Dict[str, Any]) -> dict:
+        return {"attribution": attribution if self.mode.use_attribution else {}, "diagnostics": diagnostics, "semantic_outcome": semantic_outcome, "experiment_mode": self.mode.to_dict()}
 
     def _load_task_description(self) -> str:
         path = self.config.get("eg_rsa", {}).get("task_description_path")
@@ -453,26 +284,25 @@ class EGRSARunner:
         events = spec.get("events", {}) or {}
         metrics = spec.get("task_metrics", {}) or {}
         preferred_success_events = [cfg.get("event") for cfg in metrics.values() if isinstance(cfg, dict) and cfg.get("type") == "event_success" and cfg.get("event")]
-        return {
-            "available_events": sorted(events.keys()),
-            "event_specs": events,
-            "available_task_metrics": sorted(metrics.keys()),
-            "task_metric_specs": metrics,
-            "preferred_success_events": preferred_success_events,
-        }
+        return {"available_events": sorted(events.keys()), "event_specs": events, "available_task_metrics": sorted(metrics.keys()), "task_metric_specs": metrics, "preferred_success_events": preferred_success_events}
 
     @staticmethod
-    def _task_score(trajectories: List[dict], diagnostics: dict) -> float:
+    def _task_score(trajectories: List[dict]) -> float:
         if not trajectories:
             return -float("inf")
         successes = [float(t.get("summary", {}).get("success", 0.0)) for t in trajectories]
         progresses = [float(t.get("summary", {}).get("progress_score", 0.0)) for t in trajectories]
         lengths = [float(t.get("summary", {}).get("episode_length", 0.0)) for t in trajectories]
-        success_mean = sum(successes) / max(1, len(successes))
-        progress_mean = sum(progresses) / max(1, len(progresses))
-        length_penalty = 0.0001 * (sum(lengths) / max(1, len(lengths)))
-        hack_penalty = float(diagnostics.get("hack_score", 0.0))
-        return float(success_mean * 2.0 + progress_mean - hack_penalty - length_penalty)
+        return float(2.0 * (sum(successes) / max(1, len(successes))) + (sum(progresses) / max(1, len(progresses))) - 0.0001 * (sum(lengths) / max(1, len(lengths))))
+
+    @staticmethod
+    def _current_metrics(task_score: float, diagnostics: Dict[str, Any], semantic_outcome: Dict[str, Any]) -> Dict[str, Any]:
+        flags = diagnostics.get("hack_flags", {}) or {}
+        semantic_score = float(semantic_outcome.get("semantic_score", 0.0) or 0.0)
+        hack_score = float(diagnostics.get("hack_score", 0.0) or 0.0)
+        true_hack = bool(semantic_outcome.get("reward_repetition_risk", False) or flags.get("high_reward_low_progress", False) or flags.get("shaping_goal_mismatch", False))
+        selection_score = float(task_score + semantic_score - (hack_score if true_hack else 0.0))
+        return {"task_score": float(task_score), "semantic_score": semantic_score, "selection_score": selection_score, "hack_score": hack_score, "true_hack_risk": true_hack, "terminal_goal_evidence": bool(semantic_outcome.get("terminal_goal_evidence", False)), "reward_repetition_risk": bool(semantic_outcome.get("reward_repetition_risk", False)), "high_reward_low_progress": bool(flags.get("high_reward_low_progress", False)), "shaping_goal_mismatch": bool(flags.get("shaping_goal_mismatch", False)), "unstable_contact_behavior": bool(semantic_outcome.get("unstable_contact_behavior", False)), "benign_terminal_dominance": bool(diagnostics.get("benign_terminal_dominance", False)), "success_episode_rate": float(semantic_outcome.get("success_episode_rate", 0.0) or 0.0), "terminal_reward_paid_episode_rate": float(semantic_outcome.get("terminal_reward_paid_episode_rate", 0.0) or 0.0), "safe_contact_episode_rate": float(semantic_outcome.get("safe_contact_episode_rate", 0.0) or 0.0), "stable_landing_episode_rate": float(semantic_outcome.get("stable_landing_episode_rate", 0.0) or 0.0)}
 
     @staticmethod
     def _load_schema(path: Path) -> RewardSchema:
