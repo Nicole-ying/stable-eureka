@@ -1,19 +1,14 @@
 {
   "accepted_edits": [
     {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 5.0
+    },
+    {
       "operator": "decrease_weight",
       "target": "r_approach_region",
       "factor": 0.4
-    },
-    {
-      "operator": "decrease_weight",
-      "target": "r_approach_progress",
-      "factor": 0.5
-    },
-    {
-      "operator": "decrease_weight",
-      "target": "r_stability",
-      "factor": 0.5
     },
     {
       "operator": "decrease_weight",
@@ -21,65 +16,39 @@
       "factor": 0.5
     }
   ],
-  "rejected_edits": [
-    {
-      "operator": "increase_weight",
-      "target": "r_safe_contact_once",
-      "factor": 10.0,
-      "gate_reason": "Rejected edit on low-evidence target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000."
-    },
-    {
-      "operator": "increase_weight",
-      "target": "r_stable_landing_once",
-      "factor": 10.0,
-      "gate_reason": "Rejected edit on low-evidence target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000."
-    },
-    {
-      "operator": "add_duration_condition",
-      "target": "r_safe_contact_once",
-      "duration_steps": 1,
-      "gate_reason": "Rejected edit on low-evidence target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000."
-    },
-    {
-      "operator": "add_duration_condition",
-      "target": "r_stable_landing_once",
-      "duration_steps": 1,
-      "gate_reason": "Rejected edit on low-evidence target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000."
-    }
-  ],
+  "rejected_edits": [],
   "warnings": [
-    "Rejected edit on low-evidence target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000.",
-    "Rejected edit on low-evidence target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000.",
-    "Rejected edit on low-evidence target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000.",
-    "Rejected edit on low-evidence target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000.",
-    "Accepted atomic coupled package with 4 edits; gate preserved package coherence."
+    "Accepted atomic coupled package with 3 edits; gate preserved package coherence."
   ],
   "plan_metadata": {
     "plan_type": "coupled_rebalancing",
     "atomicity": "atomic",
-    "max_reasonable_edits": 7,
+    "max_reasonable_edits": 3,
     "reflection_strategy": {
       "recommended_next_action": "apply_edit",
       "plan_type": "coupled_rebalancing",
       "atomicity": "atomic",
-      "why_atomic_or_separable": "Increasing only landing bonuses without reducing shaping rewards may still not shift the policy if the per-step sum remains very large. Reducing only shaping rewards without increasing terminal bonuses may leave the agent with no guidance and slow learning. The two changes must be made together to reliably reorient the agent toward task completion.",
+      "why_atomic_or_separable": "Increasing the terminal reward alone could lead to excessively high total reward and instability; decreasing shaping alone could make learning too sparse. The adjustments form an interdependent rebalancing package that must be applied as one unit.",
       "max_reasonable_edits": 3,
       "editor_constraints": [
-        "Total episode return after edit should not exceed current range drastically (e.g., keep mean < 5000) to avoid numerical instability.",
-        "Conditions for landing events should be simplified: reward any safe contact that stops all motion (or at least first leg contact) without requiring consecutive steps.",
-        "Do not introduce new custom metrics; only adjust weights, clips, and event_rule parameters.",
-        "If a step penalty is added, ensure it is small enough not to discourage early exploration but large enough to penalize indefinite hovering (e.g., -0.05 per step after 500 steps)."
+        "Ensure the stable_landing event reward, when multiplied by the maximum possible occurrences (1), significantly exceeds the cumulative shaping reward a bouncing agent would collect during a typical episode.",
+        "Maintain the structure of shaping components (proximity, stability, landing_quality) but reduce their per‑step multiplicative weights so that they guide learning without dominating the end goal.",
+        "Do not remove any component entirely – at least one proximity/guidance component must remain active.",
+        "If the stable_landing condition (duration_steps=5) is relaxed, keep it >= 3 steps to avoid rewarding momentary contacts.",
+        "r_energy penalty should stay small and not suppress necessary control actions."
       ],
       "must_preserve": [
-        "Some form of approach shaping to guide the lander toward the pad, but with reduced weight.",
-        "The stability and landing_quality metrics as they help in the early stages; just reduce their relative importance."
+        "r_approach_region (or an equivalent proximity shaping signal)",
+        "r_energy as a light action‑deterrent",
+        "One‑time triggers for safe_contact and stable_landing to prevent repeated exploitation"
       ],
       "must_avoid": [
-        "Removing all shaping rewards abruptly (may cause sparse reward and learning failure).",
-        "Making the landing bonuses so large that they dominate too early, causing the agent to rush and crash."
+        "Adding per‑contact or toggle‑based rewards that could incentivise bouncing",
+        "Purely sparse reward (removal of all shaping)",
+        "Increasing r_energy so much that it prevents the agent from taking required control actions"
       ],
-      "expected_effect": "The agent will learn to complete a stable landing because the terminal bonuses will outweigh the cumulative shaping rewards from hovering. The approach shaping will still guide it, but the incentive to finish will be strong. Repeated contact toggles should decrease as landing becomes a conditioned goal.",
-      "risk_analysis": "If the landing event conditions are still too strict, the bonuses may never fire, leaving the agent with no terminal reward and possibly zero average return. If the weight reduction of shaping is too severe, learning may become too sample‑inefficient. Over‑tuned step penalty could cause the agent to choose a safe but suboptimal early crash."
+      "expected_effect": "Shift reward dominance from approach_region to the terminal stable landing event; reduce repeated bouncing/loitering; increase the rate of stable landings and lower episode reward variance.",
+      "risk_analysis": "Over‑weighting the terminal event could cause the agent to crash while trying to land quickly; over‑suppressing shaping could stall early learning. The rebalancing must be monitored for crash rate and learning curve. A temporary increase in episode reward variance is possible during adaptation."
     }
   }
 }

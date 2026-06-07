@@ -3,8 +3,14 @@
         import json
         import math
         import numpy as np
-        schema = json.loads('{"version": 1, "components": [{"name": "r_approach_region", "type": "metric_value", "weight": 0.6000000000000001, "inputs": [], "params": {"metric": "approach_region_score"}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_approach_progress", "type": "metric_delta", "weight": 1.0, "inputs": [], "params": {"metric": "approach_region_score", "positive_only": true}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_stability", "type": "metric_value", "weight": 0.5, "inputs": [], "params": {"metric": "stability"}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_landing_quality", "type": "metric_value", "weight": 1.0, "inputs": [], "params": {"metric": "landing_quality"}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_energy", "type": "action_penalty", "weight": 0.02, "inputs": ["action"], "params": {}, "clip": [-1.0, 0.0], "enabled": true}], "event_rules": [{"name": "r_safe_contact_once", "type": "event_bonus", "weight": 10.0, "condition": {"safe_contact": true, "duration_steps": 2}, "one_time": true, "enabled": true}, {"name": "r_stable_landing_once", "type": "event_bonus", "weight": 40.0, "condition": {"stable_landing_condition": true, "duration_steps": 5}, "one_time": true, "enabled": true}], "metadata": {"env": "LunarLander-v3", "note": "Aligned initial schema for EG-RSA. It rewards safe-region approach and stable landing process rather than raw contact or point-distance only. Later versions should still be edited through operators."}}')
+        schema = json.loads('{"version": 1, "components": [{"name": "r_approach_region", "type": "metric_value", "weight": 0.6000000000000001, "inputs": [], "params": {"metric": "approach_region_score"}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_approach_progress", "type": "metric_delta", "weight": 2.0, "inputs": [], "params": {"metric": "approach_region_score", "positive_only": true}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_stability", "type": "metric_value", "weight": 1.0, "inputs": [], "params": {"metric": "stability"}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_landing_quality", "type": "metric_value", "weight": 1.0, "inputs": [], "params": {"metric": "landing_quality"}, "clip": [0.0, 1.0], "enabled": true}, {"name": "r_energy", "type": "action_penalty", "weight": 0.02, "inputs": ["action"], "params": {}, "clip": [-1.0, 0.0], "enabled": true}], "event_rules": [{"name": "r_safe_contact_once", "type": "event_bonus", "weight": 10.0, "condition": {"safe_contact": true, "duration_steps": 2}, "one_time": true, "enabled": true}, {"name": "r_stable_landing_once", "type": "event_bonus", "weight": 200.0, "condition": {"stable_landing_condition": true, "duration_steps": 5}, "one_time": true, "enabled": true}], "metadata": {"env": "LunarLander-v3", "note": "Aligned initial schema for EG-RSA. It rewards safe-region approach and stable landing process rather than raw contact or point-distance only. Later versions should still be edited through operators."}}')
         state_flags = state_flags or {}
+        if not hasattr(self, "_eg_rsa_fired_event_rules"):
+            self._eg_rsa_fired_event_rules = set()
+        if not hasattr(self, "_eg_rsa_event_rule_duration_counts"):
+            self._eg_rsa_event_rule_duration_counts = {}
+        if not hasattr(self, "_eg_rsa_metric_stagnation_counts"):
+            self._eg_rsa_metric_stagnation_counts = {}
         task_metrics = {}
         prev_task_metrics = {}
         if isinstance(obs_map, dict):
@@ -16,7 +22,6 @@
             prev_task_metrics = getattr(self, "_prev_task_metrics") or prev_task_metrics
         individual_reward = {}
         total_reward = 0.0
-        stagnation_counts = {}
         def _get(name, default=0.0):
             return float(obs_map.get(name, default))
         def _clip(value, clip_range):
@@ -74,10 +79,10 @@
                 previous = float(prev_task_metrics.get(metric, current))
                 delta = abs(current - previous)
                 if delta < threshold:
-                    stagnation_counts[name] = stagnation_counts.get(name, 0) + 1
+                    self._eg_rsa_metric_stagnation_counts[name] = self._eg_rsa_metric_stagnation_counts.get(name, 0) + 1
                 else:
-                    stagnation_counts[name] = 0
-                raw = -1.0 if stagnation_counts.get(name, 0) >= window else 0.0
+                    self._eg_rsa_metric_stagnation_counts[name] = 0
+                raw = -1.0 if self._eg_rsa_metric_stagnation_counts.get(name, 0) >= window else 0.0
             value = weight * _clip(raw, component.get("clip"))
             individual_reward[name] = float(value)
             total_reward += float(value)
@@ -87,12 +92,23 @@
             name = rule["name"]
             weight = float(rule.get("weight", 1.0))
             condition = rule.get("condition", {})
-            ok = True
+            duration_steps = int(condition.get("duration_steps", 1) or 1)
+            base_ok = True
             for key, expected in condition.items():
                 if key == "duration_steps":
                     continue
-                ok = ok and (state_flags.get(key, False) == expected)
-            value = float(weight) if ok else 0.0
+                base_ok = base_ok and (state_flags.get(key, False) == expected)
+            if base_ok:
+                self._eg_rsa_event_rule_duration_counts[name] = self._eg_rsa_event_rule_duration_counts.get(name, 0) + 1
+            else:
+                self._eg_rsa_event_rule_duration_counts[name] = 0
+            ok = base_ok if duration_steps <= 1 else (base_ok and self._eg_rsa_event_rule_duration_counts.get(name, 0) >= duration_steps)
+            if rule.get("one_time", False) and name in self._eg_rsa_fired_event_rules:
+                value = 0.0
+            else:
+                value = float(weight) if ok else 0.0
+                if rule.get("one_time", False) and ok:
+                    self._eg_rsa_fired_event_rules.add(name)
             individual_reward[name] = float(value)
             total_reward += float(value)
         individual_reward["reward"] = float(total_reward)

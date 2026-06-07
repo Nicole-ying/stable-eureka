@@ -1,22 +1,30 @@
 {
   "accepted_edits": [
     {
-      "operator": "add_event_rule",
-      "event_rule": {
-        "name": "r_landing_region_once",
-        "type": "event_bonus",
-        "weight": 30.0,
-        "condition": {
-          "landing_region": true,
-          "duration_steps": 3
-        },
-        "one_time": true,
-        "enabled": true
-      }
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.4
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 5.0
     }
   ],
   "rejected_edits": [],
-  "warnings": [],
+  "warnings": [
+    "Accepted atomic coupled package with 4 edits; gate preserved package coherence."
+  ],
   "plan_metadata": {
     "plan_type": "coupled_rebalancing",
     "atomicity": "atomic",
@@ -25,26 +33,30 @@
       "recommended_next_action": "apply_edit",
       "plan_type": "coupled_rebalancing",
       "atomicity": "atomic",
-      "why_atomic_or_separable": "Increasing landing bonuses without relaxing the duration conditions may still result in zero events, leaving the agent without terminal incentive. Relaxing conditions without increasing the bonuses may not provide enough reward to outweigh the per‑step shaping. Both changes must be applied together to reliably steer the agent toward landing.",
+      "why_atomic_or_separable": "Further rebalancing requires simultaneous adjustment of multiple shaping components and the terminal reward; applying them separately risks creating a transient reward landscape that could stall learning or reintroduce exploitation.",
       "max_reasonable_edits": 4,
       "editor_constraints": [
-        "Only adjust weights, event_rule parameters, or existing clips. Do not introduce new components or metrics.",
-        "Total episode return after edit should not exceed ~1000 to avoid numerical instability, given the current mean of ~233.",
-        "Set r_safe_contact_once weight to at least 100 and r_stable_landing_once weight to at least 400.",
-        "Set duration_steps for both landing events to 1 (or remove duration requirement entirely if possible).",
-        "Do not increase any per‑step shaping weight; if necessary, a minor further decrease is acceptable but not required.",
-        "If a time penalty is added, limit it to -0.05 per step after 400 steps to avoid premature punishment of exploration."
+        "Scale down all three shaping weights (r_approach_region, r_stability, r_landing_quality) by a factor between 0.3 and 0.5 (multiplicatively)",
+        "Increase r_stable_landing_once weight by a factor between 2 and 5",
+        "Ensure that the expected cumulative per‑step shaping reward over a typical long episode (e.g., 500 steps) is less than 0.5 × the terminal event reward",
+        "Keep r_energy penalty weight ≤ 0.05",
+        "Do not change event condition duration steps (keep safe_contact ≥ 2, stable_landing_condition ≥ 3)",
+        "Do not modify r_approach_progress or its delta parameters"
       ],
       "must_preserve": [
-        "Some form of approach guidance (current r_approach_region, r_approach_progress) to aid early learning.",
-        "The stability and landing_quality metrics at their current weights – they provide useful shaping without dominating."
+        "All current reward components (none removed)",
+        "At least one shaping component with weight ≥ 0.1",
+        "One‑time event triggers for safe_contact and stable_landing",
+        "r_energy as a light action‑deterrent"
       ],
       "must_avoid": [
-        "Removing all shaping rewards abruptly (would lead to sparse reward and possible learning failure).",
-        "Making the landing bonuses so large that the agent rushes and crashes frequently – the current suggested values (100, 400) are a moderate increase."
+        "Adding per‑contact or per‑toggle bonuses",
+        "Completely removing any shaping component",
+        "Introducing time‑accumulated penalty without careful scaling",
+        "Increasing r_energy weight so much that it prevents required control actions (e.g., beyond 0.05)"
       ],
-      "expected_effect": "The agent will now receive a large, unrepeatable reward when it safely touches down (100) and a much larger reward when it stabilises (400). With duration relaxed to one step, these events become achievable early in landing. The cumulative per‑step shaping (~1–2 per step) will be dwarfed by the terminal bonuses, so the agent should prioritise completing a landing. The repeated contact toggles should decrease as the agent learns to land and finish the episode.",
-      "risk_analysis": "If the underlying event metrics (safe_contact, stable_landing_condition) still do not trigger due to a bug or definition mismatch, the agent will receive no terminal reward and may experience a very low or zero return, potentially causing learning to collapse. The agent might also learn to exploit the relaxed conditions by quickly touching a leg and then escaping, but the larger stable_landing bonus should counter that. The risk is moderate but acceptable; monitoring the trigger rate of the landing events after the edit is essential."
+      "expected_effect": "Further shift reward dominance from continuous shaping to the terminal stable landing event; reduce bouncing and episode length; increase stable landing completion rate; decrease episode reward variance and potentially raise mean reward when terminal event becomes more frequent.",
+      "risk_analysis": "Over‑suppressing shaping may cause early learning to stall because the agent receives insufficient guidance; over‑increasing terminal reward could lead to aggressive, crash‑prone landings. A temporary increase in episode reward variance is possible during adaptation. Monitor crash rate and whether the agent still reaches the pad within a reasonable time."
     }
   }
 }
