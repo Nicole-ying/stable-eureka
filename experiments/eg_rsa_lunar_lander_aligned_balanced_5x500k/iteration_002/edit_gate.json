@@ -1,0 +1,59 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_safe_contact_once",
+      "duration_steps": 1
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_stable_landing_once",
+      "duration_steps": 1
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic coupled package with 4 edits; gate preserved package coherence."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 4,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Increasing the landing bonus weights without relaxing the duration conditions would leave the events nearly unreachable (current trigger rates <0.5%), so the agent would still receive no strong terminal signal. Relaxing the duration without increasing the weights would provide an achievable terminal reward, but the weight would be too low to outweigh the accumulated per‑step shaping. Both changes must be performed together in a single atomic package to reliably shift the policy toward landing completion.",
+      "max_reasonable_edits": 4,
+      "editor_constraints": [
+        "Only adjust weights and duration parameters of existing event_rules; do not introduce new components or custom metrics.",
+        "Set r_safe_contact_once weight to ≥ 100 and r_stable_landing_once weight to ≥ 400.",
+        "Set duration_steps for both landing events to 1.",
+        "Do not increase any per‑step shaping weight; minor further reductions are acceptable but not required.",
+        "If a time penalty is added, limit it to -0.05 per step after 400 steps.",
+        "The new weights should keep total episode return below ~1000 to avoid numerical instability."
+      ],
+      "must_preserve": [
+        "The current approach guidance (r_approach_region, r_approach_progress) to aid early learning.",
+        "The stability and landing_quality shaping metrics at their present weights – they provide useful intermediate feedback.",
+        "The recently added r_landing_region_once event, which serves as an intermediate milestone."
+      ],
+      "must_avoid": [
+        "Removing all shaping rewards abruptly (would create a sparse reward and cause learning failure).",
+        "Making the landing bonuses so extreme (>1000) that the agent rushes and crashes frequently."
+      ],
+      "expected_effect": "With safe_contact_once at 100 and stable_landing_once at 400 (both triggered on the first occurrence), the terminal rewards will far outweigh the cumulative per‑step shaping (typically ~1–2 per step). The agent will then be strongly incentivized to end the episode with a proper landing. Repeated contact toggles should decrease, and trigger rates of the landing bonuses should rise to normal levels (well above 10%). Episode reward mean should eventually settle around the sum of the bonuses plus modest shaping, indicative of successful landings.",
+      "risk_analysis": "If the underlying event metrics (safe_contact, stable_landing_condition) are incorrectly defined or still never activate, the agent will receive zero terminal reward and may experience a very low return, potentially causing training collapse. The risk is moderate but acceptable: the current state already yields no landings, so this edit is a necessary intervention. Close monitoring of landing event trigger rates after the edit is essential; if they remain near zero, a deeper investigation of the event definitions is warranted."
+    }
+  }
+}

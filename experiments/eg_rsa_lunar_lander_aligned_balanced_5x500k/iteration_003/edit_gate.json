@@ -1,0 +1,77 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.7
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.7
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.7
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_step_penalty",
+        "type": "step_penalty",
+        "weight": -0.03,
+        "inputs": [],
+        "params": {
+          "step_threshold": 500
+        },
+        "clip": [
+          -0.03,
+          0.0
+        ],
+        "enabled": true
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.25
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic coupled package with 5 edits; gate preserved package coherence."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 5,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing shaping rewards without adding a time penalty may not discourage hovering if the agent can still accumulate the reduced shaping over 1000 steps to get a decent reward. Adding a time penalty without reducing shaping may make the total reward for long episodes negative too early, leading to premature crashing. Both modifications together will shift the cost structure: long hovering episodes become net negative, while early landings remain highly positive.",
+      "max_reasonable_edits": 5,
+      "editor_constraints": [
+        "Only adjust weights of existing shaping components (r_approach_region, r_stability, r_landing_quality) and add one new component for a step penalty; do not introduce new custom metrics.",
+        "Target weight values: r_approach_region → 0.42, r_stability → 0.35, r_landing_quality → 0.70 (or similar proportional reductions).",
+        "Add a step penalty component: type='step_penalty', weight=-0.03, active only when current_step > 500, clip=[-0.03, 0.0].",
+        "Do not alter r_approach_progress, r_energy, or any landing event rules.",
+        "Optionally increase r_stable_landing_once weight from 400 to 500 if editor deems it necessary, but not required.",
+        "Total expected episode reward for a short, successful landing should be in the range 600–800, while a full-length hovered episode should fall below 400."
+      ],
+      "must_preserve": [
+        "Approach guidance (r_approach_region, r_approach_progress) to help early learning, albeit with reduced weights.",
+        "Existing landing event rules and their one-time nature.",
+        "A positive total return for successful, efficient landings."
+      ],
+      "must_avoid": [
+        "Removing all continuous shaping abruptly (would make reward sparse and risk training instability).",
+        "Making the step penalty start too early (before reasonable exploration time, e.g., <400 steps) to prevent penalising legitimate initial exploration.",
+        "Increasing any continuous shaping weight."
+      ],
+      "expected_effect": "The agent will find long hovering episodes significantly less rewarding, encouraging it to seek the large one-time landing bonuses by terminating early with a stable touchdown. Landing trigger rates should increase noticeably, episode length will drop for successful episodes, and hack score should decline as the incentive to hover diminishes.",
+      "risk_analysis": "If the step penalty is too large or starts too early, the agent may rush and crash frequently, potentially leading to a drop in overall reward and sparse learning signals. The shaping reductions should be moderate to preserve guidance; if learning stalls, the step penalty start step can be increased. Monitor landing event trigger rates; if they do not improve, consider further reducing shaping or increasing landing bonuses."
+    }
+  }
+}

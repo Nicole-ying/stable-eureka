@@ -1,0 +1,186 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean 232.8, lower than previous 2066 after shaping weight reduction, but still well above typical LunarLander task completion range (100–300).",
+      "Landing bonuses r_safe_contact_once and r_stable_landing_once have zero sum and zero trigger rate.",
+      "Repeated contact toggles persist (max 21 toggles for 'contact'), indicating bouncing without stable touchdown.",
+      "Dominant reward component is r_approach_region (ratio 0.489), with all per‑step shaping metrics triggering every step.",
+      "No episode ever terminates with a successful stable landing condition.",
+      "The hack detector flags repeated_event_exploitation and shaping_goal_mismatch."
+    ],
+    "likely_true_failures": [
+      "Reward hacking / task failure: the agent exploits remaining per‑step shaping rewards by hovering and bouncing, never completing the episode goal.",
+      "Shaping‑goal mismatch: per‑step metrics do not incentivise episode termination; the agent is satisfied with a steady stream of small rewards."
+    ],
+    "likely_false_positives": [
+      "high_reward_low_progress flag is false; the agent makes zero progress toward actual landing, so the detector may underestimate severity.",
+      "repeated_event_exploitation may not be a direct hack on repeating bonuses (none fire) but a symptom of unsuccessful landing attempts."
+    ],
+    "root_cause_hypotheses": [
+      "One‑time landing bonuses have weights (10, 40) too low relative to accumulated per‑step shaping, so they do not dominate the return.",
+      "Duration conditions (2 and 5 steps) are too strict, preventing the bonuses from ever triggering even when a safe contact or near‑stable state occurs.",
+      "The agent lacks a strong terminal signal to end the episode; it can collect shaping rewards indefinitely without penalty."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "moderate",
+        "status": "reusable_now",
+        "reason": "This lesson correctly identified that rebalancing (reducing shaping weights + increasing landing bonuses + relaxing durations) was necessary. The shaping part was applied in the previous iteration, and now the complementary edits (increase bonuses, relax conditions) must be added to complete the rebalancing. The lesson is directly applicable to the current failure modes."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Do not increase any per‑step shaping weights (r_approach_region, r_stability, r_landing_quality).",
+      "Do not add new continuous rewards that could further incentivize hovering.",
+      "Do not repeat solo decrease_weight edits without pairing with terminal incentives."
+    ],
+    "recommended_actions": [
+      "Increase weights of r_safe_contact_once and r_stable_landing_once to at least 100 and 400 respectively.",
+      "Relax the duration conditions for both landing events to 1 step.",
+      "Optionally add a small time‑based penalty after 400 steps, but this is not critical if terminal bonuses dominate."
+    ],
+    "memory_confidence": 0.7
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 4,
+    "rationale": "The agent hovers without landing because the one‑time landing bonuses are too small and their duration conditions too strict. Shaping weights were already reduced in the previous iteration, but the terminal incentives remain insufficient. To correct this, we must simultaneously increase the landing bonus weights and relax the duration requirements to 1 step. Applying only one of these changes risks leaving the agent without adequate terminal signal or making the bonuses still unreachable. The coupled atomic package follows the reflection strategy and completes the rebalancing started by the earlier shaping reductions.",
+    "expected_effect": "The agent will now receive a large, unrepeatable reward upon first safe contact (100) and a much larger reward upon stable landing (400). With duration reduced to 1 step, these events become achievable early in landing. The cumulative per‑step shaping (~1–2 per step) will be dwarfed by the terminal bonuses, so the agent should prioritise completing a landing. Repeated contact toggles should decrease as landing becomes the primary objective.",
+    "risk_analysis": "If the underlying event metrics (safe_contact, stable_landing_condition) still do not trigger due to a bug or definition mismatch, the agent will receive no terminal reward and may experience a very low or zero return, potentially causing learning to collapse. The risk is moderate but acceptable; the current situation already yields no landings, so the edit is a necessary intervention. Monitoring trigger rates after the edit is essential.",
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 10.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 10.0
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_safe_contact_once",
+        "duration_steps": 1
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_stable_landing_once",
+        "duration_steps": 1
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Decreasing per‑step shaping weights effectively reduced episode reward mean and shifted the reward budget, but alone it did not induce landing behavior."
+    ],
+    "what_failed": [
+      "Previous attempt to increase landing bonuses and relax durations was rejected by the gate due to low evidence (zero trigger rate), leaving the agent with only the shaping reduction."
+    ],
+    "avoid_next": [
+      "Do not apply solo shaping reductions without the corresponding terminal enhancements.",
+      "Do not let gate logic reject essential complementary edits in a coupled package."
+    ],
+    "recommend_next": [
+      "When a coupled rebalancing is required, ensure all parts of the package are applied together, even if some targets currently show low evidence.",
+      "After this edit, closely monitor landing event trigger rates and adjust conditions if needed."
+    ],
+    "applicability_notes": "The shaping‑vs‑terminal rebalancing pattern is general for any landing/contact task where continuous shaping can be exploited."
+  },
+  "diagnosis": "Agent hovers and bounces near the pad, collecting per‑step shaping rewards without triggering the one‑time landing bonuses. The landing bonuses are too weak and their duration conditions too strict. Completing the coupled rebalancing (increasing bonuses + relaxing durations) will make terminal rewards dominant and guide the agent toward actual landings.",
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_safe_contact_once",
+      "duration_steps": 1
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_stable_landing_once",
+      "duration_steps": 1
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 4,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "The agent receives dense shaping rewards for being in the approach region, leading to hovering exploitation without ever completing a stable landing. A sparse milestone reward for entering the landing region is missing to guide progress toward the terminal goal.",
+      "why_local_edit_is_insufficient": "Existing local weight adjustments have not broken the hovering cycle; a new sparse milestone is necessary to bridge the gap between approach region and terminal success.",
+      "memory_constraints": [],
+      "safety_constraints": [
+        "Event bonus is one-time and gated by duration to prevent exploitation."
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a one-time event bonus for sustained presence in the landing region provides a safe, non-exploitable intermediate reward. It uses only configured events and respects the one-time and duration constraints to avoid turning into a repeatable exploit.",
+      "edit_plan": [
+        {
+          "operator": "add_event_rule",
+          "event_rule": {
+            "name": "r_landing_region_once",
+            "type": "event_bonus",
+            "weight": 30.0,
+            "condition": {
+              "landing_region": true,
+              "duration_steps": 3
+            },
+            "one_time": true,
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Shaping-goal mismatch and repeated event exploitation due to dominating approach region reward; adding a sparse landing region milestone.",
+    "edit_plan": [
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_landing_region_once",
+          "type": "event_bonus",
+          "weight": 30.0,
+          "condition": {
+            "landing_region": true,
+            "duration_steps": 3
+          },
+          "one_time": true,
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

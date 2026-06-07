@@ -1,0 +1,154 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean ~2067, high for LunarLander, but reward std high (1334).",
+      "One-time landing bonuses (r_safe_contact_once, r_stable_landing_once) have zero sum and zero trigger rate.",
+      "Repeated event toggles: left_contact toggled 22 times, contact 20 times, indicating bouncing without stable landing.",
+      "Dominant reward component is r_approach_region (ratio 0.446), but component_dominance flag false.",
+      "Shaping metrics (approach_region, stability, landing_quality) have high mean and trigger every step.",
+      "Episode never ends with a successful landing (no stable_landing_condition satisfied)."
+    ],
+    "likely_true_failures": [
+      "Reward hacking: agent learns to hover near the ground, maximizing per-step shaping rewards without ever landing.",
+      "Shaping-goal mismatch: the per-step metrics do not incentivize episode completion; they incentivize staying in a high-scoring state."
+    ],
+    "likely_false_positives": [
+      "high_reward_low_progress is false, but overall progress toward landing is zero, so the detector might underestimate the severity.",
+      "repeated_event_exploitation flag may not be a direct hack but a symptom of incomplete landing (bouncing)."
+    ],
+    "root_cause_hypotheses": [
+      "The continuous shaping rewards (r_approach_region, r_stability, r_landing_quality) dominate the episode return, making hovering more attractive than completing the landing.",
+      "The one-time landing bonuses have conditions (duration_steps: 2 and 5) that are too strict for a bouncing lander, causing them to never fire.",
+      "The energy penalty (r_energy) is too small to discourage extra engine use during hovering."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.8
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Do not increase weights of existing per-step shaping rewards (r_approach_region, r_stability, r_landing_quality) without a corresponding increase in terminal incentives.",
+      "Do not add more continuous rewards that could reinforce hovering."
+    ],
+    "recommended_actions": [
+      "Substantially increase the one-time landing bonuses (r_safe_contact_once, r_stable_landing_once) or add a new large completion bonus.",
+      "Relax the duration conditions for landing events to trigger on first stable contact, not after a fixed number of steps.",
+      "Add a time-based penalty or step limit incentive to discourage prolonged hovering.",
+      "Reduce weights of per-step shaping rewards to make landing bonuses the dominant fraction of total episode return."
+    ],
+    "memory_confidence": 0.5
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 7,
+    "rationale": "The agent is reward hacking by hovering to collect per-step shaping rewards instead of completing a landing. To shift its objective, we must simultaneously reduce the dominant per‑step shaping weights (approach_region, stability, landing_quality) and increase the one‑time landing bonuses (safe_contact_once, stable_landing_once). Relaxing the duration conditions to 1 step ensures these bonuses fire on any safe contact or landing, preventing them from being unreachable. All edits are needed in one atomic package to avoid leaving the agent without guidance or reinforcing the hack via solo changes.",
+    "expected_effect": "The agent will learn to complete a stable landing because the terminal bonuses (100 for safe contact, 400 for stable landing) will outweigh the reduced cumulative shaping rewards (now ~0.6, 0.5, 1.0 per step). The approach shaping still provides guidance, but the incentive to finish becomes strong. Repeated contact toggles should decrease as landing becomes a conditioned goal.",
+    "risk_analysis": "If the landing event conditions still never trigger (e.g., underlying metrics do not match events), the agent may receive no terminal bonus and experience sparse reward, possibly leading to very low return. The weight reductions might slow initial learning if they are too aggressive. However, preserving some shaping and ensuring relaxed duration mitigates this. Overall risk is moderate but acceptable given the strong evidence of current hack.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.4
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_progress",
+        "factor": 0.5
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_stability",
+        "factor": 0.5
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 10.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 10.0
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_safe_contact_once",
+        "duration_steps": 1
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_stable_landing_once",
+        "duration_steps": 1
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Reward hacking by hovering: agent exploits per‑step shaping rewards without ever landing. Rebalancing with reduced shaping weights, increased one‑time landing bonuses, and relaxed duration conditions should redirect the agent toward proper task completion.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.4
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_progress",
+      "factor": 0.5
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.5
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_safe_contact_once",
+      "duration_steps": 1
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_stable_landing_once",
+      "duration_steps": 1
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 7
+}
