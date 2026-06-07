@@ -16,17 +16,16 @@ class ExperimentSummary:
         for iter_dir in sorted(output_dir.glob("iteration_*")):
             if not iter_dir.is_dir():
                 continue
-            row = ExperimentSummary._read_iteration(iter_dir)
-            rows.append(row)
-
-        summary = {
+            rows.append(ExperimentSummary._read_iteration(iter_dir))
+        return {
             "output_dir": str(output_dir),
             "num_iterations": len(rows),
             "iterations": rows,
             "best_by_task_score": ExperimentSummary._best_row(rows, "task_score"),
+            "best_by_selection_score": ExperimentSummary._best_row(rows, "selection_score"),
+            "best_by_semantic_score": ExperimentSummary._best_row(rows, "semantic_score"),
             "best_by_posthoc_return": ExperimentSummary._best_row(rows, "posthoc_return_mean"),
         }
-        return summary
 
     @staticmethod
     def save(output_dir: Path) -> Dict[str, Any]:
@@ -40,6 +39,7 @@ class ExperimentSummary:
     def _read_iteration(iter_dir: Path) -> Dict[str, Any]:
         idx = ExperimentSummary._iteration_index(iter_dir)
         diagnostic = ExperimentSummary._read_json(iter_dir / "diagnostic_report.json", {})
+        semantic = ExperimentSummary._read_json(iter_dir / "semantic_outcome.json", diagnostic.get("semantic_outcome", {}))
         posthoc = ExperimentSummary._read_json(iter_dir / "posthoc_eval.json", {})
         edit_validation = ExperimentSummary._read_json(iter_dir / "edit_validation.json", {})
         edit_plan = ExperimentSummary._read_json(iter_dir / "edit_plan.json", {})
@@ -68,10 +68,21 @@ class ExperimentSummary:
         row = {
             "iteration": idx,
             "task_score": None,
+            "semantic_score": semantic.get("semantic_score"),
+            "selection_score": None,
             "hack_score": diagnostics.get("hack_score"),
             "failure_modes": ";".join(diagnostics.get("failure_modes", [])),
             "dominant_component": diagnostics.get("dominant_component"),
             "dominant_component_ratio": diagnostics.get("dominant_component_ratio"),
+            "benign_terminal_dominance": diagnostics.get("benign_terminal_dominance"),
+            "terminal_goal_evidence": semantic.get("terminal_goal_evidence"),
+            "reward_repetition_risk": semantic.get("reward_repetition_risk"),
+            "success_episode_rate": semantic.get("success_episode_rate"),
+            "terminal_reward_paid_episode_rate": semantic.get("terminal_reward_paid_episode_rate"),
+            "stable_landing_episode_rate": semantic.get("stable_landing_episode_rate"),
+            "safe_contact_episode_rate": semantic.get("safe_contact_episode_rate"),
+            "contact_toggle_mean": semantic.get("contact_toggle_mean"),
+            "contact_toggle_max": semantic.get("contact_toggle_max"),
             "posthoc_return_mean": posthoc.get("return_mean"),
             "posthoc_return_std": posthoc.get("return_std"),
             "posthoc_episode_length_mean": posthoc.get("episode_length_mean"),
@@ -85,26 +96,28 @@ class ExperimentSummary:
             "memory_failure_modes": ";".join(memory_card.get("failure_modes", [])),
             "memory_outcome_status": memory_card.get("outcome", {}).get("status", ""),
         }
-        row.update(ExperimentSummary._task_score_from_memory(memory_card))
+        row.update(ExperimentSummary._score_from_memory(memory_card))
         row.update(ExperimentSummary._component_ratios(attribution))
         return row
 
     @staticmethod
     def _extract_edit_decision(edit_response: Dict[str, Any]) -> str:
         editor = edit_response.get("reward_editor", {}) if isinstance(edit_response, dict) else {}
-        if isinstance(editor, dict):
-            decision = editor.get("edit_decision")
-            if isinstance(decision, str) and decision:
-                return decision
+        if isinstance(editor, dict) and isinstance(editor.get("edit_decision"), str):
+            return editor["edit_decision"]
         return "edit"
 
     @staticmethod
-    def _task_score_from_memory(memory_card: Dict[str, Any]) -> Dict[str, Any]:
+    def _score_from_memory(memory_card: Dict[str, Any]) -> Dict[str, Any]:
         outcome = memory_card.get("outcome", {})
         before = outcome.get("before", {})
         return {
-            "task_score": outcome.get("task_score_before", before.get("task_score")),
+            "task_score": before.get("task_score"),
+            "semantic_score": before.get("semantic_score"),
+            "selection_score": before.get("selection_score"),
             "outcome_task_delta": outcome.get("delta", {}).get("task_score"),
+            "outcome_semantic_delta": outcome.get("delta", {}).get("semantic_score"),
+            "outcome_selection_delta": outcome.get("delta", {}).get("selection_score"),
             "outcome_hack_delta": outcome.get("delta", {}).get("hack_score"),
         }
 
