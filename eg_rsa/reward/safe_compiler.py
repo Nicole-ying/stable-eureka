@@ -8,8 +8,11 @@ from eg_rsa.reward.schema import RewardSchema
 class SafeRewardCompiler:
     """Safer compact compiler for EG-RSA reward schemas.
 
-    This version embeds the schema through json.loads(repr(json_text)) so the
-    generated Python code never contains raw JSON booleans such as true/null.
+    The exported reward code mirrors SchemaRewardWrapper semantics for:
+      - metric_delta;
+      - metric_stagnation_penalty;
+      - one_time event rules;
+      - event-rule duration_steps.
     """
 
     SUPPORTED_COMPONENTS = {
@@ -39,6 +42,12 @@ class SafeRewardCompiler:
 {i}    import numpy as np
 {i}    schema = json.loads({schema_literal})
 {i}    state_flags = state_flags or {{}}
+{i}    if not hasattr(self, "_eg_rsa_fired_event_rules"):
+{i}        self._eg_rsa_fired_event_rules = set()
+{i}    if not hasattr(self, "_eg_rsa_event_rule_duration_counts"):
+{i}        self._eg_rsa_event_rule_duration_counts = {{}}
+{i}    if not hasattr(self, "_eg_rsa_metric_stagnation_counts"):
+{i}        self._eg_rsa_metric_stagnation_counts = {{}}
 {i}    task_metrics = {{}}
 {i}    prev_task_metrics = {{}}
 {i}    if isinstance(obs_map, dict):
@@ -50,7 +59,6 @@ class SafeRewardCompiler:
 {i}        prev_task_metrics = getattr(self, "_prev_task_metrics") or prev_task_metrics
 {i}    individual_reward = {{}}
 {i}    total_reward = 0.0
-{i}    stagnation_counts = {{}}
 {i}    def _get(name, default=0.0):
 {i}        return float(obs_map.get(name, default))
 {i}    def _clip(value, clip_range):
@@ -108,10 +116,10 @@ class SafeRewardCompiler:
 {i}            previous = float(prev_task_metrics.get(metric, current))
 {i}            delta = abs(current - previous)
 {i}            if delta < threshold:
-{i}                stagnation_counts[name] = stagnation_counts.get(name, 0) + 1
+{i}                self._eg_rsa_metric_stagnation_counts[name] = self._eg_rsa_metric_stagnation_counts.get(name, 0) + 1
 {i}            else:
-{i}                stagnation_counts[name] = 0
-{i}            raw = -1.0 if stagnation_counts.get(name, 0) >= window else 0.0
+{i}                self._eg_rsa_metric_stagnation_counts[name] = 0
+{i}            raw = -1.0 if self._eg_rsa_metric_stagnation_counts.get(name, 0) >= window else 0.0
 {i}        value = weight * _clip(raw, component.get("clip"))
 {i}        individual_reward[name] = float(value)
 {i}        total_reward += float(value)
@@ -121,12 +129,23 @@ class SafeRewardCompiler:
 {i}        name = rule["name"]
 {i}        weight = float(rule.get("weight", 1.0))
 {i}        condition = rule.get("condition", {{}})
-{i}        ok = True
+{i}        duration_steps = int(condition.get("duration_steps", 1) or 1)
+{i}        base_ok = True
 {i}        for key, expected in condition.items():
 {i}            if key == "duration_steps":
 {i}                continue
-{i}            ok = ok and (state_flags.get(key, False) == expected)
-{i}        value = float(weight) if ok else 0.0
+{i}            base_ok = base_ok and (state_flags.get(key, False) == expected)
+{i}        if base_ok:
+{i}            self._eg_rsa_event_rule_duration_counts[name] = self._eg_rsa_event_rule_duration_counts.get(name, 0) + 1
+{i}        else:
+{i}            self._eg_rsa_event_rule_duration_counts[name] = 0
+{i}        ok = base_ok if duration_steps <= 1 else (base_ok and self._eg_rsa_event_rule_duration_counts.get(name, 0) >= duration_steps)
+{i}        if rule.get("one_time", False) and name in self._eg_rsa_fired_event_rules:
+{i}            value = 0.0
+{i}        else:
+{i}            value = float(weight) if ok else 0.0
+{i}            if rule.get("one_time", False) and ok:
+{i}                self._eg_rsa_fired_event_rules.add(name)
 {i}        individual_reward[name] = float(value)
 {i}        total_reward += float(value)
 {i}    individual_reward["reward"] = float(total_reward)
@@ -148,3 +167,13 @@ class SafeRewardCompiler:
             if component.clip is not None:
                 if len(component.clip) != 2 or component.clip[0] > component.clip[1]:
                     raise ValueError(f"Invalid clip range for {component.name}: {component.clip}")
+        for rule in schema.event_rules:
+            if rule.name in names:
+                raise ValueError(f"Duplicate reward item name: {rule.name}")
+            names.add(rule.name)
+            if rule.type != "event_bonus":
+                raise ValueError(f"Unsupported event rule type: {rule.type}")
+            if not isinstance(rule.condition, dict) or not rule.condition:
+                raise ValueError(f"Event rule {rule.name} must have a non-empty condition")
+            if "duration_steps" in rule.condition and int(rule.condition["duration_steps"]) <= 0:
+                raise ValueError(f"Event rule {rule.name} has invalid duration_steps")
