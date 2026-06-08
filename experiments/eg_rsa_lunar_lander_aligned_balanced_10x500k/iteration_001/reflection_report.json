@@ -1,71 +1,99 @@
 {
-  "reflection_summary": "Lander again achieves high episode reward (~2430) by exploiting dense shaping rewards (r_approach_region contributes 42.7%), while never achieving stable landing. The added r_landing_region_progress provided only a small signal and did not incentivize landing. Terminal bonuses remain uncollected. The shaping_goal_mismatch and unstable contact behavior persist.",
+  "reflection_summary": "After the previous atomic edit that reduced r_approach_region weight and relaxed the stable-landing condition, the agent achieved 10% success and began triggering terminal bonuses. However, the dominant dense component is now r_landing_quality (40% of total reward), which may allow the agent to collect high reward through partial or bumpy landings without consistently achieving a stable two-leg touchdown. Shaping-goal mismatch and unstable contact toggles persist, suggesting that the dense components still outweigh the terminal incentive. A further coupled rebalancing is needed: decrease the dominant dense reward and strengthen the terminal bonus to make the final-goal incentive clearer.",
   "failure_assessment": {
     "observed_facts": [
-      "Episode reward mean = 2429.9, driven 42.7% by r_approach_region (mean per-step 1.3275).",
-      "Both terminal event rewards (r_safe_contact_once, r_stable_landing_once) never trigger.",
-      "Success rate is 0.0 over 10 evaluation episodes; stable_landing_episode_rate = 0.0.",
-      "Episodes are long (mean 788.5 steps) with many contact toggles (landing_region max 11, left_contact 1, right_contact 3).",
-      "New component r_landing_region_progress has very low contribution (mean 0.00182, trigger rate 35.7%).",
-      "Hack flags: shaping_goal_mismatch, repeated_event_exploitation, unstable_contact_behavior.",
-      "Diagnostic hack_score = 0.4, same as previous iteration."
+      "Success rate is 10% (1/10 episodes), with one payment each of r_safe_contact_once and r_stable_landing_once.",
+      "r_landing_quality dominates (40% of total reward), with mean per-step contribution ~0.905 (weight 2.0) over ~710 steps.",
+      "r_approach_region still substantial (r_approach_region sum 4681, mean 0.659 per step) despite earlier 0.47× weight reduction.",
+      "Unstable contact behavior: contact toggle mean 9.3 per episode, max 15.",
+      "Episode length mean 710.4, indicating prolonged episodes with many steps, likely hovering or bouncing near the pad.",
+      "Shaping_goal_mismatch flag true; hack_score low (0.2) but true_hack_risk remains true."
     ],
     "likely_true_failures": [
-      "shaping_goal_mismatch: continuous shaping rewards remain dominant, agent hovers to collect high scores without landing.",
-      "unstable_contact_behavior: agent frequently toggles contacts and never satisfies the 5-step stable landing condition."
+      "Shaping-goal mismatch: dense components (especially r_landing_quality) provide sufficient reward to keep the agent near the pad without reliably completing a stable landing.",
+      "Agent may exploit r_landing_quality by repeatedly making partial ground contacts that score high but do not satisfy the stable_two_leg condition."
     ],
     "likely_false_positives": [
-      "repeated_event_exploitation: no one-time event bonuses were paid; region toggling likely reflects bouncing rather than reward exploitation."
+      "Repeated_event_exploitation flag is already false; the toggles are a symptom of bouncing, not direct event-rule exploitation.",
+      "The terminal_success_dominance flag is false, so the 40-point bonus is not overshadowing shaping; it’s the opposite problem."
     ],
     "root_cause_hypotheses": [
-      "Dense shaping rewards (especially r_approach_region) still dominate over terminal bonuses, preventing the agent from prioritizing stable landing. Even with added landing region progress, the cumulative per-step rewards from hovering far exceed any potential terminal bonus, so the agent continues to loiter. The terminal bonuses (r_stable_landing_once weight 40, r_safe_contact_once weight 10) are insufficient to shift behavior."
+      "r_landing_quality weight (2.0) multiplied by its high per-step value creates a dense reward stream that dominates the 40-point terminal bonus, even when the landing is imperfect.",
+      "The current balance of shaping vs. terminal rewards still allows the agent to accumulate large total reward by spending many steps near the pad with mediocre landing quality, rather than committing to a quick, stable touchdown.",
+      "The relaxed stable_landing condition (3 steps) is appropriate, but the terminal bonus magnitude remains too small to overcome the lure of prolonged dense collection."
     ],
     "failure_kind": "reward_hack",
     "confidence": 0.8
   },
   "memory_assessment": {
     "reusable_lessons": [
-      "lesson_iter_000_to_001"
+      "lesson_iter_000_to_001: Coupled rebalancing (decrease dense shaping + ease terminal condition) improved task score from 0.26 to 0.65 and semantic score from 0.26 to 0.80, reducing hack risk. The same pattern of shaping dominance causing hovering is present but with a different dominant component. Reusable with high confidence."
     ],
     "failed_or_weak_lessons": [],
     "conflicting_lessons": [],
     "avoid_actions": [
-      "Do not add more dense shaping components that could further obscure the terminal goal; such components have not solved the core problem."
+      "Do not increase the weight of r_landing_quality, r_approach_region, or any other dense shaping component.",
+      "Do not remove or weaken terminal bonuses (r_stable_landing_once, r_safe_contact_once).",
+      "Do not apply a solo decrease_weight edit without a compensatory terminal-strengthening edit.",
+      "Do not make the terminal condition too lax (e.g., duration_steps < 2) to avoid accidental triggers."
     ],
     "recommended_actions": [
-      "Drastically increase the weight of r_stable_landing_once (e.g., weight > 150) to make successful landing the dominant incentive, as suggested by lesson_iter_000_to_001."
+      "Decrease the weight of the currently dominant dense component, r_landing_quality, to reduce its per‑step allure (e.g., by factor 0.5–0.7).",
+      "Increase the terminal bonus weight for r_stable_landing_once (e.g., from 40 to 60–100) to make a successful, stable landing materially more rewarding than lengthy bouncing.",
+      "Optionally, further reduce r_approach_region weight slightly if it still supports hovering.",
+      "Preserve r_stability, r_approach_progress, and r_safe_contact_once as supporting components.",
+      "Keep the stable_landing duration at least 3 steps to maintain robustness."
     ],
-    "memory_confidence": 0.75
+    "memory_confidence": 0.85
   },
   "strategy": {
     "recommended_next_action": "apply_edit",
-    "plan_type": "single_edit",
-    "atomicity": "separable",
-    "why_atomic_or_separable": "Increasing the terminal bonus weight alone is a single, independent operation; it does not force changes to other components. However, if the bonus remains unreachable, future rebalancing (reducing some shaping weights) might be needed, but that can be done subsequently.",
-    "max_reasonable_edits": 1,
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Decreasing r_landing_quality alone might make the reward too sparse and prevent approach learning; increasing terminal bonus alone may not fix the dominance of dense rewards. The two changes must be applied together to shift the incentive hierarchy toward stable landing while still providing enough shaping to guide the agent.",
+    "max_reasonable_edits": 2,
     "editor_constraints": [
-      "Increase the weight of r_stable_landing_once significantly (suggest >150) to make the terminal success reward dominant over episode-long shaping accumulation.",
-      "Do not change any other component weights or event conditions in this edit.",
-      "Keep the one-time flag and duration requirement (5 steps) intact."
+      "Total achievable per‑episode reward should not increase dramatically; aim for a rebalancing, not an inflation.",
+      "Do not reduce r_landing_quality below a weight of 0.5 to keep some shaping signal.",
+      "If increasing r_stable_landing_once, keep the new weight ≤ 120 to avoid terminal dominance that could lead to early truncation of landing attempts.",
+      "Keep duration_steps for stable_landing_condition at 3 (or increase to 4) to avoid rewarding momentary contacts.",
+      "Do not touch r_safe_contact_once or r_approach_progress unless they are part of a carefully reasoned adjustment.",
+      "Any new penalty (e.g., anti‑bouncing) must be based on existing metrics; avoid inventing new components."
     ],
     "must_preserve": [
-      "One-time flag and 5-step duration requirement of r_stable_landing_once to prevent reward farming."
+      "At least one dense proximity/landing‑quality component to guide the agent toward the pad.",
+      "The terminal success event bonuses as the ultimate high‑value outcome.",
+      "The overall scheme of dense shaping + sparse terminal events.",
+      "r_stability to encourage upright attitude near the ground."
     ],
     "must_avoid": [
-      "Making the terminal bonus repeatable, reducing the duration or stability threshold, or modifying other shaping components in the same edit."
+      "Removing r_landing_quality entirely or making it negligible while not strengthening terminal reward.",
+      "Introducing new dense rewards that can be collected indefinitely (e.g., altitude‑based, angle‑based without ground contact).",
+      "Making the terminal bonus so large that it overwhelms any approach shaping, risking that the agent never learns to reach the pad.",
+      "Any single‑component edit that changes only the dense side or only the terminal side."
     ],
-    "expected_effect": "If the shaping components can guide the agent close to a stable landing, the now-dominant terminal bonus will sharply incentivize completing the landing. Episode length should decrease, and success rate should eventually rise. Without a landing, no terminal bonus is paid, so hack risk is not increased.",
-    "risk_analysis": "Risk that the terminal condition (stable_landing_condition with 5-step duration) is still too difficult for the current training progress, making the bonus unreachable and causing training to stall. The agent might also attempt unsafe high-speed descents to trigger the condition, but the stability filter and duration requirement mitigate that. Monitoring is needed; if success rate remains zero after training, the stability condition may need to be relaxed or guidance shaping may need to be strengthened."
+    "expected_effect": "The agent will collect fewer per‑step rewards from partial landings and bouncing, and the value of a clean two‑leg stable touchdown will rise relatively. This should increase the success rate beyond the current 10%, reduce episode lengths, and lower contact toggle counts, while still enabling learning of the approach phase.",
+    "risk_analysis": "If r_landing_quality is reduced too far, the agent may lose guidance and never approach the pad, increasing training time. If the terminal bonus becomes too high, the agent might adopt risky behaviors to trigger it early, possibly crashing more often. The atomic coupling ensures that both sides are adjusted together; testing in a new training run is required to validate the new balance."
   },
   "auditor_hints": {
     "package_should_be_rejected_if": [
-      "The edit changes the terminal bonus to be repeatable, reduces the stability duration below 5 steps, or simultaneously weakens the shaping rewards without careful justification."
+      "It increases the weight of r_landing_quality, r_approach_region, or r_stability.",
+      "It removes or disables r_stable_landing_once or r_safe_contact_once.",
+      "It consists of only one edit targeting either the dense side or the terminal side but not both.",
+      "It introduces a new dense reward component that can be gamed by prolonged hovering or bouncing.",
+      "It reduces the stable_landing_condition duration below 2 steps, making it trivially satisfiable."
     ],
     "package_should_be_accepted_if": [
-      "It increases the weight of r_stable_landing_once to a value significantly above the typical per-episode shaping total (e.g., weight > 150), preserving all conditions and other components."
+      "It decreases r_landing_quality weight by a factor between 0.4 and 0.8 (from 2.0 to 0.8–1.6) and increases r_stable_landing_once weight to at least 60.",
+      "The package retains duration_steps=3 for stable landing or increases it to 4.",
+      "It optionally includes a small further reduction of r_approach_region if justified by persistent hovering.",
+      "The edits are presented as an atomic pair, with clear reasoning that neither change alone is sufficient."
     ],
     "safety_notes": [
-      "If the training still fails to produce any terminal reward payments, a follow-up iteration may need to add a dense signal that directly rewards the precursors to stable landing (e.g., small reward for safe_contact duration) or reduce the shaping rewards to lower the baseline."
+      "All edits must remain within operator‑defined bounds (e.g., weight limits, clip ranges).",
+      "The goal is to shift the incentive ranking, not to penalize exploration. Edits should be smooth multiplier changes.",
+      "Keep monitoring post‑edit for catastrophic unlearning; a rollback mechanism is available.",
+      "The reflection report recommends a balanced rebalancing based on the successful previous pattern."
     ]
   }
 }

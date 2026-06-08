@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import gymnasium as gym
 import yaml
 from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from eg_rsa.diagnostics.event_evaluator import EventEvaluator
 from eg_rsa.diagnostics.task_metrics import TaskMetricEvaluator
@@ -28,12 +29,15 @@ class EGRSATrainer:
         self.diagnostic_spec = yaml.safe_load(diag_path.read_text(encoding="utf-8"))
 
     def train_and_record(self, reward_schema: RewardSchema) -> List[Dict[str, Any]]:
-        env = self._make_env(reward_schema)
-        model = self._make_model(env)
+        n_envs = int(self.config["rl"]["training"].get("n_envs", 1))
+        train_env = self._make_training_vec_env(reward_schema, n_envs)
+        model = self._make_model(train_env)
         total_timesteps = int(self.config["rl"]["training"].get("total_timesteps", 100000))
         model.learn(total_timesteps=total_timesteps)
         model_path = self.output_dir / "model"
         model.save(model_path)
+        if n_envs > 1:
+            train_env.close()
 
         eval_env = self._make_env(reward_schema)
         recorder = self._make_recorder()
@@ -65,6 +69,30 @@ class EGRSATrainer:
         event_evaluator = EventEvaluator(self.diagnostic_spec.get("events", {}))
         task_metric_evaluator = TaskMetricEvaluator(self.diagnostic_spec.get("task_metrics", {}))
         return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator)
+
+    def _make_training_vec_env(self, reward_schema: RewardSchema, n_envs: int = 1):
+        """Create a vectorized environment with n_envs parallel instances, each
+        wrapped in SchemaRewardWrapper.
+
+        Uses SubprocVecEnv for multi-process parallelism when n_envs > 1, falling
+        back to a single DummyVecEnv-wrapped env when n_envs == 1.
+        """
+        if n_envs <= 1:
+            return self._make_env(reward_schema)
+
+        env_id = self.config["environment"].get("gym_id")
+        if not env_id:
+            raise ValueError("EG-RSA real training requires environment.gym_id")
+        env_kwargs = self.config["environment"].get("kwargs") or {}
+
+        def _make_wrapped_env():
+            env = gym.make(env_id, **env_kwargs)
+            adapter = self._make_adapter()
+            event_evaluator = EventEvaluator(self.diagnostic_spec.get("events", {}))
+            task_metric_evaluator = TaskMetricEvaluator(self.diagnostic_spec.get("task_metrics", {}))
+            return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator)
+
+        return SubprocVecEnv([_make_wrapped_env for _ in range(n_envs)], start_method="fork")
 
     def _make_adapter(self) -> BoxObsAdapter:
         mapping = self.diagnostic_spec.get("observation_mapping", {})

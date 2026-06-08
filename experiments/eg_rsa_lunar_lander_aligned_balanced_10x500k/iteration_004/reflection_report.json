@@ -1,0 +1,95 @@
+{
+  "reflection_summary": "The current schema (post-memory iter_003_to_004) achieves 50% stable landing success, terminal bonuses paid, no hack flags except persistent unstable contact toggles. The reward surface still gives substantial per-step reward (r_landing_quality 36%, r_approach_region 28%) that allows bouncing near the pad before final touchdown. No true reward hack, but residual shaping-goal mismatch. The safe, proven path is a further atomic rebalancing: moderate increase of terminal bonus and approach progress without touching any dense components.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Success rate 0.5 (5/10 episodes stable landing); terminal bonus paid in 5 episodes.",
+      "Unstable contact behavior: contact toggle mean 29.6, max 53, indicating bouncing before landing.",
+      "r_landing_quality still dominates (36% of total reward) with mean per-step ~0.731, providing reward for near-pad states even with bouncing.",
+      "r_approach_progress nearly inactive (mean 0.0146, trigger rate 0.39), contributes little to urging the agent to descend quickly.",
+      "Hack flags show only unstable_contact_behavior true; no component dominance or repeated_event_exploitation; hack_score 0.0.",
+      "Episode length mean 249.3, shorter than before, showing the agent commits to landing sooner."
+    ],
+    "likely_true_failures": [
+      "Residual shaping-goal mismatch: dense per-step rewards (r_landing_quality, r_approach_region) still make gentle bouncing/hovering near the pad locally profitable, delaying commitment to a clean touchdown and causing high contact toggles."
+    ],
+    "likely_false_positives": [
+      "The absence of repeated_event_exploitation flag is correct; toggles are a symptom of bouncing, not direct exploitation of event rules.",
+      "The raw_component_dominance flag is false because no single dense component exceeds 50% in step-reward ratio, but their combined dense sum still creates the misalignment."
+    ],
+    "root_cause_hypotheses": [
+      "r_landing_quality and r_approach_region together provide enough per‑step reward to incentivise the agent to spend extra steps near the pad before landing, increasing toggles.",
+      "The terminal bonus (80) is now substantial, but the approach-progress signal (weight 5.0) is still too weak to sharply penalise prolonged descent, allowing bouncing."
+    ],
+    "failure_kind": "shaping_goal_mismatch",
+    "confidence": 0.65
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "lesson_iter_003_to_004: strong positive – increasing terminal bonus and approach-progress without decreasing dense weights lifted success from 0.1 to 0.5, reduced hack score to 0.0, and retained dense guidance. This exact pattern is highly reusable now."
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002: harmful – decreasing r_landing_quality (dense) together with increasing terminal bonus caused complete regression (0% success). Must be strictly avoided."
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Decrease the weight of r_landing_quality, r_approach_region, r_stability, or any other dense component.",
+      "Apply a solo decrease_weight without a positive compensatory edit (especially not decrease dense + increase terminal).",
+      "Weaken terminal bonuses (r_stable_landing_once, r_safe_contact_once).",
+      "Introduce new components, metrics, or penalties (must operate within existing schema elements)."
+    ],
+    "recommended_actions": [
+      "Further increase r_stable_landing_once weight moderately (e.g., factor 1.25–1.5, new weight 100–120) to make a clean stable landing even more attractive vs. bouncing.",
+      "Amplify r_approach_progress weight (e.g., factor 1.5–2.0, new weight 7.5–10) to strengthen the gradient for swift descent, discouraging loitering near the pad.",
+      "Keep all dense shaping weights exactly as they are to preserve the essential guidance that enables reaching the pad."
+    ],
+    "memory_confidence": 0.9
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Boosting terminal bonus alone may not overcome the combined dense reward from r_landing_quality + r_approach_region that makes bouncing attractive. Amplifying approach-progress simultaneously sharpens the incentive to descend quickly. The two changes are complementary: one raises the terminal goal value, the other accelerates the agent’s path to achieving it. This atomic coupling ensures neither change can be exploited alone, maintaining a coherent incentive hierarchy while preserving all dense guidance.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Increase r_stable_landing_once weight by a factor in [1.25, 1.5] (new weight between 100 and 120).",
+      "Increase r_approach_progress weight by a factor in [1.5, 2.0] (new weight between 7.5 and 10).",
+      "Do not alter the clip, duration_steps, or condition of any component or event rule.",
+      "Do not decrease the weight of any component.",
+      "Keep the atomicity: both edits must be applied together; a single edit is insufficient."
+    ],
+    "must_preserve": [
+      "All existing dense shaping components (r_approach_region, r_stability, r_landing_quality) at their current weights.",
+      "The one-time event rules r_safe_contact_once and r_stable_landing_once in their current structure (one_time=true, conditions unchanged).",
+      "The overall scheme of dense guidance plus sparse terminal events.",
+      "r_energy action_penalty unchanged."
+    ],
+    "must_avoid": [
+      "Decreasing the weight of any dense component (especially r_landing_quality, r_approach_region, r_stability).",
+      "Making the terminal condition easier (duration_steps already 3, appropriate).",
+      "Introducing new components, metrics, or event rules.",
+      "Applying only one of the two recommended edits."
+    ],
+    "expected_effect": "The agent will receive an even stronger incentive to perform a quick, stable landing, reducing the relative value of near‑pad bouncing. This should increase success rate, further shorten episode lengths, lower contact toggle counts, and maintain zero hack flags.",
+    "risk_analysis": "If the approach‑progress weight is set too high, the agent may adopt dangerously fast trajectories that crash before a stable landing. The terminal bonus increase counterbalances this by making a safe touchdown more valuable. The proposed moderate factor ranges avoid the extreme where either signal dominates. The atomic coupling ensures that the reward surface is shifted cohesively. After training, closely monitor success rate and episode length; be prepared to rollback if collapse occurs (unlikely given iterative progress)."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It decreases the weight of r_landing_quality, r_approach_region, r_stability, or any other dense component.",
+      "It removes or disables the terminal bonuses (r_stable_landing_once, r_safe_contact_once).",
+      "It introduces a new component, metric, or event rule.",
+      "It applies only one edit (e.g., only increase terminal or only increase progress).",
+      "It changes the duration_steps of any condition (currently 3 for stable landing, 2 for safe contact).",
+      "It increases r_stable_landing_once beyond 120 or r_approach_progress beyond 10."
+    ],
+    "package_should_be_accepted_if": [
+      "It increases r_stable_landing_once weight to 100–120 (factor 1.25–1.5) and increases r_approach_progress weight to 7.5–10 (factor 1.5–2.0).",
+      "All other components and conditions remain exactly as in the current schema.",
+      "It is explicitly marked as an atomic package with justification that both edits are necessary and complement each other."
+    ],
+    "safety_notes": [
+      "This package deliberately avoids the harmful pattern (decrease dense + increase terminal) that caused regression in iter_001_to_002.",
+      "The approach is a direct extension of the successful evidence from iter_003_to_004, using moderate factors to avoid overshooting.",
+      "After training, monitor contact toggle mean, success rate, and episode length; rollback if any metric degrades significantly."
+    ]
+  }
+}
