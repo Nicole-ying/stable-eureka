@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from eg_rsa.diagnostics.event_evaluator import EventEvaluator
 from eg_rsa.diagnostics.task_metrics import TaskMetricEvaluator
@@ -28,22 +28,27 @@ class EGRSATrainer:
         diag_path = Path(config["eg_rsa"]["diagnostic_spec_path"])
         self.diagnostic_spec = yaml.safe_load(diag_path.read_text(encoding="utf-8"))
 
-    def train_and_record(self, reward_schema: RewardSchema) -> List[Dict[str, Any]]:
+    def train_and_record(
+        self,
+        reward_schema: RewardSchema,
+        init_model_path: Optional[Path] = None,
+    ) -> List[Dict[str, Any]]:
         n_envs = int(self.config["rl"]["training"].get("n_envs", 1))
         train_env = self._make_training_vec_env(reward_schema, n_envs)
-        model = self._make_model(train_env)
+        model = self._make_model(train_env, init_model_path=init_model_path)
         total_timesteps = int(self.config["rl"]["training"].get("total_timesteps", 100000))
-        model.learn(total_timesteps=total_timesteps)
-        model_path = self.output_dir / "model"
+        reset_num_timesteps = init_model_path is None
+        model.learn(total_timesteps=total_timesteps, reset_num_timesteps=reset_num_timesteps)
+        model_path = self.output_dir / "model.zip"
         model.save(model_path)
-        if n_envs > 1:
-            train_env.close()
+        train_env.close()
 
         eval_env = self._make_env(reward_schema)
         recorder = self._make_recorder()
         n_episodes = int(self.config["rl"].get("evaluation", {}).get("num_episodes", 5))
         seed = self.config["rl"].get("evaluation", {}).get("seed", None)
         trajectories = recorder.record_policy(model, eval_env, n_episodes=n_episodes, seed=seed)
+        eval_env.close()
         TrajectoryRecorder.save_jsonl(self.output_dir / "trajectories.jsonl", trajectories)
         self._write_json(self.output_dir / "trajectories.json", trajectories)
 
@@ -54,9 +59,23 @@ class EGRSATrainer:
             )
             posthoc_episodes = int(self.config.get("posthoc_eval", {}).get("num_episodes", n_episodes))
             posthoc_seed = self.config.get("posthoc_eval", {}).get("seed", seed)
-            posthoc_result = posthoc.evaluate_model(model, gym.make(self.config["environment"]["gym_id"], **(self.config["environment"].get("kwargs") or {})), n_episodes=posthoc_episodes, seed=posthoc_seed)
+            posthoc_result = posthoc.evaluate_model(
+                model,
+                gym.make(self.config["environment"]["gym_id"], **(self.config["environment"].get("kwargs") or {})),
+                n_episodes=posthoc_episodes,
+                seed=posthoc_seed,
+            )
             PosthocEvaluator.save(self.output_dir / "posthoc_eval.json", posthoc_result)
 
+        self._write_json(
+            self.output_dir / "training_metadata.json",
+            {
+                "init_model_path": str(init_model_path) if init_model_path else None,
+                "continued_from_checkpoint": init_model_path is not None,
+                "total_timesteps_added": total_timesteps,
+                "saved_model_path": str(model_path),
+            },
+        )
         return trajectories
 
     def _make_env(self, reward_schema: RewardSchema):
@@ -71,12 +90,6 @@ class EGRSATrainer:
         return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator)
 
     def _make_training_vec_env(self, reward_schema: RewardSchema, n_envs: int = 1):
-        """Create a vectorized environment with n_envs parallel instances, each
-        wrapped in SchemaRewardWrapper.
-
-        Uses SubprocVecEnv for multi-process parallelism when n_envs > 1, falling
-        back to a single DummyVecEnv-wrapped env when n_envs == 1.
-        """
         if n_envs <= 1:
             return self._make_env(reward_schema)
 
@@ -106,10 +119,20 @@ class EGRSATrainer:
         task_metric_evaluator = TaskMetricEvaluator(self.diagnostic_spec.get("task_metrics", {}))
         return TrajectoryRecorder(adapter, task_metric_evaluator, event_evaluator)
 
-    def _make_model(self, env):
+    def _make_model(self, env, init_model_path: Optional[Path] = None):
         rl_cfg = self.config.get("rl", {})
-        algo_params = dict(rl_cfg.get("algo_params", {}))
         training_cfg = rl_cfg.get("training", {})
+        if init_model_path is not None:
+            init_model_path = Path(init_model_path)
+            if not init_model_path.exists():
+                raise FileNotFoundError(f"Continuation checkpoint not found: {init_model_path}")
+            return PPO.load(
+                str(init_model_path),
+                env=env,
+                device=training_cfg.get("device", "auto"),
+            )
+
+        algo_params = dict(rl_cfg.get("algo_params", {}))
         policy = algo_params.pop("policy", "MlpPolicy")
         return PPO(
             policy=policy,
