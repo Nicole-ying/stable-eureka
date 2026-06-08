@@ -1,0 +1,61 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "Agent is stuck in the approach region with frequent leg contacts but fails to achieve stable landing. There is no direct incentive to enter the inner landing region; the approach region reward is already high, while progress toward the exact pad is only weakly shaped by the existing landing_quality product. A dense signal that explicitly rewards increasing the landing_region_score can guide the lander to lower itself and center above the pad.",
+    "why_local_edit_is_insufficient": "Local edits such as increasing weights of existing components or clipping would not add a new signal specific to the inner landing region; the current schema lacks a direct scalar reward for the landing region score alone, and tuning existing components cannot create that missing channel.",
+    "memory_constraints": [],
+    "safety_constraints": [
+      "positive_only delta to avoid exploitation by oscillation; clip to [0,1]; weight not excessive"
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a positive‑only metric_delta on landing_region_score provides a dense, task‑aligned process signal. It rewards the agent for making progress toward the inner landing zone (|x|<0.2, |y|<0.25) without creating a repeatable event exploitation because it only pays when the score increases. The clip and moderate weight keep the bonus safe and the component is generic, using only the available task metric.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_region_progress",
+          "type": "metric_delta",
+          "weight": 2.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_region_score",
+            "positive_only": true
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Agent frequently touches legs but never stabilizes within the landing pad. The approach region reward dominates, while the terminal landing event is never triggered. Adding a per‑step positive delta on landing_region_score creates a navigational gradient toward the exact landing zone, complementing the existing stability rewards and bridging the gap to stable two‑leg contact.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_region_progress",
+        "type": "metric_delta",
+        "weight": 2.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_region_score",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ]
+}

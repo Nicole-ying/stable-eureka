@@ -1,0 +1,60 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "The agent lacks any reward for reaching a stable configuration inside the landing region before contact. The current shaping components reward broad approach regions and general stability, but do not specifically encourage the controlled descent into the pad area with low velocities and angles.",
+    "why_local_edit_is_insufficient": "Local edits such as increasing weight of the untriggered terminal event or adding further metric deltas would still be gamed by hovering in the broader approach region. The agent never triggers safe_contact or stable_landing, so no local tweak to those rules can help. A new intermediate gated event is needed to bridge the gap.",
+    "memory_constraints": [
+      "Previous effective edit added r_landing_region_progress (metric_delta), but it did not induce stable landing and risked exploitation; should not be repeated.",
+      "Lesson card recommends making terminal reward dominant, but the terminal event never fires, so intermediate shaping is necessary."
+    ],
+    "safety_constraints": [
+      "Must avoid unprotected repeatable event bonuses; use one_time=true and duration_steps.",
+      "Event must be built only from configured events (landing_region + stable_motion).",
+      "Do not use environment-specific hard-coded policy or invented operators."
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a one‑time event bonus for staying in the landing region with stable motion for 3 steps provides a safe intermediate signal. It encourages the agent to approach the pad in a controlled way and can be a stepping stone to the terminal stable landing event. The rule reuses existing configured events, uses one_time=true and a duration to prevent exploitation, and is consistent with the goal of landing.",
+    "edit_plan": [
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_stable_approach_once",
+          "type": "event_bonus",
+          "weight": 20.0,
+          "condition": {
+            "landing_region": true,
+            "stable_motion": true,
+            "duration_steps": 3
+          },
+          "one_time": true,
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Structural search proposes a one‑time event bonus for landing_region + stable_motion (duration 3) to complement existing shaping and reduce the gap to terminal success.",
+  "edit_plan": [
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_stable_approach_once",
+        "type": "event_bonus",
+        "weight": 20.0,
+        "condition": {
+          "landing_region": true,
+          "stable_motion": true,
+          "duration_steps": 3
+        },
+        "one_time": true,
+        "enabled": true
+      }
+    }
+  ]
+}

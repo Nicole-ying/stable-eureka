@@ -1,0 +1,134 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Success rate is 0.0 over 10 evaluation episodes.",
+      "Episode reward mean is 2019.8, driven 45% by r_approach_region (mean per-step 1.328, near max 1.5).",
+      "Both terminal event rewards (r_safe_contact_once, r_stable_landing_once) never trigger.",
+      "Episodes are long (mean 692.5 steps) and show many contact toggles (left_contact max 22).",
+      "Hack detector flags shaping_goal_mismatch and repeated_event_exploitation, hack_score = 0.4."
+    ],
+    "likely_true_failures": [
+      "shaping_goal_mismatch: continuous shaping rewards do not strongly incentivize actual landing; agent can hover near pad to collect high scores.",
+      "unstable_contact_behavior: agent frequently toggles contacts but never achieves the stable-landing condition duration."
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation: no event bonuses were paid; the toggling may be natural bouncing while trying to land, not exploitation of one-time rules."
+    ],
+    "root_cause_hypotheses": [
+      "The terminal bonus is too small to compete with the cumulative shaping rewards over many steps, so the agent is not motivated to finalize landing.",
+      "The shaping metrics (approach_region, stability, landing_quality) are not strictly conditional on actual ground contact and can be maximized while airborne, allowing reward hacking."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.75
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "separable",
+    "max_reasonable_edits": 1,
+    "rationale": "Terminal bonus weight is too small relative to dense shaping rewards; increasing it makes landing a high-value goal that can overcome the per-step shaping accumulation. The one-time nature and duration requirement prevent exploitation.",
+    "expected_effect": "The agent will be rewarded heavily for achieving stable landing, making the final task completion the dominating objective. Episode lengths should decrease as the agent prioritizes landing early to collect the bonus before the episode ends, while still using shaping as a learning signal.",
+    "risk_analysis": "If the shaping components cannot guide the agent to the stable landing condition, the bonus may never be paid and training could stall. The large bonus might cause unsafe fast descents to trigger the condition, but the required 5-step duration and the stability metric help filter out unstable attempts. Monitoring the success rate and episode length in subsequent evaluations is necessary.",
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 3.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Shaping-dense reward leads to reward hacking: agent hovers in high-score region without landing. Terminal bonus too small to incentivize task completion. Increase terminal bonus weight to make success dominant.",
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 3.0
+    }
+  ],
+  "plan_type": "single_edit",
+  "atomicity": "separable",
+  "max_reasonable_edits": 1,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "Agent is stuck in the approach region with frequent leg contacts but fails to achieve stable landing. There is no direct incentive to enter the inner landing region; the approach region reward is already high, while progress toward the exact pad is only weakly shaped by the existing landing_quality product. A dense signal that explicitly rewards increasing the landing_region_score can guide the lander to lower itself and center above the pad.",
+      "why_local_edit_is_insufficient": "Local edits such as increasing weights of existing components or clipping would not add a new signal specific to the inner landing region; the current schema lacks a direct scalar reward for the landing region score alone, and tuning existing components cannot create that missing channel.",
+      "memory_constraints": [],
+      "safety_constraints": [
+        "positive_only delta to avoid exploitation by oscillation; clip to [0,1]; weight not excessive"
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a positive‑only metric_delta on landing_region_score provides a dense, task‑aligned process signal. It rewards the agent for making progress toward the inner landing zone (|x|<0.2, |y|<0.25) without creating a repeatable event exploitation because it only pays when the score increases. The clip and moderate weight keep the bonus safe and the component is generic, using only the available task metric.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_landing_region_progress",
+            "type": "metric_delta",
+            "weight": 2.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_region_score",
+              "positive_only": true
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Agent frequently touches legs but never stabilizes within the landing pad. The approach region reward dominates, while the terminal landing event is never triggered. Adding a per‑step positive delta on landing_region_score creates a navigational gradient toward the exact landing zone, complementing the existing stability rewards and bridging the gap to stable two‑leg contact.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_region_progress",
+          "type": "metric_delta",
+          "weight": 2.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_region_score",
+            "positive_only": true
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

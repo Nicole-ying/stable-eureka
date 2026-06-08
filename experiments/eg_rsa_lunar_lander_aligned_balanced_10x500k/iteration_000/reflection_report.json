@@ -1,0 +1,68 @@
+{
+  "reflection_summary": "Lander achieves high reward (~2020) by hovering in a high-scoring approach region but never lands. The continuous shaping components dominate, and the terminal landing bonus (40) is too small relative to cumulative shaping rewards over long episodes (~692 steps). This is a classic shaping-reward hack: the agent exploits the continuous metrics to accumulate reward without completing the task.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Success rate is 0.0 over 10 evaluation episodes.",
+      "Episode reward mean is 2019.8, driven 45% by r_approach_region (mean per-step 1.328, near max 1.5).",
+      "Both terminal event rewards (r_safe_contact_once, r_stable_landing_once) never trigger.",
+      "Episodes are long (mean 692.5 steps) and show many contact toggles (left_contact max 22).",
+      "Hack detector flags shaping_goal_mismatch and repeated_event_exploitation, hack_score = 0.4."
+    ],
+    "likely_true_failures": [
+      "shaping_goal_mismatch: continuous shaping rewards do not strongly incentivize actual landing; agent can hover near pad to collect high scores.",
+      "unstable_contact_behavior: agent frequently toggles contacts but never achieves the stable-landing condition duration."
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation: no event bonuses were paid; the toggling may be natural bouncing while trying to land, not exploitation of one-time rules."
+    ],
+    "root_cause_hypotheses": [
+      "The terminal bonus is too small to compete with the cumulative shaping rewards over many steps, so the agent is not motivated to finalize landing.",
+      "The shaping metrics (approach_region, stability, landing_quality) are not strictly conditional on actual ground contact and can be maximized while airborne, allowing reward hacking."
+    ],
+    "failure_kind": "reward_hack",
+    "confidence": 0.75
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "separable",
+    "why_atomic_or_separable": "Increasing the terminal bonus weight alone is a single, independent operation; it does not force changes to other components.",
+    "max_reasonable_edits": 1,
+    "editor_constraints": [
+      "Increase the weight of r_stable_landing_once significantly (suggest >100) to make the terminal success reward dominant over episode-long shaping accumulation.",
+      "Do not change any other component weights or event conditions in this edit.",
+      "Keep the one-time flag and duration requirement (5 steps) intact."
+    ],
+    "must_preserve": [
+      "One-time nature of r_stable_landing_once to prevent repeated exploitation.",
+      "The strict stable_landing_condition with 5-step duration to ensure a true landing event."
+    ],
+    "must_avoid": [
+      "Making the terminal bonus repeatable or relaxing the duration threshold.",
+      "Altering shaping components that may be needed for learning progress."
+    ],
+    "expected_effect": "Raises the incentive to achieve stable landing. If shaping already guides the agent near the landing state, the huge bonus should push the agent to refine its final approach. Episode length may decrease, and success rate should eventually rise.",
+    "risk_analysis": "If the shaping rewards alone cannot guide the agent to the precise stable-landing condition, the large bonus might be unreachable and training may stall. The agent might also attempt unsafe fast descents to trigger the condition, but the duration requirement and stability filter mitigate that. Monitoring required."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The edit attempts to modify event conditions (e.g., reducing duration, making bonus repeatable) or removes the one-time nature.",
+      "The edit drastically decreases the shaping reward weights without compensating guidance."
+    ],
+    "package_should_be_accepted_if": [
+      "It increases the terminal bonus weight to a value that clearly dominates the episode reward, keeping all other components and conditions untouched."
+    ],
+    "safety_notes": [
+      "Watch for sudden collapse in exploration if the bonus is too large early in training; annealing may be needed.",
+      "If the terminal condition is too strict, the bonus may never fire; future iterations may then need to relax duration slightly after gathering evidence."
+    ]
+  }
+}

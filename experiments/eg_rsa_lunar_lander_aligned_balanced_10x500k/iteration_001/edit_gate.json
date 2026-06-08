@@ -1,0 +1,46 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_stable_approach_once",
+        "type": "event_bonus",
+        "weight": 20.0,
+        "condition": {
+          "landing_region": true,
+          "stable_motion": true,
+          "duration_steps": 3
+        },
+        "one_time": true,
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "single_edit",
+    "atomicity": "separable",
+    "max_reasonable_edits": 1,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "single_edit",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "Increasing the terminal bonus weight alone is a single, independent operation; it does not force changes to other components. However, if the bonus remains unreachable, future rebalancing (reducing some shaping weights) might be needed, but that can be done subsequently.",
+      "max_reasonable_edits": 1,
+      "editor_constraints": [
+        "Increase the weight of r_stable_landing_once significantly (suggest >150) to make the terminal success reward dominant over episode-long shaping accumulation.",
+        "Do not change any other component weights or event conditions in this edit.",
+        "Keep the one-time flag and duration requirement (5 steps) intact."
+      ],
+      "must_preserve": [
+        "One-time flag and 5-step duration requirement of r_stable_landing_once to prevent reward farming."
+      ],
+      "must_avoid": [
+        "Making the terminal bonus repeatable, reducing the duration or stability threshold, or modifying other shaping components in the same edit."
+      ],
+      "expected_effect": "If the shaping components can guide the agent close to a stable landing, the now-dominant terminal bonus will sharply incentivize completing the landing. Episode length should decrease, and success rate should eventually rise. Without a landing, no terminal bonus is paid, so hack risk is not increased.",
+      "risk_analysis": "Risk that the terminal condition (stable_landing_condition with 5-step duration) is still too difficult for the current training progress, making the bonus unreachable and causing training to stall. The agent might also attempt unsafe high-speed descents to trigger the condition, but the stability filter and duration requirement mitigate that. Monitoring is needed; if success rate remains zero after training, the stability condition may need to be relaxed or guidance shaping may need to be strengthened."
+    }
+  }
+}
