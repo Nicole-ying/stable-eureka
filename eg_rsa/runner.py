@@ -64,6 +64,7 @@ class EGRSARunner:
         pending_before: Optional[Dict[str, Any]] = None
         pending_card_dict: Optional[Dict[str, Any]] = None
         stop_reason: Optional[str] = None
+        next_init_model_path: Optional[Path] = None
 
         for iteration in range(iterations):
             iter_dir = self.output_dir / f"iteration_{iteration:03d}"
@@ -72,7 +73,9 @@ class EGRSARunner:
             self._write_text(iter_dir / "compiled_reward.py", SafeRewardCompiler.compile(schema))
 
             trainer = EGRSATrainer(self.config, iter_dir)
-            trajectories = trainer.train_and_record(schema)
+            current_init_model_path = next_init_model_path
+            next_init_model_path = None
+            trajectories = trainer.train_and_record(schema, init_model_path=current_init_model_path)
             raw_attribution = RewardAttributionAnalyzer.analyze(trajectories)
             semantic_outcome = SemanticOutcomeAnalyzer.analyze(trajectories, schema, self.structural_context)
             self._write_json(iter_dir / "semantic_outcome.json", semantic_outcome)
@@ -316,14 +319,29 @@ class EGRSARunner:
                 if edit_plan:
                     schema = RewardEditOperatorApplier.apply(schema, edit_plan)
                     self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
-                elif next_action in {"continue_training", "early_stop", "structural_search"}:
-                    if next_action == "continue_training":
-                        stop_reason = (
-                            "Stopped after next_action=continue_training with empty edit_plan: "
-                            "checkpoint continuation is not implemented, so deterministic retraining of the same schema is avoided."
+                elif next_action == "continue_training":
+                    model_path = iter_dir / "model.zip"
+                    if model_path.exists():
+                        next_init_model_path = model_path
+                        self._write_json(
+                            iter_dir / "continue_training.json",
+                            {
+                                "next_action": next_action,
+                                "continued_schema": True,
+                                "init_model_path_for_next_iteration": str(model_path),
+                                "reason": edit_response.get("diagnosis", ""),
+                            },
                         )
+                        self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
                     else:
-                        stop_reason = f"Stopped after next_action={next_action}: {edit_response.get('diagnosis', '')}"
+                        stop_reason = "Stopped after continue_training because current iteration model.zip was not found."
+                        self._write_json(
+                            iter_dir / "stop_reason.json",
+                            {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
+                        )
+                        break
+                elif next_action in {"early_stop", "structural_search"}:
+                    stop_reason = f"Stopped after next_action={next_action}: {edit_response.get('diagnosis', '')}"
                     self._write_json(
                         iter_dir / "stop_reason.json",
                         {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
