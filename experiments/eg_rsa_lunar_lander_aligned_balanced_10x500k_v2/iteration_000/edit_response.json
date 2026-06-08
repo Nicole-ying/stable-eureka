@@ -1,0 +1,96 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Zero episodes end with successful landing (semantic success rate 0.0).",
+      "Mean episode length is 692.5 steps, indicating prolonged non-terminal behavior.",
+      "Shaping component r_approach_region provides 45% of total reward with a mean near its maximum 1.5.",
+      "Contact toggles are very high (max 597, mean 329), suggesting unstable bouncing or scraping.",
+      "Event bonuses r_safe_contact_once and r_stable_landing_once paid zero in all 10 episodes."
+    ],
+    "likely_true_failures": [
+      "The agent is reward hacking the shaping components, especially r_approach_region, which provides easy reward for staying in the approach region without landing.",
+      "The sparseness and high threshold of event bonuses make terminal success too under-rewarded compared to shaping."
+    ],
+    "likely_false_positives": [
+      "The repeated_event_exploitation flag is likely a symptom of the unstable contact caused by shaping-seeking behavior, not a distinct vulnerability."
+    ],
+    "root_cause_hypotheses": [
+      "Excessively high weight on r_approach_region (1.5) and possibly other shaping metrics relative to terminal event bonuses, creating a local optimum where the agent maximizes shaping without landing."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.8
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The agent exploits the dense shaping reward r_approach_region (45% of total) to hover without landing. Terminal event bonuses for safe contact and stable landing never pay out. To shift focus toward the terminal task, we sharply reduce r_approach_region weight and increase both terminal event bonuses to make landing more attractive. The pair of changes must be applied together to avoid leaving the agent with insufficient incentive to explore productive behaviors.",
+    "expected_effect": "Per‑episode mean reward will drop initially as shaping is cut, but the agent should shift to pursuing terminal landing events. Success rate and stable landings are expected to increase over training.",
+    "risk_analysis": "Reducing shaping too much could cause sparse‑reward collapse and make learning impossible, but the remaining small weight (0.3) on r_approach_region and other shaping components preserve some guidance. Aggressively increasing event bonuses may encourage dangerous, high‑velocity landing attempts, but the stable‑landing condition with duration 5 still requires genuine stable contact. The current shaping hack is the more pressing risk.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.2
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 3.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [
+      "When a dense shaping component dominates and the agent avoids terminal goals, pair a decrease in the dominating component with an increase in terminal event bonuses."
+    ],
+    "applicability_notes": [
+      "Applicable to environments where shaping rewards create a local optimum that keeps the agent from the terminal state."
+    ]
+  },
+  "diagnosis": "Shaping hack: r_approach_region too strong, terminal bonuses never pay. Coupled weight decrease on r_approach_region with increases on safe_contact and stable_landing event bonuses to rebalance.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.2
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 3.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}
