@@ -31,10 +31,10 @@ class OutcomeDecision:
 class OutcomeAcceptor:
     """Decide whether a measured edit outcome should be continued.
 
-    This module does not use official/oracle reward. It accepts or rolls back
-    based on internal task proxy, semantic outcome evidence, and true hack risk.
-    The key distinction is that terminal one-time reward dominance with goal
-    evidence should not be treated like dense shaping reward hacking.
+    This module does not use official/oracle reward. It accepts, continues, or
+    rolls back based on internal task proxy, semantic outcome evidence, and true
+    hack risk. Small positive changes should not be thrown away just because
+    they are below the best-schema acceptance threshold.
     """
 
     @staticmethod
@@ -46,6 +46,7 @@ class OutcomeAcceptor:
         max_semantic_drop = float(config.get("max_semantic_drop", 0.05))
         min_hack_improvement = float(config.get("min_hack_improvement", 0.10))
         max_hack_increase = float(config.get("max_hack_increase", 0.05))
+        min_continue_delta = float(config.get("min_continue_delta", 0.0))
 
         task_delta = float(after.get("task_score", 0.0) - before.get("task_score", 0.0))
         hack_delta = float(after.get("hack_score", 0.0) - before.get("hack_score", 0.0))
@@ -59,6 +60,7 @@ class OutcomeAcceptor:
 
         task_improved = task_delta >= min_task_improvement
         semantic_improved = semantic_delta >= min_semantic_improvement
+        small_positive = max(task_delta, semantic_delta) > min_continue_delta
         task_dropped = task_delta < -max_task_drop
         semantic_dropped = semantic_delta < -max_semantic_drop
         hack_tolerable = hack_delta <= max_hack_increase or (terminal_goal_evidence and not true_hack_risk)
@@ -67,11 +69,23 @@ class OutcomeAcceptor:
             return OutcomeDecision(
                 decision="accept",
                 continuation="continue_current_schema",
-                reason="Internal task/semantic evidence improved and no true reward-repetition or shaping-mismatch hack risk was detected.",
+                reason="Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
                 task_delta=task_delta,
                 hack_delta=hack_delta,
                 semantic_delta=semantic_delta,
                 accepted_for_best=True,
+                rollback_recommended=False,
+            )
+
+        if small_positive and hack_tolerable and not true_hack_risk:
+            return OutcomeDecision(
+                decision="continue_candidate",
+                continuation="continue_current_schema",
+                reason="Small positive internal improvement below best-acceptance threshold; keep training/searching from this candidate instead of rolling back immediately.",
+                task_delta=task_delta,
+                hack_delta=hack_delta,
+                semantic_delta=semantic_delta,
+                accepted_for_best=False,
                 rollback_recommended=False,
             )
 
