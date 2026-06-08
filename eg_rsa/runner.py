@@ -198,17 +198,30 @@ class EGRSARunner:
             validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
             validation.errors.append(f"LLM chose {edit_decision} with next_action={next_action}; no schema edit applied.")
             return [], validation, None, None, next_action
+        plan_metadata = plan_metadata or {}
+        is_atomic = plan_metadata.get("atomicity") == "atomic" and plan_metadata.get("plan_type") == "coupled_rebalancing"
         validation = EditPlanValidator.validate(schema, raw_edit_plan, structural_context=self.structural_context)
         candidate_result = None
         gate_result = None
         edit_plan: List[Dict[str, Any]] = []
+        if is_atomic and validation.rejected_edits:
+            validation.errors.append("Atomic coupled package rejected before execution because at least one edit failed validation; partial execution is forbidden.")
+            return [], validation, None, None, "structural_search"
         if validation.valid_edits:
             candidate_result = RewardCandidateEvaluator.evaluate(validation.valid_edits, trajectories, self.config.get("candidate_evaluator", {}))
+            if is_atomic and len(candidate_result.accepted_edits) != len(validation.valid_edits):
+                validation.errors.extend(candidate_result.warnings)
+                validation.errors.append("Atomic coupled package rejected because candidate evaluation removed part of the package; partial execution is forbidden.")
+                return [], validation, candidate_result, None, "structural_search"
             if not candidate_result.accepted_edits:
                 validation.errors.extend(candidate_result.warnings)
                 return [], validation, candidate_result, None, "structural_search"
-            gate_result = EditDecisionGate.apply(schema, candidate_result.accepted_edits, diagnostic_report, self.config.get("edit_gate", {}), plan_metadata or {})
+            gate_result = EditDecisionGate.apply(schema, candidate_result.accepted_edits, diagnostic_report, self.config.get("edit_gate", {}), plan_metadata)
             edit_plan = gate_result.accepted_edits
+            if is_atomic and len(edit_plan) != len(candidate_result.accepted_edits):
+                validation.errors.extend(gate_result.warnings)
+                validation.errors.append("Atomic coupled package rejected because gate removed part of the package; partial execution is forbidden.")
+                return [], validation, candidate_result, gate_result, "structural_search"
             next_action = "apply_edit" if edit_plan else "structural_search"
             if not edit_plan:
                 validation.errors.extend(gate_result.warnings)
