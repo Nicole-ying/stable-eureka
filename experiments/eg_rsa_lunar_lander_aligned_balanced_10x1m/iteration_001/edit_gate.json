@@ -1,0 +1,54 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.25
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_stable_landing_once",
+      "duration_steps": 2
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_safe_contact_once",
+      "duration_steps": 1
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic coupled package with 3 edits; gate preserved package coherence."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Simply reducing r_landing_quality weight would collapse the reward signal and potentially stop learning entirely. It must be paired with a component that punishes unstable contact or incentivizes final touchdown to guide the agent toward landing.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Any new component must not reward repeated contacts or bouncing",
+        "Terminal event bonuses must remain one-time and only trigger on genuine stable landing",
+        "The overall reward scale should remain manageable; avoid large magnitude changes that destabilize learning",
+        "Prefer using existing metrics; if none exist, flag for structural search",
+        "Do not remove r_stability or the energy penalty as they provide critical shaping"
+      ],
+      "must_preserve": [
+        "r_stability component to maintain orientation guidance",
+        "r_energy penalty to discourage unnecessary fuel use",
+        "The structure of one-time terminal event bonuses"
+      ],
+      "must_avoid": [
+        "Adding per-contact or toggle-based rewards that could be exploited",
+        "Removing all continuous shaping (r_stability, r_approach_region) that gives initial approach gradient",
+        "Making the one-time landing bonus repeatable or trivially triggered"
+      ],
+      "expected_effect": "Reduced bouncing and episode length, increased likelihood of triggering terminal events, eventual landing success as the agent learns to stabilize contact instead of hovering. The episode reward mean may drop initially as exploitation of r_landing_quality is curbed, but task success rate should rise.",
+      "risk_analysis": "If the penalty for unstable contact is too strong, the agent may avoid descending altogether, leading to even longer episodes. If r_landing_quality weight reduction is not matched by a well-tuned progress signal, the agent could lose directional guidance. The terminal event conditions must not be relaxed so much that they trigger on crashes."
+    }
+  }
+}
