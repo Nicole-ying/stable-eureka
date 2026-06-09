@@ -1,0 +1,76 @@
+{
+  "reflection_summary": "The agent exploits continuous shaping rewards (approach_region, stability, landing_quality) to hover near the landing pad without landing. Episodes always time out (1000 steps), no terminal event bonuses are triggered, and r_energy shows almost continuous use of main engine. This is a classic reward hack: the shaping rewards sum to ~2893 over a full episode, making hovering more profitable than landing. Memory is empty, so no prior lessons to reuse.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Episodes consistently run to max length (1000 steps).",
+      "No safe_contact or stable_landing events are ever triggered (trigger_rate 0.0 for both event bonuses).",
+      "r_energy mean is -0.0199 with max -0.02, indicating the agent uses the main engine almost every step.",
+      "Continuous shaping components (r_approach_region, r_stability, r_landing_quality) all have high means and trigger rates near 1.0.",
+      "r_approach_region is the dominant reward component (ratio 0.467).",
+      "Contact toggles are observed (mean 9.8) but never settle into a stable landing, suggesting bouncing or leg touches without full landing."
+    ],
+    "likely_true_failures": [
+      "Shaping rewards are strong enough to encourage hovering without landing.",
+      "The agent has not learned to complete the terminal goal (stable landing).",
+      "Unstable contact behavior (bouncing) is present but not rewarded, showing that the agent can touch the ground without earning the terminal bonus."
+    ],
+    "likely_false_positives": [
+      "The diagnostic flags 'unstable_contact_behavior' as a risk, but this is a genuine symptom of the hack, not a false positive.",
+      "The low hack_score (0.2) understates the severity because the agent never lands; the detector may not fully capture the mismatch."
+    ],
+    "root_cause_hypotheses": [
+      "The continuous shaping rewards (weighted sum) are too high relative to the one-time terminal bonuses, causing the agent to prefer hovering over landing."
+    ],
+    "failure_kind": "reward_hack",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Decreasing only the continuous shaping weights would collapse the learning signal; increasing only the terminal bonus would still leave hovering rewards dominant. The package must rebalance both directions simultaneously to make landing the optimal policy while preventing reward collapse.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Reduce the weight of r_approach_region significantly (e.g., from 1.5 to 0.5 or lower).",
+      "Consider reducing r_stability and r_landing_quality weights as well, but keep them non-zero to guide the approach.",
+      "Increase the weight of r_stable_landing_once substantially (e.g., from 40 to 100 or more) while ensuring it remains one_time.",
+      "Optionally add a time-dependent penalty (e.g., via a new metric_delta or metric_value with negative weight) that discourages episode timeout, or make r_approach_progress more sensitive (e.g., increase its weight) so that stagnation is penalized.",
+      "Do not add any component that directly rewards mere ground contact without stability, to avoid crash-landing behavior."
+    ],
+    "must_preserve": [
+      "One-time nature of terminal event bonuses to prevent multiple triggers per episode.",
+      "The fundamental structure of safe approach (approach_region, stability) as a learning scaffold."
+    ],
+    "must_avoid": [
+      "Creating a reward landscape where the agent gets no signal until landing, causing complete learning collapse.",
+      "Introducing per-step penalties so large that the agent never explores.",
+      "Rewarding unstable contacts or bouncing."
+    ],
+    "expected_effect": "The rebalancing should make landing the most profitable trajectory: hovering rewards will be much smaller, while successfully landing will yield a large terminal bonus plus smaller shaping rewards, making the total highest. This should drive the agent to learn a stable landing policy.",
+    "risk_analysis": "If the terminal bonus is set too high or its condition is easy to trigger, the agent might learn to crash-land quickly, achieving the condition without genuine stability. The stable_landing_condition must remain robust. Also, reducing shaping too aggressively might create a large reward gap that slows initial exploration; a gradual rebalancing or additional short-term incentives might be needed. Monitor landing success rate and episode length changes after edit."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The edit makes terminal events repeatable or adds non-one-time bonuses.",
+      "The edit introduces a reward component that encourages bouncing or rapid ground contact without stability.",
+      "The edit increases continuous shaping weights further or leaves the balance unchanged."
+    ],
+    "package_should_be_accepted_if": [
+      "It decreases the total episodic reward from hovering (by reducing continuous component weights) while increasing the terminal landing bonus enough to make landing the highest-value trajectory.",
+      "It introduces a time pressure or discourages episode timeout, such as a small negative reward on episode end or a decay in approach_region reward over time.",
+      "It preserves the core shaping signals (approach, stability) at reduced levels to maintain learnability."
+    ],
+    "safety_notes": [
+      "Watch for crash landing attempts where the agent slams into the pad to quickly satisfy the stability condition; ensure condition checks for low velocity and upright orientation.",
+      "After editing, run the diagnostic again to confirm that the terminal event trigger rate rises and episode length shortens."
+    ]
+  }
+}

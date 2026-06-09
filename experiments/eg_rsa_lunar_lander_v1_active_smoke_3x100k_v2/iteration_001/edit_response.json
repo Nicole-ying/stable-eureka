@@ -1,0 +1,102 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean ~3382 but no successful landings (0% success, 0% stable landing, 0% safe contact).",
+      "r_approach_region dominates reward ratio ~0.40, triggered every step; its constant reward encourages staying near the pad.",
+      "r_approach_progress is negligible (mean ~0.0015) and rarely activated, providing no incentive to move closer.",
+      "r_stability and r_landing_quality are both always triggered and provide substantial per-step reward (0.759 and 1.256 means).",
+      "Event bonuses r_safe_contact_once and r_stable_landing_once never paid despite ground contact (contact toggling mean 7.33, max 15).",
+      "Episode length always 1000 steps, no early termination, indicating the agent avoids crashing but also avoids completing landing.",
+      "Repeated event exploitation flag due to contact toggles (landing_region 11), likely a consequence of bouncing rather than reward hacking."
+    ],
+    "likely_true_failures": [
+      "shaping_goal_mismatch",
+      "unstable_contact_behavior"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation (likely a symptom of bouncing contact, not deliberate reward maximization)."
+    ],
+    "root_cause_hypotheses": [
+      "Shaping reward weights (especially r_approach_region, r_stability, r_landing_quality) dominate over the one-time terminal bonuses, making hovering a local optimum with higher cumulative reward than attempting to land.",
+      "The delta-based progress incentive (r_approach_progress) is too weak and rarely triggered, so there is no reward for advancement.",
+      "The event bonus conditions (safe_contact for 2 steps, stable_landing for 5 steps) may be too strict relative to the agent's current behavior, preventing bonus payment even during contact."
+    ],
+    "failure_kind": "mixed",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Do not increase weights of r_approach_region, r_stability, or r_landing_quality further.",
+      "Do not add new continuous shaping components without considering their interaction with terminal goals.",
+      "Do not remove the one_time flag from terminal bonuses."
+    ],
+    "recommended_actions": [
+      "Decrease the weight of r_approach_region to reduce its dominance.",
+      "Increase the weight of r_stable_landing_once to make terminal success more attractive."
+    ],
+    "memory_confidence": 0.5
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "The reflection and diagnostics show that dense shaping rewards (especially r_approach_region) incentivize hovering near the pad without landing. Terminal bonuses are never triggered. A coupled rebalancing is required: 1) decrease the dominant shaping component (r_approach_region) to reduce the reward for hovering, and 2) increase the terminal bonus (r_stable_landing_once) to make successful landing the primary reward driver. This preserves a shaping gradient while strongly shifting the optimum. No per-step penalty can be added via allowed operators, but the relative value change is sufficient to flip the preference.",
+    "expected_effect": "The agent will experience lower reward for staying near the pad and a substantially higher terminal reward for stable landing. This should increase attempts to satisfy the landing condition, leading to shorter episodes with eventual stable landings. Early training may see reward drop, but once landing is learned, terminal bonus will compensate. Success rate and stable landing rate should rise.",
+    "risk_analysis": "If r_approach_region is reduced too much, the lander may lose the approach signal and wander randomly; however, weight 0.75 (half) still provides a clear gradient. If the terminal bonus (80) is still not enough relative to residual shaping, the landing may still not be incentivized. If the bonus is too large, it could cause sudden policy collapse when landing is learned, but the one‑time nature prevents exploitation. Overall risk is moderate and acceptable.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [
+      "Avoid environments where dense shaping rewards dominate without strong terminal incentives.",
+      "Do not apply solo decrease_weight without simultaneous increase of terminal bonuses."
+    ],
+    "recommend_next": [
+      "When shaping dominance is suspected, use coupled_rebalancing that reduces the dominant dense component and increases a one‑time terminal reward.",
+      "Check that the reduced shaping still provides a usable gradient from initial states."
+    ],
+    "applicability_notes": [
+      "This coupled edit is safe because the terminal bonus is one‑time and cannot be farmed.",
+      "The approach region shaping is retained with a halved weight, preserving initial exploration gradient."
+    ]
+  },
+  "diagnosis": "Shaping-over-dominated terminal rewards cause hovering without landing; rebalance by halving r_approach_region and doubling r_stable_landing_once.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

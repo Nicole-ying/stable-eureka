@@ -1,0 +1,48 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 2 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing the approach region reward alone may cause the policy to collapse and lose all learning signal; it must be paired with increased terminal incentives and possibly a per-step penalty to shift behavior towards landing while preserving gradient flow. A separable series of single edits risks intermediate configurations that perform worse or fail to learn.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Do not completely eliminate shaping rewards; retain some reward for approaching the pad to maintain guidance.",
+        "Ensure terminal bonuses are sufficiently large relative to the expected cumulative shaping reward per episode to incentivize completion.",
+        "One-time bonus rules must remain one-shot to prevent exploitation of repeated landings.",
+        "If adjusting safe_contact or stable_landing conditions, avoid making them trivially easy such that hovering again becomes optimal.",
+        "Avoid adding reward components that are functions of velocity or orientation in a way that encourages spinning or other side effects."
+      ],
+      "must_preserve": [
+        "The concept of rewarding safe contact and stable landing as one-time events.",
+        "A shaping component that guides the agent from the initial state to the landing pad vicinity."
+      ],
+      "must_avoid": [
+        "Do not simply increase all shaping rewards (this would worsen the problem).",
+        "Do not replace discrete event bonuses with continuous landing rewards, as that could lead to bouncing exploitation."
+      ],
+      "expected_effect": "After rebalancing, the agent should be incentivized to achieve stable landing; we expect an increase in success_episode_rate, stable_landing_rate, and a decrease in average episode length. The per-episode reward may drop initially but should eventually reflect terminal success.",
+      "risk_analysis": "If shaping rewards are reduced too aggressively, the agent may lose all learning signal and perform random actions or crash early. If terminal bonuses are not increased enough, the agent may still hover. If a per-step penalty is too large, the agent may learn to crash quickly to end the episode. The edit must be balanced so that the agent can still explore and learn to land."
+    }
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episodes consistently run to max length (1000 steps).",
+      "No safe_contact or stable_landing events are ever triggered (trigger_rate 0.0 for both event bonuses).",
+      "r_energy mean is -0.0199 with max -0.02, indicating the agent uses the main engine almost every step.",
+      "Continuous shaping components (r_approach_region, r_stability, r_landing_quality) all have high means and trigger rates near 1.0.",
+      "r_approach_region is the dominant reward component (ratio 0.467).",
+      "Contact toggles are observed (mean 9.8) but never settle into a stable landing, suggesting bouncing or leg touches without full landing."
+    ],
+    "likely_true_failures": [
+      "Shaping rewards are strong enough to encourage hovering without landing.",
+      "The agent has not learned to complete the terminal goal (stable landing).",
+      "Unstable contact behavior (bouncing) is present but not rewarded, showing that the agent can touch the ground without earning the terminal bonus."
+    ],
+    "likely_false_positives": [
+      "The diagnostic flag 'unstable_contact_behavior' is a genuine symptom of the hack, not a false positive.",
+      "The low hack_score (0.2) understates the severity because the agent never lands; the detector may not fully capture the mismatch."
+    ],
+    "root_cause_hypotheses": [
+      "The continuous shaping rewards (weighted sum) are too high relative to the one-time terminal bonuses, causing the agent to prefer hovering over landing."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The agent is reward hacking by hovering indefinitely, accumulating continuous shaping rewards at ~2.9 per step while never landing. The terminal bonuses are never triggered. To fix this, we must drastically reduce the per-step shaping rewards and greatly increase the terminal landing bonus, making landing the most profitable trajectory. Adding a stagnation penalty on approach_region_score further discourages passive hovering. All three edits together rebalance the reward structure without removing learning scaffolds entirely.",
+    "expected_effect": "Lower continuous shaping will reduce the total reward for hovering. A large terminal bonus for stable landing (weight 400) makes landing far more attractive than any number of hovering steps. The stagnation penalty adds a cost for failing to improve approach, pushing the agent to actively descend and land. We expect the agent to learn a stable landing policy, thereby eliminating timeouts and unstable contacts.",
+    "risk_analysis": "If the terminal bonus is too large, the agent might attempt crash landings to quickly trigger the stable landing condition. The condition requires 5 consecutive steps of stable landing, which should mitigate that. Also, aggressive reduction of shaping could hinder early exploration; however, the stagnation penalty and small remaining shaping signals should still guide approach. Monitoring is needed to ensure landing success rate rises and episode length shortens.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.1
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 10.0
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_approach_stagnation_penalty",
+          "type": "metric_stagnation_penalty",
+          "weight": -0.5,
+          "inputs": [],
+          "params": {
+            "metric": "approach_region_score",
+            "window_steps": 50,
+            "min_delta": 0.01
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Hovering reward hack: agent exploits continuous shaping components to endlessly hover, ignoring terminal landing goal. Package drastically reduces dominant shaping weights, multiplies terminal bonus to dominate, and adds a stagnation penalty to push progress.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.1
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 10.0
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_approach_stagnation_penalty",
+        "type": "metric_stagnation_penalty",
+        "weight": -0.5,
+        "inputs": [],
+        "params": {
+          "metric": "approach_region_score",
+          "window_steps": 50,
+          "min_delta": 0.01
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}
