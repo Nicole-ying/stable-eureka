@@ -321,15 +321,81 @@ class EGRSARunner:
                 self._write_json(iter_dir / "scale_audit.json", scale_audit)
 
                 scale_audit_active = bool(self.config.get("scale_audit", {}).get("active", True))
+                repair_enabled = bool(self.config.get("scale_audit", {}).get("repair_enabled", True))
+
                 if scale_audit_active and not bool(scale_audit.get("audit_pass", True)):
                     validation.errors.append(
-                        "ScaleAuditTool blocked edit_plan because it may dominate terminal incentives."
+                        "ScaleAuditTool flagged edit_plan; requesting Agent repair instead of direct execution."
                     )
                     edit_response.setdefault("auditor_check", {})
-                    edit_response["auditor_check"]["scale_audit_blocked"] = True
+                    edit_response["auditor_check"]["scale_audit_flagged"] = True
                     edit_response["auditor_check"]["scale_audit"] = scale_audit
-                    edit_plan = []
-                    next_action = "continue_training"
+
+                    if repair_enabled and should_edit:
+                        repair_response = self.edit_agent.generate_repair_edit_plan(
+                            task_description=task_description,
+                            current_reward_schema=schema.to_dict(),
+                            diagnostic_report=diagnostic_report,
+                            retrieved_memories=retrieved_dicts,
+                            retrieved_lessons=retrieved_lessons,
+                            reflection_report=reflection_report,
+                            failed_edit_response=edit_response,
+                            scale_audit_report=scale_audit,
+                        )
+                        self._write_json(iter_dir / "repair_response.json", repair_response)
+
+                        repair_decision = self._extract_edit_decision(repair_response)
+                        repair_next_action = self._extract_next_action(repair_response)
+                        repair_metadata = self._extract_plan_metadata(repair_response, reflection_report)
+
+                        repaired_plan, repair_validation, repair_candidate_result, repair_gate_result, repair_next_action = self._validate_evaluate_and_gate_edit_plan(
+                            schema,
+                            repair_response.get("edit_plan", []),
+                            diagnostic_report,
+                            trajectories,
+                            repair_decision,
+                            repair_next_action,
+                            repair_metadata,
+                        )
+
+                        self._write_json(iter_dir / "repair_validation.json", repair_validation.to_dict())
+                        if repair_candidate_result is not None:
+                            self._write_json(iter_dir / "repair_candidate_evaluation.json", repair_candidate_result.to_dict())
+                        if repair_gate_result is not None:
+                            self._write_json(iter_dir / "repair_edit_gate.json", repair_gate_result.to_dict())
+
+                        if repaired_plan:
+                            repair_scale_audit = ScaleAuditTool.audit(
+                                schema=schema,
+                                edit_plan=repaired_plan,
+                                trajectories=trajectories,
+                                config=self.config.get("scale_audit", {}),
+                            )
+                            self._write_json(iter_dir / "repair_scale_audit.json", repair_scale_audit)
+
+                            if bool(repair_scale_audit.get("audit_pass", True)):
+                                edit_response["repair_response"] = repair_response
+                                edit_plan = repaired_plan
+                                validation = repair_validation
+                                candidate_result = repair_candidate_result
+                                gate_result = repair_gate_result
+                                next_action = "apply_edit"
+                            else:
+                                validation.errors.append(
+                                    "Repaired edit_plan also failed ScaleAuditTool; using continue_training."
+                                )
+                                edit_response["repair_response"] = repair_response
+                                edit_response["auditor_check"]["repair_scale_audit_failed"] = True
+                                edit_response["auditor_check"]["repair_scale_audit"] = repair_scale_audit
+                                edit_plan = []
+                                next_action = "continue_training"
+                        else:
+                            edit_response["repair_response"] = repair_response
+                            edit_plan = []
+                            next_action = repair_next_action if repair_next_action in {"continue_training", "structural_search"} else "continue_training"
+                    else:
+                        edit_plan = []
+                        next_action = "continue_training"
 
             if candidate_result is not None:
                 self._write_json(iter_dir / "candidate_evaluation.json", candidate_result.to_dict())

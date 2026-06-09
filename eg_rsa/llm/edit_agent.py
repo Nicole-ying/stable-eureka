@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from eg_rsa.llm.edit_prompt import build_edit_prompt
+from eg_rsa.llm.repair_prompt import build_repair_prompt
 from eg_rsa.llm.json_parser import extract_json_object
 
 
@@ -41,6 +42,61 @@ class EditAgent:
         parsed = extract_json_object(response_text)
         if "edit_plan" not in parsed or not isinstance(parsed["edit_plan"], list):
             raise ValueError("LLM edit response must contain a list field named edit_plan")
+        return self._normalize_response(parsed, reflection_report or {})
+
+    def generate_repair_edit_plan(
+        self,
+        task_description: str,
+        current_reward_schema: Dict[str, Any],
+        diagnostic_report: Dict[str, Any],
+        retrieved_memories: List[Dict[str, Any]],
+        retrieved_lessons: Optional[List[Dict[str, Any]]] = None,
+        reflection_report: Optional[Dict[str, Any]] = None,
+        failed_edit_response: Optional[Dict[str, Any]] = None,
+        scale_audit_report: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Repair an edit plan using ScaleAudit/tool feedback."""
+
+        if self.llm_client is None:
+            return {
+                "repair_analysis": {
+                    "risk_source": "ScaleAudit rejected the edit plan.",
+                    "what_to_keep": "Unknown in fallback mode.",
+                    "what_to_modify": "Fallback mode does not rewrite risky plans.",
+                    "what_to_remove": "Risky plan is not executed.",
+                    "why_repaired_plan_is_safer": "No repaired edit is applied.",
+                },
+                "diagnosis": "Fallback repair chose continue_training because no LLM is available to repair the risky edit plan.",
+                "reward_editor": {
+                    "edit_decision": "no_edit",
+                    "next_action": "continue_training",
+                    "plan_type": "continue_training",
+                    "atomicity": "separable",
+                    "max_reasonable_edits": 0,
+                    "rationale": "Avoid executing a scale-risky edit without LLM repair.",
+                },
+                "auditor_check": {
+                    "approved": True,
+                    "issues": ["fallback_no_llm_repair"],
+                    "final_action": "continue_training",
+                },
+                "edit_plan": [],
+            }
+
+        prompt = build_repair_prompt(
+            task_description=task_description,
+            current_reward_schema=current_reward_schema,
+            diagnostic_report=diagnostic_report,
+            retrieved_memories=retrieved_memories,
+            retrieved_lessons=retrieved_lessons or [],
+            reflection_report=reflection_report or {},
+            failed_edit_response=failed_edit_response or {},
+            scale_audit_report=scale_audit_report or {},
+        )
+        response_text = self.llm_client.generate(prompt)
+        parsed = extract_json_object(response_text)
+        if "edit_plan" not in parsed or not isinstance(parsed["edit_plan"], list):
+            raise ValueError("LLM repair response must contain a list field named edit_plan")
         return self._normalize_response(parsed, reflection_report or {})
 
     @staticmethod
