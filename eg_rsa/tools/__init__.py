@@ -1,6 +1,12 @@
-"""Tool-augmented semantic diagnostics for EG-RSA v1.
+from .schema_diff import SchemaDiffTool, diff_schemas
+from .scale_audit import ScaleAuditTool
+from .trajectory_inspector import TrajectoryInspector
+from .outcome_lesson_builder import OutcomeLessonBuilder
 
-These tools are intentionally read-only or proposal-auditing helpers. They do
-not directly mutate reward schemas or training state. Runner/AgentActionController
-will decide when to call them.
-"""
+__all__ = [
+    "SchemaDiffTool",
+    "ScaleAuditTool",
+    "TrajectoryInspector",
+    "OutcomeLessonBuilder",
+    "diff_schemas",
+]

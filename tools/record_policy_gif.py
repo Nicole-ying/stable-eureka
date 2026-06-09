@@ -9,11 +9,11 @@ import numpy as np
 from stable_baselines3 import PPO
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model", required=True, help="Path to model.zip")
     parser.add_argument("--env", default="LunarLander-v3")
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--out", required=True, help="Output GIF path")
     parser.add_argument("--seed", type=int, default=20)
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--max_steps", type=int, default=1000)
@@ -55,12 +55,11 @@ def main():
 
     env.close()
 
+    if not frames:
+        raise RuntimeError("No rendered frames were produced.")
+
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-
-    if not frames:
-        raise RuntimeError("No rendered frames produced.")
-
     imageio.mimsave(out, frames, fps=args.fps)
 
     print(f"[OK] saved: {out}")
