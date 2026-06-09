@@ -54,13 +54,14 @@ class EditAgent:
         reflection_report: Optional[Dict[str, Any]] = None,
         failed_edit_response: Optional[Dict[str, Any]] = None,
         scale_audit_report: Optional[Dict[str, Any]] = None,
+        behavior_risk_report: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Repair an edit plan using ScaleAudit/tool feedback."""
+        """Repair an edit plan using tool feedback from ScaleAudit and BehaviorRiskAudit."""
 
         if self.llm_client is None:
             return {
                 "repair_analysis": {
-                    "risk_source": "ScaleAudit rejected the edit plan.",
+                    "risk_source": "Tool audit flagged the edit plan.",
                     "what_to_keep": "Unknown in fallback mode.",
                     "what_to_modify": "Fallback mode does not rewrite risky plans.",
                     "what_to_remove": "Risky plan is not executed.",
@@ -92,6 +93,7 @@ class EditAgent:
             reflection_report=reflection_report or {},
             failed_edit_response=failed_edit_response or {},
             scale_audit_report=scale_audit_report or {},
+            behavior_risk_report=behavior_risk_report or {},
         )
         response_text = self.llm_client.generate(prompt)
         parsed = extract_json_object(response_text)

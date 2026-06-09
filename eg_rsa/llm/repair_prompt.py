@@ -17,38 +17,32 @@ def build_repair_prompt(
     reflection_report: Dict[str, Any],
     failed_edit_response: Dict[str, Any],
     scale_audit_report: Dict[str, Any],
+    behavior_risk_report: Dict[str, Any] | None = None,
 ) -> str:
-    """Prompt for repairing a risky edit_plan after tool feedback.
-
-    ScaleAudit is a tool observation, not a final judge. The LLM should use the
-    report to understand what made the proposed edit unsafe and then produce a
-    safer plan that preserves the original intent when possible.
-    """
+    behavior_risk_report = behavior_risk_report or {}
 
     return f"""
 You are the RepairAgent inside EG-RSA v1.
 
-Your previous reward edit plan was NOT executed because ScaleAudit reported
-that it may dominate terminal incentives or otherwise destabilize the reward
-scale.
+A previous reward edit plan was not directly executed because tool diagnostics
+reported risk. The tools are observations, not final judges. You are the agent
+that must understand the risk and produce a safer plan.
 
-Your task:
-1. Understand why the previous edit was risky.
-2. Preserve the useful intent of the plan if possible.
-3. Repair the edit plan by changing scale, removing unsafe new dense terms, or
-   replacing structural edits with conservative local edits.
-4. Do not simply repeat the failed plan.
-5. If no safe repair exists, choose no_edit + continue_training.
+Tool reports:
+- ScaleAudit checks whether reward magnitudes may dominate terminal incentives.
+- BehaviorRiskAudit checks whether the edit may cause unstable contact,
+  premature terminal pressure, loss of guidance, or repeated patterns from
+  prior regression lessons.
 
-Important principles:
-- ScaleAudit is tool evidence for you to reason over.
-- You are the decision maker; the tool is not the agent.
-- Prefer smaller local edits over large new dense penalties.
-- If adding a new dense component, its expected episode-level contribution must
-  be much smaller than terminal success rewards.
-- Keep atomic package coherence. If the original package was atomic, explain how
-  the repaired package remains coherent.
-- Official/oracle reward must not be used as an edit target.
+Your tasks:
+1. Identify whether the risk is scale risk, behavior risk, or both.
+2. Preserve the useful intent of the failed plan if possible.
+3. Reduce aggressive multipliers.
+4. Avoid combining strong terminal pressure with strong energy penalty when
+   success/stability evidence is weak.
+5. Do not repeat edit patterns that retrieved outcome lessons mark as regression.
+6. Prefer conservative local refinement over a large new dense penalty.
+7. If no safe repair exists, choose no_edit + continue_training.
 
 Return valid JSON only.
 
@@ -101,4 +95,7 @@ Failed edit response:
 
 ScaleAudit report:
 {_json_block(scale_audit_report)}
+
+BehaviorRiskAudit report:
+{_json_block(behavior_risk_report)}
 """.strip()

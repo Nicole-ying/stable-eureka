@@ -29,6 +29,7 @@ from eg_rsa.training.eg_rsa_trainer import EGRSATrainer
 from eg_rsa.agent.action_controller import AgentActionController
 from eg_rsa.tools.outcome_lesson_builder import OutcomeLessonBuilder
 from eg_rsa.tools.scale_audit import ScaleAuditTool
+from eg_rsa.tools.behavior_risk_audit import BehaviorRiskAuditTool
 from eg_rsa.tools.trajectory_inspector import TrajectoryInspector
 
 
@@ -320,16 +321,33 @@ class EGRSARunner:
                 )
                 self._write_json(iter_dir / "scale_audit.json", scale_audit)
 
+                behavior_risk_audit = BehaviorRiskAuditTool.audit(
+                    edit_plan=edit_plan,
+                    semantic_outcome=semantic_outcome,
+                    trajectory_inspection=trajectory_inspection,
+                    diagnostic_report=diagnostic_report,
+                    retrieved_lessons=retrieved_lessons,
+                    config=self.config.get("behavior_risk_audit", {}),
+                )
+                self._write_json(iter_dir / "behavior_risk_audit.json", behavior_risk_audit)
+
                 scale_audit_active = bool(self.config.get("scale_audit", {}).get("active", True))
+                behavior_risk_active = bool(self.config.get("behavior_risk_audit", {}).get("active", True))
                 repair_enabled = bool(self.config.get("scale_audit", {}).get("repair_enabled", True))
 
-                if scale_audit_active and not bool(scale_audit.get("audit_pass", True)):
+                scale_flagged = scale_audit_active and not bool(scale_audit.get("audit_pass", True))
+                behavior_flagged = behavior_risk_active and not bool(behavior_risk_audit.get("audit_pass", True))
+
+                if scale_flagged or behavior_flagged:
                     validation.errors.append(
-                        "ScaleAuditTool flagged edit_plan; requesting Agent repair instead of direct execution."
+                        "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution."
                     )
                     edit_response.setdefault("auditor_check", {})
-                    edit_response["auditor_check"]["scale_audit_flagged"] = True
+                    edit_response["auditor_check"]["tool_audit_flagged"] = True
+                    edit_response["auditor_check"]["scale_audit_flagged"] = scale_flagged
+                    edit_response["auditor_check"]["behavior_risk_flagged"] = behavior_flagged
                     edit_response["auditor_check"]["scale_audit"] = scale_audit
+                    edit_response["auditor_check"]["behavior_risk_audit"] = behavior_risk_audit
 
                     if repair_enabled and should_edit:
                         repair_response = self.edit_agent.generate_repair_edit_plan(
@@ -341,6 +359,7 @@ class EGRSARunner:
                             reflection_report=reflection_report,
                             failed_edit_response=edit_response,
                             scale_audit_report=scale_audit,
+                            behavior_risk_report=behavior_risk_audit,
                         )
                         self._write_json(iter_dir / "repair_response.json", repair_response)
 
@@ -373,7 +392,20 @@ class EGRSARunner:
                             )
                             self._write_json(iter_dir / "repair_scale_audit.json", repair_scale_audit)
 
-                            if bool(repair_scale_audit.get("audit_pass", True)):
+                            repair_behavior_risk_audit = BehaviorRiskAuditTool.audit(
+                                edit_plan=repaired_plan,
+                                semantic_outcome=semantic_outcome,
+                                trajectory_inspection=trajectory_inspection,
+                                diagnostic_report=diagnostic_report,
+                                retrieved_lessons=retrieved_lessons,
+                                config=self.config.get("behavior_risk_audit", {}),
+                            )
+                            self._write_json(iter_dir / "repair_behavior_risk_audit.json", repair_behavior_risk_audit)
+
+                            repair_scale_pass = bool(repair_scale_audit.get("audit_pass", True))
+                            repair_behavior_pass = bool(repair_behavior_risk_audit.get("audit_pass", True))
+
+                            if repair_scale_pass and repair_behavior_pass:
                                 edit_response["repair_response"] = repair_response
                                 edit_plan = repaired_plan
                                 validation = repair_validation
@@ -382,11 +414,12 @@ class EGRSARunner:
                                 next_action = "apply_edit"
                             else:
                                 validation.errors.append(
-                                    "Repaired edit_plan also failed ScaleAuditTool; using continue_training."
+                                    "Repaired edit_plan also failed tool audit; using continue_training."
                                 )
                                 edit_response["repair_response"] = repair_response
-                                edit_response["auditor_check"]["repair_scale_audit_failed"] = True
+                                edit_response["auditor_check"]["repair_tool_audit_failed"] = True
                                 edit_response["auditor_check"]["repair_scale_audit"] = repair_scale_audit
+                                edit_response["auditor_check"]["repair_behavior_risk_audit"] = repair_behavior_risk_audit
                                 edit_plan = []
                                 next_action = "continue_training"
                         else:
