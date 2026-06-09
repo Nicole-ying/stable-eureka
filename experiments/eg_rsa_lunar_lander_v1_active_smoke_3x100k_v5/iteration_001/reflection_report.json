@@ -1,0 +1,81 @@
+{
+  "reflection_summary": "The agent continues to achieve high episode reward (~1900) without landing, exploiting dense landing_quality and stability rewards that incentivize bouncing contacts while avoiding the terminal bonus. The previous edit reduced r_approach_region dominance but shifted exploitation to r_landing_quality; success rate remains 0%. The agent survives full 1000-step horizon with frequent leg contact toggles (mean 11).",
+  "failure_assessment": {
+    "observed_facts": [
+      "Episode reward mean 1900, std 150, all episodes reach 1000 steps without termination.",
+      "Zero terminal bonus paid (success rate 0%, stable_landing_episode_rate 0%).",
+      "Dominant reward component r_landing_quality (ratio 0.409) with high per-step mean 0.794, while r_approach_region is now low (ratio 0.195).",
+      "Contact toggles mean 11, max 17, indicating frequent but unstable ground contact.",
+      "Shaping-goal mismatch flag true; hack score 0.2.",
+      "Previous edit (decrease r_approach_region, increase r_stable_landing_once) failed to improve success and caused a minor regression, as the agent shifted exploitation to remaining dense contact rewards."
+    ],
+    "likely_true_failures": [
+      "Shaping-goal mismatch: Dense landing_quality component provides high cumulative reward for bouncing contacts, overpowering the 100-point terminal success bonus and preventing stable landing."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_landing_quality weight is too high, causing the agent to exploit leg contact without remaining grounded for the required 5 consecutive steps needed for the stable landing event.",
+      "The terminal bonus of 100 is insufficient relative to the dense reward accumulation, so the agent has no incentive to pursue the terminal goal."
+    ],
+    "failure_kind": "reward_hack",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "Reducing the most dominant shaping component may simply shift exploitation to another dense contact-related component; all dense contact-proximity rewards must be dampened together when fixing shaping-goal mismatch."
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_000_to_001 (decrease r_approach_region + increase r_stable_landing_once) was insufficient because it left r_landing_quality untouched.",
+      "regression_lesson: outcome regressed after that edit, so avoid repeating similar isolated weighting changes."
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Single-component decrease on only the current dominant shaping component without addressing other dense contact rewards.",
+      "Relying solely on increasing terminal bonus without reducing the dense reward that can be accumulated over many steps."
+    ],
+    "recommended_actions": [
+      "Apply an atomic coupled rebalancing that significantly reduces r_landing_quality weight, further increases r_stable_landing_once weight to a dominant terminal magnitude, and optionally adds a small per-step penalty to discourage loitering."
+    ],
+    "memory_confidence": 0.7
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Decreasing r_landing_quality without simultaneously strengthening the terminal bonus could cause the agent to lose all dense guidance and fail to learn landing. The terminal bonus must be high enough to overcome the remaining dense rewards, so both edits are inseparable.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Reduce r_landing_quality weight to at most 0.2 (from 2.0) so its per-step reward contribution becomes negligible.",
+      "Increase r_stable_landing_once bonus to at least 500 to make terminal success far more rewarding than any remaining dense accumulation.",
+      "Optionally increase r_energy penalty to -0.05 per step to further discourage infinite loitering.",
+      "Keep r_approach_region at its current reduced weight (0.45) and r_stability unchanged to preserve essential shaping.",
+      "Do not disable r_landing_quality entirely, as some ground-contact signal may be needed for learning."
+    ],
+    "must_preserve": [
+      "A dense stability signal (r_stability) to prevent crashes and maintain learning progress.",
+      "One-time nature of terminal bonuses to avoid reward farming."
+    ],
+    "must_avoid": [
+      "Removing all dense rewards, which would make the problem too sparse.",
+      "Leaving any dense contact-proximity reward at a weight that allows large cumulative advantage over the terminal bonus."
+    ],
+    "expected_effect": "The dense landing quality reward will become too small to incentivize contact toggling. The large terminal bonus will dominate the episode reward, forcing the agent to achieve stable landing. Success rate should rise; episode reward mean may drop initially but then recover as landings occur. Hack risk will decrease.",
+    "risk_analysis": "If the landing_quality reduction is too severe, the agent might lose all signal about ground contact and fail to learn the approach. Mitigate by keeping r_stability and a small r_landing_quality. The terminal bonus of 500 should be safe as one-time and gated by 5-step stable condition. Monitor for new hacks: if the agent discovers a way to trigger stable landing without fully safe landing, further adjustments to the condition may be needed, but the risk is low."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It only reduces r_landing_quality but does not increase terminal bonus enough (less than 300).",
+      "It completely removes r_landing_quality without a substitute dense landing signal.",
+      "It introduces a per-step penalty larger than -0.1 that could cripple exploration."
+    ],
+    "package_should_be_accepted_if": [
+      "It reduces r_landing_quality weight to ≤0.2 and increases r_stable_landing_once weight to ≥500.",
+      "It optionally adds a modest per-step penalty ≤-0.05.",
+      "It leaves at least one stability-related dense component (r_stability) with moderate weight."
+    ],
+    "safety_notes": [
+      "Continue monitoring contact toggles and success rate; if new exploitation emerges, consider requiring a longer stable duration for the terminal event.",
+      "If success rate still zero after training, it may indicate that the remaining dense rewards are still allowing loitering; further weight reduction or a per-step penalty may be needed."
+    ]
+  }
+}

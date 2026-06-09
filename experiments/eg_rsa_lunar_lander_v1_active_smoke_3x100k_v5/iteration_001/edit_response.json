@@ -1,0 +1,122 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean ~1900, std 150, all episodes reach 1000 steps without any termination.",
+      "Zero terminal bonus paid (success rate 0%, stable_landing_episode_rate 0%).",
+      "Dominant reward component r_landing_quality (ratio 0.409) with high per‑step mean 0.794; r_approach_region ratio now only 0.195.",
+      "Contact toggles mean 11, max 17, indicating frequent unstable ground contact without stable landing.",
+      "Shaping‑goal mismatch flag true; hack score 0.2.",
+      "Previous edit (decrease r_approach_region, increase r_stable_landing_once) failed and caused regression because it left r_landing_quality untouched, shifting exploitation."
+    ],
+    "likely_true_failures": [
+      "Shaping‑goal mismatch: dense r_landing_quality provides high cumulative reward for bouncing contacts, overpowering the 100‑point terminal success bonus and preventing stable landing."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_landing_quality weight (2.0) is too high relative to the one‑time terminal bonus (40), incentivising frequent leg contact instead of remaining grounded for the required 5 consecutive steps.",
+      "The terminal bonus of 40 (100 even after previous increase? actually memory shows increase to 100 but rollback presumably reverted to 40) is insufficient to overcome the dense accumulation."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Previous attempt decreased a dominant shaping component (r_approach_region) and increased terminal bonus, but left other dense contact rewards untouched, causing exploitation shift. This lesson warns against isolated single‑component fixes when multiple dense contact rewards exist. It is directly applicable and strongly discourages repeating that pattern."
+      },
+      {
+        "lesson_id": "regression_lesson",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Outcome regressed after the above edit; instructs to avoid similar weighting changes without a materially different package. Our current plan couples a drastic reduction of r_landing_quality with a terminal bonus boost and an energy penalty, which is materially different."
+      }
+    ],
+    "reusable_lessons": [
+      "Reducing the most dominant shaping component may simply shift exploitation to another dense contact‑proximity component; all dense contact‑proximity rewards must be dampened together when fixing shaping‑goal mismatch."
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_000_to_001 (decrease r_approach_region + increase r_stable_landing_once) was insufficient because it left r_landing_quality untouched.",
+      "regression_lesson: outcome regressed after that edit, so avoid repeating similarly isolated weighting changes."
+    ],
+    "avoid_actions": [
+      "Single‑component decrease on only the current dominant shaping component without addressing other dense contact rewards.",
+      "Relying solely on increasing terminal bonus without reducing the dense reward that can be accumulated over many steps."
+    ],
+    "recommended_actions": [
+      "Apply an atomic coupled rebalancing that significantly reduces r_landing_quality, drastically increases r_stable_landing_once, and optionally adds a per‑step penalty to discourage loitering."
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The agent exploits dense r_landing_quality (weight 2.0, ratio 0.409) to accumulate high reward through unstable bouncing contacts, completely ignoring the terminal success goal. A solo decrease of r_landing_quality would risk losing all ground‑contact signal; therefore we pair it with a massive terminal bonus increase (from 40 to 500) and a modest energy penalty increase (from 0.02 to 0.05) to discourage loitering. This atomic package ensures the terminal goal dominates episode reward while retaining enough stability guidance. The plan follows the reflection strategy, respects the avoid‑actions inferred from past failed lessons, and meets all reflection auditor hints (r_landing_quality ≤ 0.2, terminal bonus ≥ 500, energy penalty ≤ 0.05).",
+    "expected_effect": "r_landing_quality per‑step reward will become negligible (~0.08 mean) so bouncing contacts no longer dominate. The 500‑point terminal bonus will be the largest single reward, compelling the agent to achieve stable landing. Success rate should rise markedly; episode reward mean may drop initially but recover as landings occur. Hack risk will decrease.",
+    "risk_analysis": "If the landing quality reduction is too severe, the agent may lose all signal about ground contact and fail to learn approach; we mitigate by keeping r_stability (weight 1.0) and a small active r_landing_quality (weight 0.2). The terminal bonus of 500 is safe because it is one‑time and gated by a 5‑step stable condition. Monitor for new exploitation: if the agent learns to trigger stable landing without a truly safe landing, the condition may need further tightening, but risk is low.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.1
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 12.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_energy",
+        "factor": 2.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [
+      "Isolated decrease of dominant shaping component without damping other dense contact rewards (lesson_iter_000_to_001)."
+    ],
+    "avoid_next": [
+      "Solo decrease_weight on a single dense component.",
+      "Terminal bonus increase without corresponding dampening of exploitable dense rewards."
+    ],
+    "recommend_next": [
+      "Apply coupled rebalancing when dense contact rewards are being exploited: reduce the offending dense weights, massively boost terminal bonus, and optionally add a modest time penalty.",
+      "Monitor contact toggles and success rate; if new exploitation emerges, consider stricter stable‑landing conditions."
+    ],
+    "applicability_notes": "This case shows classic shaping‑goal mismatch; the same pattern should be applied when multiple dense contact‑proximity rewards exist and any of them dominate."
+  },
+  "diagnosis": "Shaping‑goal mismatch: dense r_landing_quality incentivises unstable contact toggling instead of terminal stable landing. An atomic coupled rebalancing package (reduce r_landing_quality to 0.2, boost r_stable_landing_once to 500, increase energy penalty to 0.05) will shift incentive toward terminal success while maintaining essential stability signals.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.1
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 12.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

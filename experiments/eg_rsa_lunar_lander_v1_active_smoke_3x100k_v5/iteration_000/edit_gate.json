@@ -1,0 +1,49 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.3
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 2 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing the dominant shaping weight (r_approach_region) without simultaneously strengthening terminal success incentives would risk losing progress and might cause the agent to fail entirely. The package must be applied together to maintain a balance that still guides learning toward landing while preventing exploitation.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Reduce the magnitude of the dominant dense shaping component r_approach_region to reduce its contribution ratio below 30%.",
+        "Increase the terminal success bonus (e.g., r_stable_landing_once) or add a time-based penalty that encourages finishing the episode quickly.",
+        "Avoid disabling dense rewards entirely, as they provide necessary learning signal.",
+        "Do not increase r_approach_progress aggressiveness, as it might cause similar exploitation.",
+        "Ensure any added penalty (e.g., per-step penalty) is small enough not to discourage exploration.",
+        "Consider adding a small per-step penalty that is outweighed by the terminal bonus only when landing is achieved, to discourage loitering."
+      ],
+      "must_preserve": [
+        "Dense guidance for approach and stability to maintain learnability.",
+        "The one-time nature of success bonuses to prevent reward farming."
+      ],
+      "must_avoid": [
+        "Creating new dominant components that could be exploited in similar ways.",
+        "Making the reward too sparse by removing all dense shaping."
+      ],
+      "expected_effect": "The episode reward mean will likely decrease initially, but the success rate should increase as the agent is forced to pursue the terminal goal. The dominance of r_approach_region will drop, and the component distribution will be more balanced. Hack risk should reduce.",
+      "risk_analysis": "If the reduction in shaping is too severe, the agent may struggle to learn approach behaviors, resulting in no progress. If the terminal bonus is too high relative to safety, the agent might learn to crash-land quickly to get the reward. If a per-step penalty is added, ensure it does not trigger before the agent has a chance to explore (e.g., starting penalty only after a number of steps)."
+    }
+  }
+}

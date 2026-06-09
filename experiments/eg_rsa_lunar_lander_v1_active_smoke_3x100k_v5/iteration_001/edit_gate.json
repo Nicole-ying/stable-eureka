@@ -1,0 +1,53 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.1
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stability",
+      "factor": 1.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 5.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing r_landing_quality without simultaneously strengthening the terminal bonus could cause the agent to lose all dense guidance and fail to learn landing. The terminal bonus must be high enough to overcome the remaining dense rewards, so both edits are inseparable.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Reduce r_landing_quality weight to at most 0.2 (from 2.0) so its per-step reward contribution becomes negligible.",
+        "Increase r_stable_landing_once bonus to at least 500 to make terminal success far more rewarding than any remaining dense accumulation.",
+        "Optionally increase r_energy penalty to -0.05 per step to further discourage infinite loitering.",
+        "Keep r_approach_region at its current reduced weight (0.45) and r_stability unchanged to preserve essential shaping.",
+        "Do not disable r_landing_quality entirely, as some ground-contact signal may be needed for learning."
+      ],
+      "must_preserve": [
+        "A dense stability signal (r_stability) to prevent crashes and maintain learning progress.",
+        "One-time nature of terminal bonuses to avoid reward farming."
+      ],
+      "must_avoid": [
+        "Removing all dense rewards, which would make the problem too sparse.",
+        "Leaving any dense contact-proximity reward at a weight that allows large cumulative advantage over the terminal bonus."
+      ],
+      "expected_effect": "The dense landing quality reward will become too small to incentivize contact toggling. The large terminal bonus will dominate the episode reward, forcing the agent to achieve stable landing. Success rate should rise; episode reward mean may drop initially but then recover as landings occur. Hack risk will decrease.",
+      "risk_analysis": "If the landing_quality reduction is too severe, the agent might lose all signal about ground contact and fail to learn the approach. Mitigate by keeping r_stability and a small r_landing_quality. The terminal bonus of 500 should be safe as one-time and gated by 5-step stable condition. Monitor for new hacks: if the agent discovers a way to trigger stable landing without fully safe landing, further adjustments to the condition may be needed, but the risk is low."
+    }
+  }
+}
