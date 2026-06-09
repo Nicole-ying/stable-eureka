@@ -1,0 +1,57 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stability",
+      "factor": 1.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_landing_quality",
+      "factor": 1.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 4 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 4,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing r_approach_region without simultaneously increasing the terminal bonus would remove the main reward signal and likely cause learning collapse; the two changes must be coordinated to shift incentive towards landing while preserving gradient.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Do not remove r_approach_region entirely; maintain some approach shaping to guide early learning.",
+        "Significantly increase the weight of r_stable_landing_once (or reduce its duration condition) so that terminal success becomes attractive.",
+        "Consider adding a small per-step penalty or a bonus for early termination to discourage indefinite hovering."
+      ],
+      "must_preserve": [
+        "r_stability",
+        "r_landing_quality",
+        "r_energy penalty (keep small to penalize unnecessary firing)"
+      ],
+      "must_avoid": [
+        "Making the terminal bonus so large that the episode reward becomes sparse and prevents bootstrapping.",
+        "Over-penalizing energy to the point the agent never fires engines and cannot learn."
+      ],
+      "expected_effect": "The agent should learn to land successfully, increasing success rate; reward mean may drop initially but stabilize once landings occur; shaping components still guide progress but no longer dominate.",
+      "risk_analysis": "If the terminal bonus is set too high but remains hard to reach, the agent may not receive enough reward to bootstrap. If the approach component is removed entirely, the agent may wander aimlessly. A gradual transfer of weight may be safer."
+    }
+  }
+}

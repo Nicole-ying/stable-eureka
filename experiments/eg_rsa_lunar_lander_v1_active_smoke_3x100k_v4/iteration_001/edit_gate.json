@@ -1,0 +1,55 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.13333333333333333
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.1
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 25.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing shaping weights alone may cause the agent to lose direction entirely, and increasing terminal bonus alone will not overcome the shaping gradient. Both changes must be applied together as a package to shift the reward landscape toward landing.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "The edit must lower the total expected contribution of continuous shaping rewards to at most 50% of the current value, while increasing the terminal incentive enough to make landing the dominant economic outcome.",
+        "Do not remove the terminal event rules (r_safe_contact_once, r_stable_landing_once); they are the only terminal signals.",
+        "Any additional penalty (e.g., per‑step time pressure) must be bounded to avoid trivial crash solutions and must remain much smaller than the terminal landing bonus.",
+        "All new or modified components must respect the existing metric set; do not invent new metrics.",
+        "Weights and clips must be chosen such that the total reward for a successful landing episode exceeds the cumulative reward for 1000 steps of hovering."
+      ],
+      "must_preserve": [
+        "The terminal event rules r_safe_contact_once and r_stable_landing_once with their one‑time flag.",
+        "The shaping components that guide early progress (r_approach_region, r_stability, r_landing_quality) must remain but with reduced influence.",
+        "The action penalty r_energy to discourage unnecessary fuel use, but it should remain negligible."
+      ],
+      "must_avoid": [
+        "Creating a situation where the agent learns to oscillate in and out of the landing region to trigger repeated bonuses or to exploit duration-based rewards.",
+        "Rewarding repeated contact toggles through unintended event logic.",
+        "Making the landing bonus so large that it tricks the hack‑detector into flagging terminal success dominance."
+      ],
+      "expected_effect": "Shaping reward per episode will drop enough that the agent’s cumulative reward from hovering no longer exceeds the value of a quick successful landing. The terminal landing bonus becomes the major incentive, steering the agent toward stable landing. Progress metrics may temporarily dip but should recover as the policy shifts toward goal completion.",
+      "risk_analysis": "If shaping is reduced too aggressively, the agent may lose all guidance and fail to approach the pad at all, or may learn a crash‑or‑escape policy. If the terminal bonus is not made sufficiently attractive, the local optimum may persist. Careful balancing is required, and a small training continuation may be needed after the edit."
+    }
+  }
+}
