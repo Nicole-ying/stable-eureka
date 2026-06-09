@@ -8,8 +8,9 @@ from typing import Any, Dict, List, Optional
 class RewardComponent:
     """One editable reward component.
 
-    The LLM should not emit Python reward code directly.  It should emit or edit
-    this schema.  The compiler then turns the schema into executable Python.
+    v1 adds semantic metadata so tools can reason over reward roles rather than
+    environment-specific component names. These metadata fields do not affect
+    reward execution; they are used by diagnostics, memory, and repair tools.
     """
 
     name: str
@@ -19,6 +20,10 @@ class RewardComponent:
     params: Dict[str, Any] = field(default_factory=dict)
     clip: Optional[List[float]] = None
     enabled: bool = True
+    semantic_role: Optional[str] = None
+    reward_timing: Optional[str] = None
+    behavior_channel: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RewardComponent":
@@ -30,10 +35,14 @@ class RewardComponent:
             params=dict(data.get("params", {})),
             clip=data.get("clip"),
             enabled=bool(data.get("enabled", True)),
+            semantic_role=data.get("semantic_role"),
+            reward_timing=data.get("reward_timing"),
+            behavior_channel=data.get("behavior_channel"),
+            metadata=dict(data.get("metadata", {})),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data = {
             "name": self.name,
             "type": self.type,
             "weight": self.weight,
@@ -42,6 +51,15 @@ class RewardComponent:
             "clip": self.clip,
             "enabled": self.enabled,
         }
+        if self.semantic_role is not None:
+            data["semantic_role"] = self.semantic_role
+        if self.reward_timing is not None:
+            data["reward_timing"] = self.reward_timing
+        if self.behavior_channel is not None:
+            data["behavior_channel"] = self.behavior_channel
+        if self.metadata:
+            data["metadata"] = self.metadata
+        return data
 
 
 @dataclass
@@ -49,8 +67,7 @@ class EventRule:
     """Optional event-style reward rule.
 
     Event rules are useful for one-time bonuses and duration-conditioned bonuses.
-    They are separated from normal dense components to reduce repeated-event
-    reward hacking.
+    v1 also preserves semantic metadata for role-based diagnostics.
     """
 
     name: str
@@ -59,6 +76,10 @@ class EventRule:
     condition: Dict[str, Any] = field(default_factory=dict)
     one_time: bool = False
     enabled: bool = True
+    semantic_role: Optional[str] = None
+    reward_timing: Optional[str] = None
+    behavior_channel: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EventRule":
@@ -69,10 +90,14 @@ class EventRule:
             condition=dict(data.get("condition", {})),
             one_time=bool(data.get("one_time", False)),
             enabled=bool(data.get("enabled", True)),
+            semantic_role=data.get("semantic_role"),
+            reward_timing=data.get("reward_timing"),
+            behavior_channel=data.get("behavior_channel"),
+            metadata=dict(data.get("metadata", {})),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data = {
             "name": self.name,
             "type": self.type,
             "weight": self.weight,
@@ -80,6 +105,15 @@ class EventRule:
             "one_time": self.one_time,
             "enabled": self.enabled,
         }
+        if self.semantic_role is not None:
+            data["semantic_role"] = self.semantic_role
+        if self.reward_timing is not None:
+            data["reward_timing"] = self.reward_timing
+        if self.behavior_channel is not None:
+            data["behavior_channel"] = self.behavior_channel
+        if self.metadata:
+            data["metadata"] = self.metadata
+        return data
 
 
 @dataclass

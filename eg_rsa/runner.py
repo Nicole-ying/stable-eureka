@@ -328,6 +328,7 @@ class EGRSARunner:
                     diagnostic_report=diagnostic_report,
                     retrieved_lessons=retrieved_lessons,
                     config=self.config.get("behavior_risk_audit", {}),
+                    schema=schema,
                 )
                 self._write_json(iter_dir / "behavior_risk_audit.json", behavior_risk_audit)
 
@@ -399,6 +400,7 @@ class EGRSARunner:
                                 diagnostic_report=diagnostic_report,
                                 retrieved_lessons=retrieved_lessons,
                                 config=self.config.get("behavior_risk_audit", {}),
+                                schema=schema,
                             )
                             self._write_json(iter_dir / "repair_behavior_risk_audit.json", repair_behavior_risk_audit)
 

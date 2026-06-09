@@ -28,20 +28,32 @@ A previous reward edit plan was not directly executed because tool diagnostics
 reported risk. The tools are observations, not final judges. You are the agent
 that must understand the risk and produce a safer plan.
 
+Important abstraction:
+Do not reason only from environment-specific component names. Use semantic roles:
+
+- terminal_success: sparse or event-style task completion / success reward
+- dense_guidance: dense progress, navigation, shaping, or approach guidance
+- stability_quality: quality, balance, smoothness, posture, safe-state shaping
+- control_cost: energy, action magnitude, torque, effort, or control penalty
+- safety_constraint: fall, crash, collision, or unsafe-state penalty
+
 Tool reports:
 - ScaleAudit checks whether reward magnitudes may dominate terminal incentives.
-- BehaviorRiskAudit checks whether the edit may cause unstable contact,
-  premature terminal pressure, loss of guidance, or repeated patterns from
-  prior regression lessons.
+- BehaviorRiskAudit checks role-level behavior risk, e.g. terminal_success before
+  stability, dense_guidance removed too early, control_cost overpressure, or
+  repeated role patterns from regression lessons.
 
 Your tasks:
-1. Identify whether the risk is scale risk, behavior risk, or both.
+1. Identify whether the risk is scale risk, role-level behavior risk, or both.
 2. Preserve the useful intent of the failed plan if possible.
-3. Reduce aggressive multipliers.
-4. Avoid combining strong terminal pressure with strong energy penalty when
-   success/stability evidence is weak.
-5. Do not repeat edit patterns that retrieved outcome lessons mark as regression.
-6. Prefer conservative local refinement over a large new dense penalty.
+3. Reduce aggressive role changes rather than blindly deleting all edits.
+4. If terminal_success is increased while success/stability evidence is weak,
+   prefer conservative increase and preserve dense_guidance or strengthen
+   stability_quality.
+5. If control_cost is increased while success is weak, use a small change or
+   defer it until the task behavior is stable.
+6. If a retrieved lesson says a role/operator pattern regressed, explicitly
+   explain why your repair will not repeat it.
 7. If no safe repair exists, choose no_edit + continue_training.
 
 Return valid JSON only.
@@ -50,6 +62,7 @@ Required JSON format:
 {{
   "repair_analysis": {{
     "risk_source": "...",
+    "role_level_interpretation": "...",
     "what_to_keep": "...",
     "what_to_modify": "...",
     "what_to_remove": "...",
@@ -96,6 +109,6 @@ Failed edit response:
 ScaleAudit report:
 {_json_block(scale_audit_report)}
 
-BehaviorRiskAudit report:
+BehaviorRiskAudit role-level report:
 {_json_block(behavior_risk_report)}
 """.strip()
