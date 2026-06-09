@@ -1,19 +1,15 @@
 # v1 Tool Registry Design
 
-## Goal
+## Purpose
 
-The current EG-RSA pipeline calls diagnostics in a fixed order. v1 turns diagnostics into explicit tools that an AgentActionController can request before deciding the next reward-search action.
+v1 changes diagnostics from a fixed pipeline into explicit tools that an agent can request. The LLM should not only output an `edit_plan`; it should be able to inspect trajectories, compare schemas, audit component scales, retrieve memories, request extra evaluation, and then choose the next action.
 
-The key change is: the LLM no longer only emits an edit_plan. It may request tools, inspect evidence, and then decide whether to edit, continue training, rollback and replan, evaluate more seeds, or enter free rewrite.
+## Common tool contract
 
-## Tool Registry Interface
+Each tool should expose:
 
-Each tool should implement a small common interface:
-
-```python
-class RewardSearchTool:
-    name: str
-    input_schema: dict
-    output_schema: dict
-
-    def run(self, request
+- `name`: stable tool name used by AgentActionController.
+- `input`: JSON-compatible request object.
+- `output`: JSON-compatible evidence object.
+- `summary`: short text that can be inserted into the LLM context.
+- `safety_level`: `read_only`, `proposal_only`, or `
