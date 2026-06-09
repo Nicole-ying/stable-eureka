@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from eg_rsa.reward.schema import RewardSchema
 
 
-@dataclass
-class SchemaDiffResult:
-    added_components: List[str] = field(default_factory=list)
-    removed_components: List[str] = field(default_factory=list)
-    changed_components: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    added_event_rules: List[str] = field(default
+class SchemaDiffTool:
+    """Compare two reward schemas and report actionable changes."""
+
+    @staticmethod
+    def diff(before: RewardSchema | Dict[str, Any], after: RewardSchema | Dict[str, Any]) -> Dict[str, Any]:
+        b = before if isinstance(before, Reward
