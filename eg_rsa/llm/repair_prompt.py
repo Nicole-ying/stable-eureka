@@ -40,8 +40,9 @@ Do not reason only from environment-specific component names. Use semantic roles
 Tool reports:
 - ScaleAudit checks whether reward magnitudes may dominate terminal incentives.
 - BehaviorRiskAudit checks role-level behavior risk, e.g. terminal_success before
-  stability, dense_guidance removed too early, control_cost overpressure, or
-  repeated role patterns from regression lessons.
+  stability, dense_guidance removed too early, control_cost overpressure,
+  dense-role dominance transfer, or repeated role patterns from regression
+  lessons.
 
 Your tasks:
 1. Identify whether the risk is scale risk, role-level behavior risk, or both.
@@ -52,9 +53,13 @@ Your tasks:
    stability_quality.
 5. If control_cost is increased while success is weak, use a small change or
    defer it until the task behavior is stable.
-6. If a retrieved lesson says a role/operator pattern regressed, explicitly
+6. If BehaviorRiskAudit reports dense_role_dominance_transfer or
+   dense_role_dominance_amplification, do not move exploitation from one dense
+   role to another. Prefer smaller changes, preserve guidance, or choose
+   continue_training.
+7. If a retrieved lesson says a role/operator pattern regressed, explicitly
    explain why your repair will not repeat it.
-7. If no safe repair exists, choose no_edit + continue_training.
+8. If no safe repair exists, choose no_edit + continue_training.
 
 Return valid JSON only.
 

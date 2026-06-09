@@ -47,8 +47,46 @@ class OutcomeLessonBuilder:
                 "failure_modes": after_metrics.get("failure_modes", []),
                 "true_hack_risk": after_metrics.get("true_hack_risk", False),
                 "terminal_goal_evidence": after_metrics.get("terminal_goal_evidence", False),
+                "semantic_roles_touched": OutcomeLessonBuilder._semantic_roles_touched(
+                    before_schema,
+                    after_schema,
+                    edit_plan or [],
+                ),
             },
         }
+
+    @staticmethod
+    def _semantic_roles_touched(before_schema: Any, after_schema: Any, edit_plan: List[Dict[str, Any]]) -> List[str]:
+        role_map: Dict[str, str] = {}
+
+        for schema in [before_schema, after_schema]:
+            data = schema
+            if hasattr(schema, "to_dict"):
+                data = schema.to_dict()
+            if not isinstance(data, dict):
+                continue
+            for item in list(data.get("components", []) or []) + list(data.get("event_rules", []) or []):
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("name")
+                role = item.get("semantic_role") or item.get("metadata", {}).get("semantic_role")
+                if name and role:
+                    role_map[str(name)] = str(role)
+
+        roles = set()
+        for edit in edit_plan or []:
+            if not isinstance(edit, dict):
+                continue
+            target = edit.get("target")
+            if target and str(target) in role_map:
+                roles.add(role_map[str(target)])
+            comp = edit.get("component", {}) or {}
+            rule = edit.get("event_rule", {}) or {}
+            role = comp.get("semantic_role") or rule.get("semantic_role")
+            if role:
+                roles.add(str(role))
+
+        return sorted(roles)
 
     @staticmethod
     def _delta(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, float]:
