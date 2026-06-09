@@ -179,6 +179,7 @@ class EGRSARunner:
 
             retrieved_dicts: List[Dict[str, Any]] = []
             retrieved_lessons: List[Dict[str, Any]] = []
+            retrieved_outcome_lessons: List[Dict[str, Any]] = []
             if self.mode.use_memory:
                 retrieved = memory_store.retrieve(
                     diagnostics.get("failure_modes", []),
@@ -190,8 +191,18 @@ class EGRSARunner:
                     diagnostics.get("failure_modes", []),
                     top_k=int(self.config.get("memory", {}).get("lesson_top_k", 5)),
                 )
+                retrieved_outcome_lessons = self._load_recent_jsonl(
+                    self.output_dir / "memory" / "outcome_lessons.jsonl",
+                    limit=int(self.config.get("memory", {}).get("outcome_lesson_top_k", 5)),
+                )
+                for lesson in retrieved_outcome_lessons:
+                    wrapped = dict(lesson)
+                    wrapped["source"] = "outcome_lesson"
+                    retrieved_lessons.append(wrapped)
+
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
             self._write_json(iter_dir / "retrieved_lessons.json", retrieved_lessons)
+            self._write_json(iter_dir / "retrieved_outcome_lessons.json", retrieved_outcome_lessons)
 
             agent_action_decision = self.agent_action_controller.decide(
                 diagnostic_report=diagnostic_report,
@@ -390,6 +401,7 @@ class EGRSARunner:
                     "semantic_outcome": semantic_outcome,
                     "trajectory_inspection": trajectory_inspection,
                     "agent_action_decision": agent_action_decision.to_dict(),
+                    "retrieved_outcome_lessons": retrieved_outcome_lessons,
                     "reflection_strategy": reflection_report.get("strategy", {}) if reflection_report else {},
                     "edit_plan": edit_plan,
                     "edit_decision": edit_decision,
@@ -586,6 +598,23 @@ class EGRSARunner:
         true_hack = bool(semantic_outcome.get("reward_repetition_risk", False) or flags.get("high_reward_low_progress", False) or flags.get("shaping_goal_mismatch", False))
         selection_score = float(task_score + semantic_score - (hack_score if true_hack else 0.0))
         return {"task_score": float(task_score), "semantic_score": semantic_score, "selection_score": selection_score, "hack_score": hack_score, "true_hack_risk": true_hack, "terminal_goal_evidence": bool(semantic_outcome.get("terminal_goal_evidence", False)), "reward_repetition_risk": bool(semantic_outcome.get("reward_repetition_risk", False)), "high_reward_low_progress": bool(flags.get("high_reward_low_progress", False)), "shaping_goal_mismatch": bool(flags.get("shaping_goal_mismatch", False)), "unstable_contact_behavior": bool(semantic_outcome.get("unstable_contact_behavior", False)), "benign_terminal_dominance": bool(diagnostics.get("benign_terminal_dominance", False)), "success_episode_rate": float(semantic_outcome.get("success_episode_rate", 0.0) or 0.0), "terminal_reward_paid_episode_rate": float(semantic_outcome.get("terminal_reward_paid_episode_rate", 0.0) or 0.0), "safe_contact_episode_rate": float(semantic_outcome.get("safe_contact_episode_rate", 0.0) or 0.0), "stable_landing_episode_rate": float(semantic_outcome.get("stable_landing_episode_rate", 0.0) or 0.0)}
+
+    @staticmethod
+    def _load_recent_jsonl(path: Path, limit: int = 5) -> List[Dict[str, Any]]:
+        path = Path(path)
+        if not path.exists():
+            return []
+        rows: List[Dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        return rows[-max(0, int(limit)):]
 
     @staticmethod
     def _load_schema(path: Path) -> RewardSchema:
