@@ -1,0 +1,52 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.6
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 2 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing r_approach_region weight significantly could collapse total reward before the agent learns to trigger the terminal event; therefore, a simultaneous strong increase in terminal bonus weight is needed to maintain a viable learning signal. Without the coupled package, the agent may lose all dense guidance and fail to improve.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Do not remove r_approach_region entirely; it provides useful early guidance to approach the pad",
+        "The total shaping reward per episode should remain within [0, 300] to prevent reward scale explosion",
+        "Terminal event bonuses must remain one-time per episode to avoid exploitation",
+        "If relaxing a duration condition further is possible, ensure it does not make the event trivially exploitable (e.g., a single frame of contact without stability)",
+        "Do not increase r_energy penalty beyond -0.05 per step to avoid discouraging main engine use",
+        "Any new shaping component (if added) must not dominate the combined terminal incentives"
+      ],
+      "must_preserve": [
+        "r_approach_progress (delta positive only) to maintain a directional signal toward the pad",
+        "r_stability to penalize excessive wobble",
+        "r_landing_quality to grade landing smoothness (may become useful once landings occur)"
+      ],
+      "must_avoid": [
+        "Increasing r_approach_region weight",
+        "Adding dense shaping components that overshadow the terminal goal (e.g., a large altitude-based reward that replicates hovering)",
+        "Making terminal event bonuses non-one-time (would risk repeated exploitation)",
+        "Reducing all shaping components to near zero without a reliable terminal gradient"
+      ],
+      "expected_effect": "Mean episode reward will likely decrease significantly as the agent shifts from hovering toward landing attempts. Progress score may initially stall, but after retraining the agent should begin to achieve the terminal event, yielding a non-zero success rate and substantially reduced unstable contact behavior.",
+      "risk_analysis": "If the terminal event still cannot be triggered even after the coupled change, the total reward could collapse because the now-reduced dense shaping no longer provides a sufficient learning signal. The policy might get stuck or degrade. Rollback and a more structural search (e.g., adding a soft descent reward or a small negative altitude penalty) would be necessary. Additionally, increasing terminal bonus weight too much might cause the agent to crash repeatedly in a failed attempt to trigger the event, but the one-time nature mitigates looping."
+    }
+  }
+}

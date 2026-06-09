@@ -1,0 +1,99 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "episode_length_mean=1000, no early termination",
+      "success_episode_rate=0.0",
+      "r_approach_region dominates ratio 0.403",
+      "r_safe_contact_once and r_stable_landing_once never paid",
+      "unstable_contact_behavior true, contact_toggle_mean=13.8",
+      "shaping_goal_mismatch flag true",
+      "repeated_event_exploitation flag true (landing_region toggles 19)"
+    ],
+    "likely_true_failures": [
+      "The agent fails to land; task not solved",
+      "Shaping rewards incentivize proximity without terminal completion"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation is likely a symptom of bouncing, not deliberate reward hacking",
+      "high_reward_low_progress flag is false, indicating it's not simple dominance hacking"
+    ],
+    "root_cause_hypotheses": [
+      "The r_approach_region weight (1.5) is too high relative to terminal reward, leading to a local optimum of hovering near pad",
+      "The terminal event bonuses conditions (safe_contact 2 steps, stable_landing 5 steps) may be too strict, never providing any signal"
+    ],
+    "failure_kind": "mixed",
+    "edit_need": "must_edit",
+    "confidence": 0.8
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Increasing r_approach_region weight",
+      "Adding new dense shaping components that could overshadow terminal goal",
+      "Making terminal event bonuses non-one-time"
+    ],
+    "recommended_actions": [
+      "Reduce r_approach_region weight by at least 20%",
+      "Relax duration for terminal event (e.g., stable_landing) to make it achievable"
+    ],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "The agent gets high reward from r_approach_region but never triggers terminal landing events. All episodes reach max steps without landing, exhibiting bouncing. This indicates a shaping-goal mismatch: excessive approach reward and terminal events that are too strict to ever trigger. A coupled package reduces approach weight to lower its dominance while relaxing the stable landing duration to 1 step to provide a feasible terminal signal. This rebalancing should shift behavior toward landing completion without collapsing learning.",
+    "expected_effect": "Decrease in mean episode reward initially; agent begins to attempt landing and triggers stable landing bonus; success rate rises as lander prioritizes terminal completion over hovering.",
+    "risk_analysis": "If even with relaxed duration the agent still cannot land, total reward may drop sharply because approach region now gives less. However, r_approach_progress and other shaping components still provide directional guidance. The change is safe as long as the terminal bonus remains achievable.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.6
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_stable_landing_once",
+        "duration_steps": 1
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing of shaping and terminal rewards can break local optima"
+    ],
+    "what_failed": [],
+    "avoid_next": [
+      "Solo decrease_weight on dominant shaping component without terminal boost"
+    ],
+    "recommend_next": [
+      "Consider further tuning if agent still hovers after retraining"
+    ],
+    "applicability_notes": "When terminal events are never triggered, relaxing duration conditions can provide the needed signal. Ensure the relaxed event is still protected by one_time flag."
+  },
+  "diagnosis": "Shaping-goal mismatch: r_approach_region dominates, terminal events never trigger. Coupled rebalancing with reduced approach weight and relaxed stable landing duration aims to shift focus to landing.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.6
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_stable_landing_once",
+      "duration_steps": 1
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

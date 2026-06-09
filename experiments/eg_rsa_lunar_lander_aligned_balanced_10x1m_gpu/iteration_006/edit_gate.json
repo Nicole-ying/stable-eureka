@@ -1,0 +1,55 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_enter_landing_region_once",
+        "type": "event_bonus",
+        "weight": 20.0,
+        "condition": {
+          "landing_region": true,
+          "duration_steps": 2
+        },
+        "one_time": true,
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "structural_search",
+    "atomicity": "separable",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "Adding a new low-weight component is a structural change that can be applied alone; a mild decrease of r_approach_region can be added as a separate step after evaluating the new component’s effect if needed. They do not require atomic coupling.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Any new component must have weight ≤ 0.5 to avoid becoming a new dominant dense reward",
+        "New component should be a simple descent indicator: e.g., metric_delta on negative altitude or vertical speed with positive_only=true",
+        "If using a metric_delta, ensure the metric is available (e.g., 'altitude', 'vertical_speed')",
+        "Do not remove r_approach_region entirely; if decreasing it, use factor ≥ 0.7",
+        "Maintain one-time flags on all terminal bonuses",
+        "Total expected episode reward should stay within [1, 500]",
+        "Do not increase r_energy penalty beyond -0.05"
+      ],
+      "must_preserve": [
+        "r_approach_progress (delta positive only) for directional signal",
+        "r_stability to penalize wobble",
+        "r_landing_quality for future landing smoothness",
+        "r_safe_contact_once and r_stable_landing_once as one-time terminal bonuses"
+      ],
+      "must_avoid": [
+        "Adding dense shaping components that overshadow the terminal goal (e.g., weight >0.5 on a progress reward)",
+        "Making terminal bonuses non-one-time",
+        "Reducing all shaping components to near zero without a reliable terminal gradient",
+        "Increasing r_approach_region weight"
+      ],
+      "expected_effect": "After retraining, the agent should begin to descend toward the pad instead of hovering. Initial mean reward may drop, but eventually terminal event will become reachable, leading to first stable landing and a rise in success rate.",
+      "risk_analysis": "If the new bridging reward is still insufficient (weight too low or metric not informative), the terminal event may remain unreachable, and reward could drop further. If the new component is too high, it may cause the agent to bounce without stable landing. Monitoring after retraining is essential; if no terminal payment after 2 iterations, consider further relaxing terminal condition definition or exploring different descent metrics."
+    }
+  }
+}

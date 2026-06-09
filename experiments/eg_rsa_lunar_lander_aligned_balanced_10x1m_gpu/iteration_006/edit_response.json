@@ -1,0 +1,174 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode length always 1000, success_episode_rate=0.0",
+      "Terminal events (r_safe_contact_once, r_stable_landing_once) never paid",
+      "r_approach_region dominates (ratio 0.403), reward mean ~3296",
+      "Unstable contact behavior: contact_toggle_mean=13.8, max=31",
+      "Shaping/goal mismatch flag true, repeated_event_exploitation due to bouncing",
+      "Previous edits (decrease approach weight + relax duration, decrease approach weight + increase terminal weight, add landing_region_progress with weight 2.0) all failed to produce any terminal payment"
+    ],
+    "likely_true_failures": [
+      "Agent fails to land; task not solved",
+      "Policy stuck in local optimum of hovering/bouncing near pad",
+      "No intermediate gradient from hovering to terminal landing exists"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation is a symptom of bouncing, not deliberate hacking",
+      "high_reward_low_progress flag false; component_dominance raw flag false"
+    ],
+    "root_cause_hypotheses": [
+      "Current shaping rewards do not provide a gradient toward the precise landing event; the agent is content to maximize r_approach_region and other dense scores without ever triggering the terminal condition",
+      "Previous bridging attempt with high weight (2.0) collapsed the reward landscape; a much gentler bridging signal (weight ≤0.5) is needed"
+    ],
+    "failure_kind": "mixed",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "weak",
+        "status": "already_applied",
+        "reason": "Too weak to shift behavior; small semantic delta (+0.0177), zero terminal payment. The insight that coupled editing can help break local optima is reusable, but the specific package insufficient."
+      },
+      {
+        "lesson_id": "lesson_iter_002_to_003",
+        "quality": "failed",
+        "status": "already_applied",
+        "reason": "Further decrease of r_approach_region + increase terminal weight caused negative semantic delta and no landing; avoid repeating this exact combination."
+      },
+      {
+        "lesson_id": "lesson_iter_004_to_005",
+        "quality": "failed",
+        "status": "already_applied",
+        "reason": "Adding r_landing_region_progress with weight 2.0 caused massive reward collapse; confirms that high weight on a new shaping component is dangerous and must be avoided."
+      }
+    ],
+    "reusable_lessons": [
+      "Coupled rebalancing (shaping+terminal) can shift focus but must be strong enough",
+      "One-time event bonuses protect against exploitation if they are triggerable",
+      "New dense components must use very low weight (≤0.5) to avoid dominating the signal"
+    ],
+    "failed_or_weak_lessons": [
+      "iter_000_to_001 (decrease r_approach_region + relax duration) too weak; terminal never paid",
+      "iter_002_to_003 (decrease r_approach_region + increase terminal weight) caused slight degradation, no landing",
+      "iter_004_to_005 (add r_landing_region_progress with weight 2.0) caused massive reward collapse"
+    ],
+    "avoid_actions": [
+      "Solo decrease of dominant shaping component without a strong terminal boost",
+      "Increasing terminal bonus weight without verifying the event is reachable",
+      "Adding any new dense shaping component with weight >0.5",
+      "Repeating the exact same edit combinations as iter_000_to_001 or iter_002_to_003 or iter_004_to_005"
+    ],
+    "recommended_actions": [
+      "Structural search for a low-weight (≤0.5) bridging reward component that encourages descent (e.g., negative altitude, vertical speed toward pad)",
+      "Optionally pair with a mild further decrease of r_approach_region (factor ~0.7) only if the new bridging component is proven to be present",
+      "Maintain all one-time terminal flags and current constraints on energy penalty"
+    ],
+    "memory_confidence": 0.7
+  },
+  "reward_editor": {
+    "edit_decision": "need_more_evidence",
+    "next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "separable",
+    "max_reasonable_edits": 2,
+    "rationale": "Previous attempt to add a new dense bridging reward (weight 2.0) collapsed the reward signal. A controlled structural search is needed to identify a suitable low-weight (≤0.5) metric (e.g., altitude or vertical speed) that encourages descent toward the pad without overshadowing other components. Directly adding a component without verifying metric suitability and safety risks repeating the collapse seen in iter_004_to_005. This search will propose a candidate component that can be later added as a safe edit.",
+    "expected_effect": "No immediate schema change. The structural search will analyze available metrics and propose a candidate bridging component. Once identified and added with low weight, the agent should begin to descend, eventually enabling terminal landing. Initial reward may drop but the path to landing becomes possible.",
+    "risk_analysis": "If no suitable metric is found, the edit cycle may continue without landing. Rolling back to the best schema remains possible. Terminal bonuses remain one-time and preserved. The task failure may persist, but a safe bridging search minimizes the risk of further reward collapse.",
+    "edit_plan": []
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "structural_search"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [
+      "Coupled rebalancing (decrease r_approach_region + relax duration) insufficient to induce landing",
+      "Coupled rebalancing (decrease r_approach_region + increase terminal weight) caused slight degradation and no landing",
+      "Adding r_landing_region_progress with high weight 2.0 caused major reward collapse"
+    ],
+    "avoid_next": [
+      "Solo decrease of dominant shaping component without terminal boost",
+      "Increasing terminal bonus weight without verifying reachability",
+      "Adding new dense component with weight >0.5",
+      "Repeating exact previous edit combinations"
+    ],
+    "recommend_next": [
+      "Conduct structural search for a low-weight (≤0.5) bridging descent reward",
+      "Consider minor further decrease of r_approach_region only if bridging component proves effective",
+      "Maintain one-time terminal bonuses"
+    ],
+    "applicability_notes": [
+      "When terminal event never triggers despite rebalancing, an intermediate dense reward may provide the missing gradient. Must use very low weight to avoid dominance."
+    ]
+  },
+  "diagnosis": "Agent hovers at pad due to dominance of r_approach_region, never triggering terminal landing events. Previous edits to weaken approach and boost terminal or add high-weight progress reward failed. A structural search is needed to identify a safe low-weight (≤0.5) bridging descent reward to connect hovering to landing.",
+  "edit_plan": [],
+  "plan_type": "structural_search",
+  "atomicity": "separable",
+  "max_reasonable_edits": 2,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "The lander hovers in the approach region but never crosses into the landing region where the terminal condition becomes reachable. The dense approach reward dominates while no component explicitly rewards the transition from approach to landing region.",
+      "why_local_edit_is_insufficient": "Local edits (weight changes, duration relaxation) have already failed to produce stable landing. They only rebalance existing components, none of which provide a discrete incentive to enter the landing region. The boundary between approach and landing is not currently rewarded, so the agent lacks a stepping‐stone signal.",
+      "memory_constraints": [
+        "avoid solo decrease of dominant shaping components without a strong terminal boost",
+        "do not repeat the exactly failed edit of adding `landing_region_score` metric_delta",
+        "lessons advise a bridging reward, e.g., descent‐based or landing‐region entry"
+      ],
+      "safety_constraints": [
+        "new event rule must be `one_time: true` and use available event flags",
+        "no unprotected repeatable event bonuses",
+        "the landing_region event is predefined and reachable, so a one‐time bonus is non‑exploitable"
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Add a one‑time bonus for entering the landing region. This creates a clear intermediate goal between approach and the terminal stable landing. The event is already defined, the bonus is one‑time (non‑repeatable), and it bridges the gap without altering the dominant approach reward.",
+      "edit_plan": [
+        {
+          "operator": "add_event_rule",
+          "event_rule": {
+            "name": "r_enter_landing_region_once",
+            "type": "event_bonus",
+            "weight": 20.0,
+            "condition": {
+              "landing_region": true,
+              "duration_steps": 2
+            },
+            "one_time": true,
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Shaping‑goal mismatch: agent stuck in approach region, terminal event unreachable. Adding a one‑time landing‑region bonus creates a safe bridging signal.",
+    "edit_plan": [
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_enter_landing_region_once",
+          "type": "event_bonus",
+          "weight": 20.0,
+          "condition": {
+            "landing_region": true,
+            "duration_steps": 2
+          },
+          "one_time": true,
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "reflection_summary": "The current schema includes a harmful metric-stagnation penalty (r_approach_stagnation_penalty) that was added in iter_003_to_004. It dominates the reward signal (ratio 0.775), collapses the learning process, and causes a return to zero landing success. The previous schema (without this penalty) achieved 100% stable landing and safe contact, albeit with long episode lengths (~940 steps). The immediate priority is to roll back this harmful addition to recover task success; a structural search for a speed incentive remains a later need.",
+  "failure_assessment": {
+    "observed_facts": [
+      "episode_reward_mean = -156.58, success rate = 0.0, stable landing rate = 0.0",
+      "dominant component is r_approach_stagnation_penalty (ratio 0.7749)",
+      "high contact toggling (max 32) and unstable_contact_behavior flagged, but agent is not landing",
+      "r_stable_landing_once never pays out",
+      "episode length reduced to ~351.7 steps (early termination likely due to penalty)",
+      "hack_score = 0.6 with flags: component_dominance, repeated_event_exploitation, shaping_goal_mismatch",
+      "memory card iter_003_to_004 records this penalty as harmful and links it directly to the current failure"
+    ],
+    "likely_true_failures": [
+      "The added stagnation penalty creates a per-step punishment that drives the agent away from the pad, preventing any landing",
+      "The penalty dominates the reward signal, making the terminal bonus invisible during learning"
+    ],
+    "likely_false_positives": [
+      "The flag 'repeated_event_exploitation' is likely an artifact of the agent bouncing around trying to avoid the penalty, not true exploitation",
+      "The high hack_score is a consequence of the single dominant penalty component and does not indicate a reward hack in the traditional sense"
+    ],
+    "root_cause_hypotheses": [
+      "The stagnation penalty was added to address slow landings, but its severity and dominant weight destroy exploration, causing the agent to crash or exit the viewport early",
+      "The existing schema had no time/speed incentive, and the attempt to introduce one via metric_stagnation_penalty was structurally inappropriate"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.95
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "lesson_iter_000_to_001: coupled rebalancing removed true hack risk and improved success from 0% to 30%",
+      "lesson_iter_001_to_002: further coupled rebalancing raised success to 70% and safe contact to 100%",
+      "lesson_iter_002_to_003: additional rebalancing achieved 100% stable landing"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_003_to_004: adding r_approach_stagnation_penalty was harmful—it destroyed performance and must be avoided"
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Any addition of a per-step dense penalty, especially metric_stagnation_penalty",
+      "Increasing the weight of r_approach_stagnation_penalty or similar components",
+      "Solo dense weight reduction without a speed lever (prevents fast landing but does not ruin success if done carefully; however, the harmful lesson warns that further reduction without speed incentive is dangerous and increased episode length)"
+    ],
+    "recommended_actions": [
+      "Immediately remove (disable/delete) r_approach_stagnation_penalty to restore previous schema performance",
+      "After recovery, conduct a structural search for a speed incentive (e.g., a linear time penalty, a decaying terminal bonus, or progress‑only shaping) that does not destabilize learning",
+      "Do not reintroduce any stagnation penalty; the desired speed must be achieved through a structurally different component"
+    ],
+    "memory_confidence": 0.9
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "separable",
+    "why_atomic_or_separable": "Only one harmful component needs to be removed; no other edits are required to restore the last known good schema. The removal is independent of future structural changes.",
+    "max_reasonable_edits": 1,
+    "editor_constraints": [
+      "Remove the component named 'r_approach_stagnation_penalty' completely (disable or delete it).",
+      "Do not modify any other component weights, event rules, or their conditions.",
+      "Do not add any new components.",
+      "The resulting schema should exactly match the one that achieved 100% stable landing before iter_003_to_004."
+    ],
+    "must_preserve": [
+      "All other components (r_approach_region, r_approach_progress, r_stability, r_landing_quality, r_energy)",
+      "Both one-time event rules (r_safe_contact_once, r_stable_landing_once) with their current weights and conditions"
+    ],
+    "must_avoid": [
+      "Keeping r_approach_stagnation_penalty enabled or adjusted",
+      "Adding any new penalty, stagnation metric, or step-cost component",
+      "Altering the weights of r_stability, r_landing_quality, or r_approach_region at this stage"
+    ],
+    "expected_effect": "After retraining, the schema will recover to 100% stable landing success, zero hack risk, and an episode length around 940 steps. Performance will match the pre-iter_003_to_004 state, confirming removal is sufficient.",
+    "risk_analysis": "Removing the penalty will restore a functional reward structure; however, the speed issue will remain. Future structural search for a time- or progress-based incentive is required. If training from the current checkpoint without the penalty still fails briefly, a brief warm-up period may be needed."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The penalty component is not fully removed",
+      "Any other component is modified or added",
+      "The one-time event rules are changed",
+      "The edit introduces any new per-step penalty"
+    ],
+    "package_should_be_accepted_if": [
+      "It removes only r_approach_stagnation_penalty and leaves everything else unchanged",
+      "The resulting schema matches the one that previously achieved 1.0 success rate"
+    ],
+    "safety_notes": [
+      "After removal, monitor stable landing rate and contact toggle counts to confirm recovery.",
+      "Do not proceed with any speed-related edits until the schema is proven stable.",
+      "A future structural search may consider a small, bounded per-step penalty or a progress‑only dense reward to encourage faster landings without destabilizing coordination."
+    ]
+  }
+}

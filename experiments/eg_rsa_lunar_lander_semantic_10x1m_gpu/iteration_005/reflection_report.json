@@ -1,0 +1,98 @@
+{
+  "reflection_summary": "All 10 evaluation episodes succeed with stable landings (100% success), but average episode length is 939 steps with high contact toggling (mean 146). The agent loiters near the pad, harvesting small per‑step dense rewards before finally landing. The goal explicitly demands landing ‘as fast as possible’, so slow episodes constitute a task failure, not a reward hack. Hack score is 0.0; the unstable‑contact flag is a benign symptom of bouncing, not exploitation.",
+  "failure_assessment": {
+    "observed_facts": [
+      "success_episode_rate = 1.0, stable_landing_episode_rate = 1.0, safe_contact_episode_rate = 1.0",
+      "episode_length_mean = 939, contact_toggle_mean = 146, contact_toggle_max = 202",
+      "dense per‑step rewards (r_approach_region, r_stability, r_landing_quality) still contribute ~270 per episode",
+      "r_energy penalty is small (‑0.02 per actioned step) → negligible fuel/time pressure",
+      "r_approach_progress is nearly silent (4.3 per episode), so progress toward the pad is weakly rewarded",
+      "terminal bonuses r_safe_contact_once and r_stable_landing_once pay exactly once per episode",
+      "hack_score = 0.0, no true reward exploitation"
+    ],
+    "likely_true_failures": [
+      "Lack of any time‑penalty or speed incentive allows the agent to drift near the pad indefinitely before committing to land. The dense absolute approach_region reward gives per‑step credit for being in the region, creating a stationary local optimum."
+    ],
+    "likely_false_positives": [
+      "unstable_contact_behavior flag is a false positive for exploitation; the bouncing is a by‑product of a slow landing strategy, not a reward hack."
+    ],
+    "root_cause_hypotheses": [
+      "The absence of a step‑dependent cost or decaying terminal bonus lets the agent maximise total reward by stretching the episode. Dense shaping that is not progress‑constrained (r_approach_region, r_stability, r_landing_quality) still pays for hovering. The harmful lesson iter_003_to_004 showed that a poorly tuned stagnation penalty breaks learning, but that does not mean any time penalty is bad—a carefully designed structural addition is needed."
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.95
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "lesson_iter_000_to_001: Coupled rebalancing of dense shaping and terminal reward eliminated true hack and raised success from 0% to 30%.",
+      "lesson_iter_001_to_002: Further rebalancing pushed success to 70% and safe‑contact to 100%.",
+      "lesson_iter_002_to_003: Continued rebalancing achieved 100% success but inadvertently increased episode length (regression in speed)."
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_003_to_004: Adding a metric‑stagnation penalty (‘r_approach_stagnation_penalty’) with weight 1.0, threshold 0.01, window 100 completely destroyed performance (success 0%, hack 0.6). This component type is harmful when parameters are too aggressive."
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Further decrease of r_stability or r_landing_quality without a simultaneous speed incentive (the latest decrease already slowed landings).",
+      "Adding any per‑step dense reward without a progress constraint.",
+      "Introducing stagnation penalties on approach_region with tight thresholds that starve the approach gradient.",
+      "Solo weight adjustments that try to fix speed—they are insufficient because no current component directly penalises time."
+    ],
+    "recommended_actions": [
+      "Perform a structural search for a time‑aware component: a small per‑step penalty (linear, constant, or gradually increasing) or a terminal bonus that decays with episode length.",
+      "Alternatively, explore restructuring the dense rewards to be progress‑only (e.g., replace r_approach_region absolute value with a larger r_approach_progress delta, or make r_stability/r_landing_quality depend on net improvement).",
+      "Ensure any new component is introduced with a low initial weight and is tested in a coupled package that preserves the current successful landing behaviour."
+    ],
+    "memory_confidence": 0.9
+  },
+  "strategy": {
+    "recommended_next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Introducing a time penalty or restructuring dense rewards changes the fundamental incentive landscape; it cannot be achieved with simple weight operators. The change should be applied as a single package to avoid intermediate states that break learning (as seen when a stagnation penalty was added in isolation).",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "The new component must directly penalise episode length or reward faster completion (e.g., a small per‑step penalty, a terminal bonus that scales inversely with time, or a progress‑only dense reward).",
+      "If adding a per‑step penalty, start with a very small weight (e.g., 0.0005–0.002) to avoid overwhelming the terminal bonus and shaping.",
+      "If converting r_approach_region to progress‑based, keep a small residual to maintain localisation; boost r_approach_progress significantly.",
+      "Do not use a metric‑stagnation penalty on approach_region—this failed catastrophically (iter_003_to_004).",
+      "Preserve the one‑time nature of r_stable_landing_once and r_safe_contact_once.",
+      "Ensure total reward for a fast landing (e.g., <600 steps) remains substantially higher than a slow landing, while still providing gradient for early exploration.",
+      "Include a rollback plan in case success rate drops."
+    ],
+    "must_preserve": [
+      "One‑time terminal bonuses r_safe_contact_once and r_stable_landing_once.",
+      "Enough dense shaping (progress‑based) to guide approach and stability learning.",
+      "Anti‑hack safeguards: contact‑duration conditions, one‑time triggers, clipping."
+    ],
+    "must_avoid": [
+      "Adding a penalty so large that it makes the environment too sparse, causing the agent to never discover landing.",
+      "Removing all dense shaping, which would cause credit assignment failure.",
+      "Weakening event conditions for terminal bonuses, which could open new exploit avenues.",
+      "Any component that heavily penalises exploration or early flight attempts."
+    ],
+    "expected_effect": "Episode length should decrease, contact toggling should fall, and success rate will either remain high or dip temporarily during adaptation. The terminal landing bonus will remain dominant, but the speed incentive will shift the policy toward faster trajectories. Hack risk should stay low if the penalty is small and one‑time bonuses are intact.",
+    "risk_analysis": "The main risk is that a poorly calibrated time penalty could destroy the approach gradient, leading back to a 0% success scenario (as with the stagnation penalty). To mitigate, any structural addition must be introduced with a very low weight and evaluated after a short training run. If success rate drops significantly, the change should be rolled back and the penalty weight reduced. Progress‑only reshaping is safer but still risks losing localisation signal if the absolute region reward is removed entirely."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It introduces a metric‑stagnation penalty on approach_region (repeating the harmful pattern from iter_003_to_004).",
+      "The per‑step penalty is large (e.g., weight > 0.01) without evidence of a compensating increase in gradient.",
+      "All dense shaping is removed, leaving only terminal rewards.",
+      "Terminal bonus event conditions are weakened (e.g., reducing stable‑landing‑duration from 5 to 2 steps).",
+      "The package does not include any speed incentive (e.g., only further decreases of r_stability/r_landing_quality)."
+    ],
+    "package_should_be_accepted_if": [
+      "It adds a mild time penalty (step cost) with weight ≤ 0.002, or a terminal bonus that decays with episode length, and simultaneously balances dense rewards to preserve gradient.",
+      "It replaces the absolute r_approach_region with a strong r_approach_progress (progress‑only) while keeping a tiny absolute component, demonstrating a clear speed incentive.",
+      "The expected total reward for a fast‑landing episode (<600 steps) is at least 20% higher than for a slow episode (>900 steps).",
+      "A rollback check is included: if success rate falls below 80%, the edit is automatically reverted."
+    ],
+    "safety_notes": [
+      "Start with a structural variation that is reversible and can be A/B tested quickly.",
+      "Monitor episode length, contact toggles, and success rate after applying the new component.",
+      "If success rate drops sharply, immediately reduce the penalty weight or revert.",
+      "The harmful lesson iter_003_to_004 is a strong signal that stagnation penalties on approach_region are dangerous—do not repeat that exact design."
+    ]
+  }
+}

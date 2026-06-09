@@ -1,0 +1,65 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.3
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.4
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.4
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 4.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_approach_progress",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Terminal target r_stable_landing_once has low step evidence but episode semantic evidence is present; warning only.",
+    "Accepted atomic package with 5 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 5,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing dense shaping alone may cause gradient loss; increasing terminal alone may not overcome the dense local optimum; these adjustments must be applied together to reliably shift policy toward consistent landings.",
+      "max_reasonable_edits": 4,
+      "editor_constraints": [
+        "Reduce weights of r_approach_region, r_stability, r_landing_quality by factors that make terminal bonus competitively superior in total episode reward for landing trajectories.",
+        "Increase r_stable_landing_once weight at least 2x, ideally making a successful landing episode yield total reward > 1500 while non-landing episodes yield < 500.",
+        "Optionally boost r_approach_progress weight to preserve approach gradient; do not increase absolute approach_region weight.",
+        "Do not change event conditions or one-time nature of terminal bonuses.",
+        "Avoid introducing large step penalties that could truncate exploration."
+      ],
+      "must_preserve": [
+        "One-time triggers for r_safe_contact_once and r_stable_landing_once.",
+        "The progress-based shaping r_approach_progress as potential-based.",
+        "Sufficient dense signal to enable credit assignment for approach and stability."
+      ],
+      "must_avoid": [
+        "Making terminal reward too dominant that agent crashes often while attempting landing.",
+        "Removing all dense shaping, which could cause credit assignment failure.",
+        "Ignoring the need to balance approach guidance with landing incentive."
+      ],
+      "expected_effect": "Stable landing rate should increase, contact toggling should decrease, and total episode reward for landing trajectories should surpass non-landing ones significantly. The policy should converge to fast, stable landings.",
+      "risk_analysis": "If dense weights are reduced too aggressively, agent may fail to learn approach entirely, leading to early crashes or out-of-viewport terminations. If terminal bonus is set too high, agent might adopt high-risk strategies that sometimes succeed but often crash, reducing overall success rate. Iterative tuning may still be needed."
+    }
+  }
+}

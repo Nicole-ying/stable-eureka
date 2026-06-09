@@ -1,0 +1,469 @@
+[
+  {
+    "iteration": 0,
+    "task_score": 0.25759748025294493,
+    "semantic_score": 0.25759748025294493,
+    "selection_score": 0.11519496050588984,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_approach_region",
+    "dominant_component_ratio": 0.45107912490912594,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 10,
+      "semantic_score": 0.25759748025294493,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.32684748025294497,
+      "progress_score_std": 0.2321322985007146,
+      "episode_length_mean": 692.5,
+      "episode_length_std": 373.2632449090052,
+      "contact_toggle_mean": 329.0,
+      "contact_toggle_max": 597.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing only r_approach_region may redirect the policy to exploit the remaining shaped components; all continuous rewards must be scaled back together while simultaneously strengthening terminal incentives to keep the overall gradient intact. Splitting this package would risk partial fixes that leave exploitable loopholes.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Reduce the weight of r_approach_region by at least 50%, and adjust its clip if needed to lower maximum per‑step gain",
+        "Reduce weights of r_stability and r_landing_quality proportionally to prevent them becoming new dominant shapers",
+        "Ensure terminal event bonuses remain one‑time and do not become repeatable; the ‘duration_steps’ conditions may be relaxed (e.g., safe_contact duration 1, stable_landing duration 3) or bonus values increased",
+        "Do not introduce additional continuous components that reward proximity without landing",
+        "Keep r_energy penalty unchanged to avoid suppressing the main engine usage necessary for landing"
+      ],
+      "must_preserve": [
+        "Event‑based terminal rewards as the primary signal for successful landing",
+        "Some shaping gradient to guide initial learning, but at a much smaller magnitude"
+      ],
+      "must_avoid": [
+        "Making terminal bonuses dependent on cumulative contacts that could reward toggling",
+        "Cutting all shaping entirely – that would likely lead to extremely sparse rewards and training failure"
+      ],
+      "expected_effect": "Shaping rewards will no longer give enough per‑step retention to justify hovering; the policy should be forced to attempt landing earlier, increasing the chance of discovering terminal bonuses. Success rate should improve while episode length decreases.",
+      "risk_analysis": "If shaping is reduced too aggressively, learning may become too sparse and performance could collapse. The relaxed event conditions must be carefully chosen not to reward brief, unstable touches followed by a crash. Monitoring both success rate and average episode length after the edit is critical."
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.35
+      },
+      {
+        "operator": "clip_component",
+        "target": "r_approach_region",
+        "clip": [
+          0.0,
+          0.5
+        ]
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_stability",
+        "factor": 0.35
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.35
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_safe_contact_once",
+        "duration_steps": 1
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_stable_landing_once",
+        "duration_steps": 3
+      }
+    ],
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "structural_search_used": false,
+    "edit_diagnosis": "High rewards but zero landings: dense shaping components (r_approach_region dominant) incentivize indefinite hovering and contact toggling, while terminal one‑time bonuses never trigger due to strict duration requirements. An atomic rebalancing sharply reduces all continuous shaping and relaxes terminal event durations to shift incentive toward successful landing.",
+    "edit_validation_errors": [],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.35
+        },
+        {
+          "operator": "clip_component",
+          "target": "r_approach_region",
+          "clip": [
+            0.0,
+            0.5
+          ]
+        },
+        {
+          "operator": "decrease_weight",
+          "target": "r_stability",
+          "factor": 0.35
+        },
+        {
+          "operator": "decrease_weight",
+          "target": "r_landing_quality",
+          "factor": 0.35
+        },
+        {
+          "operator": "add_duration_condition",
+          "target": "r_safe_contact_once",
+          "duration_steps": 1
+        },
+        {
+          "operator": "add_duration_condition",
+          "target": "r_stable_landing_once",
+          "duration_steps": 3
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.35
+        },
+        {
+          "operator": "clip_component",
+          "target": "r_approach_region",
+          "clip": [
+            0.0,
+            0.5
+          ]
+        },
+        {
+          "operator": "decrease_weight",
+          "target": "r_stability",
+          "factor": 0.35
+        },
+        {
+          "operator": "decrease_weight",
+          "target": "r_landing_quality",
+          "factor": 0.35
+        },
+        {
+          "operator": "add_duration_condition",
+          "target": "r_safe_contact_once",
+          "duration_steps": 1
+        },
+        {
+          "operator": "add_duration_condition",
+          "target": "r_stable_landing_once",
+          "duration_steps": 3
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 6 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 6,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Reducing only r_approach_region may redirect the policy to exploit the remaining shaped components; all continuous rewards must be scaled back together while simultaneously strengthening terminal incentives to keep the overall gradient intact. Splitting this package would risk partial fixes that leave exploitable loopholes.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Reduce the weight of r_approach_region by at least 50%, and adjust its clip if needed to lower maximum per‑step gain",
+            "Reduce weights of r_stability and r_landing_quality proportionally to prevent them becoming new dominant shapers",
+            "Ensure terminal event bonuses remain one‑time and do not become repeatable; the ‘duration_steps’ conditions may be relaxed (e.g., safe_contact duration 1, stable_landing duration 3) or bonus values increased",
+            "Do not introduce additional continuous components that reward proximity without landing",
+            "Keep r_energy penalty unchanged to avoid suppressing the main engine usage necessary for landing"
+          ],
+          "must_preserve": [
+            "Event‑based terminal rewards as the primary signal for successful landing",
+            "Some shaping gradient to guide initial learning, but at a much smaller magnitude"
+          ],
+          "must_avoid": [
+            "Making terminal bonuses dependent on cumulative contacts that could reward toggling",
+            "Cutting all shaping entirely – that would likely lead to extremely sparse rewards and training failure"
+          ],
+          "expected_effect": "Shaping rewards will no longer give enough per‑step retention to justify hovering; the policy should be forced to attempt landing earlier, increasing the chance of discovering terminal bonuses. Success rate should improve while episode length decreases.",
+          "risk_analysis": "If shaping is reduced too aggressively, learning may become too sparse and performance could collapse. The relaxed event conditions must be carefully chosen not to reward brief, unstable touches followed by a crash. Monitoring both success rate and average episode length after the edit is critical."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 0.11519496050588984,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 1,
+    "task_score": 2.468253406047245,
+    "semantic_score": 3.668253406047245,
+    "selection_score": 5.93650681209449,
+    "hack_score": 0.2,
+    "failure_modes": [
+      "high_reward_low_progress"
+    ],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.32237500289312354,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 10,
+      "semantic_score": 3.668253406047245,
+      "success_episode_rate": 0.8,
+      "terminal_reward_paid_episode_rate": 0.8,
+      "terminal_reward_payment_count_mean": 0.8,
+      "terminal_reward_payment_count_max": 1,
+      "safe_contact_episode_rate": 0.9,
+      "stable_landing_episode_rate": 0.8,
+      "progress_score_mean": 0.8995134060472451,
+      "progress_score_std": 0.20584572148340463,
+      "episode_length_mean": 312.6,
+      "episode_length_std": 70.66144634806169,
+      "contact_toggle_mean": 88.3,
+      "contact_toggle_max": 185.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": true,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            1,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            1,
+            1
+          ],
+          "episode_paid_rate": 0.8,
+          "payment_count_mean": 0.8,
+          "payment_count_max": 1,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior",
+        "terminal_goal_evidence_present"
+      ]
+    },
+    "reflection_strategy": {
+      "recommended_next_action": "continue_training",
+      "plan_type": "continue_training",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "No edit planned; training continuation is a single decision.",
+      "max_reasonable_edits": 0,
+      "editor_constraints": [],
+      "must_preserve": [
+        "Current terminal event bonuses (one‑time, with duration conditions) as primary signal for successful landing",
+        "Some shaping gradient to support initial learning, but keep magnitudes from overwhelming terminal incentives"
+      ],
+      "must_avoid": [
+        "Making terminal bonuses repeatable",
+        "Cutting all shaping entirely"
+      ],
+      "expected_effect": "With more training, the policy should improve landing smoothness and reduce contact toggles; success rate may rise above 0.9, and episode length may slightly decrease as control becomes more efficient.",
+      "risk_analysis": "If the shaping components indeed create a local optimum of slow, reward‑maximizing landings, training alone may not escape this optimum, and a later speed‑oriented edit may be necessary. Careful monitoring of landing duration and instability after several hundred episodes is needed."
+    },
+    "edit_plan": [],
+    "edit_decision": "no_edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Current schema likely sufficient; training insufficiency is the main hypothesis. Continue training and monitor landing smoothness.",
+    "edit_validation_errors": [
+      "LLM chose no_edit with next_action=continue_training; no schema edit applied."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {},
+    "edit_gate": {},
+    "outcome_decision": {
+      "decision": "accept",
+      "continuation": "continue_current_schema",
+      "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+      "task_delta": 2.2106559257943,
+      "hack_delta": -0.2,
+      "semantic_delta": 3.4106559257943,
+      "accepted_for_best": true,
+      "rollback_recommended": false
+    },
+    "rollback_applied": false,
+    "best_score": 5.93650681209449,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 2,
+    "task_score": 2.9681033929534055,
+    "semantic_score": 4.468103392953405,
+    "selection_score": 7.43620678590681,
+    "hack_score": 0.0,
+    "failure_modes": [],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.3167344540500722,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 10,
+      "semantic_score": 4.468103392953405,
+      "success_episode_rate": 1.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "terminal_reward_payment_count_mean": 1.0,
+      "terminal_reward_payment_count_max": 1,
+      "safe_contact_episode_rate": 1.0,
+      "stable_landing_episode_rate": 1.0,
+      "progress_score_mean": 0.9945433929534054,
+      "progress_score_std": 0.0028016021185188773,
+      "episode_length_mean": 264.4,
+      "episode_length_std": 20.475351034841868,
+      "contact_toggle_mean": 9.8,
+      "contact_toggle_max": 20.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": true,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "episode_paid_rate": 1.0,
+          "payment_count_mean": 1.0,
+          "payment_count_max": 1,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior",
+        "terminal_goal_evidence_present"
+      ]
+    },
+    "reflection_strategy": {
+      "recommended_next_action": "continue_training",
+      "plan_type": "continue_training",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "No edit is planned; training continuation can be applied independently.",
+      "max_reasonable_edits": 0,
+      "editor_constraints": [],
+      "must_preserve": [],
+      "must_avoid": [],
+      "expected_effect": "Further training should maintain or improve the success rate, possibly reducing contact toggling and episode length as the policy refines landing precision. No immediate hack risk is present.",
+      "risk_analysis": "Minimal risk: the reward structure is stable and already leads to perfect success. Over-training might cause the policy to become slightly more conservative or overfit to evaluation seeds, but the one-time terminal bonuses prevent reward inflation. Regular monitoring of success rate and semantic score is sufficient."
+    },
+    "edit_plan": [],
+    "edit_decision": "no_edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Current schema achieves 100% landing success with no reward hacking; only benign unstable contact. Continue training to further refine policy.",
+    "edit_validation_errors": [
+      "LLM chose no_edit with next_action=continue_training; no schema edit applied."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {},
+    "edit_gate": {},
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 7.43620678590681,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  }
+]

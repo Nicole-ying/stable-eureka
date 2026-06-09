@@ -1,0 +1,58 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_region_progress",
+        "type": "metric_delta",
+        "weight": 2.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_region_score",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "structural_search",
+    "atomicity": "separable",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "Structural search may involve adding a new reward component and optionally adjusting existing weights; these can be applied sequentially with evaluation between steps.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Any new component must have weight ≤ 0.5 to avoid becoming a new dominant dense reward",
+        "New component should be a simple descent indicator (e.g., negative altitude or vertical speed toward pad) to bridge hovering to landing",
+        "Do not remove r_approach_region entirely; it still provides essential early approach signal",
+        "Maintain one-time flags on all terminal bonuses",
+        "Total shaping reward per episode should stay within [1, 300]",
+        "Do not increase r_energy penalty beyond -0.05"
+      ],
+      "must_preserve": [
+        "r_approach_progress (delta positive only) for directional approach signal",
+        "r_stability to penalize wobble",
+        "r_landing_quality for future landing smoothness",
+        "r_safe_contact_once and r_stable_landing_once as one-time terminal bonuses"
+      ],
+      "must_avoid": [
+        "Adding dense shaping components that overshadow the terminal goal (e.g., a large altitude-based reward that recreates hovering)",
+        "Making terminal bonuses non-one-time",
+        "Reducing all shaping components to near zero without a reliable terminal gradient",
+        "Increasing r_approach_region weight"
+      ],
+      "expected_effect": "After retraining, the agent should begin to descend toward the pad instead of hovering. Initial mean reward may drop, but eventually terminal event will become reachable, leading to first stable landing and a rise in success rate.",
+      "risk_analysis": "If the new bridging reward is still insufficient, reward collapse may continue. If the new component is too high, the agent may just bounce without stable landing. Monitoring after retraining is essential; if no terminal payment after 2 iterations, consider further relaxing terminal condition definition."
+    }
+  }
+}
