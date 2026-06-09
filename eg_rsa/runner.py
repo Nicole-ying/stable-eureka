@@ -211,54 +211,89 @@ class EGRSARunner:
             next_action = "final_iteration" if iteration == iterations - 1 else "apply_edit"
 
             if should_edit:
-                reflection_report = self.reflection_agent.reflect(
-                    task_description,
-                    schema.to_dict(),
-                    diagnostic_report,
-                    retrieved_dicts,
-                    retrieved_lessons,
-                )
-                self._write_json(iter_dir / "reflection_report.json", reflection_report)
-                edit_response = self.edit_agent.generate_edit_plan(
-                    task_description,
-                    schema.to_dict(),
-                    diagnostic_report,
-                    retrieved_dicts,
-                    retrieved_lessons,
-                    reflection_report,
-                )
-                edit_decision = self._extract_edit_decision(edit_response)
-                next_action = self._extract_next_action(edit_response)
-                plan_metadata = self._extract_plan_metadata(edit_response, reflection_report)
-                edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
-                    schema,
-                    edit_response.get("edit_plan", []),
-                    diagnostic_report,
-                    trajectories,
-                    edit_decision,
-                    next_action,
-                    plan_metadata,
-                )
-                if not edit_plan and next_action == "structural_search":
-                    structural_response = self.structural_search_agent.generate_structural_edit(
+                agent_active = bool(self.config.get("agent_action_controller", {}).get("active", True))
+                agent_action = agent_action_decision.normalized_action()
+
+                if agent_active and agent_action == "continue_training":
+                    reflection_report = {
+                        "strategy": {
+                            "recommended_next_action": "continue_training",
+                            "plan_type": "continue_training",
+                            "max_reasonable_edits": 0,
+                        },
+                        "rationale": agent_action_decision.reason_summary,
+                        "source": "AgentActionController",
+                    }
+                    self._write_json(iter_dir / "reflection_report.json", reflection_report)
+                    edit_response = {
+                        "diagnosis": agent_action_decision.reason_summary,
+                        "diagnostic_analysis": {
+                            "edit_need": "no_edit",
+                            "reason": "AgentActionController selected continue_training.",
+                        },
+                        "reward_editor": {
+                            "edit_decision": "no_edit",
+                            "next_action": "continue_training",
+                        },
+                        "auditor_check": {
+                            "approved": True,
+                            "final_action": "continue_training",
+                            "issues": [],
+                        },
+                        "edit_plan": [],
+                        "agent_action_decision": agent_action_decision.to_dict(),
+                    }
+                    edit_decision = "no_edit"
+                    next_action = "continue_training"
+                else:
+                    reflection_report = self.reflection_agent.reflect(
                         task_description,
                         schema.to_dict(),
                         diagnostic_report,
+                        retrieved_dicts,
                         retrieved_lessons,
-                        self.structural_context,
                     )
-                    self._write_json(iter_dir / "structural_search_response.json", structural_response)
-                    sp_meta = self._extract_plan_metadata(structural_response, reflection_report)
+                    self._write_json(iter_dir / "reflection_report.json", reflection_report)
+                    edit_response = self.edit_agent.generate_edit_plan(
+                        task_description,
+                        schema.to_dict(),
+                        diagnostic_report,
+                        retrieved_dicts,
+                        retrieved_lessons,
+                        reflection_report,
+                    )
+                    edit_decision = self._extract_edit_decision(edit_response)
+                    next_action = self._extract_next_action(edit_response)
+                    plan_metadata = self._extract_plan_metadata(edit_response, reflection_report)
                     edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
                         schema,
-                        structural_response.get("edit_plan", []),
+                        edit_response.get("edit_plan", []),
                         diagnostic_report,
                         trajectories,
-                        self._extract_edit_decision(structural_response),
-                        self._extract_next_action(structural_response),
-                        sp_meta,
+                        edit_decision,
+                        next_action,
+                        plan_metadata,
                     )
-                    edit_response["structural_search_response"] = structural_response
+                    if not edit_plan and next_action == "structural_search":
+                        structural_response = self.structural_search_agent.generate_structural_edit(
+                            task_description,
+                            schema.to_dict(),
+                            diagnostic_report,
+                            retrieved_lessons,
+                            self.structural_context,
+                        )
+                        self._write_json(iter_dir / "structural_search_response.json", structural_response)
+                        sp_meta = self._extract_plan_metadata(structural_response, reflection_report)
+                        edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
+                            schema,
+                            structural_response.get("edit_plan", []),
+                            diagnostic_report,
+                            trajectories,
+                            self._extract_edit_decision(structural_response),
+                            self._extract_next_action(structural_response),
+                            sp_meta,
+                        )
+                        edit_response["structural_search_response"] = structural_response
             else:
                 edit_response = {"diagnosis": "Final iteration; edit generation skipped.", "edit_plan": []}
 
@@ -273,6 +308,17 @@ class EGRSARunner:
                     config=self.config.get("scale_audit", {}),
                 )
                 self._write_json(iter_dir / "scale_audit.json", scale_audit)
+
+                scale_audit_active = bool(self.config.get("scale_audit", {}).get("active", True))
+                if scale_audit_active and not bool(scale_audit.get("audit_pass", True)):
+                    validation.errors.append(
+                        "ScaleAuditTool blocked edit_plan because it may dominate terminal incentives."
+                    )
+                    edit_response.setdefault("auditor_check", {})
+                    edit_response["auditor_check"]["scale_audit_blocked"] = True
+                    edit_response["auditor_check"]["scale_audit"] = scale_audit
+                    edit_plan = []
+                    next_action = "continue_training"
 
             if candidate_result is not None:
                 self._write_json(iter_dir / "candidate_evaluation.json", candidate_result.to_dict())
