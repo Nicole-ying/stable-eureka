@@ -1,48 +1,55 @@
 {
   "accepted_edits": [
     {
-      "operator": "decrease_weight",
-      "target": "r_approach_region",
-      "factor": 0.5
-    },
-    {
-      "operator": "increase_weight",
-      "target": "r_stable_landing_once",
-      "factor": 2.0
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_approach_delta",
+        "type": "metric_delta",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_region_score",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
     }
   ],
   "rejected_edits": [],
-  "warnings": [
-    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
-    "Accepted atomic package with 2 edits."
-  ],
+  "warnings": [],
   "plan_metadata": {
-    "plan_type": "coupled_rebalancing",
+    "plan_type": "structural_search",
     "atomicity": "atomic",
-    "max_reasonable_edits": 2,
+    "max_reasonable_edits": 3,
     "reflection_strategy": {
-      "recommended_next_action": "apply_edit",
-      "plan_type": "coupled_rebalancing",
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
       "atomicity": "atomic",
-      "why_atomic_or_separable": "Decreasing the approach region reward alone may cause the policy to collapse and lose all learning signal; it must be paired with increased terminal incentives and possibly a per-step penalty to shift behavior towards landing while preserving gradient flow. A separable series of single edits risks intermediate configurations that perform worse or fail to learn.",
+      "why_atomic_or_separable": "Introducing a new progress incentive (e.g., delta on landing_quality) and adjusting related weights must be tested together because the new component interacts strongly with existing shaping; a separable series of single edits could create a worse intermediate configuration (no gradient toward safe_contact while shaping is still hover‑biased).",
       "max_reasonable_edits": 3,
       "editor_constraints": [
-        "Do not completely eliminate shaping rewards; retain some reward for approaching the pad to maintain guidance.",
-        "Ensure terminal bonuses are sufficiently large relative to the expected cumulative shaping reward per episode to incentivize completion.",
-        "One-time bonus rules must remain one-shot to prevent exploitation of repeated landings.",
-        "If adjusting safe_contact or stable_landing conditions, avoid making them trivially easy such that hovering again becomes optimal.",
-        "Avoid adding reward components that are functions of velocity or orientation in a way that encourages spinning or other side effects."
+        "Use only existing metrics (approach_region_score, stability, landing_quality, and the binary contact/landing conditions). Do NOT invent new metrics.",
+        "Progress components must use ‘positive_only’ to avoid rewarding degradation.",
+        "Any new one‑time bonuses must remain one‑time to prevent bounce‑farming.",
+        "Do not remove the current terminal bonuses, but they may be supplemented.",
+        "If adding a bonus for high landing_quality, set a high threshold (e.g., >0.9) and short duration (1‑2 steps) so it reinforces near‑success states.",
+        "Retain at least a minimal shaping gradient (e.g., r_approach_region weight ≥ 0.3) to preserve initial approach guidance."
       ],
       "must_preserve": [
-        "The concept of rewarding safe contact and stable landing as one-time events.",
-        "A shaping component that guides the agent from the initial state to the landing pad vicinity."
+        "One‑time nature of r_safe_contact_once and r_stable_landing_once.",
+        "At least one shaping component that reliably moves the agent from start to the landing pad vicinity."
       ],
       "must_avoid": [
-        "Do not simply increase all shaping rewards (this would worsen the problem).",
-        "Do not replace discrete event bonuses with continuous landing rewards, as that could lead to bouncing exploitation."
+        "Do not make the new progress reward continuous at and after landing, because that could be exploited by bouncing.",
+        "Do not reduce the weight of r_landing_quality; increasing it is safer.",
+        "Do not add a termination condition on landing (e.g., end episode on contact) because the environment handles termination; reward only."
       ],
-      "expected_effect": "After rebalancing, the agent should be incentivized to achieve stable landing; we expect an increase in success_episode_rate, stable_landing_rate, and a decrease in average episode length. The per-episode reward may drop initially but should eventually reflect terminal success.",
-      "risk_analysis": "If shaping rewards are reduced too aggressively, the agent may lose all learning signal and perform random actions or crash early. If terminal bonuses are not increased enough, the agent may still hover. If a per-step penalty is too large, the agent may learn to crash quickly to end the episode. The edit must be balanced so that the agent can still explore and learn to land."
+      "expected_effect": "A structural edit that rewards step‑by‑step improvement in landing_quality (or a bonus for high landing_quality) should create a gradient that pulls the policy toward states of low speed, upright orientation, and both legs on ground — i.e., safe_contact. This should increase the probability of triggering r_safe_contact_once, eventually leading to stable landings. Task proxy and semantic scores are expected to rise, episode length may begin to decrease, and hack risk should stay low if the new rewards are one‑time or positively‑only delta.",
+      "risk_analysis": "If the new progress reward is too high, the agent might learn to oscillate around a high landing_quality state without completing the landing (still no terminal bonus). If the bonus is set to trigger too easily, the policy may become stuck again. The structural search should be conservative: moderate increase in landing_quality weight and a modest progress delta, monitored for transition to safe_contact."
     }
   }
 }

@@ -1,0 +1,96 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "r_approach_region mean 1.3688 per step, max 1.5 despite clip [0,1]; dominant component ratio 0.467",
+      "r_approach_progress mean 0.00174, negligible",
+      "r_safe_contact_once and r_stable_landing_once never trigger (sum 0)",
+      "All episodes 1000 steps, no landings, no crashes",
+      "Unstable leg contacts: mean toggles 9.83, max 21",
+      "Progress score mean 0.487, success rate 0.0",
+      "Energy penalty mean -0.0199 per step, weak",
+      "Diagnostic flags: shaping_goal_mismatch=true, unstable_contact_behavior=true"
+    ],
+    "likely_true_failures": [
+      "Shaping-goal mismatch: continuous rewards encourage hovering near pad without stable landing."
+    ],
+    "likely_false_positives": [
+      "Detector hack_score=0.2, no severe exploitation; real task failure."
+    ],
+    "root_cause_hypotheses": [
+      "Excessive per-step shaping (especially r_approach_region) overpowers terminal incentives, promoting indefinite hovering.",
+      "Terminal bonus r_stable_landing_once is too small relative to accumulated shaping, failing to motivate stable landing.",
+      "Weak action penalty allows repetitive engine use and unstable leg contacts without significant cost."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "Reducing the dominant approach_region weight by 50% removes the continuous hovering incentive. Tripling the stable-landing terminal bonus makes landing the primary goal. Quadrupling the energy penalty discourages wasteful engine usage and repetitive leg contacts. Together, the package shifts the net reward from hovering to stable terminal success without removing essential shaping guidance.",
+    "expected_effect": "Agent will reduce continuous hovering, increase landing attempts, and eventually learn stable landing. Training may become harder initially due to reduced continuous reward but should lead to task completion.",
+    "risk_analysis": "If landing bonus is too high, agent could learn to crash-land without control. Current factor (3x to 120) is moderate. Reducing approach weight too much could harm pad-finding; 0.75 weight remains sufficient. Monitor for increased crashes and adjust if necessary.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 3.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_energy",
+        "factor": 4.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Shaping-dominated reward prevents landing; rebalanced package lowers continuous approach reward, boosts terminal landing bonus, and increases action penalty.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 3.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 4.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

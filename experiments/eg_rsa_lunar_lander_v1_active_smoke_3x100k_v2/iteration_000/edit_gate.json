@@ -3,68 +3,51 @@
     {
       "operator": "decrease_weight",
       "target": "r_approach_region",
-      "factor": 0.1
+      "factor": 0.5
     },
     {
-      "operator": "increase_weight",
+      "operator": "add_duration_condition",
+      "target": "r_safe_contact_once",
+      "duration_steps": 1
+    },
+    {
+      "operator": "add_duration_condition",
       "target": "r_stable_landing_once",
-      "factor": 10.0
-    },
-    {
-      "operator": "add_component",
-      "component": {
-        "name": "r_approach_stagnation_penalty",
-        "type": "metric_stagnation_penalty",
-        "weight": -0.5,
-        "inputs": [],
-        "params": {
-          "metric": "approach_region_score",
-          "window_steps": 50,
-          "min_delta": 0.01,
-          "window": 50,
-          "threshold": 0.001
-        },
-        "clip": [
-          -1.0,
-          0.0
-        ],
-        "enabled": true
-      }
+      "duration_steps": 3
     }
   ],
   "rejected_edits": [],
   "warnings": [
-    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
-    "Accepted atomic package with 3 edits."
+    "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only."
   ],
   "plan_metadata": {
-    "plan_type": "coupled_rebalancing",
+    "plan_type": "structural_search",
     "atomicity": "atomic",
     "max_reasonable_edits": 3,
     "reflection_strategy": {
       "recommended_next_action": "apply_edit",
-      "plan_type": "coupled_rebalancing",
+      "plan_type": "structural_search",
       "atomicity": "atomic",
-      "why_atomic_or_separable": "Decreasing only the continuous shaping weights would collapse the learning signal; increasing only the terminal bonus would still leave hovering rewards dominant. The package must rebalance both directions simultaneously to make landing the optimal policy while preventing reward collapse.",
+      "why_atomic_or_separable": "Changing event condition durations without adjusting bonus weights could lead to overly easy triggers and distorted incentives. The structural change should be packaged with any necessary weight adjustments to ensure the new terminal bonuses are sufficient and do not cause exploitation.",
       "max_reasonable_edits": 3,
       "editor_constraints": [
-        "Reduce the weight of r_approach_region significantly (e.g., from 1.5 to 0.5 or lower).",
-        "Consider reducing r_stability and r_landing_quality weights as well, but keep them non-zero to guide the approach.",
-        "Increase the weight of r_stable_landing_once substantially (e.g., from 40 to 100 or more) while ensuring it remains one_time.",
-        "Optionally add a time-dependent penalty (e.g., via a new metric_delta or metric_value with negative weight) that discourages episode timeout, or make r_approach_progress more sensitive (e.g., increase its weight) so that stagnation is penalized.",
-        "Do not add any component that directly rewards mere ground contact without stability, to avoid crash-landing behavior."
+        "Do not set duration steps to 0; maintain a minimal stability requirement (e.g., 1 step for safe_contact, 3–4 steps for stable_landing).",
+        "Keep the one_time flag on both events.",
+        "If reducing shaping weight further, retain at least half of current weight to preserve approach gradient.",
+        "Do not add continuous landing rewards that could replace the one-time bonuses.",
+        "Any per-step penalty must be very small to avoid crashing behavior."
       ],
       "must_preserve": [
-        "One-time nature of terminal event bonuses to prevent multiple triggers per episode.",
-        "The fundamental structure of safe approach (approach_region, stability) as a learning scaffold."
+        "One-shot nature of terminal bonuses.",
+        "Shaping component that guides the agent toward the landing pad."
       ],
       "must_avoid": [
-        "Creating a reward landscape where the agent gets no signal until landing, causing complete learning collapse.",
-        "Introducing per-step penalties so large that the agent never explores.",
-        "Rewarding unstable contacts or bouncing."
+        "Making event conditions so easy that the agent receives the bonus without meaningful landing behavior.",
+        "Eliminating all shaping rewards, which could collapse learning."
       ],
-      "expected_effect": "The rebalancing should make landing the most profitable trajectory: hovering rewards will be much smaller, while successfully landing will yield a large terminal bonus plus smaller shaping rewards, making the total highest. This should drive the agent to learn a stable landing policy.",
-      "risk_analysis": "If the terminal bonus is set too high or its condition is easy to trigger, the agent might learn to crash-land quickly, achieving the condition without genuine stability. The stable_landing_condition must remain robust. Also, reducing shaping too aggressively might create a large reward gap that slows initial exploration; a gradual rebalancing or additional short-term incentives might be needed. Monitor landing success rate and episode length changes after edit."
+      "expected_effect": "Lowering reward triggering thresholds should allow the agent to occasionally receive terminal bonuses during unstable ground contact, providing positive reinforcement for achieving longer lasting contact. This should increase the success rate and stable landing rate over time, while the shaping gradients still guide approach. Episode length may decrease as the agent learns to land sooner.",
+      "risk_analysis": "If thresholds are too low, the agent might trigger the bonus early in an episode and then continue hovering without consequence, but the one‑time nature prevents repeated exploitation. The primary risk is that the agent still fails to learn genuine stable landing, only achieving minimal-duration contacts that get the bonus but remain unstable thereafter. However, this is a necessary intermediate step to provide any learning signal. A modest relaxation paired with strong bonus weighting is low risk."
     }
   }
 }

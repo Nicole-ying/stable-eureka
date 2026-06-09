@@ -1,0 +1,66 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "The agent lacks reward for reducing horizontal and vertical distance to the landing zone once it enters the approach region. Currently r_approach_progress exists but uses the looser approach_region_score, which saturates quickly without differentiating the final centering and descent. A dense metric_delta on the tighter landing_region_score can provide incremental guidance toward the pad center.",
+    "why_local_edit_is_insufficient": "Weight rebalancing (decrease r_approach_region, increase r_stable_landing_once) did not induce terminal success because stable_landing_condition never fires; reducing dominant shaping alone removes directional signal without replacing it. Adding or relaxing event durations was tried and regressed. Thus a new shaping component is needed to bridge the gap.",
+    "memory_constraints": [
+      "Previous edit ‘decrease r_approach_region weight + increase r_stable_landing_once’ improved task proxy but did not achieve landing success, so we should not repeat that exact rebalancing.",
+      "The regression from reducing event durations warns against relying on event rule softening without ensuring the event becomes attainable."
+    ],
+    "safety_constraints": [
+      "The new component must use only allowed operators and the available landing_region_score metric.",
+      "Must not introduce unprotected repeatable event bonuses; using metric_delta with positive_only is dense and non-exploitable.",
+      "Must remain generic – no environment-specific hard‑coded actions."
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a metric_delta on landing_region_score provides a dense process signal that rewards incremental progress toward the landing pad centre. It is non-terminal, non‑event‑based, and cannot be farmed repeatedly because it pays for improvement in a bounded score. This bridges the gap between coarse approach shape and the unattainable terminal bonus without altering existing components that already encourage stability.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_approach_delta",
+          "type": "metric_delta",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_region_score",
+            "positive_only": true
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Terminal rewards are never triggered and dense shaping is goal‑mismatched. A gentle metric_delta on landing_region_score adds safe, incremental guidance without introducing new event‑dependency or exploitation risk.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_approach_delta",
+        "type": "metric_delta",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_region_score",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ]
+}
