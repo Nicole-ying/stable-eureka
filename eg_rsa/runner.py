@@ -26,6 +26,10 @@ from eg_rsa.reward.outcome_acceptor import OutcomeAcceptor
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.training.eg_rsa_trainer import EGRSATrainer
+from eg_rsa.agent.action_controller import AgentActionController
+from eg_rsa.tools.outcome_lesson_builder import OutcomeLessonBuilder
+from eg_rsa.tools.scale_audit import ScaleAuditTool
+from eg_rsa.tools.trajectory_inspector import TrajectoryInspector
 
 
 class EGRSARunner:
@@ -43,6 +47,7 @@ class EGRSARunner:
         self.reflection_agent = ReflectionAgent(llm_client=llm_client)
         self.edit_agent = EditAgent(llm_client=llm_client)
         self.structural_search_agent = StructuralSearchAgent(llm_client=llm_client)
+        self.agent_action_controller = AgentActionController(self.config.get("agent_action_controller", {}))
         self.structural_context = self._load_structural_context()
 
     def run(self) -> None:
@@ -84,6 +89,9 @@ class EGRSARunner:
             diagnostic_report = self._diagnostic_report(raw_attribution, diagnostics, semantic_outcome)
             self._write_json(iter_dir / "diagnostic_report.json", diagnostic_report)
 
+            trajectory_inspection = TrajectoryInspector.inspect(trajectories)
+            self._write_json(iter_dir / "trajectory_inspection.json", trajectory_inspection)
+
             task_score = self._task_score(trajectories)
             current_metrics = self._current_metrics(task_score, diagnostics, semantic_outcome)
             current_selection_score = float(current_metrics.get("selection_score", task_score))
@@ -117,6 +125,26 @@ class EGRSARunner:
                         "lesson_card": lesson_card,
                     },
                 )
+
+                before_schema_for_lesson = (
+                    pending_card_dict.get("metadata", {}).get("schema_snapshot", {})
+                    if isinstance(pending_card_dict, dict)
+                    else {}
+                )
+                outcome_lesson = OutcomeLessonBuilder.build(
+                    before_schema=before_schema_for_lesson,
+                    after_schema=schema.to_dict(),
+                    edit_plan=pending_card_dict.get("edit_plan", []) if isinstance(pending_card_dict, dict) else [],
+                    before_metrics=pending_before,
+                    after_metrics=current_metrics,
+                    outcome_decision=outcome_decision_dict,
+                    attribution_after=raw_attribution,
+                )
+                self._write_json(iter_dir / "outcome_lesson.json", outcome_lesson)
+                outcome_lesson_path = self.output_dir / "memory" / "outcome_lessons.jsonl"
+                outcome_lesson_path.parent.mkdir(parents=True, exist_ok=True)
+                with outcome_lesson_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(outcome_lesson, ensure_ascii=False) + "\n")
 
                 if outcome_decision.accepted_for_best and current_selection_score > best_score:
                     best_score = current_selection_score
@@ -164,6 +192,13 @@ class EGRSARunner:
                 )
             self._write_json(iter_dir / "retrieved_memory.json", retrieved_dicts)
             self._write_json(iter_dir / "retrieved_lessons.json", retrieved_lessons)
+
+            agent_action_decision = self.agent_action_controller.decide(
+                diagnostic_report=diagnostic_report,
+                semantic_outcome=semantic_outcome,
+                retrieved_lessons=retrieved_lessons,
+            )
+            self._write_json(iter_dir / "agent_action_decision.json", agent_action_decision.to_dict())
 
             should_edit = iteration < iterations - 1
             gate_result = None
@@ -229,6 +264,16 @@ class EGRSARunner:
 
             self._write_json(iter_dir / "edit_response.json", edit_response)
             self._write_json(iter_dir / "edit_validation.json", validation.to_dict())
+
+            if edit_plan:
+                scale_audit = ScaleAuditTool.audit(
+                    schema=schema,
+                    edit_plan=edit_plan,
+                    trajectories=trajectories,
+                    config=self.config.get("scale_audit", {}),
+                )
+                self._write_json(iter_dir / "scale_audit.json", scale_audit)
+
             if candidate_result is not None:
                 self._write_json(iter_dir / "candidate_evaluation.json", candidate_result.to_dict())
             if gate_result is not None:
@@ -253,6 +298,7 @@ class EGRSARunner:
                 metadata={
                     "config_path": str(self.config_path),
                     "iteration": iteration,
+                    "schema_snapshot": schema.to_dict(),
                     "validation_errors": validation.errors,
                     "validation_warnings": getattr(validation, "warnings", []),
                     "candidate_evaluation": candidate_result.to_dict() if candidate_result is not None else {},
@@ -296,6 +342,8 @@ class EGRSARunner:
                     "dominant_component_ratio": diagnostics.get("dominant_component_ratio", 0.0),
                     "benign_terminal_dominance": diagnostics.get("benign_terminal_dominance", False),
                     "semantic_outcome": semantic_outcome,
+                    "trajectory_inspection": trajectory_inspection,
+                    "agent_action_decision": agent_action_decision.to_dict(),
                     "reflection_strategy": reflection_report.get("strategy", {}) if reflection_report else {},
                     "edit_plan": edit_plan,
                     "edit_decision": edit_decision,
