@@ -1,0 +1,222 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "0% landing success across 6 episodes",
+      "episode_reward_mean=2672, std=215, episode_length_mean=1000 (max steps)",
+      "r_approach_region contributes 37% of reward, r_landing_quality 36%",
+      "r_safe_contact_once and r_stable_landing_once sums are 0; trigger rates 0",
+      "contact toggles: landing_region 11, left_contact 14, contact 14, both_contact 4, right_contact 4 → highly unstable",
+      "shaping_goal_mismatch flag true, repeated_event_exploitation flag true (hack score 0.4)",
+      "progress_score_mean 0.7309 indicates approach but no finalisation"
+    ],
+    "likely_true_failures": [
+      "Dense progress and stability components provide per‑step reward high enough to sustain a hovering policy without incentivising the full stable landing sequence",
+      "The sparse terminal bonuses are too weak and/or too rarely encountered to overcome the loss of dense reward during final descent, so the agent never receives reinforcement for completing the task"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag: high contact toggles arise from unstable hovering, not deliberate exploitation of one‑time bonuses (since neither bonus has ever been paid)"
+    ],
+    "root_cause_hypotheses": [
+      "Dense approach_region, stability, and landing_quality rewards collectively dominate, creating a deep local optimum that keeps the agent hovering just above the pad without touching down stably",
+      "Current terminal bonuses are too sparse and lack intermediate dense shaping that guides the agent from hovering to initiating and maintaining ground contact, so they remain unexplored"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "Successfully shifted agent from hovering to landing by coupled rebalancing (reduce dominant dense, increase terminal). Current situation parallels that pattern—dominant dense components prevent sparse terminal bonuses from being discovered. The core insight (strengthen sparse terminal and bridge with intermediate dense reward) can be reused, especially since we are not reducing stability components, avoiding the regression of iter_001_to_002."
+      },
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "harmful",
+        "status": "not_applicable",
+        "reason": "This lesson warns against reducing stability_quality components while increasing terminal bonuses, which caused full regression. Our planned edit adds a new dense reward and increases terminal weights without touching existing stability components, so the lesson is safely avoided."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "avoid_actions": [
+      "Reduce weight of any existing stability_quality component (r_landing_quality, r_stability)",
+      "Increase terminal bonuses above 300 without anti‑bounce measures",
+      "Make terminal bonuses excessively large in one step"
+    ],
+    "recommended_actions": [
+      "Add a new dense reward for both legs in ground contact (e.g., via event_rule on both_contact flag) to bridge the gap between hovering and safe contact",
+      "Increase both terminal bonuses modestly (safe_contact_once to 100, stable_landing_once to 200) to make final landing strongly attractive",
+      "Do not alter existing dense progress or stability components"
+    ],
+    "memory_confidence": 0.8
+  },
+  "reward_editor": {
+    "edit_decision": "need_more_evidence",
+    "next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The current reward schema cannot be repaired by simple weight adjustments: the deep hovering optimum is caused by dense rewards that far outweigh sparse terminal bonuses, and no intermediate incentive exists to guide the agent into stable ground contact. A structural search is the safest way to explore whether adding a dense ground‑contact event reward and moderately increasing terminal bonuses can shift the attractor toward successful landings. This approach avoids the known regression from weakening stability components (iter_001_to_002) and aligns with the reusable lesson from iter_000_to_001 that coupled rebalancing can work when the correct components are chosen. The package is atomic because introducing dense ground‑contact reward without stronger terminal bonuses risks slamming; conversely, increasing terminal bonuses alone may never be discovered without intermediate shaping.",
+    "expected_effect": "The agent will begin to receive per‑step reward when both legs touch the ground, guiding it toward safe contact. The increased terminal bonuses (100 for safe contact, 200 for stable landing) then provide a strong incentive to progress to a full stable landing, reducing hovering episodes and increasing success rate. Contact toggling should diminish as the agent commits to landing rather than bouncing.",
+    "risk_analysis": "If the new ground‑contact reward (weight 15) is too high, the agent might learn a slamming behavior to achieve contact quickly, risking crashes. The moderate weight and the presence of existing stability components are expected to mitigate this. If the terminal bonuses prove too high relative to the dense shaping, the agent might discover an unstable bounce‑and‑hold exploit that just satisfies the 5‑step stability condition; however, the one‑time nature of the bonuses and the anti‑exploit design of the stable_landing condition reduce this risk. A short training run (50‑100 episodes) should confirm whether the changes improve success rate without introducing new failure modes.",
+    "edit_plan": [
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_ground_contact",
+          "type": "event_bonus",
+          "weight": 15.0,
+          "condition": {
+            "both_contact": true,
+            "duration_steps": 1
+          },
+          "one_time": false,
+          "enabled": true,
+          "semantic_role": "stability_quality",
+          "reward_timing": "dense",
+          "behavior_channel": "stability"
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 2.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "structural_search"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing that reduces a dominant dense component and increases terminal bonuses can shift an agent from hovering to landing (iter0→1)."
+    ],
+    "what_failed": [
+      "Reducing stability‑quality components (r_landing_quality) while increasing terminal bonuses causes regression (iter1→2)."
+    ],
+    "avoid_next": [
+      "Reduce weight of any existing stability_quality component.",
+      "Increase terminal bonuses above 300 without anti‑bounce safeguards."
+    ],
+    "recommend_next": [
+      "Add a dense ground‑contact reward to bridge the gap from hovering to safe contact.",
+      "Moderately increase both terminal bonuses to make the final landing strongly attractive."
+    ],
+    "applicability_notes": "The proposed structural search is safe because it does not touch existing stability components and starts with a moderate ground‑contact weight (15). The successful lesson iter0→1 supports the value of coupling dense shaping with stronger terminal incentives."
+  },
+  "diagnosis": "Agent hovers near pad due to dominant dense progress/stability rewards and untriggered sparse terminal bonuses. No stable landing attempted. Structural search needed to add intermediate dense ground‑contact reward and increase terminal bonuses.",
+  "edit_plan": [
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_ground_contact",
+        "type": "event_bonus",
+        "weight": 15.0,
+        "condition": {
+          "both_contact": true,
+          "duration_steps": 1
+        },
+        "one_time": false,
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "stability"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "structural_search",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "Agent hovers indefinitely near the pad, collecting high dense shaping rewards (approach_region, landing_quality) without ever making contact or achieving a stable landing. There is no penalty for lingering in a high-scoring but non-terminal state, so the agent stalls at the local optimum of hovering.",
+      "why_local_edit_is_insufficient": "Previous weight adjustments (e.g., increasing terminal event weights, decreasing approach_region) did not reliably induce landing because the dense components still dominate and provide continuous reward for hovering. Local weight tweaks alone cannot break the hover attractor.",
+      "memory_constraints": [
+        "Effective edit: decreasing approach_region and increasing terminal bonuses improved landing rate but later became ineffective.",
+        "Harmful edit: decreasing landing_quality and increasing stable_landing further caused exploitation and lost progress."
+      ],
+      "safety_constraints": [
+        "Do not add unprotected repeatable event bonuses.",
+        "Use only allowed operators and available events/metrics.",
+        "Avoid environment-specific hard-coded policy."
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a metric_stagnation_penalty on landing_quality penalizes the agent for remaining in a high-quality but non-terminal state for too long, encouraging it to complete the landing. This is a generic progress-shaping signal using an existing metric and does not introduce new variables or events. It is safe because it provides negative pressure only when improvement stalls, and it does not create repeatable rewards.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_landing_stagnation_penalty",
+            "type": "metric_stagnation_penalty",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_quality",
+              "threshold": 0.9,
+              "window": 100
+            },
+            "clip": [
+              -0.5,
+              0.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Dense shaping creates hover attractor; add stagnation penalty to nudge toward terminal event.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_stagnation_penalty",
+          "type": "metric_stagnation_penalty",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality",
+            "threshold": 0.9,
+            "window": 100
+          },
+          "clip": [
+            -0.5,
+            0.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

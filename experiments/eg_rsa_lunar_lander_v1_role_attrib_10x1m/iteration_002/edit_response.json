@@ -1,0 +1,132 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "0% landing success, 0% terminal reward payment across episodes",
+      "Dominant component r_approach_region (40.8% of total reward)",
+      "Long episodes (mean 541.8 steps) with high contact toggles (mean 137.5, max 338)",
+      "Progress score mean 0.466, shaping_goal_mismatch flag true",
+      "Hack score 0.4, repeated_event_exploitation and shaping_goal_mismatch flags raised"
+    ],
+    "likely_true_failures": [
+      "Dense progress guidance (r_approach_region) overweighted, creating a local optimum of hovering near the pad without stable landing",
+      "Terminal bonus (100) insufficient to overcome loss of dense reward during final descent",
+      "Unstable contact toggling likely from agent attempting but failing to maintain stable contact"
+    ],
+    "likely_false_positives": [
+      "Repeated_event_exploitation flag: likely due to unstable hovering rather than deliberate exploitation, as one-time bonuses are not actually triggered"
+    ],
+    "root_cause_hypotheses": [
+      "Overweighted dense progress reward relative to sparse terminal success causes agent to prefer hovering near the pad",
+      "Terminal bonus magnitude too low to shift the attractor from the dense reward local optimum"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.8
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "Successful coupled rebalancing from iteration 0: reduced dominant dense guidance (r_approach_region) and increased terminal bonuses when terminal never triggered. Current situation parallels that exactly with dominant r_approach_region and untriggered terminal bonuses. This lesson is highly applicable."
+      },
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Reducing stability quality (r_landing_quality) while increasing terminal caused severe regression. Must avoid repeating this pattern."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "avoid_actions": [
+      "Do not decrease r_landing_quality or r_stability (stability quality components)",
+      "Do not increase terminal bonus alone without reducing the dominant dense component",
+      "Do not increase terminal bonus above 250 in one step",
+      "Do not remove all dense guidance"
+    ],
+    "recommended_actions": [
+      "Decrease r_approach_region weight further (factor 0.5 to 0.525)",
+      "Increase r_stable_landing_once weight (factor 1.8 to 180)",
+      "Optionally increase r_safe_contact_once weight to 80–100 to provide an intermediate bridging incentive"
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The dense approach_region component dominates again (40.8% of total reward), and terminal bonuses never trigger, leading to hovering and shaping-goal mismatch. Following the successful lesson from iter_000_to_001, a coupled rebalancing reducing r_approach_region weight and increasing terminal bonus weights is appropriate. Further reduction of r_approach_region by factor 0.5 (to 0.525) and increase of r_stable_landing_once by factor 1.8 (to 180) will shift the attractor toward stable landing. Optional increase of r_safe_contact_once to 80 (factor 1.6) provides an intermediate sparse incentive. This atomic package avoids touching stability components, which caused regression previously. The edit is conservative within memory-tested bounds and aligns with auditor guidelines.",
+    "expected_effect": "Stable landing success rate should improve above 0%; episode length and contact toggles should decrease; the dominant reward component will shift from r_approach_region toward terminal events.",
+    "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may lose incentive to approach the pad, leading to even lower progress. If terminal bonus becomes too large, agent might discover an unstable bounce that triggers the bonus without robust landing. The chosen factors (0.5 reduction, 180 terminal) are moderate and keep the balance safe as per auditor hints. The optional increase of r_safe_contact_once is small and provides bridging incentive without risk of dominance.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 1.8
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 1.6
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled reduction of dominant dense component and increase of terminal bonuses (iter_000_to_001): reduced r_approach_region, increased r_stable_landing_once and r_safe_contact_once shifted agent from hovering to landing."
+    ],
+    "what_failed": [
+      "Reducing stability quality components (r_landing_quality) while increasing terminal bonus (iter_001_to_002): caused regression, loss of success, and increased hack risk."
+    ],
+    "avoid_next": [
+      "Solo decrease_weight on dense components without a paired terminal increase.",
+      "Reducing stability quality components (r_landing_quality, r_stability).",
+      "Increasing terminal bonus beyond 250 in a single edit.",
+      "Removing all dense guidance, which may collapse exploration."
+    ],
+    "recommend_next": [
+      "If landing rate remains low after this edit, consider a small contact toggle penalty (structural search) or further increase terminal bonus in small steps, monitoring for exploits.",
+      "Always keep edits atomic and preserve stability components."
+    ],
+    "applicability_notes": "Coupled rebalancing is effective when a dense component dominates and prevents terminal sparse reward from being earned, especially when the failure is task_failure rather than reward hacking. Stability components should not be reduced during terminal pushes."
+  },
+  "diagnosis": "Dense progress reward (r_approach_region) still dominates, preventing stable landings despite previous moderate weakening. Coupled reduction of r_approach_region by 50% and further increase of terminal bonuses (r_stable_landing_once to 180, r_safe_contact_once to 80) follows a proven pattern to shift the attractor from hovering to landing.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.8
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 1.6
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

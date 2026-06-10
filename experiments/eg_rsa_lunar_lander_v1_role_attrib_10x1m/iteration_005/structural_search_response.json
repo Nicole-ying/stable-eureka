@@ -1,0 +1,68 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "Agent hovers indefinitely near the pad, collecting high dense shaping rewards (approach_region, landing_quality) without ever making contact or achieving a stable landing. There is no penalty for lingering in a high-scoring but non-terminal state, so the agent stalls at the local optimum of hovering.",
+    "why_local_edit_is_insufficient": "Previous weight adjustments (e.g., increasing terminal event weights, decreasing approach_region) did not reliably induce landing because the dense components still dominate and provide continuous reward for hovering. Local weight tweaks alone cannot break the hover attractor.",
+    "memory_constraints": [
+      "Effective edit: decreasing approach_region and increasing terminal bonuses improved landing rate but later became ineffective.",
+      "Harmful edit: decreasing landing_quality and increasing stable_landing further caused exploitation and lost progress."
+    ],
+    "safety_constraints": [
+      "Do not add unprotected repeatable event bonuses.",
+      "Use only allowed operators and available events/metrics.",
+      "Avoid environment-specific hard-coded policy."
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a metric_stagnation_penalty on landing_quality penalizes the agent for remaining in a high-quality but non-terminal state for too long, encouraging it to complete the landing. This is a generic progress-shaping signal using an existing metric and does not introduce new variables or events. It is safe because it provides negative pressure only when improvement stalls, and it does not create repeatable rewards.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_stagnation_penalty",
+          "type": "metric_stagnation_penalty",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality",
+            "threshold": 0.9,
+            "window": 100
+          },
+          "clip": [
+            -0.5,
+            0.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Dense shaping creates hover attractor; add stagnation penalty to nudge toward terminal event.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_stagnation_penalty",
+        "type": "metric_stagnation_penalty",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "threshold": 0.9,
+          "window": 100
+        },
+        "clip": [
+          -0.5,
+          0.0
+        ],
+        "enabled": true
+      }
+    }
+  ]
+}

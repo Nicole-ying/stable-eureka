@@ -1,0 +1,101 @@
+{
+  "reflection_summary": "Agent hovers near the pad with high dense reward (mean 2672) but never lands (0% success). Terminal bonuses never trigger. Unstable contact toggling (mean 461.5 per episode) is high. Previous successful edit reduced dominant dense progress and increased terminal bonuses, achieving 16.7% success, but a subsequent edit that reduced stability quality caused full regression. Current symptoms indicate task failure: dense progress/stability rewards still overweighted relative to the sparse terminal success, creating a local optimum of hovering. The terminal bonuses (safe_contact_once 50, stable_landing_once 100) are not being discovered because the agent maintains a hover posture that avoids both‑leg contact for the required duration.",
+  "failure_assessment": {
+    "observed_facts": [
+      "0% landing success across 6 episodes",
+      "episode_reward_mean=2672, std=215, episode_length_mean=1000 (max steps)",
+      "r_approach_region contributes 37% of reward, r_landing_quality 36%",
+      "r_safe_contact_once and r_stable_landing_once sums are 0; trigger rates 0",
+      "contact toggles: landing_region 11, left_contact 14, contact 14, both_contact 4, right_contact 4 → highly unstable",
+      "shaping_goal_mismatch flag true, repeated_event_exploitation flag true (hack score 0.4)",
+      "progress_score_mean 0.7309 indicates approach to landing zone but no finalisation"
+    ],
+    "likely_true_failures": [
+      "Dense progress and stability components provide per‑step reward high enough to sustain a hovering policy without incentivising the full stable landing sequence",
+      "The sparse terminal bonuses are too weak and/or too rarely encountered to overcome the loss of dense reward during final descent and landing, so the agent never receives reinforcement for completing the task"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag: the high contact toggles arise from unstable hovering, not from deliberate exploitation of one‑time bonuses (since neither bonus has ever been paid)"
+    ],
+    "root_cause_hypotheses": [
+      "Dense approach_region, stability, and landing_quality rewards collectively dominate, creating a deep local optimum that keeps the agent hovering just above the pad without ever touching down stably",
+      "The current terminal bonuses are too sparse and lack intermediate dense shaping that guides the agent from hovering to initiating and maintaining ground contact, so they remain unexplored"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.85
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "note": "Reducing dominant dense guidance (approach_region) and increasing terminal bonuses shifted the agent from hovering to landing, achieving 16.7% success. The pattern of coupled rebalancing can be reused, but only on components that are not critical for final stability."
+      }
+    ],
+    "failed_or_weak_lessons": [
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "note": "Reducing stability_quality (r_landing_quality) while increasing terminal bonus caused severe regression, demonstrating that stability components are necessary for a functional landing and must not be weakened."
+      }
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Reduce weight of any stability_quality component (r_landing_quality, r_stability) alone or in combination with terminal bonus increases",
+      "Increase terminal bonuses without providing denser guidance that can lead the agent to first trigger them (e.g., a reward for both‑leg ground contact)",
+      "Make terminal bonuses excessively large (>300) in a single step without anti‑bounce penalties"
+    ],
+    "recommended_actions": [
+      "Add a new dense reward for both legs in contact (e.g., `r_ground_contact`) to bridge the gap between hovering and achieving safe contact",
+      "Moderately increase both terminal bonuses (safe_contact_once to ~100, stable_landing_once to ~200) to make the final landing strongly attractive",
+      "Optionally add a penalty for repeated contact toggling to discourage unstable hovering (e.g., a negative delta component on leg‑contact changes)",
+      "Consider a small increase in the action penalty (`r_energy`) to reduce thrashing"
+    ],
+    "memory_confidence": 0.8
+  },
+  "strategy": {
+    "recommended_next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Adding a dense ground‑contact reward alone could lead to slamming behaviour; increasing terminal bonuses alone may never be discovered without intermediate shaping; the two changes must be paired to safely shift the attractor from hovering to a controlled landing. A contact‑toggle penalty further discourages bouncing and should be considered part of the same package.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Introduce a new dense component `r_ground_contact` (type metric_value) that scores 1.0 when both legs are in contact, 0.0 otherwise; start with a moderate weight (10–20) and clip [0, 1].",
+      "Increase `r_safe_contact_once` weight to 100 and `r_stable_landing_once` weight to 200, preserving their one‑time nature.",
+      "Optionally add a new component `r_contact_toggle_penalty` (type metric_delta, negative, positive_only=false) on a boolean metric that detects leg contact changes, to penalise unstable hopping.",
+      "Do not reduce weights of any existing dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality).",
+      "Preserve semantic roles: r_ground_contact should be assigned `stability_quality` or a new `landing_approach` role; r_contact_toggle_penalty could be `stability_quality`.",
+      "Keep the one‑time terminal event rules as is, only adjust their weights."
+    ],
+    "must_preserve": [
+      "All current dense progress and stability components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights.",
+      "The one‑time semantic flags on r_safe_contact_once and r_stable_landing_once.",
+      "The overall structure of dense guidance plus sparse terminal bonuses."
+    ],
+    "must_avoid": [
+      "Removing or disabling any existing dense component, especially those related to stability.",
+      "Introducing dense rewards that can be trivially spammed without actual landing progress (e.g., constant reward for being in the landing region).",
+      "Increasing terminal bonuses above 300 without robust anti‑exploit safeguards.",
+      "Making the ground‑contact reward so large that it overshadows the need for a soft landing."
+    ],
+    "expected_effect": "The agent will begin to experience reward for touching both legs to the ground, guiding it toward the safe‑contact condition. With higher terminal bonuses, it will then have a strong incentive to progress to a stable landing. Episode length should decrease, success rate should rise, and contact toggling should diminish.",
+    "risk_analysis": "If the new ground‑contact reward is set too high, the agent might learn to slam down hard to trigger it, causing crashes rather than soft landings. The increased terminal bonus could be exploited by a bouncing policy that just satisfies the 5‑step stability condition before a subsequent crash. The contact‑toggle penalty mitigates both risks by penalising repeated contact changes. The balance between the new dense reward, existing stability components, and terminal bonuses must be tuned carefully; starting with moderate weights and a short test run is essential."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It removes or reduces weights of any existing stability_quality component (r_landing_quality, r_stability).",
+      "It increases terminal bonuses above 300 without introducing any anti‑bounce penalty.",
+      "It introduces a new dense reward that is not tied to actual ground contact (e.g., constant reward for being in approach region).",
+      "It does not pair the new ground‑contact reward with an appropriate increase in terminal bonuses."
+    ],
+    "package_should_be_accepted_if": [
+      "It adds a dense reward for both‑leg contact (weight 10‑20, clipped 0‑1) and increases r_stable_landing_once to ~200 and r_safe_contact_once to ~100.",
+      "It optionally includes a contact‑toggle penalty component to discourage bouncing.",
+      "It leaves all existing dense progress and stability components unchanged.",
+      "The entire package is atomic and tested in a new short training run."
+    ],
+    "safety_notes": [
+      "After applying, train for a limited number of episodes (e.g., 50‑100) and check whether the agent starts achieving safe contact and stable landings without excessive crashing.",
+      "Monitor the mean episode length and reward structure; if the agent begins to slam and crash, reduce the ground‑contact weight.",
+      "Keep semantic roles consistent to enable future diagnostic attribution."
+    ]
+  }
+}

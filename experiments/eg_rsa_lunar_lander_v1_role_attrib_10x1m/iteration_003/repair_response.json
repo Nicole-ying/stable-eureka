@@ -1,0 +1,44 @@
+{
+  "repair_analysis": {
+    "risk_source": "Role-level behavior risk only: BehaviorRiskAudit flagged medium risk 'similar_role_pattern_to_regression_lesson' because the edit touches terminal_success, which also appeared in a regression lesson. However, that lesson's harm came from coupling a stability_quality reduction (factor 0.7) with a terminal increase, which this plan does not do. ScaleAudit passed with low risk.",
+    "role_level_interpretation": "The regression lesson (iter_001_to_002) decreased r_landing_quality (stability_quality) by factor 0.7 and increased r_stable_landing_once by factor 1.5, causing regression. The current plan only increases terminal_success and safety_constraint, plus a small control_cost increase, and leaves stability_quality weights unchanged. Merely increasing terminal rewards is not the harmful pattern; it was the reduction of stability_quality that triggered regression. Therefore, the role‑level similarity is a false positive, and the plan is safe.",
+    "what_to_keep": "All dense guidance components (r_approach_region, r_approach_progress), all stability_quality components (r_stability, r_landing_quality) at their current weights, the one‑time nature of event bonuses, and the overall structure of dense progress + sparse terminal rewards.",
+    "what_to_modify": "Increase terminal_success (r_stable_landing_once) weight from 100 to 200 to strengthen the landing attractor; increase safety_constraint (r_safe_contact_once) weight from 50 to 100 to create a stronger intermediate sparse signal; increase control_cost (r_energy) weight from 0.02 to 0.04 to penalise unnecessary thrashing and reduce episode length.",
+    "what_to_remove": "Nothing removed.",
+    "why_repaired_plan_is_safer": "It directly addresses the shaping–goal mismatch by making terminal bonuses more attractive while keeping dense stability guidance intact. The previous regression danger was coupling a stability_quality reduction with terminal increase; we strictly avoid any reduction in stability weights. Scale audit confirms no scale risk (terminal bonuses remain ≤200, within 300 limit). The plan is atomic, follows the proven effective memory lesson of boosting sparse rewards, and includes a conservative control_cost increase to discourage hovering. No dense roles are weakened or removed."
+  },
+  "diagnosis": "Dense stability component r_landing_quality dominates reward (41.4%), creating a hovering local optimum. Terminal bonuses (100 and 50) are never triggered, so the agent has no incentive to complete a stable landing. The repair increases terminal_success and safety_constraint to reshape the attractor toward landing while preserving all stability_quality weights. A minor control_cost increase discourages action thrashing.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The plan couples terminal_success increase, safety_constraint increase, and a small control_cost increase. All three work together to shift the agent from hovering to landing: larger sparse bonuses make the final landing attractive, a larger intermediate bonus bridges the gap, and higher action cost discourages wasteful toggling. No dense stability weights are reduced, avoiding the regression pattern from iter_001_to_002. The edits are safe and moderate."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

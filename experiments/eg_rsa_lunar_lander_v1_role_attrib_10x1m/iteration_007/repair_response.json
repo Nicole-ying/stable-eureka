@@ -1,0 +1,44 @@
+{
+  "repair_analysis": {
+    "risk_source": "Role-level behavior risk (guidance_terminal_tradeoff_under_weak_success and similar_role_pattern_to_regression_lesson). The failed plan reduced dense_guidance (r_approach_region) aggressively while increasing terminal_success before success was reliable, which could remove needed approach guidance. It also touched the terminal_success role associated with a regression lesson.",
+    "role_level_interpretation": "Reducing dense guidance and increasing terminal pressure under weak success evidence is risky because the agent may lose the approach signal before it can earn the terminal bonus. The regression lesson occurred when stability_quality was reduced with only a mild terminal increase, but our repair avoids touching stability_quality entirely and uses a much larger terminal push. To mitigate, we make the dense_guidance reduction milder and keep the large terminal increase, while also slightly moderating the control_cost increase.",
+    "what_to_keep": "The large terminal increase (factor 2.5) to overcome dense local optimum; stability_quality components (r_landing_quality, r_stability) unchanged; the atomic coupled rebalancing approach.",
+    "what_to_modify": "Milder reduction of r_approach_region (factor 0.65 instead of 0.5) to preserve more approach guidance; moderation of r_energy increase (factor 2.0 instead of 2.5) to avoid overpenalizing exploration while still discouraging unnecessary hovering.",
+    "what_to_remove": "None. No components need removal.",
+    "why_repaired_plan_is_safer": "The milder guidance reduction retains sufficient approach signal while still rebalancing toward terminal success. Stability_quality components remain untouched, avoiding the exact regression pattern that harmed performance when stability was weakened. The control_cost increase is moderated to avoid excessive pressure on actions. This plan follows the proven successful lesson from iter 0→1 (which reduced dense guidance moderately and increased terminal heavily without touching stability), while the regression lesson involved reducing stability_quality and only a mild terminal increase – a pattern we explicitly avoid. By coupling these edits atomically, we prevent a partial change from degrading behavior."
+  },
+  "diagnosis": "Shaping-goal mismatch: dense guidance (r_approach_region) and stability (r_landing_quality) overpower the sparse terminal bonus, causing hovering without stable landing. Repaired with a milder reduction of r_approach_region, a large terminal increase (2.5x) to 250, and a moderate energy penalty increase (2x) to 0.04, while keeping stability_quality unchanged.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The original plan was too aggressive on dense_guidance reduction and the control_cost increase. By reducing r_approach_region only by factor 0.65 (to ~0.68), we preserve more approach guidance while still lowering the dense signal enough to make terminal success attractive. The terminal increase to 250 is maintained to overcome the local optimum, following the successful iter 0→1 pattern. The energy penalty is raised to 0.04 (factor 2.0) to discourage irrelevant actions without overly punishing exploration. This atomic package avoids touching stability_quality, thus directly avoiding the regression seen in iter 1→2."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.65
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

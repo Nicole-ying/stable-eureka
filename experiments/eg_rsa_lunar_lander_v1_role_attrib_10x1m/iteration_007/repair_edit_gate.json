@@ -1,0 +1,58 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.65
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing the dense progress component alone risks losing approach guidance before the terminal bonus becomes reachable; increasing terminal bonus alone may not overpower the remaining dense rewards. Both adjustments must be applied together to shift the attractor from hovering to completing a stable landing.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Target r_approach_region for weight reduction (factor ≤ 0.5, e.g., from 1.05 → 0.5).",
+        "Do NOT touch r_landing_quality or r_stability (keep weights 2.0 and 1.0).",
+        "Increase r_stable_landing_once weight substantially (target 200–250, factor ~2.0–2.5).",
+        "Optionally increase r_energy weight (e.g., 0.02 → 0.05) to penalise unnecessary hovering actions.",
+        "Optionally add a small per‑step penalty on contact toggles to discourage unstable bouncing, but keep it light (e.g., -0.1 per toggle).",
+        "Do NOT remove any dense components or event rules.",
+        "Keep all semantic roles and one‑time nature of event rules intact."
+      ],
+      "must_preserve": [
+        "All existing dense components (r_approach_progress, r_stability, r_landing_quality) at their current weights unless intentionally reduced.",
+        "The one‑time terminal event rules (r_safe_contact_once, r_stable_landing_once) with their existing conditions.",
+        "Semantic role assignments for interpretability."
+      ],
+      "must_avoid": [
+        "Reducing r_landing_quality weight.",
+        "Making the terminal bonus excessively large (>250) in a single edit.",
+        "Removing all dense shaping (sparse‑only would fail without guidance).",
+        "Introducing dense rewards that can be trivially exploited (e.g., constant reward for being in the landing region)."
+      ],
+      "expected_effect": "Stable landing rate should rise from 0% to a positive value (target >10%). The terminal bonus will begin to trigger in some episodes. Dense progress contribution will shrink relative to the terminal bonus. Episode length and contact toggles should decrease as agent commits to landing.",
+      "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may not learn to reach the pad before the terminal reward can be earned. If the terminal bonus becomes too large, the agent might discover a hard‑bounce strategy that triggers the 5‑step condition without a robust landing; keeping terminal at or below 250 and increasing the energy penalty mitigates this. Coupling the changes atomically is essential – a partial package could worsen the shaping mismatch."
+    }
+  }
+}

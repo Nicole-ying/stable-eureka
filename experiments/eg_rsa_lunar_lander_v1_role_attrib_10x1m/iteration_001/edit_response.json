@@ -1,0 +1,109 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Success rate 1/6, terminal bonus r_stable_landing_once paid 0 times",
+      "Dominant component is r_landing_quality (43.6% of total reward)",
+      "r_stable_landing_once trigger rate = 0.0",
+      "Unstable contact behavior flag true; mean contact toggles = 389.7",
+      "Mean episode length = 699; episodes are long",
+      "Progress score mean = 0.60, indicating approach but no stable commitment",
+      "Safe contact bonus triggered once (1/6)",
+      "Overall hack score = 0.0, no reward hacking detected"
+    ],
+    "likely_true_failures": [
+      "Dense stability reward (r_landing_quality) still overweighted relative to terminal bonus, favoring hovering near pad",
+      "Insufficient terminal incentive to overcome loss of dense reward during final stabilisation"
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_landing_quality weight too high, creating per‑step stability reward that competes with sparse terminal success",
+      "Terminal bonus (100) not yet high enough to offset the dense stability gain, so agent rarely completes stable landing sequence"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.8
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "Successful coupled rebalancing from iteration 0: reduced dominant dense guidance and increased terminal bonus when terminal never triggered. Current situation parallels that exactly with dominant r_landing_quality and untriggered stable_landing_once; reuse is highly applicable."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Solo decrease_weight without terminal increase",
+      "Removing all dense stability components",
+      "Drastically increasing terminal bonus above 250 in one step"
+    ],
+    "recommended_actions": [
+      "Apply coupled rebalancing: decrease r_landing_quality weight, increase r_stable_landing_once weight",
+      "Consider a moderate increase in r_energy weight (0.02→0.04) to discourage thrashing, though not essential"
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "The dense stability component r_landing_quality (weight 2.0) dominates at 43.6% of total reward and encourages hovering near the pad. The terminal bonus r_stable_landing_once (weight 100) has never triggered, so the agent has insufficient incentive to complete a stable landing. Following the successful lesson from iter 0→1, we reduce the dominant dense component weight by factor 0.5 (to 1.0) and increase the terminal bonus weight by factor 1.8 (to 180). This coupled edit maintains overall stability guidance while shifting the attractor toward performing the full stable landing sequence. The package is atomic because reducing dense reward alone could degrade approach, and increasing terminal alone would be insufficient to overcome the dense local optimum.",
+    "expected_effect": "Stable landing rate should increase above 16.7%; r_stable_landing_once will start paying out; average episode length should decrease; hovering and contact toggles should reduce; the dominant reward contribution will shift from r_landing_quality toward the terminal bonus.",
+    "risk_analysis": "If r_landing_quality is reduced too aggressively, stabilisation during final descent may weaken before the terminal bonus is reinforced. If the terminal bonus is made too large, the agent could discover a hard‑bounce strategy that meets the 5‑step stable condition without a robust landing. The chosen factors (0.5 reduction, 180 terminal) are moderate and keep the balance safe as per auditor guidelines.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 1.8
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled reduction of dominant dense component and increase of terminal bonus shifted agent from hovering to landing in iter 0→1"
+    ],
+    "what_failed": [],
+    "avoid_next": [
+      "Solo decrease_weight on dense components without terminal adjustment",
+      "Increasing terminal bonus beyond 250 in one step",
+      "Removing all dense stability components"
+    ],
+    "recommend_next": [
+      "If landing rate still low, further increase terminal bonus or add intermediate sparse reward; consider energy penalty",
+      "Monitor for stable landing without exploitation"
+    ],
+    "applicability_notes": "This pattern is reusable whenever a dense component dominates and prevents rare terminal events from triggering, especially when task failure is suspected rather than reward hacking."
+  },
+  "diagnosis": "Dense stability shaping (r_landing_quality, weight 2.0) still dominant, preventing stable landing terminal reward from being earned. Apply coupled rebalancing: halve r_landing_quality and raise r_stable_landing_once to 180.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.8
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

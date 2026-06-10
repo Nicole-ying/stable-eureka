@@ -1,0 +1,77 @@
+{
+  "reflection_summary": "Agent earns high dense reward (mean 2813) but never lands (0% success). The dense approach_region component (weight 1.5) dominates (42% of reward). The agent hovers near the landing zone, repeatedly toggling leg contacts, indicating unstable contact and no commitment to final landing. Terminal sparse rewards (safe_contact_once 10, stable_landing_once 40) never trigger. This is a classic shaping–goal mismatch, not a deliberate reward hack. The dense progress rewards are too strong relative to the sparse success bonus, creating a local optimum of hovering.",
+  "failure_assessment": {
+    "observed_facts": [
+      "0% landing success across 6 episodes",
+      "episode_reward_mean=2813, std=1170, episode_length_mean=869",
+      "r_approach_region contributes 41.9% of total reward",
+      "r_safe_contact_once and r_stable_landing_once sums are 0",
+      "stable_landing_episode_rate=0.0, safe_contact_episode_rate=0.0",
+      "contact toggles: landing_region (13), left_contact (7), right_contact (3), both_contact (7) → unstable contact",
+      "shaping_goal_mismatch flag true, repeated_event_exploitation flag true"
+    ],
+    "likely_true_failures": [
+      "Shaping components provide incentive to stay near the landing pad without completing a stable landing, leading to hovering behavior",
+      "Terminal rewards are too weak relative to per-step dense rewards to overcome local optimum"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag: the high contact toggles are likely due to unstable hovering near the pad, not a deliberate exploitation of one‑time bonuses (since none are actually triggered)"
+    ],
+    "root_cause_hypotheses": [
+      "Dense progress rewards (especially r_approach_region and r_landing_quality) are overweighted, causing the agent to prefer hovering near the pad rather than attempting a trajectory that leads to a stable landing",
+      "The sparse terminal bonuses are too small to offset the loss of dense reward during the final descent phase"
+    ],
+    "failure_kind": "mixed",
+    "confidence": 0.75
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Decreasing the dominant dense rewards alone could collapse progress toward the pad; increasing terminal rewards alone may not overcome the strong local optimum. Both adjustments must be applied together to shift the attractor from hovering to landing.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Do NOT remove the progress shaping components entirely; they are needed for initial guidance.",
+      "Any reduction in r_approach_region and r_landing_quality should be paired with an increase in terminal bonus values or an intermediate bonus to bridge the gap.",
+      "Consider adding a small penalty for repeated contact toggling to discourage unstable hovering.",
+      "Keep the one‑time nature of terminal rewards to avoid exploitation.",
+      "Preserve the existing semantic roles (dense_guidance, stability_quality, etc.) to maintain interpretability."
+    ],
+    "must_preserve": [
+      "The general structure of dense progress guidance (approach_region, approach_progress).",
+      "The existing terminal event rules (safe_contact_once, stable_landing_once) as one‑time bonuses."
+    ],
+    "must_avoid": [
+      "Making terminal rewards so large that they become the entire episode reward, as this could collapse exploration.",
+      "Removing all dense shaping, which would make the problem very hard with sparse rewards only."
+    ],
+    "expected_effect": "Increased success rate, reduced episode length, and a shift in dominant reward toward terminal events while maintaining approach behavior.",
+    "risk_analysis": "If dense rewards are reduced too aggressively, the agent may lose guidance and fail to reach the pad at all. If terminal rewards are too large, the agent may discover and exploit an unstable landing that triggers the bonus but does not robustly solve the task. The coupled edit must be carefully balanced."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The package removes all dense progress components without adding any shaping for landing approach.",
+      "The package increases terminal rewards to extreme values (e.g., > 500) relative to episode step budget.",
+      "The package introduces a new dense reward that can be trivially exploited (e.g., constant reward for being in the landing region)."
+    ],
+    "package_should_be_accepted_if": [
+      "It reduces approach_region weight by at least 50%.",
+      "It increases terminal stable_landing_once to at least 100.",
+      "It adds an intermediate sparse reward for first safe contact that bridges to the terminal landing.",
+      "It includes a contact‑toggle penalty to deter hovering."
+    ],
+    "safety_notes": [
+      "Any change must be tested in a new short training run to confirm that success rate improves.",
+      "Monitor that the agent does not learn a policy that triggers the terminal bonus without remaining safely landed (e.g., a hard bounce that registers as stable for 5 steps then crashes).",
+      "Keep the semantic roles and event names consistent for future attribution."
+    ]
+  }
+}

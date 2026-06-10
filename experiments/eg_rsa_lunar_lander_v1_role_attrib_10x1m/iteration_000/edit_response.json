@@ -1,0 +1,85 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "0% landing success across 6 episodes",
+      "episode_reward_mean=2813, std=1170, episode_length_mean=869",
+      "r_approach_region contributes 41.9% of total reward",
+      "r_safe_contact_once and r_stable_landing_once sums are 0",
+      "stable_landing_episode_rate=0.0, safe_contact_episode_rate=0.0",
+      "contact toggles: landing_region (13), left_contact (7), right_contact (3), both_contact (7) → unstable contact",
+      "shaping_goal_mismatch flag true, repeated_event_exploitation flag true"
+    ],
+    "likely_true_failures": [
+      "Shaping components provide incentive to stay near the landing pad without completing a stable landing, leading to hovering behavior",
+      "Terminal rewards are too weak relative to per-step dense rewards to overcome local optimum"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag: the high contact toggles are likely due to unstable hovering near the pad, not a deliberate exploitation of one‑time bonuses (since none are actually triggered)"
+    ],
+    "root_cause_hypotheses": [
+      "Dense progress rewards (especially r_approach_region) are overweighted, causing the agent to prefer hovering near the pad rather than attempting a trajectory that leads to a stable landing",
+      "The sparse terminal bonuses are too small to offset the loss of dense reward during the final descent phase"
+    ],
+    "failure_kind": "mixed",
+    "edit_need": "must_edit",
+    "confidence": 0.75
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "The dense approach_region component dominates (42% of reward) and is overweighted relative to the terminal sparse bonus (never triggered). A coupled edit reduces the dense shaping weight by 50% and increases the terminal stable_landing_once weight to 100. This rebalances the incentive from hovering near the pad to completing a stable landing, while preserving enough dense guidance to reach the pad.",
+    "expected_effect": "Success rate should increase from 0% as the agent shifts from hovering to landing. Average episode length should decrease. The dominant reward component will shift toward the terminal event, and contact toggling should reduce.",
+    "risk_analysis": "If the dense reduction is too aggressive, approach to the pad may degrade before the terminal bonus can be learned. If the terminal bonus is too large, the agent might discover an unstable 'hard bounce' that triggers the bonus for 5 steps without a robust landing. The chosen factors are moderate to balance these risks.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Agent hovers near pad without landing due to overweighted dense progress rewards. Dense approach_region component weight reduced by 50% and terminal stable_landing_once weight increased to 100 to shift the attractor from hovering to completing a stable landing.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

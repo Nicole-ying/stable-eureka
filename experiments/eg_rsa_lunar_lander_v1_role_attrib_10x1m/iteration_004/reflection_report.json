@@ -1,0 +1,95 @@
+{
+  "reflection_summary": "Current schema yields 0% landing success, terminal bonus (r_stable_landing_once, weight 100) never triggered. Dense components—r_landing_quality (39.7% of reward) and r_approach_region (34.7%)—dominate, while episode lengths are long (mean 646) and contact toggles high (mean 272), indicating unstable hovering near the pad. This is a shaping–goal mismatch, not a deliberate reward hack. The previously successful lesson reduced a dominant dense guidance component and raised the terminal bonus; a harmful lesson attempted a similar rebalancing on the stability component with an insufficient terminal increase and caused regression. The next edit should strengthen the terminal incentive without reducing any dense stability components, and optionally add an energy penalty to discourage thrashing.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Success rate = 0% across 6 episodes",
+      "r_stable_landing_once sum = 0, trigger rate 0.0",
+      "r_safe_contact_once sum = 0, never triggered",
+      "Dominant component by ratio: r_landing_quality (39.7%)",
+      "High contact toggle counts: landing_region 14, both_contact 6, left_contact 4, right_contact 5 → unstable behavior",
+      "Mean episode length = 646.3, progress_score mean = 0.432",
+      "Shaping_goal_mismatch flag true, repeated_event_exploitation flag true (but no event bonuses paid, suggesting false positive for exploitation)",
+      "Hack score 0.4, overall risk moderate"
+    ],
+    "likely_true_failures": [
+      "Dense stability and progress rewards create a local optimum where hovering near the pad yields high per‑step reward, preventing commitment to a stable landing sequence",
+      "Sparse terminal bonus (100) is insufficient to overcome the loss of dense rewards during final descent and stabilisation"
+    ],
+    "likely_false_positives": [
+      "Repeated_event_exploitation flag: high contact toggles are due to unstable hovering, not deliberate exploitation of one‑time bonuses (none have been paid)"
+    ],
+    "root_cause_hypotheses": [
+      "Overweighted dense stability reward (r_landing_quality, weight 2.0) and dense progress reward (r_approach_region, weight 1.05) bias the agent toward near‑pad maneuvering instead of finishing the landing",
+      "Sparse terminal reward for stable landing (weight 100) is too weak to attract the agent away from the hovering local optimum",
+      "Lack of penalty for contact toggling allows prolonged, inefficient hovering"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.85
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "lesson_iter_000_to_001: reducing a dominant dense guidance component (r_approach_region, 1.5 → 1.05) and increasing terminal bonus (40 → 100) successfully shifted the attractor from hovering to some landing (0% → 16.7% success). This pattern can be reused, but care must be taken with stability components."
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002 (harmful): decreasing r_landing_quality (2.0 → 1.4) together with a small terminal increase (100 → 150) caused severe regression (0% success, hack risk increased). Likely because the reduction hurt stabilisation while the terminal increase was insufficient."
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Solo decrease_weight on any dense stability component (especially r_landing_quality) without a much larger terminal increase",
+      "Increasing terminal bonus beyond 250 in a single edit",
+      "Removing or disabling all dense stability/progress components"
+    ],
+    "recommended_actions": [
+      "Increase the one‑time terminal bonus r_stable_landing_once by a factor of 2.0 (to 200) to strengthen the attractor toward landing, without touching any dense components",
+      "Optionally increase the energy penalty r_energy from 0.02 to 0.04 to discourage the unnecessary actions that cause contact toggles",
+      "Do NOT decrease r_landing_quality or r_approach_region in this package"
+    ],
+    "memory_confidence": 0.9
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "separable",
+    "why_atomic_or_separable": "Increasing the terminal bonus alone may start to attract the agent toward landing; adding a moderate energy penalty independently discourages the hovering thrashing that prolongs episodes. They are complementary but not strictly codependent, so the package can be considered separable, though it is safer to apply both together for a stronger effect.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Do NOT reduce any dense component weight – preserve r_landing_quality (2.0), r_approach_region (1.05), r_stability (1.0), r_approach_progress (2.0).",
+      "Keep the one‑time nature of r_stable_landing_once; do not convert it to a per‑step or repeatable bonus.",
+      "Terminal bonus weight must not exceed 250 in this edit.",
+      "If raising r_energy, choose a moderate factor (e.g., 0.03–0.05) to avoid penalising necessary actions too harshly.",
+      "Preserve all existing semantic roles and event condition definitions."
+    ],
+    "must_preserve": [
+      "All current dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights and clip ranges.",
+      "The one‑time terminal event rule r_stable_landing_once and its 5‑step stable condition.",
+      "The existing safe contact bonus r_safe_contact_once (50) as a future lever if safe contact becomes achievable.",
+      "Semantic role assignments for attribution (dense_guidance, stability_quality, terminal_success, etc.)."
+    ],
+    "must_avoid": [
+      "Introducing new dense rewards that could be trivially exploited by hovering.",
+      "Raising the terminal bonus above 250 in one step, which could push the agent toward unstable hard‑bounce exploits.",
+      "Removing any progress or stability shaping components – they are essential for reaching the pad."
+    ],
+    "expected_effect": "Success rate should increase from 0% as the terminal bonus becomes more attractive, pulling the agent to complete a stable landing. The energy penalty will discourage unnecessary engine firings, potentially reducing episode length and contact toggles. Dominant reward contribution may shift partially toward the terminal event. Hack risk should remain low as no exploitable dense components are introduced.",
+    "risk_analysis": "If the terminal bonus alone is insufficient to overcome the local optimum without also reducing dense strengths, success may not improve. However, the previous increase to 150 (combined with a harmful density reduction) still failed; a larger standalone increase to 200 without destabilising the shaping may be more effective. The energy penalty could slow learning if too high, but a factor of 2 (0.02→0.04) is safe. If no improvement is seen, further steps could consider a mild, coupled reduction of r_landing_quality (e.g., 1.5) together with an even higher terminal (250) after additional evidence."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "Terminal bonus weight exceeds 300 in this single edit.",
+      "Any dense component (especially r_landing_quality or r_approach_region) is decreased without a very large terminal increase (≥3×) and an intermediate sparse reward.",
+      "The package removes or disables r_landing_quality or r_stability entirely.",
+      "The energy penalty is raised above 0.1, which could cripple all actions."
+    ],
+    "package_should_be_accepted_if": [
+      "It increases r_stable_landing_once weight to at least 200.",
+      "It optionally raises r_energy weight to 0.03 – 0.05.",
+      "No dense components are modified.",
+      "All semantic roles and event conditions remain unchanged."
+    ],
+    "safety_notes": [
+      "Test the package with a short training run (6 episodes) and monitor success rate, terminal reward payout, and contact toggle reduction.",
+      "If the agent starts triggering r_stable_landing_once but does so with a fragile landing (e.g., bouncing and barely meeting the 5‑step condition), consider increasing the required stable duration or adding a crash penalty later.",
+      "If success remains 0% after this edit, the next strategy could involve a small reduction of r_landing_quality (e.g., 1.5) paired with a terminal increase to 250, but that requires caution."
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "repair_analysis": {
+    "risk_source": "role-level behavior risk from BehaviorRiskAudit (similar_role_pattern_to_regression_lesson)",
+    "role_level_interpretation": "The audit flags that the proposed edit increases terminal_success, which overlaps with a retrieved regression lesson (lesson_iter_001_to_002). However, that regression was caused by simultaneously decreasing stability_quality (r_landing_quality) while increasing terminal_success. The current plan does not touch stability_quality at all, preserving all stable landing shape rewards. Therefore, the harmful pattern is broken; a terminal increase alone is not associated with regression when stability is maintained.",
+    "what_to_keep": "All existing dense components: r_approach_region, r_approach_progress, r_stability, r_landing_quality (all stability_quality and dense_guidance roles). One-time nature of terminal bonuses (r_safe_contact_once, r_stable_landing_once).",
+    "what_to_modify": "Increase r_stable_landing_once weight from 100 to 180 (terminal_success). Increase r_safe_contact_once weight from 50 to 100 (safety_constraint). Increase r_energy weight from 0.02 to 0.03 (control_cost).",
+    "what_to_remove": "Nothing removed.",
+    "why_repaired_plan_is_safer": "The plan implements the reflection's recommended actions: boost terminal incentives moderately (within safe limits ≤200 for stable landing and ≤100 for safe contact) and slightly increase energy penalty to discourage action thrashing, while strictly avoiding any reduction of stability_quality components. The regression lesson failure was driven by reducing stability_quality at the same time as increasing terminal_success; our plan does not reduce stability_quality, therefore it will not repeat that regression. The edits are small, atomic, and aim to shift the attractor from hovering to landing while preserving all dense guidance and stability shaping."
+  },
+  "diagnosis": "Task failure due to dense stability reward dominance preventing the agent from attempting a stable landing (shaping‑goal mismatch). Terminal bonuses never trigger. Reflection and memory both recommend increasing terminal bonuses and energy penalty without touching stability_quality, while the harmful lesson warns against reducing stability. The repaired plan follows those constraints and is safe.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The agent is stuck in a hovering local optimum because dense per‑step rewards (especially stability_quality) dominate and terminal bonuses never fire. Increasing r_stable_landing_once from 100 to 180 and r_safe_contact_once from 50 to 100 strengthens the sparse incentive to land stably, while preserving all existing dense stability/guidance components. A small increase of the energy penalty from 0.02 to 0.03 discourages unnecessary thrashing and helps reduce average episode length. All three edits must be applied together atomically to shift the attractor effectively without destabilising approach behaviour."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit",
+    "explanation": "BehaviorRiskAudit medium risk (similar_role_pattern_to_regression_lesson) is mitigated because the regression lesson involved decreasing stability_quality simultaneously; this plan does not reduce any stability_quality component. The plan follows all auditor and reflection constraints, staying within safe terminal bonus limits and preserving all dense shaping. ScaleAudit passed. The edit is safe to apply."
+  },
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.8
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 1.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

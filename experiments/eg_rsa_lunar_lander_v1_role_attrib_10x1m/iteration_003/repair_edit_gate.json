@@ -1,0 +1,56 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "The two terminal bonuses (safe_contact_once and stable_landing_once) form a sparse chain: safe contact guides to first contact, stable landing encourages staying. Applying only one may not provide enough incentive shift; together they create a more robust bridge from approach to landing. The optional energy penalty is separable but can be bundled if it helps reduce hovering. The package must not include any decrease of stability_quality weights.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Do not modify weights of r_landing_quality, r_stability, r_approach_region, or r_approach_progress",
+        "Increase r_stable_landing_once weight by factor ≥ 1.5, target 150–250",
+        "Increase r_safe_contact_once weight by factor ≥ 1.5, target 75–150",
+        "Optionally increase r_energy weight to 0.04 or 0.05 (factor 2.0–2.5)",
+        "Keep one‑time nature of terminal events; do not add new dense rewards"
+      ],
+      "must_preserve": [
+        "All existing dense guidance and stability components (approach_region, approach_progress, stability, landing_quality)",
+        "The one‑time semantic roles of r_safe_contact_once and r_stable_landing_once",
+        "The overall structure of dense progress + sparse terminal"
+      ],
+      "must_avoid": [
+        "Making terminal bonus too large (>300) in a single step",
+        "Removing or drastically weakening any dense stability shaping",
+        "Introducing new dense rewards that could be exploited"
+      ],
+      "expected_effect": "The strong terminal bonuses (+200 for stable landing, +100 for safe contact) should increase the likelihood that the agent commits to a stable landing, raising success rate from 0% to a positive value. Contact toggles and episode length should decrease. The dominant reward contribution will shift from r_landing_quality toward terminal bonuses, but the dense components still provide necessary guidance.",
+      "risk_analysis": "If the terminal bonuses become extremely large (e.g., >250 for stable landing) before the agent reliably achieves them, training may waste steps on impossible attempts. However, 200–250 is well within earlier safe ranges. The energy penalty may slow initial progress if too high; a moderate increase (0.04) is conservative. The main risk is that the agent learns an unstable bounce‑and‑land that satisfies the 5‑step stable condition but is not robust – this will be monitored in subsequent diagnostics."
+    }
+  }
+}

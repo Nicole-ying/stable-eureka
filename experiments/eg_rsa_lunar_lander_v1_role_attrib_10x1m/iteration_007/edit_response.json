@@ -1,0 +1,141 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Success rate 0% (0/6). Terminal rewards r_stable_landing_once sum = 0.0, r_safe_contact_once sum = 0.0; trigger rates all 0.",
+      "episode_reward_mean = 2013, std = 1272, episode_length_mean = 723. Unstable contact behavior true; contact toggle max = 499.",
+      "Dominant components: r_landing_quality (37.8%) and r_approach_region (35.3%). Dense shaping dominates reward.",
+      "Shaping_goal_mismatch flag true, hack_score low (0.2). No repeated event exploitation detected.",
+      "Agent hovers near pad without committing to a stable landing; dense progress and stability rewards overpower the sparse terminal success bonus."
+    ],
+    "likely_true_failures": [
+      "Dense progress and stability components are overweighted relative to the terminal sparse bonus, creating a strong local optimum where the agent hovers near the pad without completing a stable landing.",
+      "Terminal bonus (100) is insufficient to offset accumulated per-step dense reward during final descent."
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag – high contact toggles are due to unstable hovering, not deliberate exploitation of one-time bonuses (which never fire)."
+    ],
+    "root_cause_hypotheses": [
+      "Overweighting of dense guidance (r_approach_region) and dense stability (r_landing_quality) relative to the terminal success signal causes the agent to maximize per‑step shaping reward rather than attempt the terminal‑triggering behavior."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "Previous successful edit used same pattern: reduced dominant dense guidance (r_approach_region) and substantially increased terminal bonus (r_stable_landing_once) when terminal never triggered. Current situation mirrors that with zero terminal payouts and dense dominance. Directly applicable."
+      },
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Reducing r_landing_quality weight and only moderately increasing terminal caused regression. Strong evidence to avoid touching stability quality and to use a larger terminal increase."
+      },
+      {
+        "lesson_id": "outcome_lesson_effective_edit",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "Compiled outcome lesson confirms the coupled rebalancing pattern is effective for shaping-goal mismatch."
+      },
+      {
+        "lesson_id": "outcome_lesson_regression",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Regression evidence warns against decreasing stability components without strong terminal compensation."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "avoid_actions": [
+      "Solo decrease_weight on any dense component without terminal increase.",
+      "Weaken r_landing_quality or r_stability weights.",
+      "Increase terminal bonus beyond 250 in one step.",
+      "Remove or disable any dense component.",
+      "Make terminal increase alone without a corresponding decrease in a dominant dense component."
+    ],
+    "recommended_actions": [
+      "Apply coupled rebalancing: reduce dominant dense guidance (r_approach_region) and substantially increase terminal bonus (r_stable_landing_once).",
+      "Optionally increase energy penalty (r_energy) to discourage unnecessary hovering and shorten episodes."
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "Shaping-goal mismatch: dense guidance and stability overpower sparse terminal bonus, causing hovering without stable landing. Prior successful lesson shows reducing a dominant dense component paired with a large terminal increase shifts the attractor. Target r_approach_region (35% of reward) for a factor 0.5 reduction, and increase r_stable_landing_once weight to 250 (factor 2.5) to overcome local optimum. Also increase r_energy weight to 0.05 to penalise unnecessary hovering actions. The package must be atomic; partial edits would risk degrading guidance or insufficient terminal push.",
+    "expected_effect": "Stable landing rate should rise from 0% to >10%. Terminal bonus will begin paying out. Dense progress contribution will shrink relative to terminal bonus. Episode length and contact toggles should decrease as agent commits to landing.",
+    "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may lose approach guidance before the terminal bonus becomes reachable. Keeping r_landing_quality unchanged ensures stability during descent. Terminal bonus of 250 stays within safe bounds to avoid unstable bounce exploits; increasing energy penalty further discourages frivolous actions. Coupling the changes atomically ensures no single edit degrades performance.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_energy",
+        "factor": 2.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled reduction of dominant dense guidance and substantial increase of terminal bonus turned hovering into landing (iter 0→1)."
+    ],
+    "what_failed": [
+      "Reducing stability quality (r_landing_quality) with only a moderate terminal increase caused sharp regression (iter 1→2)."
+    ],
+    "avoid_next": [
+      "Solo decrease on any dense component.",
+      "Weakening stability quality or overall stability shaping.",
+      "Insufficient terminal increase (< factor 2.0).",
+      "Removing or disabling dense shaping components."
+    ],
+    "recommend_next": [
+      "If landing rate remains low, consider further terminal increase or intermediate sparse reward (e.g., safe contact booster); monitor for stable landing without exploitation."
+    ],
+    "applicability_notes": "Effective for shaping-goal mismatch where dense components dominate and rare terminal events never trigger. Requires atomic pairing of dense reduction with large terminal boost."
+  },
+  "diagnosis": "Shaping-goal mismatch: dense progress and stability components overpower terminal sparse bonus, causing hovering without stable landing. Apply atomic coupled rebalancing: reduce dominant r_approach_region weight, boost r_stable_landing_once to 250, and increase energy penalty to 0.05 to discourage unnecessary actions.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

@@ -1,0 +1,4348 @@
+[
+  {
+    "iteration": 0,
+    "task_score": 0.47808236711188024,
+    "semantic_score": 0.47808236711188024,
+    "selection_score": 0.5561647342237604,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_approach_region",
+    "dominant_component_ratio": 0.4190578656881251,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.47808236711188024,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.5649823671118802,
+      "progress_score_std": 0.3028824058902235,
+      "episode_length_mean": 869.0,
+      "episode_length_std": 292.92490505247247,
+      "contact_toggle_mean": 370.1666666666667,
+      "contact_toggle_max": 483.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 869.0,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 370.1666666666667,
+      "contact_toggle_max": 483,
+      "worst_episodes": [
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.1942678622232593,
+          "episode_length": 214,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.5934579439252337,
+          "both_contact_rate": 0.5700934579439252,
+          "contact_toggle_count": 2,
+          "episode_reward": 390.9782586966388,
+          "oracle_reward_posthoc": 225.03278569582807
+        },
+        {
+          "episode": 4,
+          "success": 0.0,
+          "progress_score": 0.24184221378374007,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 407,
+          "episode_reward": 2385.4415831882607,
+          "oracle_reward_posthoc": -82.83377485487604
+        },
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.368369228792369,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 435,
+          "episode_reward": 3250.8111033238447,
+          "oracle_reward_posthoc": -43.326132622945266
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing the dominant dense rewards alone could collapse progress toward the pad; increasing terminal rewards alone may not overcome the strong local optimum. Both adjustments must be applied together to shift the attractor from hovering to landing.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Do NOT remove the progress shaping components entirely; they are needed for initial guidance.",
+        "Any reduction in r_approach_region and r_landing_quality should be paired with an increase in terminal bonus values or an intermediate bonus to bridge the gap.",
+        "Consider adding a small penalty for repeated contact toggling to discourage unstable hovering.",
+        "Keep the one‑time nature of terminal rewards to avoid exploitation.",
+        "Preserve the existing semantic roles (dense_guidance, stability_quality, etc.) to maintain interpretability."
+      ],
+      "must_preserve": [
+        "The general structure of dense progress guidance (approach_region, approach_progress).",
+        "The existing terminal event rules (safe_contact_once, stable_landing_once) as one‑time bonuses."
+      ],
+      "must_avoid": [
+        "Making terminal rewards so large that they become the entire episode reward, as this could collapse exploration.",
+        "Removing all dense shaping, which would make the problem very hard with sparse rewards only."
+      ],
+      "expected_effect": "Increased success rate, reduced episode length, and a shift in dominant reward toward terminal events while maintaining approach behavior.",
+      "risk_analysis": "If dense rewards are reduced too aggressively, the agent may lose guidance and fail to reach the pad at all. If terminal rewards are too large, the agent may discover and exploit an unstable landing that triggers the bonus but does not robustly solve the task. The coupled edit must be carefully balanced."
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.7
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 5.0
+      }
+    ],
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "structural_search_used": false,
+    "edit_diagnosis": "Agent hovers near pad without landing due to overweighted dense progress rewards. Dense approach_region component weight reduced by 50% and terminal stable_landing_once weight increased to 100 to shift the attractor from hovering to completing a stable landing.",
+    "edit_validation_errors": [],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.7
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 5.0
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.7
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 5.0
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 3 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Decreasing the dominant dense rewards alone could collapse progress toward the pad; increasing terminal rewards alone may not overcome the strong local optimum. Both adjustments must be applied together to shift the attractor from hovering to landing.",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Do NOT remove the progress shaping components entirely; they are needed for initial guidance.",
+            "Any reduction in r_approach_region and r_landing_quality should be paired with an increase in terminal bonus values or an intermediate bonus to bridge the gap.",
+            "Consider adding a small penalty for repeated contact toggling to discourage unstable hovering.",
+            "Keep the one‑time nature of terminal rewards to avoid exploitation.",
+            "Preserve the existing semantic roles (dense_guidance, stability_quality, etc.) to maintain interpretability."
+          ],
+          "must_preserve": [
+            "The general structure of dense progress guidance (approach_region, approach_progress).",
+            "The existing terminal event rules (safe_contact_once, stable_landing_once) as one‑time bonuses."
+          ],
+          "must_avoid": [
+            "Making terminal rewards so large that they become the entire episode reward, as this could collapse exploration.",
+            "Removing all dense shaping, which would make the problem very hard with sparse rewards only."
+          ],
+          "expected_effect": "Increased success rate, reduced episode length, and a shift in dominant reward toward terminal events while maintaining approach behavior.",
+          "risk_analysis": "If dense rewards are reduced too aggressively, the agent may lose guidance and fail to reach the pad at all. If terminal rewards are too large, the agent may discover and exploit an unstable landing that triggers the bonus but does not robustly solve the task. The coupled edit must be carefully balanced."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 0.5561647342237604,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 1,
+    "task_score": 0.8667732940361653,
+    "semantic_score": 0.9501066273694986,
+    "selection_score": 1.816879921405664,
+    "hack_score": 0.0,
+    "failure_modes": [],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.43574026536868327,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.9501066273694986,
+      "success_episode_rate": 0.16666666666666666,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.16666666666666666,
+      "stable_landing_episode_rate": 0.16666666666666666,
+      "progress_score_mean": 0.603339960702832,
+      "progress_score_std": 0.36843410668005544,
+      "episode_length_mean": 699.0,
+      "episode_length_std": 425.6974669096979,
+      "contact_toggle_mean": 389.6666666666667,
+      "contact_toggle_max": 601.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": true,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior",
+        "terminal_goal_evidence_present"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 1,
+      "success_rate": 0.16666666666666666,
+      "episode_length_mean": 699.0,
+      "safe_contact_rate_mean": 0.0011666666666666668,
+      "stable_landing_rate_mean": 0.0006666666666666666,
+      "contact_toggle_mean": 389.6666666666667,
+      "contact_toggle_max": 601,
+      "worst_episodes": [
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.08828602157079624,
+          "episode_length": 90,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.12222222222222222,
+          "both_contact_rate": 0.05555555555555555,
+          "contact_toggle_count": 2,
+          "episode_reward": 98.42687858616846,
+          "oracle_reward_posthoc": -15.491025459478166
+        },
+        {
+          "episode": 2,
+          "success": 0.0,
+          "progress_score": 0.09569470723024004,
+          "episode_length": 104,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.14423076923076922,
+          "both_contact_rate": 0.04807692307692308,
+          "contact_toggle_count": 4,
+          "episode_reward": 128.122262743909,
+          "oracle_reward_posthoc": -18.73074473561047
+        },
+        {
+          "episode": 4,
+          "success": 0.0,
+          "progress_score": 0.7154780091213954,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 571,
+          "episode_reward": 2964.593751862591,
+          "oracle_reward_posthoc": -29.541214808976815
+        }
+      ],
+      "best_episodes": [
+        {
+          "episode": 1,
+          "success": 1.0,
+          "progress_score": 0.870288439695357,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.007,
+          "stable_landing_rate": 0.004,
+          "contact_rate": 0.009,
+          "both_contact_rate": 0.004,
+          "contact_toggle_count": 601,
+          "episode_reward": 3356.2441027549694,
+          "oracle_reward_posthoc": -11.33416382683323
+        }
+      ]
+    },
+    "agent_action_decision": {
+      "action": "run_tool",
+      "raw_action": "run_tool",
+      "confidence": 0.55,
+      "reason_summary": "No strong edit signal; inspect memory and trajectories before deciding.",
+      "tools_to_call": [
+        {
+          "tool_name": "trajectory_inspector",
+          "args": {
+            "mode": "summary"
+          }
+        },
+        {
+          "tool_name": "memory_retriever",
+          "args": {
+            "top_k": 5
+          }
+        }
+      ],
+      "edit_intent": {},
+      "safety_requirements": [],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "transition"
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing r_landing_quality alone could degrade landing approach progress; increasing terminal bonus alone may not overcome the dense stability reward. Both adjustments must be applied together to maintain stable progress while shifting the attractor toward completing a stable landing.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Target the current dominant dense component r_landing_quality for weight reduction (factor ≤ 0.5)",
+        "Pair any dense stability reduction with an increase in r_stable_landing_once weight (factor ≥ 1.5, target value 150–200)",
+        "Do NOT remove or disable the existing dense components; they are still needed for initial guidance",
+        "Keep the one‑time nature of terminal events to avoid exploitation",
+        "Preserve semantic roles (stability_quality, terminal_success, etc.) for interpretability",
+        "Optionally increase r_energy weight slightly (e.g., 0.02 → 0.04) to penalise unnecessary actions and reduce hovering duration"
+      ],
+      "must_preserve": [
+        "The general structure of dense progress and stability shaping (approach_region, approach_progress, stability, landing_quality)",
+        "The one‑time terminal event rules (safe_contact_once, stable_landing_once)",
+        "Semantic role assignments for future attribution"
+      ],
+      "must_avoid": [
+        "Making the terminal bonus too large (>250) in a single edit, which could promote unstable bounce‑and‑land exploits",
+        "Removing all dense stability rewards, which would make the sparse signal too difficult to learn"
+      ],
+      "expected_effect": "Stable landing rate should increase from 0% toward a more reliable value; average episode length should decrease; the dominant reward contribution will shift from r_landing_quality toward the terminal bonus; contact toggles should reduce.",
+      "risk_analysis": "If r_landing_quality is reduced too aggressively, the agent may lose stabilisation during descent and fail to reach the pad. If the terminal bonus becomes excessively large, the agent might learn an unstable landing that just satisfies the 5‑step stable condition before crashing. A moderate coupled adjustment with a small energy penalty increase is a conservative next step that balances these risks."
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.7
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 1.5
+      }
+    ],
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "structural_search_used": false,
+    "edit_diagnosis": "Dense stability shaping (r_landing_quality, weight 2.0) still dominant, preventing stable landing terminal reward from being earned. Apply coupled rebalancing: halve r_landing_quality and raise r_stable_landing_once to 180.",
+    "edit_validation_errors": [],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_landing_quality",
+          "factor": 0.7
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 1.5
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_landing_quality",
+          "factor": 0.7
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 1.5
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Terminal target r_stable_landing_once has low step evidence but episode semantic evidence is present; warning only.",
+        "Accepted atomic package with 2 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 2,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Decreasing r_landing_quality alone could degrade landing approach progress; increasing terminal bonus alone may not overcome the dense stability reward. Both adjustments must be applied together to maintain stable progress while shifting the attractor toward completing a stable landing.",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Target the current dominant dense component r_landing_quality for weight reduction (factor ≤ 0.5)",
+            "Pair any dense stability reduction with an increase in r_stable_landing_once weight (factor ≥ 1.5, target value 150–200)",
+            "Do NOT remove or disable the existing dense components; they are still needed for initial guidance",
+            "Keep the one‑time nature of terminal events to avoid exploitation",
+            "Preserve semantic roles (stability_quality, terminal_success, etc.) for interpretability",
+            "Optionally increase r_energy weight slightly (e.g., 0.02 → 0.04) to penalise unnecessary actions and reduce hovering duration"
+          ],
+          "must_preserve": [
+            "The general structure of dense progress and stability shaping (approach_region, approach_progress, stability, landing_quality)",
+            "The one‑time terminal event rules (safe_contact_once, stable_landing_once)",
+            "Semantic role assignments for future attribution"
+          ],
+          "must_avoid": [
+            "Making the terminal bonus too large (>250) in a single edit, which could promote unstable bounce‑and‑land exploits",
+            "Removing all dense stability rewards, which would make the sparse signal too difficult to learn"
+          ],
+          "expected_effect": "Stable landing rate should increase from 0% toward a more reliable value; average episode length should decrease; the dominant reward contribution will shift from r_landing_quality toward the terminal bonus; contact toggles should reduce.",
+          "risk_analysis": "If r_landing_quality is reduced too aggressively, the agent may lose stabilisation during descent and fail to reach the pad. If the terminal bonus becomes excessively large, the agent might learn an unstable landing that just satisfies the 5‑step stable condition before crashing. A moderate coupled adjustment with a small energy penalty increase is a conservative next step that balances these risks."
+        }
+      }
+    },
+    "outcome_decision": {
+      "decision": "accept",
+      "continuation": "continue_current_schema",
+      "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+      "task_delta": 0.3886909269242851,
+      "hack_delta": -0.4,
+      "semantic_delta": 0.47202426025761834,
+      "accepted_for_best": true,
+      "rollback_recommended": false
+    },
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 2,
+    "task_score": 0.4116538941544186,
+    "semantic_score": 0.4116538941544186,
+    "selection_score": 0.4233077883088372,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_approach_region",
+    "dominant_component_ratio": 0.4075221919304495,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.4116538941544186,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.46583722748775197,
+      "progress_score_std": 0.2828696910063477,
+      "episode_length_mean": 541.8333333333334,
+      "episode_length_std": 458.18570349683426,
+      "contact_toggle_mean": 137.5,
+      "contact_toggle_max": 338.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 541.8333333333334,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 137.5,
+      "contact_toggle_max": 338,
+      "worst_episodes": [
+        {
+          "episode": 2,
+          "success": 0.0,
+          "progress_score": 0.06185092744752956,
+          "episode_length": 79,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.08860759493670886,
+          "both_contact_rate": 0.05063291139240506,
+          "contact_toggle_count": 4,
+          "episode_reward": 83.01857349104596,
+          "oracle_reward_posthoc": 15.42465456317035
+        },
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.2022600609432994,
+          "episode_length": 80,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.075,
+          "both_contact_rate": 0.0375,
+          "contact_toggle_count": 4,
+          "episode_reward": 79.8633446078714,
+          "oracle_reward_posthoc": -7.103636545491881
+        },
+        {
+          "episode": 1,
+          "success": 0.0,
+          "progress_score": 0.32261181162751773,
+          "episode_length": 92,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.14130434782608695,
+          "both_contact_rate": 0.07608695652173914,
+          "contact_toggle_count": 3,
+          "episode_reward": 120.34123617338123,
+          "oracle_reward_posthoc": 11.381408873076353
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing the dominant dense component alone may degrade progress toward the pad, while increasing terminal bonus alone may not overcome the strong dense local optimum. Both must be applied together to shift the attractor from hovering to stable landing.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Target r_approach_region for weight reduction (factor 0.5 recommended, i.e., weight 0.525)",
+        "Pair any reduction with an increase in r_stable_landing_once weight (factor 1.8 recommended, target 180)",
+        "Optionally increase r_safe_contact_once weight to 80-100 to provide intermediate progress incentive",
+        "Do NOT alter r_landing_quality, r_stability, or r_approach_progress; they are working as needed.",
+        "Keep the one-time nature of event rewards intact.",
+        "Preserve semantic roles and existing structure.",
+        "Consider adding a small penalty component for contact state toggling (structural search) if hovering persists after this edit."
+      ],
+      "must_preserve": [
+        "All stability components (r_stability, r_landing_quality) at current weights",
+        "The existing dense progress components except r_approach_region (r_approach_progress, etc.)",
+        "One-time sparse event rules (safe_contact_once, stable_landing_once)",
+        "Semantic role labels"
+      ],
+      "must_avoid": [
+        "Increasing terminal bonus beyond 250 in a single step",
+        "Reducing or removing stability quality components",
+        "Removing all dense guidance, which might collapse exploration"
+      ],
+      "expected_effect": "Stable landing success rate should improve above 0%, episode length decrease, contact toggles reduce. The dominant reward component will shift from r_approach_region toward terminal events.",
+      "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may lose incentive to approach the pad at all, leading to even lower progress. If terminal bonus becomes too large, agent might discover an unstable bounce that triggers the bonus without robust landing. Conservative adjustment within memory-tested bounds mitigates these risks."
+    },
+    "edit_plan": [],
+    "edit_decision": "edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Dense progress reward (r_approach_region) still dominates, preventing stable landings despite previous moderate weakening. Coupled reduction of r_approach_region by 50% and further increase of terminal bonuses (r_stable_landing_once to 180, r_safe_contact_once to 80) follows a proven pattern to shift the attractor from hovering to landing.",
+    "edit_validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 1.8
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 1.6
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 1.8
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 1.6
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 3 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Reducing the dominant dense component alone may degrade progress toward the pad, while increasing terminal bonus alone may not overcome the strong dense local optimum. Both must be applied together to shift the attractor from hovering to stable landing.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Target r_approach_region for weight reduction (factor 0.5 recommended, i.e., weight 0.525)",
+            "Pair any reduction with an increase in r_stable_landing_once weight (factor 1.8 recommended, target 180)",
+            "Optionally increase r_safe_contact_once weight to 80-100 to provide intermediate progress incentive",
+            "Do NOT alter r_landing_quality, r_stability, or r_approach_progress; they are working as needed.",
+            "Keep the one-time nature of event rewards intact.",
+            "Preserve semantic roles and existing structure.",
+            "Consider adding a small penalty component for contact state toggling (structural search) if hovering persists after this edit."
+          ],
+          "must_preserve": [
+            "All stability components (r_stability, r_landing_quality) at current weights",
+            "The existing dense progress components except r_approach_region (r_approach_progress, etc.)",
+            "One-time sparse event rules (safe_contact_once, stable_landing_once)",
+            "Semantic role labels"
+          ],
+          "must_avoid": [
+            "Increasing terminal bonus beyond 250 in a single step",
+            "Reducing or removing stability quality components",
+            "Removing all dense guidance, which might collapse exploration"
+          ],
+          "expected_effect": "Stable landing success rate should improve above 0%, episode length decrease, contact toggles reduce. The dominant reward component will shift from r_approach_region toward terminal events.",
+          "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may lose incentive to approach the pad at all, leading to even lower progress. If terminal bonus becomes too large, agent might discover an unstable bounce that triggers the bonus without robust landing. Conservative adjustment within memory-tested bounds mitigates these risks."
+        }
+      }
+    },
+    "outcome_decision": {
+      "decision": "reject",
+      "continuation": "rollback_to_best_schema",
+      "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+      "task_delta": -0.4551193998817467,
+      "hack_delta": 0.4,
+      "semantic_delta": -0.5384527332150799,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "rollback_applied": true,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 3,
+    "task_score": 0.4162463984855797,
+    "semantic_score": 0.4162463984855797,
+    "selection_score": 0.4324927969711594,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.4136635458176502,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.4162463984855797,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.502529731818913,
+      "progress_score_std": 0.27836285546302314,
+      "episode_length_mean": 862.8333333333334,
+      "episode_length_std": 211.16219411206689,
+      "contact_toggle_mean": 367.5,
+      "contact_toggle_max": 510.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 862.8333333333334,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 367.5,
+      "contact_toggle_max": 510,
+      "worst_episodes": [
+        {
+          "episode": 2,
+          "success": 0.0,
+          "progress_score": 0.14939152384235335,
+          "episode_length": 733,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.03274215552523874,
+          "both_contact_rate": 0.01227830832196453,
+          "contact_toggle_count": 244,
+          "episode_reward": 1827.0130641734684,
+          "oracle_reward_posthoc": -110.52659069512218
+        },
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.1727664182668258,
+          "episode_length": 444,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.7657657657657657,
+          "both_contact_rate": 0.7454954954954955,
+          "contact_toggle_count": 10,
+          "episode_reward": 677.1825870842283,
+          "oracle_reward_posthoc": 209.1481860724871
+        },
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.4226653160477626,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 444,
+          "episode_reward": 2958.9922702778726,
+          "oracle_reward_posthoc": -38.53139233419948
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "The two terminal bonuses (safe_contact_once and stable_landing_once) form a sparse chain: safe contact guides to first contact, stable landing encourages staying. Applying only one may not provide enough incentive shift; together they create a more robust bridge from approach to landing. The optional energy penalty is separable but can be bundled if it helps reduce hovering. The package must not include any decrease of stability_quality weights.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Do not modify weights of r_landing_quality, r_stability, r_approach_region, or r_approach_progress",
+        "Increase r_stable_landing_once weight by factor ≥ 1.5, target 150–250",
+        "Increase r_safe_contact_once weight by factor ≥ 1.5, target 75–150",
+        "Optionally increase r_energy weight to 0.04 or 0.05 (factor 2.0–2.5)",
+        "Keep one‑time nature of terminal events; do not add new dense rewards"
+      ],
+      "must_preserve": [
+        "All existing dense guidance and stability components (approach_region, approach_progress, stability, landing_quality)",
+        "The one‑time semantic roles of r_safe_contact_once and r_stable_landing_once",
+        "The overall structure of dense progress + sparse terminal"
+      ],
+      "must_avoid": [
+        "Making terminal bonus too large (>300) in a single step",
+        "Removing or drastically weakening any dense stability shaping",
+        "Introducing new dense rewards that could be exploited"
+      ],
+      "expected_effect": "The strong terminal bonuses (+200 for stable landing, +100 for safe contact) should increase the likelihood that the agent commits to a stable landing, raising success rate from 0% to a positive value. Contact toggles and episode length should decrease. The dominant reward contribution will shift from r_landing_quality toward terminal bonuses, but the dense components still provide necessary guidance.",
+      "risk_analysis": "If the terminal bonuses become extremely large (e.g., >250 for stable landing) before the agent reliably achieves them, training may waste steps on impossible attempts. However, 200–250 is well within earlier safe ranges. The energy penalty may slow initial progress if too high; a moderate increase (0.04) is conservative. The main risk is that the agent learns an unstable bounce‑and‑land that satisfies the 5‑step stable condition but is not robust – this will be monitored in subsequent diagnostics."
+    },
+    "edit_plan": [],
+    "edit_decision": "edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Dense stability reward (r_landing_quality) dominates, creating a hovering local optimum. Terminal bonuses are too weak to incentivize stable landing. The solution is to increase terminal success and safe contact bonuses without reducing stability weights, optionally increasing energy penalty to reduce thrashing. This follows the reflection strategy and proven memory lessons while avoiding the harmful reduction of stability_quality seen in iter 001→002.",
+    "edit_validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 3 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "The two terminal bonuses (safe_contact_once and stable_landing_once) form a sparse chain: safe contact guides to first contact, stable landing encourages staying. Applying only one may not provide enough incentive shift; together they create a more robust bridge from approach to landing. The optional energy penalty is separable but can be bundled if it helps reduce hovering. The package must not include any decrease of stability_quality weights.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Do not modify weights of r_landing_quality, r_stability, r_approach_region, or r_approach_progress",
+            "Increase r_stable_landing_once weight by factor ≥ 1.5, target 150–250",
+            "Increase r_safe_contact_once weight by factor ≥ 1.5, target 75–150",
+            "Optionally increase r_energy weight to 0.04 or 0.05 (factor 2.0–2.5)",
+            "Keep one‑time nature of terminal events; do not add new dense rewards"
+          ],
+          "must_preserve": [
+            "All existing dense guidance and stability components (approach_region, approach_progress, stability, landing_quality)",
+            "The one‑time semantic roles of r_safe_contact_once and r_stable_landing_once",
+            "The overall structure of dense progress + sparse terminal"
+          ],
+          "must_avoid": [
+            "Making terminal bonus too large (>300) in a single step",
+            "Removing or drastically weakening any dense stability shaping",
+            "Introducing new dense rewards that could be exploited"
+          ],
+          "expected_effect": "The strong terminal bonuses (+200 for stable landing, +100 for safe contact) should increase the likelihood that the agent commits to a stable landing, raising success rate from 0% to a positive value. Contact toggles and episode length should decrease. The dominant reward contribution will shift from r_landing_quality toward terminal bonuses, but the dense components still provide necessary guidance.",
+          "risk_analysis": "If the terminal bonuses become extremely large (e.g., >250 for stable landing) before the agent reliably achieves them, training may waste steps on impossible attempts. However, 200–250 is well within earlier safe ranges. The energy penalty may slow initial progress if too high; a moderate increase (0.04) is conservative. The main risk is that the agent learns an unstable bounce‑and‑land that satisfies the 5‑step stable condition but is not robust – this will be monitored in subsequent diagnostics."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 4,
+    "task_score": 0.367463476166306,
+    "semantic_score": 0.367463476166306,
+    "selection_score": 0.33492695233261194,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.3969841171162682,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.367463476166306,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.4320968094996393,
+      "progress_score_std": 0.31690050569071687,
+      "episode_length_mean": 646.3333333333334,
+      "episode_length_std": 364.9761027184596,
+      "contact_toggle_mean": 272.1666666666667,
+      "contact_toggle_max": 517.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 646.3333333333334,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 272.1666666666667,
+      "contact_toggle_max": 517,
+      "worst_episodes": [
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.062102028081547016,
+          "episode_length": 114,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.11403508771929824,
+          "both_contact_rate": 0.043859649122807015,
+          "contact_toggle_count": 4,
+          "episode_reward": 125.92714170713134,
+          "oracle_reward_posthoc": -43.99150124764999
+        },
+        {
+          "episode": 0,
+          "success": 0.0,
+          "progress_score": 0.12121438489601913,
+          "episode_length": 361,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.04986149584487535,
+          "both_contact_rate": 0.01662049861495845,
+          "contact_toggle_count": 108,
+          "episode_reward": 776.5714215110146,
+          "oracle_reward_posthoc": -70.14837409807637
+        },
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.17113350804907096,
+          "episode_length": 403,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.18114143920595532,
+          "both_contact_rate": 0.01240694789081886,
+          "contact_toggle_count": 72,
+          "episode_reward": 687.1527872588895,
+          "oracle_reward_posthoc": 149.49867057141995
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "Increasing the terminal bonus alone may start to attract the agent toward landing; adding a moderate energy penalty independently discourages the hovering thrashing that prolongs episodes. They are complementary but not strictly codependent, so the package can be considered separable, though it is safer to apply both together for a stronger effect.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Do NOT reduce any dense component weight – preserve r_landing_quality (2.0), r_approach_region (1.05), r_stability (1.0), r_approach_progress (2.0).",
+        "Keep the one‑time nature of r_stable_landing_once; do not convert it to a per‑step or repeatable bonus.",
+        "Terminal bonus weight must not exceed 250 in this edit.",
+        "If raising r_energy, choose a moderate factor (e.g., 0.03–0.05) to avoid penalising necessary actions too harshly.",
+        "Preserve all existing semantic roles and event condition definitions."
+      ],
+      "must_preserve": [
+        "All current dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights and clip ranges.",
+        "The one‑time terminal event rule r_stable_landing_once and its 5‑step stable condition.",
+        "The existing safe contact bonus r_safe_contact_once (50) as a future lever if safe contact becomes achievable.",
+        "Semantic role assignments for attribution (dense_guidance, stability_quality, terminal_success, etc.)."
+      ],
+      "must_avoid": [
+        "Introducing new dense rewards that could be trivially exploited by hovering.",
+        "Raising the terminal bonus above 250 in one step, which could push the agent toward unstable hard‑bounce exploits.",
+        "Removing any progress or stability shaping components – they are essential for reaching the pad."
+      ],
+      "expected_effect": "Success rate should increase from 0% as the terminal bonus becomes more attractive, pulling the agent to complete a stable landing. The energy penalty will discourage unnecessary engine firings, potentially reducing episode length and contact toggles. Dominant reward contribution may shift partially toward the terminal event. Hack risk should remain low as no exploitable dense components are introduced.",
+      "risk_analysis": "If the terminal bonus alone is insufficient to overcome the local optimum without also reducing dense strengths, success may not improve. However, the previous increase to 150 (combined with a harmful density reduction) still failed; a larger standalone increase to 200 without destabilising the shaping may be more effective. The energy penalty could slow learning if too high, but a factor of 2 (0.02→0.04) is safe. If no improvement is seen, further steps could consider a mild, coupled reduction of r_landing_quality (e.g., 1.5) together with an even higher terminal (250) after additional evidence."
+    },
+    "edit_plan": [],
+    "edit_decision": "edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Shaping–goal mismatch: dense stability and progress rewards create a local optimum of hovering near the pad, while the terminal landing bonus never triggers. The fix strengthens the terminal attractor (200) and adds a moderate action penalty to discourage thrashing, without reducing any existing dense components.",
+    "edit_validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "separable",
+        "max_reasonable_edits": 2,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "separable",
+          "why_atomic_or_separable": "Increasing the terminal bonus alone may start to attract the agent toward landing; adding a moderate energy penalty independently discourages the hovering thrashing that prolongs episodes. They are complementary but not strictly codependent, so the package can be considered separable, though it is safer to apply both together for a stronger effect.",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Do NOT reduce any dense component weight – preserve r_landing_quality (2.0), r_approach_region (1.05), r_stability (1.0), r_approach_progress (2.0).",
+            "Keep the one‑time nature of r_stable_landing_once; do not convert it to a per‑step or repeatable bonus.",
+            "Terminal bonus weight must not exceed 250 in this edit.",
+            "If raising r_energy, choose a moderate factor (e.g., 0.03–0.05) to avoid penalising necessary actions too harshly.",
+            "Preserve all existing semantic roles and event condition definitions."
+          ],
+          "must_preserve": [
+            "All current dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights and clip ranges.",
+            "The one‑time terminal event rule r_stable_landing_once and its 5‑step stable condition.",
+            "The existing safe contact bonus r_safe_contact_once (50) as a future lever if safe contact becomes achievable.",
+            "Semantic role assignments for attribution (dense_guidance, stability_quality, terminal_success, etc.)."
+          ],
+          "must_avoid": [
+            "Introducing new dense rewards that could be trivially exploited by hovering.",
+            "Raising the terminal bonus above 250 in one step, which could push the agent toward unstable hard‑bounce exploits.",
+            "Removing any progress or stability shaping components – they are essential for reaching the pad."
+          ],
+          "expected_effect": "Success rate should increase from 0% as the terminal bonus becomes more attractive, pulling the agent to complete a stable landing. The energy penalty will discourage unnecessary engine firings, potentially reducing episode length and contact toggles. Dominant reward contribution may shift partially toward the terminal event. Hack risk should remain low as no exploitable dense components are introduced.",
+          "risk_analysis": "If the terminal bonus alone is insufficient to overcome the local optimum without also reducing dense strengths, success may not improve. However, the previous increase to 150 (combined with a harmful density reduction) still failed; a larger standalone increase to 200 without destabilising the shaping may be more effective. The energy penalty could slow learning if too high, but a factor of 2 (0.02→0.04) is safe. If no improvement is seen, further steps could consider a mild, coupled reduction of r_landing_quality (e.g., 1.5) together with an even higher terminal (250) after additional evidence."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 5,
+    "task_score": 0.6308837542692466,
+    "semantic_score": 0.6308837542692466,
+    "selection_score": 0.8617675085384932,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_approach_region",
+    "dominant_component_ratio": 0.3718538713901959,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.6308837542692466,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.7308837542692466,
+      "progress_score_std": 0.09213058542117246,
+      "episode_length_mean": 1000.0,
+      "episode_length_std": 0.0,
+      "contact_toggle_mean": 461.5,
+      "contact_toggle_max": 492.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 1000.0,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 461.5,
+      "contact_toggle_max": 492,
+      "worst_episodes": [
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.6227781492265233,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 467,
+          "episode_reward": 2504.2488710908483,
+          "oracle_reward_posthoc": -25.62217775023239
+        },
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.6461391492370475,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 492,
+          "episode_reward": 2962.021812217824,
+          "oracle_reward_posthoc": -9.76280268614775
+        },
+        {
+          "episode": 2,
+          "success": 0.0,
+          "progress_score": 0.652375147778336,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.103,
+          "both_contact_rate": 0.079,
+          "contact_toggle_count": 391,
+          "episode_reward": 2376.633423368882,
+          "oracle_reward_posthoc": -2.0075503273414474
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Adding a dense ground‑contact reward alone could lead to slamming behaviour; increasing terminal bonuses alone may never be discovered without intermediate shaping; the two changes must be paired to safely shift the attractor from hovering to a controlled landing. A contact‑toggle penalty further discourages bouncing and should be considered part of the same package.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Introduce a new dense component `r_ground_contact` (type metric_value) that scores 1.0 when both legs are in contact, 0.0 otherwise; start with a moderate weight (10–20) and clip [0, 1].",
+        "Increase `r_safe_contact_once` weight to 100 and `r_stable_landing_once` weight to 200, preserving their one‑time nature.",
+        "Optionally add a new component `r_contact_toggle_penalty` (type metric_delta, negative, positive_only=false) on a boolean metric that detects leg contact changes, to penalise unstable hopping.",
+        "Do not reduce weights of any existing dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality).",
+        "Preserve semantic roles: r_ground_contact should be assigned `stability_quality` or a new `landing_approach` role; r_contact_toggle_penalty could be `stability_quality`.",
+        "Keep the one‑time terminal event rules as is, only adjust their weights."
+      ],
+      "must_preserve": [
+        "All current dense progress and stability components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights.",
+        "The one‑time semantic flags on r_safe_contact_once and r_stable_landing_once.",
+        "The overall structure of dense guidance plus sparse terminal bonuses."
+      ],
+      "must_avoid": [
+        "Removing or disabling any existing dense component, especially those related to stability.",
+        "Introducing dense rewards that can be trivially spammed without actual landing progress (e.g., constant reward for being in the landing region).",
+        "Increasing terminal bonuses above 300 without robust anti‑exploit safeguards.",
+        "Making the ground‑contact reward so large that it overshadows the need for a soft landing."
+      ],
+      "expected_effect": "The agent will begin to experience reward for touching both legs to the ground, guiding it toward the safe‑contact condition. With higher terminal bonuses, it will then have a strong incentive to progress to a stable landing. Episode length should decrease, success rate should rise, and contact toggling should diminish.",
+      "risk_analysis": "If the new ground‑contact reward is set too high, the agent might learn to slam down hard to trigger it, causing crashes rather than soft landings. The increased terminal bonus could be exploited by a bouncing policy that just satisfies the 5‑step stability condition before a subsequent crash. The contact‑toggle penalty mitigates both risks by penalising repeated contact changes. The balance between the new dense reward, existing stability components, and terminal bonuses must be tuned carefully; starting with moderate weights and a short test run is essential."
+    },
+    "edit_plan": [],
+    "edit_decision": "need_more_evidence",
+    "next_action": "continue_training",
+    "structural_search_used": true,
+    "edit_diagnosis": "Agent hovers near pad due to dominant dense progress/stability rewards and untriggered sparse terminal bonuses. No stable landing attempted. Structural search needed to add intermediate dense ground‑contact reward and increase terminal bonuses.",
+    "edit_validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_landing_stagnation_penalty",
+            "type": "metric_stagnation_penalty",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_quality",
+              "threshold": 0.9,
+              "window": 100
+            },
+            "clip": [
+              -0.5,
+              0.0
+            ],
+            "enabled": true
+          }
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [
+        {
+          "candidate_type": "metric_process",
+          "metric": "landing_quality",
+          "component_type": "metric_stagnation_penalty",
+          "metric_variation": 0.8963203717926811,
+          "active_rate": 1.0,
+          "signal_density": "dense",
+          "recommendation": "accept",
+          "reason": "Metric component r_landing_stagnation_penalty has variation=0.896320, active_rate=1.000000 on current rollouts."
+        }
+      ],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_landing_stagnation_penalty",
+            "type": "metric_stagnation_penalty",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_quality",
+              "threshold": 0.9,
+              "window": 100
+            },
+            "clip": [
+              -0.5,
+              0.0
+            ],
+            "enabled": true
+          }
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [],
+      "plan_metadata": {
+        "plan_type": "structural_search",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "structural_search",
+          "plan_type": "structural_search",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Adding a dense ground‑contact reward alone could lead to slamming behaviour; increasing terminal bonuses alone may never be discovered without intermediate shaping; the two changes must be paired to safely shift the attractor from hovering to a controlled landing. A contact‑toggle penalty further discourages bouncing and should be considered part of the same package.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Introduce a new dense component `r_ground_contact` (type metric_value) that scores 1.0 when both legs are in contact, 0.0 otherwise; start with a moderate weight (10–20) and clip [0, 1].",
+            "Increase `r_safe_contact_once` weight to 100 and `r_stable_landing_once` weight to 200, preserving their one‑time nature.",
+            "Optionally add a new component `r_contact_toggle_penalty` (type metric_delta, negative, positive_only=false) on a boolean metric that detects leg contact changes, to penalise unstable hopping.",
+            "Do not reduce weights of any existing dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality).",
+            "Preserve semantic roles: r_ground_contact should be assigned `stability_quality` or a new `landing_approach` role; r_contact_toggle_penalty could be `stability_quality`.",
+            "Keep the one‑time terminal event rules as is, only adjust their weights."
+          ],
+          "must_preserve": [
+            "All current dense progress and stability components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights.",
+            "The one‑time semantic flags on r_safe_contact_once and r_stable_landing_once.",
+            "The overall structure of dense guidance plus sparse terminal bonuses."
+          ],
+          "must_avoid": [
+            "Removing or disabling any existing dense component, especially those related to stability.",
+            "Introducing dense rewards that can be trivially spammed without actual landing progress (e.g., constant reward for being in the landing region).",
+            "Increasing terminal bonuses above 300 without robust anti‑exploit safeguards.",
+            "Making the ground‑contact reward so large that it overshadows the need for a soft landing."
+          ],
+          "expected_effect": "The agent will begin to experience reward for touching both legs to the ground, guiding it toward the safe‑contact condition. With higher terminal bonuses, it will then have a strong incentive to progress to a stable landing. Episode length should decrease, success rate should rise, and contact toggling should diminish.",
+          "risk_analysis": "If the new ground‑contact reward is set too high, the agent might learn to slam down hard to trigger it, causing crashes rather than soft landings. The increased terminal bonus could be exploited by a bouncing policy that just satisfies the 5‑step stability condition before a subsequent crash. The contact‑toggle penalty mitigates both risks by penalising repeated contact changes. The balance between the new dense reward, existing stability components, and terminal bonuses must be tuned carefully; starting with moderate weights and a short test run is essential."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 6,
+    "task_score": 0.47685263129844524,
+    "semantic_score": 0.47685263129844524,
+    "selection_score": 0.5537052625968905,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.40190527412245347,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.47685263129844524,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.5675859646317786,
+      "progress_score_std": 0.2515005781229967,
+      "episode_length_mean": 907.3333333333334,
+      "episode_length_std": 207.2089659149805,
+      "contact_toggle_mean": 463.8333333333333,
+      "contact_toggle_max": 569.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 907.3333333333334,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 463.8333333333333,
+      "contact_toggle_max": 569,
+      "worst_episodes": [
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.17659386152110626,
+          "episode_length": 444,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.7207207207207207,
+          "both_contact_rate": 0.7072072072072072,
+          "contact_toggle_count": 9,
+          "episode_reward": 694.8186724255708,
+          "oracle_reward_posthoc": 207.88621073371291
+        },
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.37092716425358974,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 567,
+          "episode_reward": 2833.9823599158494,
+          "oracle_reward_posthoc": -40.02681844133089
+        },
+        {
+          "episode": 4,
+          "success": 0.0,
+          "progress_score": 0.4386511215912097,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 548,
+          "episode_reward": 2882.996652388928,
+          "oracle_reward_posthoc": -47.468174443438514
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "continue_training",
+      "plan_type": "continue_training",
+      "atomicity": "not_applicable",
+      "why_atomic_or_separable": "",
+      "max_reasonable_edits": 0,
+      "editor_constraints": [
+        "If future edit is needed, do not reduce r_landing_quality weight; instead increase r_stable_landing_once moderately and consider adding a contact toggle penalty",
+        "Keep one-time nature of terminal bonuses",
+        "Preserve all existing components' semantic roles"
+      ],
+      "must_preserve": [
+        "All current components and event rules, as schema has shown ability to produce at least 16.7% success",
+        "Semantic role assignments"
+      ],
+      "must_avoid": [
+        "Reducing r_landing_quality weight",
+        "Removing dense stability components",
+        "Making terminal reward too large (>250)"
+      ],
+      "expected_effect": "With continued training, success rate may recover to ~16% or higher as previously observed. If not, future edits with toggle penalty may be needed.",
+      "risk_analysis": "The agent might remain stuck in hovering indefinitely if the local optimum is too strong; but continuing training is low-risk and may allow stochastic discovery of landing as seen before."
+    },
+    "edit_plan": [],
+    "edit_decision": "no_edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "The current schema has previously achieved 16.7% success but now shows 0% over only 6 episodes, with r_landing_quality still dominant and no terminal bonuses paid. Past harmful edits decreasing r_landing_quality caused regression, so immediate edits are risky. The reflection and memory recommend continuing training to see if success recovers, as the schema has shown potential. This is a safe, low-risk next step.",
+    "edit_validation_errors": [
+      "LLM chose no_edit with next_action=continue_training; no schema edit applied."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {},
+    "edit_gate": {},
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 7,
+    "task_score": 0.42204796929545574,
+    "semantic_score": 0.42204796929545574,
+    "selection_score": 0.6440959385909115,
+    "hack_score": 0.2,
+    "failure_modes": [
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.37784877384221305,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.42204796929545574,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.4943813026287891,
+      "progress_score_std": 0.29599260156557833,
+      "episode_length_mean": 723.3333333333334,
+      "episode_length_std": 393.4677736344984,
+      "contact_toggle_mean": 316.1666666666667,
+      "contact_toggle_max": 499.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 723.3333333333334,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 316.1666666666667,
+      "contact_toggle_max": 499,
+      "worst_episodes": [
+        {
+          "episode": 2,
+          "success": 0.0,
+          "progress_score": 0.08073551377879758,
+          "episode_length": 98,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.09183673469387756,
+          "both_contact_rate": 0.04081632653061224,
+          "contact_toggle_count": 15,
+          "episode_reward": 112.526362070962,
+          "oracle_reward_posthoc": -27.673175981279343
+        },
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.20412233125082413,
+          "episode_length": 242,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.26859504132231404,
+          "both_contact_rate": 0.09090909090909091,
+          "contact_toggle_count": 19,
+          "episode_reward": 353.2166714544033,
+          "oracle_reward_posthoc": 205.0967041254945
+        },
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.47283703391648546,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 464,
+          "episode_reward": 2981.763010970387,
+          "oracle_reward_posthoc": -30.375290445378024
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.2
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing the dense progress component alone risks losing approach guidance before the terminal bonus becomes reachable; increasing terminal bonus alone may not overpower the remaining dense rewards. Both adjustments must be applied together to shift the attractor from hovering to completing a stable landing.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Target r_approach_region for weight reduction (factor ≤ 0.5, e.g., from 1.05 → 0.5).",
+        "Do NOT touch r_landing_quality or r_stability (keep weights 2.0 and 1.0).",
+        "Increase r_stable_landing_once weight substantially (target 200–250, factor ~2.0–2.5).",
+        "Optionally increase r_energy weight (e.g., 0.02 → 0.05) to penalise unnecessary hovering actions.",
+        "Optionally add a small per‑step penalty on contact toggles to discourage unstable bouncing, but keep it light (e.g., -0.1 per toggle).",
+        "Do NOT remove any dense components or event rules.",
+        "Keep all semantic roles and one‑time nature of event rules intact."
+      ],
+      "must_preserve": [
+        "All existing dense components (r_approach_progress, r_stability, r_landing_quality) at their current weights unless intentionally reduced.",
+        "The one‑time terminal event rules (r_safe_contact_once, r_stable_landing_once) with their existing conditions.",
+        "Semantic role assignments for interpretability."
+      ],
+      "must_avoid": [
+        "Reducing r_landing_quality weight.",
+        "Making the terminal bonus excessively large (>250) in a single edit.",
+        "Removing all dense shaping (sparse‑only would fail without guidance).",
+        "Introducing dense rewards that can be trivially exploited (e.g., constant reward for being in the landing region)."
+      ],
+      "expected_effect": "Stable landing rate should rise from 0% to a positive value (target >10%). The terminal bonus will begin to trigger in some episodes. Dense progress contribution will shrink relative to the terminal bonus. Episode length and contact toggles should decrease as agent commits to landing.",
+      "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may not learn to reach the pad before the terminal reward can be earned. If the terminal bonus becomes too large, the agent might discover a hard‑bounce strategy that triggers the 5‑step condition without a robust landing; keeping terminal at or below 250 and increasing the energy penalty mitigates this. Coupling the changes atomically is essential – a partial package could worsen the shaping mismatch."
+    },
+    "edit_plan": [],
+    "edit_decision": "edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Shaping-goal mismatch: dense progress and stability components overpower terminal sparse bonus, causing hovering without stable landing. Apply atomic coupled rebalancing: reduce dominant r_approach_region weight, boost r_stable_landing_once to 250, and increase energy penalty to 0.05 to discourage unnecessary actions.",
+    "edit_validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 2.5
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_approach_region",
+          "factor": 0.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 2.5
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 2.5
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 3 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Reducing the dense progress component alone risks losing approach guidance before the terminal bonus becomes reachable; increasing terminal bonus alone may not overpower the remaining dense rewards. Both adjustments must be applied together to shift the attractor from hovering to completing a stable landing.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Target r_approach_region for weight reduction (factor ≤ 0.5, e.g., from 1.05 → 0.5).",
+            "Do NOT touch r_landing_quality or r_stability (keep weights 2.0 and 1.0).",
+            "Increase r_stable_landing_once weight substantially (target 200–250, factor ~2.0–2.5).",
+            "Optionally increase r_energy weight (e.g., 0.02 → 0.05) to penalise unnecessary hovering actions.",
+            "Optionally add a small per‑step penalty on contact toggles to discourage unstable bouncing, but keep it light (e.g., -0.1 per toggle).",
+            "Do NOT remove any dense components or event rules.",
+            "Keep all semantic roles and one‑time nature of event rules intact."
+          ],
+          "must_preserve": [
+            "All existing dense components (r_approach_progress, r_stability, r_landing_quality) at their current weights unless intentionally reduced.",
+            "The one‑time terminal event rules (r_safe_contact_once, r_stable_landing_once) with their existing conditions.",
+            "Semantic role assignments for interpretability."
+          ],
+          "must_avoid": [
+            "Reducing r_landing_quality weight.",
+            "Making the terminal bonus excessively large (>250) in a single edit.",
+            "Removing all dense shaping (sparse‑only would fail without guidance).",
+            "Introducing dense rewards that can be trivially exploited (e.g., constant reward for being in the landing region)."
+          ],
+          "expected_effect": "Stable landing rate should rise from 0% to a positive value (target >10%). The terminal bonus will begin to trigger in some episodes. Dense progress contribution will shrink relative to the terminal bonus. Episode length and contact toggles should decrease as agent commits to landing.",
+          "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may not learn to reach the pad before the terminal reward can be earned. If the terminal bonus becomes too large, the agent might discover a hard‑bounce strategy that triggers the 5‑step condition without a robust landing; keeping terminal at or below 250 and increasing the energy penalty mitigates this. Coupling the changes atomically is essential – a partial package could worsen the shaping mismatch."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 8,
+    "task_score": 0.6648771004699899,
+    "semantic_score": 0.6648771004699899,
+    "selection_score": 0.9297542009399798,
+    "hack_score": 0.4,
+    "failure_modes": [
+      "repeated_event_exploitation",
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "r_landing_quality",
+    "dominant_component_ratio": 0.431712477111864,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.6648771004699899,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.7648771004699899,
+      "progress_score_std": 0.18939056018073605,
+      "episode_length_mean": 1000.0,
+      "episode_length_std": 0.0,
+      "contact_toggle_mean": 528.1666666666666,
+      "contact_toggle_max": 562.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_stable_landing_once": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_stable_landing_once"
+      ],
+      "one_time_rule_names": [
+        "r_safe_contact_once",
+        "r_stable_landing_once"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 6,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 1000.0,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 528.1666666666666,
+      "contact_toggle_max": 562,
+      "worst_episodes": [
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.34558005606892134,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 548,
+          "episode_reward": 2520.393098921675,
+          "oracle_reward_posthoc": -31.50206832054012
+        },
+        {
+          "episode": 0,
+          "success": 0.0,
+          "progress_score": 0.80136479136483,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 524,
+          "episode_reward": 3244.736633811162,
+          "oracle_reward_posthoc": -40.68168250314648
+        },
+        {
+          "episode": 1,
+          "success": 0.0,
+          "progress_score": 0.8346634405775388,
+          "episode_length": 1000,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 513,
+          "episode_reward": 3266.3366499775952,
+          "oracle_reward_posthoc": -28.5662402884381
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "action": "apply_local_edit",
+      "raw_action": "apply_local_edit",
+      "confidence": 0.7,
+      "reason_summary": "Reward attribution suggests shaping mismatch; use constrained local edit first.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [
+        "scale_audit_if_add_component"
+      ],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "phase": "constrained_search",
+        "hack_score": 0.4
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "effective_edit_lesson",
+        "quality": {
+          "reuse_confidence": 0.8,
+          "evidence_strength": 0.8
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_approach_region",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 2.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_safe_contact_once",
+            "factor": 5.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_approach_region",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 1.5,
+                    "after": 1.0499999999999998
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_safe_contact_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 10.0,
+                    "after": 50.0
+                  }
+                ]
+              },
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 40.0,
+                    "after": 100.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 2
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.47808236711188024,
+          "semantic_score": 0.47808236711188024,
+          "selection_score": 0.5561647342237604,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metric_delta": {
+          "task_score": 0.3886909269242851,
+          "semantic_score": 0.47202426025761834,
+          "selection_score": 1.2607151871819036,
+          "hack_score": -0.4,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.16666666666666666,
+          "safe_contact_episode_rate": 0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "accept",
+          "continuation": "continue_current_schema",
+          "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+          "task_delta": 0.3886909269242851,
+          "hack_delta": -0.4,
+          "semantic_delta": 0.47202426025761834,
+          "accepted_for_best": true,
+          "rollback_recommended": false
+        },
+        "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+        "future_guidance": [
+          "Reuse when failure modes and component attribution match.",
+          "Keep atomic edit package coherence."
+        ],
+        "applicability": {
+          "dominant_component": "r_landing_quality",
+          "failure_modes": [],
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "dense_guidance",
+            "safety_constraint",
+            "terminal_success"
+          ]
+        }
+      },
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_landing_quality",
+            "factor": 0.7
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_stable_landing_once",
+            "factor": 1.5
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_landing_quality",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 2.0,
+                    "after": 1.4
+                  }
+                ]
+              }
+            ]
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "r_stable_landing_once",
+                "changed_fields": [
+                  {
+                    "field": "weight",
+                    "before": 100.0,
+                    "after": 150.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 1,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.8667732940361653,
+          "semantic_score": 0.9501066273694986,
+          "selection_score": 1.816879921405664,
+          "hack_score": 0.0,
+          "true_hack_risk": false,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": false,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.16666666666666666,
+          "stable_landing_episode_rate": 0.16666666666666666
+        },
+        "metrics_after": {
+          "task_score": 0.4116538941544186,
+          "semantic_score": 0.4116538941544186,
+          "selection_score": 0.4233077883088372,
+          "hack_score": 0.4,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": -0.4551193998817467,
+          "semantic_score": -0.5384527332150799,
+          "selection_score": -1.3935721330968267,
+          "hack_score": 0.4,
+          "success_episode_rate": -0.16666666666666666,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": -0.16666666666666666,
+          "safe_contact_episode_rate": -0.16666666666666666
+        },
+        "outcome_decision": {
+          "decision": "reject",
+          "continuation": "rollback_to_best_schema",
+          "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+          "task_delta": -0.4551193998817467,
+          "hack_delta": 0.4,
+          "semantic_delta": -0.5384527332150799,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "r_approach_region",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": false,
+          "semantic_roles_touched": [
+            "stability_quality",
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "A contact‑toggle penalty is a new structural component that directly targets the unstable hovering behavior. It must be introduced together with higher terminal bonuses to shift the attractor from hovering to landing; applying these changes separately risks leaving the agent in a bad local optimum.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Do NOT change weights of r_stability or r_landing_quality (stability_quality role)",
+        "Terminal bonus increases should keep r_stable_landing_once ≤ 200 and r_safe_contact_once ≤ 100",
+        "New contact‑toggle penalty should be small (e.g., –0.01 to –0.05 per toggle) and clip to negative range",
+        "Keep all existing semantic roles and one‑time flags intact",
+        "If a dense guidance component is reduced, it must be paired with a compensating increase in terminal or intermediate sparse rewards (but stability_quality must not be reduced)"
+      ],
+      "must_preserve": [
+        "The existing dense guidance and stability shaping components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their semantic roles",
+        "The one‑time nature of r_safe_contact_once and r_stable_landing_once"
+      ],
+      "must_avoid": [
+        "Removing any dense stability component (r_stability, r_landing_quality)",
+        "Making terminal bonuses so large (>250) that they invite unstable bounce‑and‑land exploits",
+        "Introducing a new dense reward that can be accumulated by hovering or contact toggling"
+      ],
+      "expected_effect": "Contact toggles will decrease, average episode length will drop from 1000, success rate will rise, and terminal bonuses will start paying. The dominant reward component will shift toward terminal success while preserving approach guidance.",
+      "risk_analysis": "If the toggle penalty is too large, the agent may avoid leg contact entirely and fail to land. If terminal bonuses are too aggressive, the agent might learn a hard‑bounce exploit that just meets the 5‑step stable condition. The structural change must be tested in a new short training run to confirm improvement."
+    },
+    "edit_plan": [],
+    "edit_decision": "edit",
+    "next_action": "continue_training",
+    "structural_search_used": false,
+    "edit_diagnosis": "Task failure caused by overweighted dense stability rewards relative to sparse terminal bonuses; agent hovers near pad without landing. Memory-guided edit increases terminal bonuses and energy penalty while keeping stability_quality intact to shift the attractor toward stable landing.",
+    "edit_validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 1.8
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 1.5
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "increase_weight",
+          "target": "r_stable_landing_once",
+          "factor": 1.8
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_safe_contact_once",
+          "factor": 2.0
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_energy",
+          "factor": 1.5
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Low step evidence for target r_safe_contact_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 3 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "structural_search",
+          "plan_type": "structural_search",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "A contact‑toggle penalty is a new structural component that directly targets the unstable hovering behavior. It must be introduced together with higher terminal bonuses to shift the attractor from hovering to landing; applying these changes separately risks leaving the agent in a bad local optimum.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Do NOT change weights of r_stability or r_landing_quality (stability_quality role)",
+            "Terminal bonus increases should keep r_stable_landing_once ≤ 200 and r_safe_contact_once ≤ 100",
+            "New contact‑toggle penalty should be small (e.g., –0.01 to –0.05 per toggle) and clip to negative range",
+            "Keep all existing semantic roles and one‑time flags intact",
+            "If a dense guidance component is reduced, it must be paired with a compensating increase in terminal or intermediate sparse rewards (but stability_quality must not be reduced)"
+          ],
+          "must_preserve": [
+            "The existing dense guidance and stability shaping components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their semantic roles",
+            "The one‑time nature of r_safe_contact_once and r_stable_landing_once"
+          ],
+          "must_avoid": [
+            "Removing any dense stability component (r_stability, r_landing_quality)",
+            "Making terminal bonuses so large (>250) that they invite unstable bounce‑and‑land exploits",
+            "Introducing a new dense reward that can be accumulated by hovering or contact toggling"
+          ],
+          "expected_effect": "Contact toggles will decrease, average episode length will drop from 1000, success rate will rise, and terminal bonuses will start paying. The dominant reward component will shift toward terminal success while preserving approach guidance.",
+          "risk_analysis": "If the toggle penalty is too large, the agent may avoid leg contact entirely and fail to land. If terminal bonuses are too aggressive, the agent might learn a hard‑bounce exploit that just meets the 5‑step stable condition. The structural change must be tested in a new short training run to confirm improvement."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 1.816879921405664,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  }
+]

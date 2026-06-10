@@ -1,0 +1,95 @@
+{
+  "reflection_summary": "Agent's performance regressed with the previously effective schema. Dense approach_region reward dominates again, causing hovering near the pad without stable landing. Terminal bonuses never trigger. Unstable contact behavior persists. The harmful lesson indicates reducing stability components while pushing terminal is risky, but further reduction of the dense guidance component and increased terminal bonus is needed.",
+  "failure_assessment": {
+    "observed_facts": [
+      "0% landing success, 0% terminal reward payment",
+      "Dominant component r_approach_region (40.8% of reward)",
+      "Long episodes (mean 541.8 steps) with high contact toggles (mean 137.5)",
+      "Progress score mean 0.466, shaping_goal_mismatch true",
+      "Hack score 0.4, repeated_event_exploitation and shaping_goal_mismatch flags raised"
+    ],
+    "likely_true_failures": [
+      "Dense progress guidance (r_approach_region) overweighted, creating local optimum of hovering",
+      "Terminal bonus (100) insufficient to overcome loss of dense reward during final descent",
+      "Agent may be attempting to trigger terminal event but cannot maintain stable contact, leading to repeated toggling"
+    ],
+    "likely_false_positives": [
+      "Repeated_event_exploitation flag: likely due to unstable hovering rather than deliberate exploitation, as one-time bonuses are not triggered."
+    ],
+    "root_cause_hypotheses": [
+      "Overweighted dense progress reward relative to sparse terminal success causes agent to prefer hovering near pad",
+      "Terminal bonus magnitude too low to shift attractor from dense reward local optimum"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.8
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "lesson_iter_000_to_001: coupled reduction of dominant dense component (r_approach_region) and increase of terminal bonus (r_stable_landing_once) shifted agent from hovering to landing. Applicable again with further reduction of r_approach_region."
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002: reducing stability quality (r_landing_quality) while increasing terminal caused regression. Avoid touching stability components."
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Do not decrease r_landing_quality or r_stability",
+      "Do not increase terminal bonus alone without reducing dominant dense component",
+      "Do not increase terminal bonus above 250 in one step",
+      "Do not remove all dense guidance"
+    ],
+    "recommended_actions": [
+      "Decrease r_approach_region weight further (factor 0.5-0.7)",
+      "Increase r_stable_landing_once weight (factor 1.5-2.0, target 150-200)",
+      "Consider increasing r_safe_contact_once weight (to 80-100) to bridge safe contact",
+      "Optionally add a penalty for contact toggling to discourage hovering (structural search)"
+    ],
+    "memory_confidence": 0.85
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Reducing the dominant dense component alone may degrade progress toward the pad, while increasing terminal bonus alone may not overcome the strong dense local optimum. Both must be applied together to shift the attractor from hovering to stable landing.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Target r_approach_region for weight reduction (factor 0.5 recommended, i.e., weight 0.525)",
+      "Pair any reduction with an increase in r_stable_landing_once weight (factor 1.8 recommended, target 180)",
+      "Optionally increase r_safe_contact_once weight to 80-100 to provide intermediate progress incentive",
+      "Do NOT alter r_landing_quality, r_stability, or r_approach_progress; they are working as needed.",
+      "Keep the one-time nature of event rewards intact.",
+      "Preserve semantic roles and existing structure.",
+      "Consider adding a small penalty component for contact state toggling (structural search) if hovering persists after this edit."
+    ],
+    "must_preserve": [
+      "All stability components (r_stability, r_landing_quality) at current weights",
+      "The existing dense progress components except r_approach_region (r_approach_progress, etc.)",
+      "One-time sparse event rules (safe_contact_once, stable_landing_once)",
+      "Semantic role labels"
+    ],
+    "must_avoid": [
+      "Increasing terminal bonus beyond 250 in a single step",
+      "Reducing or removing stability quality components",
+      "Removing all dense guidance, which might collapse exploration"
+    ],
+    "expected_effect": "Stable landing success rate should improve above 0%, episode length decrease, contact toggles reduce. The dominant reward component will shift from r_approach_region toward terminal events.",
+    "risk_analysis": "If r_approach_region is reduced too aggressively, the agent may lose incentive to approach the pad at all, leading to even lower progress. If terminal bonus becomes too large, agent might discover an unstable bounce that triggers the bonus without robust landing. Conservative adjustment within memory-tested bounds mitigates these risks."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It reduces any stability component (r_stability, r_landing_quality)",
+      "It increases terminal bonus above 250",
+      "It removes or disables r_approach_region without a coupled terminal increase",
+      "It introduces a dense reward for being in landing region that can be trivially exploited"
+    ],
+    "package_should_be_accepted_if": [
+      "It reduces r_approach_region weight by factor ≤ 0.7 (i.e., at least 30% reduction)",
+      "It increases r_stable_landing_once weight to at least 150",
+      "It optionally increases r_safe_contact_once weight to at least 80",
+      "It keeps the edit atomic, not splitting dense/terminal adjustments"
+    ],
+    "safety_notes": [
+      "Monitor training to ensure success rate trends upward and not just a spike",
+      "Watch for unstable bounce-and-land exploits: if agent fires main engine just before contact to trigger 5-step stable then crashes, consider increasing required stable steps or imposing a post-landing stability check."
+    ]
+  }
+}

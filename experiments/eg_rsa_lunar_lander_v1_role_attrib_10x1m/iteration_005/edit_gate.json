@@ -1,0 +1,58 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_stagnation_penalty",
+        "type": "metric_stagnation_penalty",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "threshold": 0.9,
+          "window": 100
+        },
+        "clip": [
+          -0.5,
+          0.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Adding a dense ground‑contact reward alone could lead to slamming behaviour; increasing terminal bonuses alone may never be discovered without intermediate shaping; the two changes must be paired to safely shift the attractor from hovering to a controlled landing. A contact‑toggle penalty further discourages bouncing and should be considered part of the same package.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Introduce a new dense component `r_ground_contact` (type metric_value) that scores 1.0 when both legs are in contact, 0.0 otherwise; start with a moderate weight (10–20) and clip [0, 1].",
+        "Increase `r_safe_contact_once` weight to 100 and `r_stable_landing_once` weight to 200, preserving their one‑time nature.",
+        "Optionally add a new component `r_contact_toggle_penalty` (type metric_delta, negative, positive_only=false) on a boolean metric that detects leg contact changes, to penalise unstable hopping.",
+        "Do not reduce weights of any existing dense components (r_approach_region, r_approach_progress, r_stability, r_landing_quality).",
+        "Preserve semantic roles: r_ground_contact should be assigned `stability_quality` or a new `landing_approach` role; r_contact_toggle_penalty could be `stability_quality`.",
+        "Keep the one‑time terminal event rules as is, only adjust their weights."
+      ],
+      "must_preserve": [
+        "All current dense progress and stability components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their existing weights.",
+        "The one‑time semantic flags on r_safe_contact_once and r_stable_landing_once.",
+        "The overall structure of dense guidance plus sparse terminal bonuses."
+      ],
+      "must_avoid": [
+        "Removing or disabling any existing dense component, especially those related to stability.",
+        "Introducing dense rewards that can be trivially spammed without actual landing progress (e.g., constant reward for being in the landing region).",
+        "Increasing terminal bonuses above 300 without robust anti‑exploit safeguards.",
+        "Making the ground‑contact reward so large that it overshadows the need for a soft landing."
+      ],
+      "expected_effect": "The agent will begin to experience reward for touching both legs to the ground, guiding it toward the safe‑contact condition. With higher terminal bonuses, it will then have a strong incentive to progress to a stable landing. Episode length should decrease, success rate should rise, and contact toggling should diminish.",
+      "risk_analysis": "If the new ground‑contact reward is set too high, the agent might learn to slam down hard to trigger it, causing crashes rather than soft landings. The increased terminal bonus could be exploited by a bouncing policy that just satisfies the 5‑step stability condition before a subsequent crash. The contact‑toggle penalty mitigates both risks by penalising repeated contact changes. The balance between the new dense reward, existing stability components, and terminal bonuses must be tuned carefully; starting with moderate weights and a short test run is essential."
+    }
+  }
+}

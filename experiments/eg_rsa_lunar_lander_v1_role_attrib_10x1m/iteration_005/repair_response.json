@@ -1,0 +1,56 @@
+{
+  "repair_analysis": {
+    "risk_source": "Scale risk: new dense component (r_ground_contact) with weight 15 dominates terminal scale (100) by factor 5.0, potentially preventing terminal discovery. No role‑level behavior risk detected.",
+    "role_level_interpretation": "The edit adds a dense stability_quality component and increases terminal_success and safety_constraint weights. The core roles are preserved, but the dense component's magnitude must be reduced to avoid drowning terminal incentives.",
+    "what_to_keep": "The overall structure of introducing a dense ground‑contact incentive and strengthening terminal bonuses. The semantic roles and atomic coupling remain valid.",
+    "what_to_modify": "Reduce the weight of the new dense r_ground_contact event bonus from 15 to 2 to keep its per‑step contribution small relative to the terminal bonuses (max 200).",
+    "what_to_remove": "Nothing; the plan is repaired by lowering the weight, not by removing components.",
+    "why_repaired_plan_is_safer": "The new dense reward weight of 2 ensures its per‑episode contribution is far below the terminal scale (200), removing the high scale risk. The terminal increases are unchanged and provide a clear sparse incentive, while the dense ground‑contact stimulus still bridges the gap from hovering to stable landing. No existing stability components are reduced, avoiding the known regression pattern (iter_001_to_002)."
+  },
+  "diagnosis": "Agent hovers near pad due to dominant dense progress/stability rewards and untriggered sparse terminal bonuses. A dense ground‑contact reward is needed to bridge the gap, but its weight must be small to avoid dominating terminal incentives. Coupled increase of terminal bonuses is preserved.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "Adding a low-weight dense ground-contact reward (weight 2) provides intermediate guidance toward safe contact, and increasing terminal bonuses (safe_contact_once to 100, stable_landing_once to 200) strengthens the final landing incentive. The atomic package ensures the agent is not left with a dense-only incentive that could cause slamming, nor with terminal increases alone that might remain undiscovered."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_ground_contact",
+        "type": "event_bonus",
+        "weight": 2.0,
+        "condition": {
+          "both_contact": true,
+          "duration_steps": 1
+        },
+        "one_time": false,
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "stability"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

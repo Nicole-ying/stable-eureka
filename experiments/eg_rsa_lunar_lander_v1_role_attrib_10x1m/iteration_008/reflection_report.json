@@ -1,0 +1,101 @@
+{
+  "reflection_summary": "Agent still hovers near pad with 0% success after rollback to a previously effective schema. Dense stability shaping (r_landing_quality 43.2% of reward) and progress rewards dominate; terminal bonuses never trigger; contact toggles are high (mean 528). This is a shaping-goal mismatch causing task failure, not a reward hack. The previously effective edit stopped working, suggesting training variability and a need for stronger structural changes.",
+  "failure_assessment": {
+    "observed_facts": [
+      "success_episode_rate = 0.0, all episodes ran to 1000 steps",
+      "terminal bonuses r_safe_contact_once and r_stable_landing_once sum = 0.0",
+      "dominant component r_landing_quality contributes 43.2% of total reward",
+      "mean contact toggles = 528, max = 562",
+      "shaping_goal_mismatch flag true, unstable_contact_behavior true",
+      "hack_score = 0.4 but no terminal reward exploitation",
+      "semantic_score = 0.6649, no terminal goal evidence"
+    ],
+    "likely_true_failures": [
+      "Dense stability rewards (r_landing_quality) and progress rewards (r_approach_region) incentivize prolonged hovering with unstable leg contacts without committing to a stable landing",
+      "Terminal sparse bonuses (100 and 50) are not large enough to overcome the dense per‑step rewards during the final landing phase, so the agent never attempts a stable landing"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag: high contact toggles are due to unstable hovering, not deliberate exploitation of one‑time bonuses, since no terminal bonus has been paid",
+      "hack_score may be inflated by repeated_event_exploitation; true hacking risk is low"
+    ],
+    "root_cause_hypotheses": [
+      "The current balance keeps the agent in a local optimum of hovering near the pad while switching leg contacts to maximize per‑step stability and landing quality rewards; the terminal landing bonus is insufficient to offset the loss of these dense rewards during the transition to a stable posture"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.85
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "summary": "Coupled rebalancing (decrease one dominant dense component, increase terminal bonuses) shifted the agent from 0% to 16.7% success. The mechanism can be reused but must avoid reducing stability‑quality components."
+      }
+    ],
+    "failed_or_weak_lessons": [
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "summary": "Decreasing r_landing_quality (stability_quality) while further increasing r_stable_landing_once caused regression to 0% success and higher hack risk. This path must be avoided."
+      }
+    ],
+    "conflicting_lessons": [
+      "The two lessons both used coupled rebalancing but targeted different dense components. The conflict is resolved by never reducing stability_quality when trying to improve terminal success."
+    ],
+    "avoid_actions": [
+      "Do not decrease weight of any stability_quality component (r_stability, r_landing_quality) in the current edit",
+      "Do not increase terminal bonuses beyond 250 in a single step",
+      "Do not remove any dense guidance or stability components entirely"
+    ],
+    "recommended_actions": [
+      "Increase terminal bonuses moderately (r_stable_landing_once, r_safe_contact_once) to strengthen the sparse incentive",
+      "Introduce a small per‑contact‑toggle penalty to actively discourage unstable hovering and bouncing",
+      "Keep all existing dense components unchanged (especially r_stability and r_landing_quality)",
+      "Consider a minor increase in the energy penalty (r_energy) to further deter thrashing"
+    ],
+    "memory_confidence": 0.85
+  },
+  "strategy": {
+    "recommended_next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "A contact‑toggle penalty is a new structural component that directly targets the unstable hovering behavior. It must be introduced together with higher terminal bonuses to shift the attractor from hovering to landing; applying these changes separately risks leaving the agent in a bad local optimum.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Do NOT change weights of r_stability or r_landing_quality (stability_quality role)",
+      "Terminal bonus increases should keep r_stable_landing_once ≤ 200 and r_safe_contact_once ≤ 100",
+      "New contact‑toggle penalty should be small (e.g., –0.01 to –0.05 per toggle) and clip to negative range",
+      "Keep all existing semantic roles and one‑time flags intact",
+      "If a dense guidance component is reduced, it must be paired with a compensating increase in terminal or intermediate sparse rewards (but stability_quality must not be reduced)"
+    ],
+    "must_preserve": [
+      "The existing dense guidance and stability shaping components (r_approach_region, r_approach_progress, r_stability, r_landing_quality) with their semantic roles",
+      "The one‑time nature of r_safe_contact_once and r_stable_landing_once"
+    ],
+    "must_avoid": [
+      "Removing any dense stability component (r_stability, r_landing_quality)",
+      "Making terminal bonuses so large (>250) that they invite unstable bounce‑and‑land exploits",
+      "Introducing a new dense reward that can be accumulated by hovering or contact toggling"
+    ],
+    "expected_effect": "Contact toggles will decrease, average episode length will drop from 1000, success rate will rise, and terminal bonuses will start paying. The dominant reward component will shift toward terminal success while preserving approach guidance.",
+    "risk_analysis": "If the toggle penalty is too large, the agent may avoid leg contact entirely and fail to land. If terminal bonuses are too aggressive, the agent might learn a hard‑bounce exploit that just meets the 5‑step stable condition. The structural change must be tested in a new short training run to confirm improvement."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It reduces weight of r_stability or r_landing_quality",
+      "It increases r_stable_landing_once beyond 200 in a single edit",
+      "It introduces a toggle penalty that is unclipped or larger than -0.1 per toggle",
+      "It removes any dense guidance component without a replacement sparse bridge"
+    ],
+    "package_should_be_accepted_if": [
+      "It adds a small, properly clipped contact‑toggle penalty",
+      "It increases r_stable_landing_once to 150–200",
+      "It optionally increases r_safe_contact_once to 75–100",
+      "It optionally increases r_energy weight moderately (e.g., 0.02→0.03) to further discourage unneeded actions",
+      "All edits are packaged together as an atomic unit"
+    ],
+    "safety_notes": [
+      "Test the full package in a short training run (e.g., same 1‑minute budget) to verify that success rate improves and contact toggles decrease",
+      "Monitor that the agent does not learn a policy that triggers the terminal bonus without a genuinely safe, stable landing",
+      "If success appears, increase training budget to confirm stability before proceeding to the next iteration"
+    ]
+  }
+}

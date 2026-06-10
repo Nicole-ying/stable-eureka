@@ -1,0 +1,132 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "0% stable landing success and 0% safe contact rate across current six episodes",
+      "Terminal bonuses (r_stable_landing_once, r_safe_contact_once) never paid",
+      "Dense component r_landing_quality dominates at 41.4% of total reward",
+      "High contact toggle counts (landing_region=9, left_contact=4, right_contact=4) indicating unstable hovering",
+      "Episode length mean 862.8, episodes are long",
+      "Progress score mean 0.503, suggesting approach but no commitment to landing",
+      "Hack flags repeated_event_exploitation and shaping_goal_mismatch raised but likely false positives"
+    ],
+    "likely_true_failures": [
+      "Dense stability reward (r_landing_quality) persists as a strong local optimum that encourages hovering near the pad rather than completing a stable landing",
+      "Terminal sparse bonuses (100 and 50) are still not high enough to overcome the per‑step dense stability reward"
+    ],
+    "likely_false_positives": [
+      "repeated_event_exploitation flag: high leg‑contact toggles are due to unstable hovering, not exploitation of one‑time bonuses (which are never triggered)",
+      "unstable_contact_behavior flag is a symptom of the underlying task failure, not a separate hack"
+    ],
+    "root_cause_hypotheses": [
+      "The remaining dense stability shaping (r_landing_quality, weight 2.0) outweighs the increased terminal bonuses (100, 50), causing the agent to prefer high per‑step reward from hovering rather than attempting a stable landing",
+      "The training run may be insufficiently long or stochastic, but the fundamental balance between dense stability and terminal success still tips toward hovering"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.75
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "This lesson successfully used a coupled rebalancing (reduce dominant dense guidance, increase terminal bonuses) to shift agent from hovering to landing. The current dominant dense component is stability_quality, not guidance, but the principle of boosting terminal bonuses is still applicable. The lesson warns against reducing stability_quality (harmful lesson 001-002), which we will avoid."
+      },
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "harmful",
+        "status": "not_applicable",
+        "reason": "This edit reduced r_landing_quality weight (stability_quality) by factor 0.7 and increased r_stable_landing_once by factor 1.5, causing regression and increased hack risk. It directly warns against reducing any stability_quality weight while terminal success is unreliable. We must strictly avoid this pattern."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_000_to_001"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "avoid_actions": [
+      "Do NOT reduce the weight of r_landing_quality or r_stability (stability_quality role) while terminal success is not yet reliably triggered",
+      "Do NOT remove or disable any existing dense components",
+      "Do NOT increase terminal bonuses beyond 300 in a single edit"
+    ],
+    "recommended_actions": [
+      "Increase the terminal success bonus (r_stable_landing_once) further, e.g., 100 → 200, to strengthen the attractor toward landing",
+      "Increase the safe contact bonus (r_safe_contact_once) to 100 to create a stronger intermediate sparse signal",
+      "Optionally increase action penalty (r_energy weight from 0.02 to 0.04) to discourage thrashing and reduce episode length",
+      "Keep all dense stability weights (r_landing_quality = 2.0, r_stability = 1.0) unchanged"
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The current dense stability component r_landing_quality (weight 2.0) dominates, encouraging hovering. Terminal bonuses have never triggered. Following the reflection strategy and memory lessons, we increase the terminal sparse bonuses to shift the reward attractor toward completing a stable landing. We avoid reducing any stability_quality weights, as that previously caused regression. The optional energy penalty increase further discourages thrashing and shortens episodes. All three edits are applied together as an atomic coupled package to ensure the sparse chain (safe contact -> stable landing) becomes strong enough to overcome the dense local optimum.",
+    "expected_effect": "Stable landing rate should increase from 0% to a positive value, r_stable_landing_once will start paying out, episode length and contact toggles should decrease. The dominant reward contribution will shift from r_landing_quality toward terminal bonuses while still preserving essential stability shaping.",
+    "risk_analysis": "If the terminal bonuses become too large before the agent reliably achieves them, training may waste steps. However, 200 for stable landing and 100 for safe contact are well within safe ranges seen in earlier iterations. The energy penalty may slightly slow initial progress if too high, but 0.04 is moderate. The main risk is the agent learning an unstable bounce-and-land that meets the 5-step condition but is not robust; this will be monitored in subsequent diagnostics.",
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 2.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_safe_contact_once",
+        "factor": 2.0
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_energy",
+        "factor": 2.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing by increasing terminal bonuses while decreasing a dominant dense guidance component improved success and reduced hovering (iter 0→1). The increase of terminal bonuses alone is effective and safe."
+    ],
+    "what_failed": [
+      "Reducing stability_quality dense component (r_landing_quality) while increasing terminal bonus caused regression and increased hack risk (iter 1→2)."
+    ],
+    "avoid_next": [
+      "Do NOT reduce r_landing_quality or r_stability weights while terminal success is unreliable.",
+      "Do NOT increase terminal bonuses beyond 300 in one step."
+    ],
+    "recommend_next": [
+      "Monitor whether terminal bonuses begin to trigger; if success rate still low, consider further increasing bonuses (up to 250).",
+      "If thrashing persists, increase r_energy further or add contact toggle penalty."
+    ],
+    "applicability_notes": "Pattern of boosting terminal sparse rewards is effective when dense shaping creates a local optimum that prevents completion; stability_quality components must be preserved."
+  },
+  "diagnosis": "Dense stability reward (r_landing_quality) dominates, creating a hovering local optimum. Terminal bonuses are too weak to incentivize stable landing. The solution is to increase terminal success and safe contact bonuses without reducing stability weights, optionally increasing energy penalty to reduce thrashing. This follows the reflection strategy and proven memory lessons while avoiding the harmful reduction of stability_quality seen in iter 001→002.",
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_safe_contact_once",
+      "factor": 2.0
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_energy",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

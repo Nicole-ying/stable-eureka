@@ -1,0 +1,90 @@
+{
+  "reflection_summary": "Agent has started landing (16.7% success) but is not yet stable. Dense r_landing_quality still dominates (43.6% of reward), and the terminal bonus r_stable_landing_once has never triggered. Unstable contact behavior and long episodes suggest the balance between dense stability shaping and terminal success still favours hovering near the landing state.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Success rate = 1/6; terminal bonus r_stable_landing_once paid 0 times",
+      "Dominant component is r_landing_quality (43.6% of total reward)",
+      "r_stable_landing_once trigger rate = 0.0",
+      "Unstable contact behavior flag true; mean contact toggles = 389.7",
+      "Mean episode length = 699, episodes are long",
+      "Progress score mean = 0.60, indicating some approach but not finalisation",
+      "Safe contact bonus triggered once (1/6)",
+      "Overall hack score = 0.0, no reward hacking suspected"
+    ],
+    "likely_true_failures": [
+      "Dense stability reward (r_landing_quality) still overweighted relative to the terminal bonus, creating a local optimum of hovering near the pad rather than committing to a stable landing",
+      "Insufficient terminal incentive to overcome the loss of dense reward during final descent / stabilisation"
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "Dense stability shaping, especially r_landing_quality, is too strong, causing the agent to prefer a hovering posture that yields high per‑step reward instead of performing a robust stable landing",
+      "The terminal bonus weight (100) is not yet high enough to compensate for the loss of dense rewards during the final stabilisation steps, so the agent rarely attempts the stable landing sequence"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.8
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "summary": "When the dominant dense component is overweighted and the terminal bonus never triggers, reducing the dominant dense weight and increasing the terminal bonus weight (coupled rebalancing) shifted the attractor from hovering to landing. The previous edit reduced r_approach_region (dense_guidance) from 1.5 to 1.05 (factor 0.7) and increased r_stable_landing_once from 40 to 100. This pattern can be reused for the current dominant component r_landing_quality."
+      }
+    ],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Do not remove all dense stability components",
+      "Do not drastically increase terminal bonus beyond ~250 in one step"
+    ],
+    "recommended_actions": [
+      "Re‑apply the coupled rebalancing pattern: decrease dominant dense component (r_landing_quality) weight, increase terminal bonus (r_stable_landing_once) weight",
+      "Consider a moderate increase in action penalty (r_energy) to discourage thrashing and shorten episodes"
+    ],
+    "memory_confidence": 0.85
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Decreasing r_landing_quality alone could degrade landing approach progress; increasing terminal bonus alone may not overcome the dense stability reward. Both adjustments must be applied together to maintain stable progress while shifting the attractor toward completing a stable landing.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Target the current dominant dense component r_landing_quality for weight reduction (factor ≤ 0.5)",
+      "Pair any dense stability reduction with an increase in r_stable_landing_once weight (factor ≥ 1.5, target value 150–200)",
+      "Do NOT remove or disable the existing dense components; they are still needed for initial guidance",
+      "Keep the one‑time nature of terminal events to avoid exploitation",
+      "Preserve semantic roles (stability_quality, terminal_success, etc.) for interpretability",
+      "Optionally increase r_energy weight slightly (e.g., 0.02 → 0.04) to penalise unnecessary actions and reduce hovering duration"
+    ],
+    "must_preserve": [
+      "The general structure of dense progress and stability shaping (approach_region, approach_progress, stability, landing_quality)",
+      "The one‑time terminal event rules (safe_contact_once, stable_landing_once)",
+      "Semantic role assignments for future attribution"
+    ],
+    "must_avoid": [
+      "Making the terminal bonus too large (>250) in a single edit, which could promote unstable bounce‑and‑land exploits",
+      "Removing all dense stability rewards, which would make the sparse signal too difficult to learn"
+    ],
+    "expected_effect": "Stable landing rate should increase from 0% toward a more reliable value; average episode length should decrease; the dominant reward contribution will shift from r_landing_quality toward the terminal bonus; contact toggles should reduce.",
+    "risk_analysis": "If r_landing_quality is reduced too aggressively, the agent may lose stabilisation during descent and fail to reach the pad. If the terminal bonus becomes excessively large, the agent might learn an unstable landing that just satisfies the 5‑step stable condition before crashing. A moderate coupled adjustment with a small energy penalty increase is a conservative next step that balances these risks."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The package removes all dense stability components (r_landing_quality, r_stability) without any replacement shaping",
+      "The terminal bonus is increased beyond 300 in one step",
+      "The package introduces a new dense reward that can be trivially exploited (e.g., constant reward for being in landing region)",
+      "The package reduces r_landing_quality weight by less than factor 0.7 (i.e., weak response given the evidence)"
+    ],
+    "package_should_be_accepted_if": [
+      "It reduces r_landing_quality weight by factor 0.5 (to 1.0) or lower",
+      "It increases r_stable_landing_once weight to at least 150",
+      "It optionally increases r_energy weight moderately (e.g., 0.03–0.05)",
+      "It keeps the editing package atomic and does not split the dense/terminal adjustment"
+    ],
+    "safety_notes": [
+      "Test the package in a new short training run to confirm that stable landing rate improves without introducing new exploits",
+      "Monitor whether the agent maintains a stable posture for the full 5‑step condition without excessive bouncing",
+      "If the episode length does not decrease, consider a larger energy penalty in subsequent iterations"
+    ]
+  }
+}
