@@ -73,12 +73,34 @@ class BehaviorRiskAuditTool:
         block_medium = bool(config.get("block_medium", False))
         medium_budget = int(config.get("medium_risk_budget_when_weak_success", 0))
 
+        # ============================================================
+        # Deadlock guard
+        # ============================================================
+        #
+        # In sparse-success tasks such as LunarLander, early success_evidence
+        # is often 0. If every medium semantic-role risk is blocked under
+        # weak_success, the reward search can deadlock:
+        #
+        #   weak success -> terminal/guidance edit needed -> medium risk
+        #   -> audit failure -> repair failure -> continue_training
+        #   -> schema unchanged -> weak success remains
+        #
+        # Policy:
+        #   - high risk is still blocked;
+        #   - explicit block_medium still blocks medium risk;
+        #   - weak-success medium risks are warnings by default, unless
+        #     block_medium_under_weak_success is explicitly enabled.
+        #
+        block_medium_under_weak_success = bool(
+            config.get("block_medium_under_weak_success", False)
+        )
+
         audit_pass = True
         if high_count > 0:
             audit_pass = False
         elif block_medium and medium_count > 0:
             audit_pass = False
-        elif weak_success and medium_count > medium_budget:
+        elif block_medium_under_weak_success and weak_success and medium_count > medium_budget:
             audit_pass = False
 
         return {
@@ -95,8 +117,18 @@ class BehaviorRiskAuditTool:
             "behavior_evidence": evidence,
             "attribution_evidence": attribution,
             "thresholds": thresholds,
+            "audit_policy": {
+                "block_medium": block_medium,
+                "medium_risk_budget_when_weak_success": medium_budget,
+                "block_medium_under_weak_success": block_medium_under_weak_success,
+            },
             "risks": risks,
-            "repair_summary": cls._repair_summary(risks, weak_success, medium_budget),
+            "repair_summary": cls._repair_summary(
+                risks,
+                weak_success,
+                medium_budget,
+                block_medium_under_weak_success,
+            ),
         }
 
     # ============================================================
@@ -571,11 +603,21 @@ class BehaviorRiskAuditTool:
         return out
 
     @staticmethod
-    def _repair_summary(risks: List[Dict[str, Any]], weak_success: bool, medium_budget: int) -> str:
+    def _repair_summary(
+        risks: List[Dict[str, Any]],
+        weak_success: bool,
+        medium_budget: int,
+        block_medium_under_weak_success: bool = True,
+    ) -> str:
         if not risks:
             return "No role-level attribution risk detected."
         if any(r.get("severity") == "high" for r in risks):
             return "High role-level attribution risk detected; ask RepairAgent to reduce aggressive dense/terminal role changes."
-        if weak_success and sum(1 for r in risks if r.get("severity") == "medium") > medium_budget:
-            return "Multiple medium risks under weak success; repair or continue_training is safer than direct execution."
+
+        medium_count = sum(1 for r in risks if r.get("severity") == "medium")
+        if weak_success and medium_count > medium_budget:
+            if block_medium_under_weak_success:
+                return "Multiple medium risks under weak success; repair or continue_training is safer than direct execution."
+            return "Medium risks under weak success are recorded as warnings by relaxed audit policy; high-risk edits remain blocked."
+
         return "Medium role-level risk detected; ask RepairAgent to justify or soften the edit."
