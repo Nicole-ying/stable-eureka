@@ -1,0 +1,114 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "50% success rate over 6 evaluation episodes, with all successful landings triggering terminal rewards.",
+      "Unstable contact behaviour persists (contact toggles mean 11.2, max 23) without repeated reward exploitation.",
+      "Dense r_landing_quality (ratio 0.407) and r_stability (ratio 0.271) dominate episode reward, while terminal bonus of 80 is smaller than the combined dense total.",
+      "Terminal event requires 5 consecutive stable steps; episodes that fail to land likely miss this due to contact toggling.",
+      "r_approach_progress, r_landing_region_entry_once, r_safe_contact_once all trigger as expected; no evidence of reward hacking."
+    ],
+    "likely_true_failures": [
+      "Shaping–goal mismatch: dense stability/quality rewards provide enough score without requiring successful stable landing, causing the policy to stop improving after achieving partial landings.",
+      "Task failure due to insufficient terminal incentive relative to dense rewards that can be farmed during unstable ground contact."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_landing_quality and r_stability reward posture and contact quality even when legs are toggling, making a rough landing with a high step count profitable without achieving the 5‑step stable condition.",
+      "Current terminal bonus (80) is not large enough to dominate the episodic accumulation of dense quality/stability rewards, failing to pull the agent toward consistent stable landings.",
+      "The dense stability rewards are triggered on every step, so a policy that oscillates near the pad can accumulate high total density, weakening the signal toward the terminal goal."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.8
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "The lesson successfully addressed a similar shaping–goal mismatch by disabling a dense region reward and pairing an increased terminal bonus with a one‑time entry event. The current mismatch with dense stability/quality rewards mirrors that scenario. Applicability is high."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Do not apply a solo decrease on r_landing_quality or r_stability without an accompanying increase in the terminal success bonus.",
+      "Do not add any new dense rewards that could pay during unstable contact."
+    ],
+    "recommended_actions": [
+      "Apply a coupled rebalancing: reduce the weight of r_landing_quality and r_stability drastically, and simultaneously increase the weight of r_stable_landing_once by a factor of 3 to make the terminal success dominant.",
+      "Keep r_approach_progress and r_landing_region_entry_once unchanged to preserve the approach gradient."
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The dense r_landing_quality and r_stability components pay continuously even during unstable contact, creating a shaping–goal mismatch that keeps the agent at a 50% success plateau. Reducing their weights by a factor of 10 (to 0.2 and 0.1, respectively) renders them negligible compared to the terminal bonus while not removing all stability guidance. Increasing r_stable_landing_once from 80 to 240 makes one clean landing worth more than an entire episode of dense accumulation from rough landings (theoretical max ~150). These changes must be applied together to shift the agent’s focus toward achieving the stable landing condition without losing the approach signal provided by r_approach_progress and r_landing_region_entry_once.",
+    "expected_effect": "Episode reward mean will drop initially as dense payouts during rough landings decrease. The success/stable‑landing rate should rise as the terminal bonus becomes the dominant incentive. Training may briefly destabilise during the transition.",
+    "risk_analysis": "If the terminal condition remains too difficult to trigger for most episodes after the dense rewards are reduced, the agent could lose approach motivation and stop landing entirely. This is mitigated by the existing r_approach_progress and r_landing_region_entry_once which guide approach independently. Post-edit evaluation should confirm that the terminal bonus still triggers in at least some rollouts.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.1
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_stability",
+        "factor": 0.1
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 3.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing: disabling a dense component that caused shaping mismatch and increasing the terminal landing bonus succeeded in moving the agent from loitering to landing in a previous iteration."
+    ],
+    "what_failed": [],
+    "avoid_next": [
+      "Solo decrease_weight without a paired increase in the terminal success bonus.",
+      "Adding new dense rewards that pay during unstable contact."
+    ],
+    "recommend_next": [
+      "When dense rewards dominate and prevent terminal success, apply a coupled package that reduces those dense rewards drastically and raises the terminal bonus to make it the highest single reward in an episode."
+    ],
+    "applicability_notes": "The lesson from iter_001_to_002 applies directly; the current mismatch with stability/quality dense rewards follows the same pattern."
+  },
+  "diagnosis": "Shaping–goal mismatch due to dense r_landing_quality and r_stability paying during unstable contact, keeping success rate at 50%. A coupled rebalancing that drastically reduces these dense weights and triples the terminal stable landing bonus is required.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.1
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.1
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 3.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

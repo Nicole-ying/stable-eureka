@@ -1,0 +1,118 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean 2593, std 1524, entirely from dense components; terminal events never paid.",
+      "Dominant dense component: r_approach_region (ratio 0.404), followed by r_landing_quality (0.385) and r_stability (0.207).",
+      "r_approach_progress almost zero (mean 0.0019, trigger rate 0.14).",
+      "Landing region toggled 9 times per episode; contact toggles max 581; episode length ~757 steps.",
+      "Success/stable_landing/safe_contact rates all 0%; no landing achieved.",
+      "Shaping_goal_mismatch and repeated_event_exploitation flags active.",
+      "Unstable contact behavior evident."
+    ],
+    "likely_true_failures": [
+      "Reward hacking: agent loiters near pad, repeatedly triggering dense approach/stability rewards without landing.",
+      "Shaping–goal mismatch: dense rewards for proximity do not lead to terminal completion.",
+      "Unstable contact behavior: legs toggling indicates no clean landing, likely due to hovering/bouncing."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_approach_region pays continuous dense reward for being in the landing region, making loitering profitable.",
+      "Terminal bonuses (40 and 10) are insufficient relative to total accumulable dense reward, so agent ignores them.",
+      "Dense stability and landing quality may reward partial upright posture on the ground or while hovering.",
+      "Progress delta component too weak to overcome station-keeping exploitation."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "rationale": "Disabling the continuous r_approach_region removes the loitering exploit while adding a one‑time entry event preserves the approach gradient. Boosting the terminal landing bonus to 200 makes successful landing strongly dominate any remaining dense accumulation, shifting the agent from loitering to landing. The changes must be applied as an atomic package to avoid leaving the agent with no useful guidance.",
+    "expected_effect": "Episode reward mean will drop initially as loitering payouts disappear. Success/landing rate should rise if the terminal bonus becomes reachable and dominant. Training may temporarily destabilize as the policy transitions from hovering to landing.",
+    "risk_analysis": "If the terminal condition remains unreachable, the agent may stop approaching the pad without the dense region reward, and the policy could collapse. However, the one‑time entry bonus and existing progress component provide a safety net to guide initial approach.",
+    "edit_plan": [
+      {
+        "operator": "disable_component",
+        "target": "r_approach_region"
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 5
+      },
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "r_landing_region_entry_once",
+          "type": "event_bonus",
+          "weight": 50,
+          "condition": {
+            "landing_region": true,
+            "duration_steps": 1
+          },
+          "one_time": true,
+          "enabled": true,
+          "semantic_role": "approach_progress",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "progress"
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Agent exploits dense region reward to loiter without landing. Disabling the continuous reward and pairing with a one‑time entry bonus plus a much larger terminal landing bonus should reposition the policy toward successful landing.",
+  "edit_plan": [
+    {
+      "operator": "disable_component",
+      "target": "r_approach_region"
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 5
+    },
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_landing_region_entry_once",
+        "type": "event_bonus",
+        "weight": 50,
+        "condition": {
+          "landing_region": true,
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "approach_progress",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "progress"
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 1
+}

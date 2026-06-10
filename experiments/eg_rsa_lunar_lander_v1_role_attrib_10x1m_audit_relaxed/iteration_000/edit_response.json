@@ -1,0 +1,178 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Zero success rate in 6 episodes (0%), no terminal bonuses paid.",
+      "High average episode reward (2813) despite no successful landing.",
+      "Very high contact toggle counts: landing_region toggled 13 times, left_contact 7, both_contact 7, max toggles 483.",
+      "Dense shaping components dominate: r_approach_region ratio 0.419, r_landing_quality ratio 0.349, while r_approach_progress is negligible.",
+      "r_safe_contact_once and r_stable_landing_once have trigger rate 0.0 and sum 0.0.",
+      "Episode length mean 869, std 293, indicating prolonged survival without termination.",
+      "Unstable contact behavior flag is true, repeated_event_exploitation and shaping_goal_mismatch flags are true in diagnostics."
+    ],
+    "likely_true_failures": [
+      "Reward hacking via bouncing: agent cycles near pad to repeatedly earn dense rewards without stably landing.",
+      "Shaping rewards are misaligned with true goal, creating a local optimum where hovering near pad is more profitable than completing the task."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "Shaping rewards (r_approach_region, r_landing_quality) are too high relative to terminal bonus, making endurance and bouncing more rewarding than terminal success.",
+      "Terminal reward conditions (safe_contact 2 steps, stable_landing 5 steps) are too strict given the agent's current skills, making them unattainable with the existing shaping.",
+      "No penalty for unstable contact toggling allows the agent to exploit leg contacts without progressing to a full landing."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.1
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The reward hacking is caused by dense shaping components dominating over the terminal bonus. The reflection's coupled rebalancing strategy is followed: (1) Increase terminal reward weight significantly (factor 3, from 40 to 120) and reduce its duration requirement (from 5 to 3 steps) to make stable landing clearly the highest-value outcome and more attainable. (2) Decrease weights of dominant dense components (r_approach_region to 0.33x, r_landing_quality to 0.5x, r_stability to 0.5x) to reduce exploitation incentive while preserving minimal guidance. (3) No explicit anti-bounce penalty is added because no suitable metric exists; the rebalanced reward landscape alone is expected to eliminate bouncing by making terminal success dominant. All edits must be applied atomically to avoid intermediate states where shaping is removed without terminal support.",
+    "expected_effect": "Agent will learn to land stably rather than bounce. Episode length should decrease as episodes terminate properly. Initial total reward may dip as the agent shifts from bouncing to landing, but long-term success rate should rise.",
+    "risk_analysis": "If terminal reward is still not high enough relative to remaining dense (now max ~0.5*ep_steps for each of two components), the agent could continue to exploit. However, with reduced dense and a larger, earlier terminal bonus, the optimal strategy shifts decisively toward landing. Reducing stability duration to 3 steps may risk false triggers if the lander briefly touches; the existing `stable_landing_condition` likely requires both legs and stability, so 3 steps should be safe. No anti-bounce penalty is added, which could allow lingering bouncing if the rebalancing is insufficient, but this is the cleanest approach given operator limitations.",
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 3.0
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "r_stable_landing_once",
+        "duration_steps": 3
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_approach_region",
+        "factor": 0.333
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_landing_quality",
+        "factor": 0.5
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_stability",
+        "factor": 0.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": "No prior lessons retrieved; this plan is derived entirely from current diagnostics and reflection strategy."
+  },
+  "diagnosis": "Reward hacking via bouncing: dense shaping dominates terminal bonus. Atomic rebalancing required.",
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 3.0
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "r_stable_landing_once",
+      "duration_steps": 3
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_approach_region",
+      "factor": 0.333
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.5
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "An intermediate reward for reaching the landing zone with high stability (landing_region_score > 0.8) is missing. The existing dense shaping rewards encourage approaching and touching down, but the agent exploits them by bouncing without ever satisfying the strict stable‑landing condition. A one‑time metric‑threshold bonus bridges this gap.",
+      "why_local_edit_is_insufficient": "Local edits (weight scaling, duration reduction) would still leave the agent dependent on the terminal event, which is too sparse to guide learning from a bouncing policy. Increasing weights of existing components could exacerbate exploitation. A new, non‑exploitable structural signal is needed.",
+      "memory_constraints": [],
+      "safety_constraints": [
+        "Must use only available events and metrics.",
+        "Must prevent repeated exploitation – use a one‑time metric‑threshold bonus that fires only once per episode when the threshold is first crossed."
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a metric_threshold_bonus on landing_region_score ≥ 0.8 rewards the agent once it achieves a stable posture inside the landing pad. This provides a non‑repeatable, achievable sub‑goal that guides toward the terminal stable landing. The existing shaping signals remain, but the new sparse bonus steers optimization away from bouncing.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_stable_entry_once",
+            "type": "metric_threshold_bonus",
+            "weight": 10.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_region_score",
+              "threshold": 0.8,
+              "direction": "ge"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Added a one‑time metric threshold bonus for landing_region_score ≥ 0.8 to create a stable intermediate goal and reduce bouncing exploitation.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_stable_entry_once",
+          "type": "metric_threshold_bonus",
+          "weight": 10.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_region_score",
+            "threshold": 0.8,
+            "direction": "ge"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

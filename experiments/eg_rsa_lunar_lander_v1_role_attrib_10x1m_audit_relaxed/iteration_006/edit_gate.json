@@ -1,0 +1,55 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_landing_quality",
+      "factor": 0.1
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.1
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 3.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Terminal target r_stable_landing_once has low step evidence but episode semantic evidence is present; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing dense stability/quality rewards alone could remove the only positive signal during failed landings and cause the agent to retreat from approaching the pad. Increasing the terminal bonus alone may not overcome the high dense rewards that are easily obtained by unstable contacts. The changes must be applied together to shift the agent’s focus from accumulating dense points during rough landings to achieving the clean terminal landing condition.",
+      "max_reasonable_edits": 1,
+      "editor_constraints": [
+        "Significantly reduce the per‑step contribution of r_landing_quality and r_stability when the legs are toggling or when the lander is not in stable ground contact (e.g., gate them on 'both_contact' or a stability flag).",
+        "Alternatively, lower their weights globally by at least a factor of 2–4 so that the dense sum does not rival the terminal bonus.",
+        "Increase the weight of r_stable_landing_once by a factor of 2–3 (to at least 160–240) so that a single clean landing dominates any possible dense accumulation from an entire episode.",
+        "Maintain the existing r_approach_progress and r_landing_region_entry_once to preserve the approach gradient.",
+        "Do not add any new per‑step penalties that could discourage exploration or initial descents."
+      ],
+      "must_preserve": [
+        "A clear gradient toward the landing pad (r_approach_progress and r_landing_region_entry_once).",
+        "A large terminal success bonus that makes a clean stable landing the most rewarding outcome by a wide margin.",
+        "Some stability incentive that only pays when the lander has safely settled on the ground, not during hovering or bouncing."
+      ],
+      "must_avoid": [
+        "Dense stability/quality rewards that pay during unstable leg toggling; they currently mask the need for a true stable landing.",
+        "Making the terminal stable landing condition stricter (e.g., increasing duration_steps) without evidence that it is too easy.",
+        "Removing all dense guidance—the agent still needs a signal that moving toward the pad is good."
+      ],
+      "expected_effect": "Episode reward mean will drop initially as dense payouts during rough landings decrease. The success/stable‑landing rate should rise as the terminal bonus becomes the dominant incentive, pulling the policy toward clean 5‑step stable landings. Training may briefly destabilise as the agent adjusts from the current local optimum.",
+      "risk_analysis": "If the terminal condition remains too difficult to trigger for most episodes after the dense rewards are reduced, the agent could lose all approach motivation and stop landing entirely. This is mitigated by the existing r_approach_progress and r_landing_region_entry_once, which guide approach independently. Nonetheless, the evaluation after the edit should confirm that the terminal bonus is eventually triggered in at least some rollouts before scaling training."
+    }
+  }
+}

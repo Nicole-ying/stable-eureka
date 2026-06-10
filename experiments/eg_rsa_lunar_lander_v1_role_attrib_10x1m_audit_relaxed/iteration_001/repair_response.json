@@ -1,0 +1,60 @@
+{
+  "repair_analysis": {
+    "risk_source": "BehaviorRiskAudit flagged high severity: terminal_before_stability because terminal_success increased 5× while success/stability evidence is zero.",
+    "role_level_interpretation": "The original plan removed the dominant dense guidance (r_approach_region) and pushed a large terminal boost, risking that the agent loses all approach guidance before it can ever reach the terminal state. The repair instruction asks to reduce the terminal change or preserve/strengthen dense_guidance and stability_quality.",
+    "what_to_keep": "Remove the stationary region exploitation by replacing r_approach_region with a non‑exploitable approach incentive. Keep the intent to shift the agent from loitering to landing, but with moderated terminal strength and strengthened progress guidance.",
+    "what_to_modify": "Reduce the terminal increase factor from 5× to 2× (from 40 to 80), which falls below the large‑increase threshold. Strengthen dense guidance by boosting the existing r_approach_progress (delta) component, which rewards forward progress without rewarding loitering. Add a one‑time landing‑region entry event to provide a clear approach bonus without ongoing exploitation.",
+    "what_to_remove": "The dense r_approach_region component is still removed to eliminate the loitering exploit, but it is replaced by the strengthened delta progress and the one‑time event, preserving overall approach guidance.",
+    "why_repaired_plan_is_safer": "The terminal increase is now moderate (factor 2), avoiding the high‑severity terminal_before_stability risk. Dense guidance is not only preserved but strengthened via an increased r_approach_progress weight, ensuring the agent continues to receive frequent progress signals. The exploitable stationary reward is replaced by a one‑time entry bonus that cannot be farmed repeatedly, and the delta progress reward naturally punishes toggling because it only pays for improvements in the approach score. Together these changes make the plan safer while still addressing the loitering hack."
+  },
+  "diagnosis": "Agent loiters near the pad, exploiting continuous r_approach_region reward without ever landing. The repair converts the stationary dense reward into a progress‑based delta reward and a one‑time entry event, while moderately increasing the terminal landing bonus so that successful landing clearly dominates any remaining dense accumulation.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 4,
+    "rationale": "Disabling the exploitable r_approach_region and strengthening r_approach_progress keeps dense guidance healthy. Adding a one‑time region‑entry event provides a clean approach signal, and increasing the terminal landing bonus by a moderate factor (×2) makes landing the dominant objective without risking the policy collapse that would come from too large a terminal change. All changes are applied together to avoid leaving the agent without guidance."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "disable_component",
+      "target": "r_approach_region"
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_approach_progress",
+      "factor": 2.5
+    },
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_landing_region_entry_once",
+        "type": "event_bonus",
+        "weight": 50,
+        "condition": {
+          "landing_region": true,
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "approach_progress",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "progress"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 4
+}

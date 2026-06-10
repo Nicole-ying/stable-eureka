@@ -1,0 +1,87 @@
+{
+  "reflection_summary": "Agent has progressed from loitering to partial landings (50% success) but exhibits unstable contact behaviour. Dense r_landing_quality and r_stability rewards still dominate the episode return relative to the terminal success bonus, creating a shaping–goal mismatch that keeps the policy at a suboptimal plateau. The dense rewards pay during rough landings, reducing the incentive to achieve the clean, stable landing required for the terminal event.",
+  "failure_assessment": {
+    "observed_facts": [
+      "50% success rate over 6 evaluation episodes, with all successful landings triggering terminal rewards.",
+      "Unstable contact behaviour persists (contact toggles mean 11.2, max 23) without repeated reward exploitation.",
+      "Dense r_landing_quality (ratio 0.407) and r_stability (ratio 0.271) dominate episode reward, while terminal bonus of 80 is smaller than the combined dense total.",
+      "Terminal event requires 5 consecutive stable steps; episodes that fail to land likely miss this due to contact toggling.",
+      "r_approach_progress, r_landing_region_entry_once, r_safe_contact_once all trigger as expected; no evidence of reward hacking."
+    ],
+    "likely_true_failures": [
+      "Shaping–goal mismatch: dense stability/quality rewards provide enough score without requiring successful stable landing, causing the policy to stop improving after achieving partial landings.",
+      "Task failure due to insufficient terminal incentive relative to dense rewards that can be farmed during unstable ground contact."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_landing_quality and r_stability reward posture and contact quality even when legs are toggling, making a rough landing with a high step count profitable without achieving the 5‑step stable condition.",
+      "Current terminal bonus (80) is not large enough to dominate the episodic accumulation of dense quality/stability rewards, failing to pull the agent toward consistent stable landings.",
+      "The dense stability rewards are triggered on every step, so a policy that oscillates near the pad can accumulate high total density, weakening the signal toward the terminal goal."
+    ],
+    "failure_kind": "shaping_goal_mismatch",
+    "confidence": 0.8
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "summary": "Disabling a dense region reward and adding a one‑time entry event with an increased terminal bonus successfully moved the agent from loitering to landing (83% success). The principle of pairing reduced dense exploitation rewards with a dominant terminal incentive is directly applicable here.",
+        "applicability": "Current failure mirrors the earlier shaping–goal mismatch, now with stability/quality dense rewards instead of the approach region reward."
+      }
+    ],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Do not add new dense rewards that are triggered while the agent is in unstable contact; this would amplify the current mismatch.",
+      "Do not increase the terminal bonus without first constraining the dense quality/stability rewards, as the terminal reward may still be unreachable for the majority of episodes and the dense rewards will continue to dominate behaviour."
+    ],
+    "recommended_actions": [
+      "Apply a coupled rebalancing: reduce the weight of r_landing_quality and r_stability, especially during periods when both legs are not firmly planted, and increase the terminal bonus for stable landing.",
+      "Consider restructuring dense stability/quality rewards to be gated on both legs being in continuous contact (or on the `stable_both_contact` event) so they only pay during truly stable ground phases."
+    ],
+    "memory_confidence": 0.85
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Decreasing dense stability/quality rewards alone could remove the only positive signal during failed landings and cause the agent to retreat from approaching the pad. Increasing the terminal bonus alone may not overcome the high dense rewards that are easily obtained by unstable contacts. The changes must be applied together to shift the agent’s focus from accumulating dense points during rough landings to achieving the clean terminal landing condition.",
+    "max_reasonable_edits": 1,
+    "editor_constraints": [
+      "Significantly reduce the per‑step contribution of r_landing_quality and r_stability when the legs are toggling or when the lander is not in stable ground contact (e.g., gate them on 'both_contact' or a stability flag).",
+      "Alternatively, lower their weights globally by at least a factor of 2–4 so that the dense sum does not rival the terminal bonus.",
+      "Increase the weight of r_stable_landing_once by a factor of 2–3 (to at least 160–240) so that a single clean landing dominates any possible dense accumulation from an entire episode.",
+      "Maintain the existing r_approach_progress and r_landing_region_entry_once to preserve the approach gradient.",
+      "Do not add any new per‑step penalties that could discourage exploration or initial descents."
+    ],
+    "must_preserve": [
+      "A clear gradient toward the landing pad (r_approach_progress and r_landing_region_entry_once).",
+      "A large terminal success bonus that makes a clean stable landing the most rewarding outcome by a wide margin.",
+      "Some stability incentive that only pays when the lander has safely settled on the ground, not during hovering or bouncing."
+    ],
+    "must_avoid": [
+      "Dense stability/quality rewards that pay during unstable leg toggling; they currently mask the need for a true stable landing.",
+      "Making the terminal stable landing condition stricter (e.g., increasing duration_steps) without evidence that it is too easy.",
+      "Removing all dense guidance—the agent still needs a signal that moving toward the pad is good."
+    ],
+    "expected_effect": "Episode reward mean will drop initially as dense payouts during rough landings decrease. The success/stable‑landing rate should rise as the terminal bonus becomes the dominant incentive, pulling the policy toward clean 5‑step stable landings. Training may briefly destabilise as the agent adjusts from the current local optimum.",
+    "risk_analysis": "If the terminal condition remains too difficult to trigger for most episodes after the dense rewards are reduced, the agent could lose all approach motivation and stop landing entirely. This is mitigated by the existing r_approach_progress and r_landing_region_entry_once, which guide approach independently. Nonetheless, the evaluation after the edit should confirm that the terminal bonus is eventually triggered in at least some rollouts before scaling training."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The terminal bonus is increased without any reduction in the dense quality/stability rewards, leaving the agent able to ignore the terminal goal while still accumulating high returns.",
+      "The dense stability/quality rewards are disabled entirely without introducing a gated or event‑based alternative, obliterating any shape towards a stable ground phase.",
+      "The edit adds penalties for leg contact or for being near the pad, which could deter the agent from approaching the landing zone at all."
+    ],
+    "package_should_be_accepted_if": [
+      "It pairs a substantial reduction (≥2× decrease) or gating of r_landing_quality and r_stability with a ≥2× increase of r_stable_landing_once, so that one clean landing outweighs entire episodes of rough bouncing.",
+      "It transforms r_landing_quality into a reward that only pays when both legs are in firm contact (e.g., using a condition on both_contact) and the lander is not toggling.",
+      "It preserves the approach progress signals (r_approach_progress, r_landing_region_entry_once) unchanged."
+    ],
+    "safety_notes": [
+      "After applying the edit, monitor a few training episodes to verify that the terminal event still triggers before scaling; if it disappears completely, the stable‑landing condition may be too strict relative to the new policy exploration.",
+      "Contact toggle statistics should drop substantially along with unstable_contact_behavior if the edit is effective; if they remain high, the gating of dense rewards may need to be more aggressive.",
+      "If r_safe_contact_once remains unused in many successful landings, consider merging its function into the stable landing event to simplify the reward space."
+    ]
+  }
+}

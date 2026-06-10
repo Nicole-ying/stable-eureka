@@ -1,0 +1,64 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "An intermediate reward for reaching the landing zone with high stability (landing_region_score > 0.8) is missing. The existing dense shaping rewards encourage approaching and touching down, but the agent exploits them by bouncing without ever satisfying the strict stable‑landing condition. A one‑time metric‑threshold bonus bridges this gap.",
+    "why_local_edit_is_insufficient": "Local edits (weight scaling, duration reduction) would still leave the agent dependent on the terminal event, which is too sparse to guide learning from a bouncing policy. Increasing weights of existing components could exacerbate exploitation. A new, non‑exploitable structural signal is needed.",
+    "memory_constraints": [],
+    "safety_constraints": [
+      "Must use only available events and metrics.",
+      "Must prevent repeated exploitation – use a one‑time metric‑threshold bonus that fires only once per episode when the threshold is first crossed."
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a metric_threshold_bonus on landing_region_score ≥ 0.8 rewards the agent once it achieves a stable posture inside the landing pad. This provides a non‑repeatable, achievable sub‑goal that guides toward the terminal stable landing. The existing shaping signals remain, but the new sparse bonus steers optimization away from bouncing.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_stable_entry_once",
+          "type": "metric_threshold_bonus",
+          "weight": 10.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_region_score",
+            "threshold": 0.8,
+            "direction": "ge"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Added a one‑time metric threshold bonus for landing_region_score ≥ 0.8 to create a stable intermediate goal and reduce bouncing exploitation.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_stable_entry_once",
+        "type": "metric_threshold_bonus",
+        "weight": 10.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_region_score",
+          "threshold": 0.8,
+          "direction": "ge"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ]
+}

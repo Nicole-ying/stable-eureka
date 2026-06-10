@@ -1,0 +1,59 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_stable_entry_once",
+        "type": "metric_threshold_bonus",
+        "weight": 10.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_region_score",
+          "threshold": 0.8,
+          "direction": "ge"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 1 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing dense shaping rewards without simultaneously making terminal rewards more attainable could lead to loss of approach behavior; the two must be changed together. Adding anti-bounce penalties alone might not solve the underlying incentive mismatch.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Must significantly increase the weight or accessibility of terminal success reward (r_stable_landing_once) so that the payoff for a single stable landing exceeds many cycles of bouncing.",
+        "Must reduce the weights of the dominant dense shaping components (r_approach_region, r_landing_quality) to diminish the exploitation incentive.",
+        "Should introduce a penalty for excessive leg contact toggling to directly punish the bouncing pattern (e.g., a step penalty when contact state changes frequently, or a small negative reward on each new contact after the first).",
+        "Do not remove all dense shaping; they are needed for early guidance, but their influence must be capped.",
+        "Ensure the terminal reward condition remains robust (e.g., require both legs on ground and a short stability period) but not so long that it is unreachable.",
+        "If adding an anti-bounce penalty, ensure it does not penalize a single normal landing process (e.g., a gentle contact then settling)."
+      ],
+      "must_preserve": [
+        "General structure of shaping components plus terminal bonus.",
+        "r_stability reward as it may support smooth landings even if reduced.",
+        "The one-time nature of terminal and safety bonuses to prevent repeated exploitation."
+      ],
+      "must_avoid": [
+        "Simply increasing all dense rewards across the board.",
+        "Introducing new dense signals that could be similarly gamed (e.g., another region-based reward).",
+        "Making the terminal bonus trigger without any contact or stability requirement (could cause false positives)."
+      ],
+      "expected_effect": "Agent should learn to actually land stably rather than bounce, leading to higher success rate and lower total dense reward accumulation. Episode length should decrease as episodes terminate properly. Initial total reward may drop before recovering as the agent refocuses on terminal success.",
+      "risk_analysis": "If the terminal reward is not made sufficiently attainable, the agent may stop approaching the pad entirely, failing to explore the region. Overly harsh anti-bounce penalties could discourage any leg contact, slowing learning. The rebalancing must be calibrated; a single atomic package that fails to adjust all levers could leave a new loophole."
+    }
+  }
+}

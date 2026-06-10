@@ -1,0 +1,71 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "disable_component",
+      "target": "r_approach_region"
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_approach_progress",
+      "factor": 2.5
+    },
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_landing_region_entry_once",
+        "type": "event_bonus",
+        "weight": 50,
+        "condition": {
+          "landing_region": true,
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "approach_progress",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "progress"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_stable_landing_once: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 4 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 4,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing dense rewards alone would destroy the approach gradient; increasing terminal rewards alone may leave them unreachable. The changes must be applied together to shift the agent from loitering to landing without losing all guidance.",
+      "max_reasonable_edits": 1,
+      "editor_constraints": [
+        "Simultaneously reduce per‑step reward for stationary or oscillating presence in the landing region, and make terminal landing rewards large enough to dominate potential remaining dense accumulation.",
+        "Convert r_approach_region from a dense metric_value to a progress‑based (e.g., metric_delta) or event‑based reward, or severely cap its total per‑episode contribution.",
+        "Ensure terminal conditions (stable_landing, safe_contact) are achievable within typical episode lengths; relax duration_steps if needed.",
+        "Do not add step penalties that punish normal flight or exploration.",
+        "Maintain some stability incentive, but only when the lander is actually descending/landing, not just hovering."
+      ],
+      "must_preserve": [
+        "A clear gradient toward the landing pad (e.g., via approach progress or an approach event bonus).",
+        "An incentive to achieve a successful landing that is much larger than any dense reward farmable by loitering.",
+        "Stability guidance that helps the lander stay upright once on the ground, not during prolonged hovering."
+      ],
+      "must_avoid": [
+        "Dense rewards that pay while the agent stays inside the landing region without making new progress.",
+        "Terminal bonuses so large that they cause instability or catastrophic forgetting of approach behavior.",
+        "Any penalty that would deter the agent from initially approaching the pad."
+      ],
+      "expected_effect": "Episode reward mean will drop initially as loitering payouts decrease. Success/landing rate should rise if terminal rewards become reachable and dominant. Training may temporarily destabilize as the agent transitions from loitering policy to landing policy.",
+      "risk_analysis": "If terminal rewards remain unreachable (e.g., conditions too strict) after dense rewards are reduced, the agent will stop approaching the pad and the policy may collapse. The rebalancing must be paired with a check that the terminal condition is triggered at least once in exploratory rollouts."
+    }
+  }
+}

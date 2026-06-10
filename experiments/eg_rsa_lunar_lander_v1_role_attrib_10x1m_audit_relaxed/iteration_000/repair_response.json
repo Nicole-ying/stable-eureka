@@ -1,0 +1,45 @@
+{
+  "repair_analysis": {
+    "risk_source": "scale_risk",
+    "role_level_interpretation": "No role‑level risk was flagged by BehaviorRiskAudit; the sole rejection was due to ScaleAudit estimating that the proposed metric_threshold_bonus component would contribute ~250× the terminal reward per episode, creating a severe scale imbalance.",
+    "what_to_keep": "The intent to create a non‑repeatable intermediate goal that rewards the lander when it first achieves a high landing‑region score, bridging the gap to terminal stable landing.",
+    "what_to_modify": "Instead of adding a dense metric_threshold_bonus component, which ScaleAudit interprets as per‑step and extremely large, add the same logic as a one‑time event rule. This preserves the guidance while keeping the total reward bounded by its weight.",
+    "what_to_remove": "The operator add_component targeting a metric_threshold_bonus.",
+    "why_repaired_plan_is_safer": "An event rule with one_time: true pays at most once per episode, so its contribution is exactly its weight (10.0) and cannot accumulate over steps. This eliminates the 250× terminal scale risk, while still providing a strong sparse incentive to reach a stable posture inside the landing pad."
+  },
+  "diagnosis": "Scale risk: add_component for dense metric_threshold_bonus would contribute 250× terminal. Repair by converting to a one‑time event rule.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "rationale": "Adding a one‑time event rule for landing_region_score ≥ 0.8 creates a safe intermediate goal that cannot be exploited by bouncing. It leaves existing dense shaping unchanged, avoiding disruption while addressing the scale risk that caused the previous rejection."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "r_stable_entry_once",
+        "type": "event_bonus",
+        "weight": 10.0,
+        "condition": {
+          "landing_region_score_ge": 0.8
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "progress"
+      }
+    }
+  ],
+  "plan_type": "single_edit",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 1
+}

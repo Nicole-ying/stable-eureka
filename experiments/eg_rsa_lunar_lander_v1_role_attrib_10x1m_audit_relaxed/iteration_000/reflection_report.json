@@ -1,0 +1,77 @@
+{
+  "reflection_summary": "The agent is reward hacking by repeatedly entering the landing region and gaining dense shaping rewards, leading to bouncing behavior and zero true landings. Terminal rewards are never triggered. The dominant dense rewards incentivize proximity to the pad but not stable contact. This is a clear reward hacking case.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Zero success rate in 6 episodes (0%), no terminal bonuses paid.",
+      "High average episode reward (2813) despite no successful landing.",
+      "Very high contact toggle counts: landing_region toggled 13 times, left_contact 7, both_contact 7, max toggles 483.",
+      "Dense shaping components dominate: r_approach_region ratio 0.419, r_landing_quality ratio 0.349, while r_approach_progress is negligible.",
+      "r_safe_contact_once and r_stable_landing_once have trigger rate 0.0 and sum 0.0.",
+      "Episode length mean 869, std 293, indicating prolonged survival without termination.",
+      "Unstable contact behavior flag is true, repeated_event_exploitation and shaping_goal_mismatch flags are true in diagnostics."
+    ],
+    "likely_true_failures": [
+      "Reward hacking via bouncing: agent cycles near pad to repeatedly earn dense rewards without stably landing.",
+      "Shaping rewards are misaligned with true goal, creating a local optimum where hovering near pad is more profitable than completing the task."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "Shaping rewards (r_approach_region, r_landing_quality) are too high relative to terminal bonus, making endurance and bouncing more rewarding than terminal success.",
+      "Terminal reward conditions (safe_contact 2 steps, stable_landing 5 steps) are too strict given the agent's current skills, making them unattainable with the existing shaping.",
+      "No penalty for unstable contact toggling allows the agent to exploit leg contacts without progressing to a full landing."
+    ],
+    "failure_kind": "reward_hack",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.1
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Reducing dense shaping rewards without simultaneously making terminal rewards more attainable could lead to loss of approach behavior; the two must be changed together. Adding anti-bounce penalties alone might not solve the underlying incentive mismatch.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Must significantly increase the weight or accessibility of terminal success reward (r_stable_landing_once) so that the payoff for a single stable landing exceeds many cycles of bouncing.",
+      "Must reduce the weights of the dominant dense shaping components (r_approach_region, r_landing_quality) to diminish the exploitation incentive.",
+      "Should introduce a penalty for excessive leg contact toggling to directly punish the bouncing pattern (e.g., a step penalty when contact state changes frequently, or a small negative reward on each new contact after the first).",
+      "Do not remove all dense shaping; they are needed for early guidance, but their influence must be capped.",
+      "Ensure the terminal reward condition remains robust (e.g., require both legs on ground and a short stability period) but not so long that it is unreachable.",
+      "If adding an anti-bounce penalty, ensure it does not penalize a single normal landing process (e.g., a gentle contact then settling)."
+    ],
+    "must_preserve": [
+      "General structure of shaping components plus terminal bonus.",
+      "r_stability reward as it may support smooth landings even if reduced.",
+      "The one-time nature of terminal and safety bonuses to prevent repeated exploitation."
+    ],
+    "must_avoid": [
+      "Simply increasing all dense rewards across the board.",
+      "Introducing new dense signals that could be similarly gamed (e.g., another region-based reward).",
+      "Making the terminal bonus trigger without any contact or stability requirement (could cause false positives)."
+    ],
+    "expected_effect": "Agent should learn to actually land stably rather than bounce, leading to higher success rate and lower total dense reward accumulation. Episode length should decrease as episodes terminate properly. Initial total reward may drop before recovering as the agent refocuses on terminal success.",
+    "risk_analysis": "If the terminal reward is not made sufficiently attainable, the agent may stop approaching the pad entirely, failing to explore the region. Overly harsh anti-bounce penalties could discourage any leg contact, slowing learning. The rebalancing must be calibrated; a single atomic package that fails to adjust all levers could leave a new loophole."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The edit fails to increase the terminal reward's likelihood or magnitude relative to dense rewards.",
+      "It adds new dense components without addressing the current bouncing exploitation.",
+      "It removes all dense shaping, leaving no guidance during early training."
+    ],
+    "package_should_be_accepted_if": [
+      "It reshapes the reward landscape so that stable landing is clearly the highest-value outcome.",
+      "It penalizes or prevents the repeated toggling of the landing region without terminating the episode.",
+      "It maintains a scaled-back version of approach and landing-quality shaping to assist exploration."
+    ],
+    "safety_notes": [
+      "Watch for a drastic drop in total reward that might indicate the agent has lost all progress; gradual change is preferable but one-shot edit is allowed.",
+      "Monitor if the anti-bounce penalty accidentally penalizes a correct gentle landing (e.g., a brief touch and settling); the condition should be based on excessive toggles, not a single contact."
+    ]
+  }
+}

@@ -11,6 +11,8 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{enumitem}
 \usepackage{caption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 
 % --- Metadata ---
 \title{From Reward Generation to Reward Search:\\Experience-Guided Schema Adaptation with Semantic Attribution and Risk-Aware Editing}
@@ -26,7 +28,7 @@
 % ABSTRACT (~150 words)
 % ============================================================
 \begin{abstract}
-LLM-assisted reward design has recently emerged as a powerful approach to reinforcement learning, but existing methods treat reward design as code generation with iterative refinement---the LLM emits free-form reward code, and scalar feedback drives the next iteration. We argue that reward design should instead be structured as experience-guided schema search: a versioned, componentized reward schema is maintained across iterations, policy behavior is attributed to semantic reward roles, past editing outcomes are stored as structured lessons, and every LLM-proposed edit is gated through risk audit with automatic rollback. We present EG-RSA and evaluate it on LunarLander-v3 through mechanism-verification case studies. An effective edit shifts the dominant reward role from dense guidance to terminal success, eliminating detected failure modes. A subsequent audit-induced deadlock reveals a fundamental tension: the same safety mechanism that blocks harmful edits can also suppress the exploration needed to escape low-success regimes. Relaxing the audit policy resolves the deadlock, motivating risk-budget mechanisms for safe reward search.
+LLM-assisted reward design has recently emerged as a promising way to reduce manual reward engineering in reinforcement learning. Existing methods show that large language models can generate and refine executable reward code from task descriptions and training feedback. However, reliable reward design often requires more than reward generation: a system must diagnose why a reward failed, remember which previous edits helped or hurt, connect policy behavior to reward components, and validate proposed edits under reward-hacking risk. We propose EG-RSA, an Experience-Guided Reward Schema Adaptation framework that formulates LLM-assisted reward design as history-aware reward schema search. EG-RSA represents rewards as structured schemas with semantic roles, attributes policy behavior to reward components, stores effective and regressive edits as outcome lessons, and constrains LLM modifications through auditable edit operators with risk-aware validation and rollback. We study EG-RSA on LunarLander-v3 as a mechanism-verification benchmark, analyzing effective edits, regression lessons, and the safety--exploration trade-off introduced by behavior risk audit.
 \end{abstract}
 
 % ============================================================
@@ -35,24 +37,22 @@ LLM-assisted reward design has recently emerged as a powerful approach to reinfo
 \section{Introduction}
 \label{sec:introduction}
 
-In reinforcement learning (RL), the reward function defines the optimization objective and directly shapes learned behavior \citep{sutton2018reinforcement}. Designing effective rewards, however, remains a central bottleneck: rewards must provide useful gradients, avoid unintended shortcuts, and stay aligned with the true task objective rather than merely correlated with it \citep{amodei2016concrete,pan2022effects}.
+Reinforcement learning (RL) has achieved strong results in sequential decision-making and control tasks, but its success remains highly dependent on the reward function that defines the learning objective \citep{sutton2018reinforcement}. Designing effective rewards is difficult: a reward must provide useful learning signals, encourage task completion, and remain aligned with the intended objective. Poorly specified rewards can lead to unintended behaviors, including reward hacking, excessive exploitation of dense shaping signals, or high proxy reward with poor true task performance \citep{amodei2016concrete,pan2022effects}.
 
-Recent work has shown that large language models (LLMs) can serve as effective reward designers. EUREKA demonstrates that LLMs can generate executable reward code and improve it through iterative in-context optimization \citep{ma2023eureka}. Text2Reward generates dense shaped rewards from language descriptions \citep{xie2023text2reward}. Auto MC-Reward combines a Reward Designer, Critic, and Trajectory Analyzer to refine rewards from collected trajectories \citep{li2023automcreward}. CARD proposes dynamic-feedback reward design with Trajectory Preference Evaluation \citep{sun2024card}. These methods establish LLMs as powerful reward design tools \citep{cao2024survey}.
+Recent work has explored large language models (LLMs) as automated reward designers. Eureka demonstrates that LLMs can generate executable reward code and improve it through iterative in-context optimization \citep{ma2023eureka}. Text2Reward generates dense reward functions from natural language task descriptions \citep{xie2023text2reward}. Auto MC-Reward uses trajectory analysis and reward critics to refine rewards in sparse-reward Minecraft tasks \citep{li2023automcreward}. CARD further studies dynamic feedback and trajectory preference evaluation for LLM-driven reward design \citep{sun2024card}. These methods show that LLMs can reduce the burden of manual reward engineering.
 
-These methods, however, share a common paradigm: they treat reward design as code generation with iterative refinement. The LLM emits free-form reward code; the code is trained and evaluated; the next iteration receives scalar or text feedback. This paradigm has structural limits. There is no persistent structured representation of the reward across iterations---each iteration generates code from scratch. There is no systematic diagnosis of \emph{why} a reward failed: scalar feedback signals that performance changed, but not which reward component drove the change. There is no memory of past editing outcomes---each iteration starts fresh, unable to learn from the system's own history of effective and regressive edits. There is no integrated safety audit: generated code executes without pre-execution risk assessment or rollback.
+However, reliable reward design requires more than generating or refining reward code. When a reward fails, the key question is often not only how to rewrite it, but why it failed: which reward component dominated policy behavior, which previous edit improved or degraded the policy, and whether a new edit resembles a prior harmful search direction. Existing LLM-based reward design methods provide valuable feedback loops, but they do not explicitly model reward design as a structured search process over accumulated editing experience.
 
-We argue that LLM-assisted reward design should be reformulated as \textbf{experience-guided reward schema search}. Rather than generating complete reward functions from scratch, the system should maintain a versioned, componentized schema with semantic role labels; diagnose which components drive policy behavior through per-component attribution; retrieve relevant past editing outcomes from structured memory; constrain the LLM to auditable edit operators; and gate every edit through risk audit with automatic rollback.
+We argue that LLM-assisted reward design should be formulated as experience-guided reward schema search. Instead of repeatedly generating free-form reward code, the system should maintain a structured reward schema across iterations, diagnose policy failures through semantic reward roles, store effective and regressive edits as reusable outcome lessons, and validate each LLM-proposed edit before applying it.
 
-We present EG-RSA (Experience-Guided Reward Search Agent), which implements this reformulation. Starting from an initial reward schema, each iteration compiles the schema, trains a policy for a fixed budget, collects step-level trajectory data with per-component logging, performs semantic role attribution, retrieves relevant outcome lessons, prompts the LLM for a constrained edit plan, audits the plan, and stores the outcome as a structured lesson.
+We propose EG-RSA, an Experience-Guided Reward Schema Adaptation framework for LLM-assisted reinforcement learning. EG-RSA represents rewards as componentized schemas with semantic roles such as dense guidance, stability quality, terminal success, safety constraint, and control cost. After each training iteration, EG-RSA collects trajectory feedback, computes semantic outcomes, attributes policy behavior to reward roles, retrieves relevant outcome lessons, and asks an LLM to propose an operator-constrained reward edit. The edit is then checked by scale validation, behavior risk audit, repair, and rollback mechanisms.
 
-Our contributions are:
+Our contributions are threefold:
 \begin{enumerate}[leftmargin=*,nosep]
-    \item \textbf{Experience-guided reward schema search.} We reformulate LLM-assisted reward design as search over structured, versioned schemas with cross-iteration outcome memory.
-    \item \textbf{Diagnosis-driven editing via semantic role attribution.} Per-component attribution with semantic role labels grounds edit decisions in diagnostic evidence rather than scalar feedback alone.
-    \item \textbf{Operator-constrained editing with integrated risk audit.} LLM modifications are restricted to auditable operators and gated through behavior risk audit with explicit triage and rollback.
+    \item We formulate LLM-assisted reward design as experience-guided reward schema search, where rewards are maintained as structured, versioned schemas rather than regenerated as unconstrained code.
+    \item We introduce semantic role attribution and outcome lesson memory to connect policy failures with reward components and reuse effective or regressive reward-edit experiences across iterations.
+    \item We design a risk-aware operator-constrained editing loop with validation and rollback, and analyze the safety--exploration trade-off that arises when audit rules are too conservative in low-success regimes.
 \end{enumerate}
-
-We evaluate EG-RSA on LunarLander-v3 through mechanism-verification case studies. Our central finding is an audit-induced deadlock---strict blocking of medium-risk edits suppresses the exploration needed to discover successful behavior---and its resolution under a relaxed audit policy, which enables sustained improvement (task score from 0.511 to 2.953). This finding reveals a fundamental tension in safe reward search and motivates risk-budget mechanisms for balancing safety with exploration.
 
 % ============================================================
 % 2. RELATED WORK (~600 words, compressed)
@@ -60,15 +60,23 @@ We evaluate EG-RSA on LunarLander-v3 through mechanism-verification case studies
 \section{Related Work}
 \label{sec:related}
 
-\textbf{Reward design in RL.} The reward function is the central interface between task intent and policy learning \citep{sutton2018reinforcement}. Classical reward shaping studies how additional signals affect policy learning, with potential-based shaping providing conditions for policy invariance \citep{ng1999policy}. Inverse reinforcement learning infers rewards from expert demonstrations \citep{ng2000irl,abbeel2004apprenticeship}. EG-RSA differs in both mechanism and assumptions: it assumes neither expert demonstrations nor hand-designed shaping potentials. Instead, it adapts reward schemas from training feedback, attribution, and accumulated editing experience.
+\subsection{Reward Design and Reward Shaping}
 
-\textbf{LLM-assisted reward generation.} EUREKA established LLMs as reward designers through iterative in-context optimization of reward code~\citep{ma2023eureka}. Text2Reward~\citep{xie2023text2reward}, Auto MC-Reward~\citep{li2023automcreward}, and CARD~\citep{sun2024card} further demonstrate that LLMs can generate and refine dense reward functions from language descriptions, trajectory analysis, and dynamic feedback. A recent survey organizes the LLM-enhanced RL landscape~\citep{cao2024survey}. These methods share a code-generation paradigm. EG-RSA departs in four ways: (1)~a persistent versioned schema replaces per-iteration code generation, (2)~semantic role attribution enables diagnosis-driven editing, (3)~structured outcome lessons enable history-aware search, and (4)~auditable operators with integrated risk audit replace free-form code generation.
+Reward design is a long-standing challenge in reinforcement learning. Since the reward function defines the optimization objective, learned policies are highly sensitive to how task intent is translated into scalar feedback \citep{sutton2018reinforcement}. Reward shaping aims to improve learning efficiency by adding auxiliary signals, and potential-based shaping provides conditions under which reward transformations preserve optimal policies \citep{ng1999policy}. However, these results also highlight the difficulty of reward engineering: shaping signals must be designed carefully to accelerate learning without changing the intended behavior.
 
-\textbf{Memory and reflection in LLM agents.} Reflexion stores verbal reflections in episodic memory to improve agent decisions without weight updates~\citep{shinn2023reflexion}. Voyager maintains a growing skill library for lifelong embodied learning~\citep{wang2023voyager}. Generative Agents use memory streams for long-horizon behavior~\citep{park2023generative}. A recent survey documents memory as a core agent capability~\citep{zhang2024memorysurvey}. EG-RSA adopts the memory intuition but applies it to a new object: structured reward-edit outcome lessons containing schema diffs, metric deltas, failure modes, and rollback decisions---directly actionable for future editing, unlike verbal reflections or skill code.
+Another line of work studies reward learning from demonstrations. Inverse reinforcement learning infers reward functions from expert behavior \citep{ng2000irl}, and apprenticeship learning uses such inferred objectives to imitate expert policies \citep{abbeel2004apprenticeship}. These methods reduce manual reward specification but typically require demonstrations or assumptions about expert behavior. EG-RSA addresses a different setting: it does not assume expert demonstrations, but adapts an initial reward schema through policy training feedback, semantic diagnosis, and accumulated reward-edit experience.
 
-\textbf{Reward hacking and safety.} Reward hacking is a fundamental concern: agents may exploit proxy rewards while failing the true task \citep{amodei2016concrete,pan2022effects,skalse2022reward}. Recent mitigation includes reward model ensembles~\citep{eisenstein2023ensembles}, information-theoretic reward modeling~\citep{lai2024infom}, and theoretical analysis of Goodhart's law under heavy-tailed error~\citep{langosco2024goodhart}. LLMs can even generalize from sycophancy to reward tampering~\citep{dennison2024sycophancy}. These works diagnose and mitigate hacking from outside the reward design loop. EG-RSA integrates safety directly: behavior risk audit gates every edit before training, with explicit risk triage and rollback. As our experiments show, however, strict audit can create a deadlock that blocks necessary exploration---a tension absent from post-hoc safety approaches.
+\subsection{LLM-Assisted Reward Design}
 
-\textbf{Positioning.} EG-RSA occupies a distinct position: it combines structured schema representation, semantic attribution, outcome memory, and integrated audit into a single search loop. This shifts the LLM's role from one-shot reward code generator to experience-guided reward search operator.
+Large language models have recently been used to automate reward design. Eureka demonstrates that LLMs can generate executable reward code and improve it through iterative in-context optimization \citep{ma2023eureka}. Text2Reward generates shaped dense rewards from natural language task descriptions \citep{xie2023text2reward}. Auto MC-Reward combines a Reward Designer, Reward Critic, and Trajectory Analyzer to refine dense rewards from trajectory feedback \citep{li2023automcreward}. CARD further introduces dynamic feedback and trajectory preference evaluation to improve the efficiency of LLM-driven reward refinement \citep{sun2024card}. A recent survey summarizes LLM-enhanced RL and identifies reward design as a key role for LLMs \citep{cao2024survey}.
+
+These methods establish that LLMs can be effective reward designers. EG-RSA follows this direction but focuses on a different question: how can reward-search experience be stored and reused across iterations? Instead of treating each reward update as an isolated code generation step, EG-RSA maintains a versioned reward schema, attributes policy behavior to semantic reward roles, records effective and regressive edits as outcome lessons, and restricts LLM modifications to auditable operators. This turns reward design from reward code generation into structured, history-aware reward schema search.
+
+\subsection{Memory, Reflection, and Reliability in Reward Search}
+
+EG-RSA is related to memory-based and reflection-based language agents. Reflexion improves language agents through verbal feedback and episodic memory without updating model parameters \citep{shinn2023reflexion}. Voyager maintains a skill library for lifelong embodied learning \citep{wang2023voyager}, while Generative Agents use memory streams and reflection to support long-horizon behavior \citep{park2023generative}. These works show that LLM agents can benefit from storing and reusing past experience. EG-RSA applies this idea to reward design, but stores structured reward-edit outcome lessons rather than natural language reflections or executable action skills.
+
+Reliability is also central to reward design. Reward hacking and reward misspecification occur when an agent optimizes a proxy reward while failing the intended objective \citep{amodei2016concrete,pan2022effects,skalse2022reward}. This concern is especially relevant for LLM-generated rewards, where dense shaping terms may be easy to optimize but misaligned with sparse terminal success. EG-RSA addresses this problem through failure-mode diagnosis, semantic role attribution, behavior risk audit, and rollback. At the same time, our analysis shows that safety mechanisms must be balanced with exploration: if risk audit is too conservative, it can block the edits needed to escape low-success regimes.
 
 % ============================================================
 % 3. METHOD (~1300 words, 5 subsections)
@@ -76,44 +84,120 @@ We evaluate EG-RSA on LunarLander-v3 through mechanism-verification case studies
 \section{Method}
 \label{sec:method}
 
-\subsection{Search Loop Overview}
+\subsection{Problem Formulation and Framework Overview}
 
-Figure~\ref{fig:loop} illustrates one EG-RSA iteration. Starting from a versioned reward schema, the system: (1)~compiles the schema into an executable reward function via a trusted compiler; (2)~trains a policy using the generated reward for a fixed sufficient budget (1M steps for LunarLander); (3)~collects step-level trajectories with per-component reward logging; (4)~performs semantic role attribution to identify the dominant reward role and detect failure modes; (5)~retrieves relevant prior outcome lessons from structured memory; (6)~prompts the LLM to propose a constrained edit plan in JSON; (7)~validates, audits, and either accepts, repairs, or blocks the edit; and (8)~stores the outcome as a structured lesson.
+We consider an RL environment in which a policy is trained using a reward function compiled from a structured reward schema. Let $S_k$ denote the reward schema at iteration $k$, and let $R_{S_k}$ be the executable reward function compiled from that schema. EG-RSA does not directly optimize the policy parameters as its main contribution; instead, it searches for a sequence of reward schemas $\{S_k\}_{k=0}^{K}$ such that policies trained under the compiled rewards increasingly align with the intended task objective.
 
-The policy is trained exclusively with the generated reward. The environment's oracle reward is used only for post-hoc evaluation---never for reward selection or editing. This separation ensures the search process does not leak ground-truth information.
+Given an initial reward schema $S_0$, a task description, diagnostic specifications, and a memory store, EG-RSA performs iterative reward schema search. In each iteration, it compiles the current schema into reward code, trains a policy with the compiled reward, collects semantic feedback and trajectory diagnostics, attributes policy behavior to reward roles, retrieves relevant historical lessons, asks an LLM edit agent to propose a constrained edit plan, and validates the edit through risk-aware audit and rollback.
 
-EG-RSA's loop differs structurally from the population-based reward generation loop of Stable-Eureka and similar methods. The population approach generates multiple complete reward-code samples per iteration, trains each in parallel, selects the best via an oracle fitness score, and reflects on the winner. EG-RSA replaces this with a sequential schema-editing loop: one schema is maintained and edited across iterations, the LLM proposes structured edits rather than complete rewrites, training feedback is diagnosed through attribution rather than reduced to a scalar, and audit gates every edit before training.
+Figure~\ref{fig:loop} illustrates the framework. The key difference from one-shot reward generation is that EG-RSA maintains a versioned reward schema and a memory of prior edit outcomes across iterations. The LLM is therefore used as a reward search operator rather than a free-form reward-code generator.
 
 \begin{figure}[t]
     \centering
-    % \includegraphics[width=0.95\textwidth]{figures/eg_rsa_loop.pdf}
-    \caption{One EG-RSA search iteration: schema $\rightarrow$ compile $\rightarrow$ train $\rightarrow$ attribute $\rightarrow$ retrieve memory $\rightarrow$ LLM proposes constrained edit $\rightarrow$ audit $\rightarrow$ store outcome lesson.}
+    \fbox{
+    \begin{minipage}{0.92\linewidth}
+    \centering
+    Initial schema $\rightarrow$ reward compiler $\rightarrow$ RL training $\rightarrow$ trajectory feedback\\
+    $\rightarrow$ failure diagnosis and role attribution $\rightarrow$ outcome memory retrieval\\
+    $\rightarrow$ LLM edit planner $\rightarrow$ validation and risk audit\\
+    $\rightarrow$ accept, repair, or rollback $\rightarrow$ updated schema
+    \end{minipage}
+    }
+    \caption{Overview of one EG-RSA reward schema search iteration.}
     \label{fig:loop}
 \end{figure}
 
-\subsection{Reward Schema and Semantic Role Attribution}
+\subsection{Reward Schema and Edit Operators}
 
-EG-RSA represents rewards as componentized schemas rather than unconstrained code. Each component has a type, weight, input variables, parameters, and an enabled flag. Every component is assigned a semantic role: \texttt{dense\_guidance} (progress rewards), \texttt{stability\_quality} (smoothness and contact quality), \texttt{terminal\_success} (task completion), \texttt{safety\_constraint} (violation penalties), and \texttt{control\_cost} (action penalties). Event rules for one-time condition-triggered rewards are also schema elements.
+EG-RSA represents a reward function as a reward schema
+\begin{equation}
+S = (\mathcal{C}, \mathcal{E}, \mathcal{M}),
+\end{equation}
+where $\mathcal{C}=\{c_i\}_{i=1}^{n}$ is a set of dense reward components, $\mathcal{E}=\{e_j\}_{j=1}^{m}$ is a set of event-based reward rules, and $\mathcal{M}$ contains metadata such as semantic roles. Each dense component has a name, a weight, a metric function, and a semantic role. Typical roles include \texttt{dense\_guidance}, \texttt{stability\_quality}, \texttt{terminal\_success}, \texttt{safety\_constraint}, and \texttt{control\_cost}.
 
-This representation enables three capabilities. First, versioning: schemas can be diffed, stored, and rolled back. Second, per-component attribution: because each component is separately logged at every step, the system can measure which role dominates policy behavior. Third, operator-constrained editing: the LLM proposes edits to named components with typed operators, not free-form code.
+The reward function compiled from schema $S$ can be written as
+\begin{equation}
+R_S(s_t,a_t,s_{t+1})
+=
+\sum_{i=1}^{n} w_i \phi_i(s_t,a_t,s_{t+1})
++
+\sum_{j=1}^{m} \beta_j \mathbf{1}[e_j(s_t,a_t,s_{t+1})],
+\end{equation}
+where $\phi_i$ is a dense metric function, $w_i$ is its weight, $e_j$ is an event condition, $\beta_j$ is the event reward, and $\mathbf{1}[\cdot]$ is an indicator function.
 
-Scalar scores alone cannot explain why a reward failed. A policy may score well on dense progress rewards while never achieving terminal success (\emph{shaping-goal mismatch}), or exploit contact rewards through rapid toggling without stable landing (\emph{repeated event exploitation}). EG-RSA computes per-component reward attribution from step-level trajectory data: per-step component rewards are aggregated per episode, the dominant component is identified by its fraction of total reward, and diagnostic signals (success rate, contact frequency, progress trajectory, reward repetition) are combined into a failure-mode report.
+Instead of allowing the LLM to freely rewrite the full reward function, EG-RSA restricts reward modification to an operator-constrained edit plan
+\begin{equation}
+\Delta_k = \{o_1,o_2,\ldots,o_p\},
+\end{equation}
+where each operator belongs to a predefined set, including \texttt{increase\_weight}, \texttt{decrease\_weight}, \texttt{add\_component}, \texttt{add\_event\_rule}, and \texttt{disable\_component}. A candidate schema is obtained by
+\begin{equation}
+S'_k = \mathrm{Apply}(S_k,\Delta_k).
+\end{equation}
+This design makes edits inspectable, reversible, and auditable.
 
-The attribution report---dominant role, failure modes, risk flags---is provided to the LLM alongside the current schema and retrieved lessons. The LLM uses this diagnosis as evidence when proposing edits, but attribution does not mechanically determine the edit.
+\subsection{Semantic Feedback and Role Attribution}
 
-\subsection{Outcome Lesson Memory}
+After training a policy with the current schema, EG-RSA evaluates policy behavior using semantic outcomes and trajectory diagnostics. These signals include task progress, success rate, terminal reward trigger rate, stable landing evidence, safe contact evidence, episode length, contact instability, and reward hacking indicators.
 
-EG-RSA stores structured outcome lessons rather than verbal reflections~\citep{shinn2023reflexion} or skill code~\citep{wang2023voyager}. Each lesson contains the schema diff (previous and edited schema), metric deltas (task, semantic, and hack scores), failure modes before and after the edit, hack risk change, and the rollback decision. Lessons are classified as \texttt{effective\_edit\_lesson} (score improved) or \texttt{regression\_lesson} (score degraded). Both types are stored and retrieved by similarity to the current failure-mode or schema context. Effective lessons provide evidence for which edit strategies have worked; regression lessons warn against previously harmful edits. This turns feed-forward refinement into history-aware search.
+Scalar scores alone cannot explain why a reward failed. A policy may obtain high dense progress reward while never triggering terminal success, or exploit contact-related rewards through unstable repeated events. To diagnose such failures, EG-RSA computes per-component reward attribution from logged component rewards. The framework identifies the dominant reward component, maps it to a semantic role, and combines this attribution with failure-mode diagnostics.
 
-\subsection{Operator-Constrained Editing}
+For example, if a dense approach component dominates total reward while terminal success remains zero, the policy may be exploiting dense guidance without completing the task. Such a diagnosis provides the LLM edit agent with evidence about which reward roles should be weakened, preserved, or complemented by new event rules.
 
-The LLM outputs a JSON edit plan restricted to five operators: \texttt{increase\_weight}, \texttt{decrease\_weight}, \texttt{add\_component}, \texttt{add\_event\_rule}, and \texttt{disable\_component}. The plan is validated for schema consistency, operator legality, and scale bounds before a safe compiler produces executable reward code. This constraint makes edits auditable (every change goes through a known operator) and reversible (rollback is a single schema restoration).
+\subsection{Experience Memory and Edit Planning}
 
-\subsection{Risk-Aware Audit and Rollback}
+EG-RSA maintains a memory store of reward-search experience. After each edit is evaluated, the framework records an outcome lesson
+\begin{equation}
+\ell_k = (S_k, \Delta_k, S'_k, O_k, O'_k, F_k, d_k),
+\end{equation}
+where $O_k$ and $O'_k$ are the semantic outcomes before and after the edit, $F_k$ contains failure-mode diagnostics, and $d_k$ is the accept, reject, or rollback decision. If an edit improves task behavior or reduces risk, it is stored as an effective lesson. If an edit causes regression or increases reward-hacking risk, it is stored as a regression lesson.
 
-Every proposed edit passes through a behavior risk audit before training. The audit evaluates three dimensions: \emph{hacking risk} (does the edit encourage previously detected failure modes?), \emph{scale risk} (do weight changes risk destabilizing training?), and \emph{structural risk} (does the edit remove safety components?). Edits are classified as high, medium, or low risk. High-risk edits are blocked. Low-risk edits proceed. Medium-risk edits are treated according to the audit policy: under the \emph{strict} policy, they are blocked when success evidence is weak; under the \emph{relaxed} policy, they are accepted with a warning.
+At iteration $k$, EG-RSA retrieves relevant lessons from memory and includes them in the LLM edit prompt together with the current schema, semantic outcomes, failure modes, and attribution report. This allows the LLM to condition its proposed edit on accumulated reward-search history rather than only on the current scalar score.
 
-After training, an outcome acceptor checks for regression. If the task score drops substantially or resolved failure modes return, the system rolls back to the previous schema and records a regression lesson. Otherwise, the new schema becomes current and an effective-edit lesson is stored. The audit rules in our experiments are hand-designed for LunarLander; extending to new environments requires environment-specific rules or learned audit models.
+\subsection{Risk-Aware Validation and Rollback}
+
+Every proposed edit is validated before being applied. EG-RSA first checks operator legality and schema consistency. It then performs scale validation to avoid destabilizing weight changes. Finally, behavior risk audit examines whether the edit may amplify dense reward dominance, overemphasize terminal rewards before sufficient evidence, remove important stabilizing components, or resemble a prior regression lesson.
+
+Edits are classified by risk level. High-risk edits are blocked or sent to repair. Low-risk edits proceed. Medium-risk edits are controlled by an audit policy. A strict policy may block medium-risk edits when success evidence is weak, while a relaxed policy can allow them with warnings and rely on later outcome evaluation and rollback. This distinction is important because overly conservative audit can suppress the exploration needed to escape low-success regimes.
+
+After training a candidate schema, EG-RSA applies an outcome acceptor. If the candidate improves the relevant semantic metrics and does not increase hacking risk, the candidate schema becomes the next schema. Otherwise, the system rolls back to a previous best schema and stores the failed edit as a regression lesson.
+
+\subsection{Algorithm Summary}
+
+Algorithm~\ref{alg:egrsa} summarizes EG-RSA. The framework forms a closed loop between policy training, semantic diagnosis, memory retrieval, LLM edit planning, and risk-aware validation.
+
+\begin{algorithm}[t]
+\caption{EG-RSA Reward Schema Search}
+\label{alg:egrsa}
+\begin{algorithmic}[1]
+\Require Initial schema $S_0$, task description $T$, diagnostic specification $D$, memory store $\mathcal{L}$, iterations $K$
+\For{$k=0$ to $K-1$}
+    \State Compile reward function $R_{S_k}$ from schema $S_k$
+    \State Train policy $\pi_k$ using RL under reward $R_{S_k}$
+    \State Collect semantic outcome $O_k$ and trajectory diagnostics $F_k$
+    \State Compute semantic reward role attribution $A_k$
+    \State Retrieve relevant outcome lessons $\mathcal{L}_k$ from memory
+    \State Construct edit prompt using $(T,S_k,O_k,F_k,A_k,\mathcal{L}_k)$
+    \State Query LLM edit agent to produce edit plan $\Delta_k$
+    \State Validate $\Delta_k$ with operator constraints and scale audit
+    \State Run behavior risk audit using $(F_k,A_k,\mathcal{L}_k)$
+    \If{$\Delta_k$ passes validation and audit}
+        \State $S'_k \gets \mathrm{Apply}(S_k,\Delta_k)$
+        \State Train and evaluate candidate schema $S'_k$
+        \If{candidate outcome is accepted}
+            \State $S_{k+1} \gets S'_k$
+            \State Store effective outcome lesson in $\mathcal{L}$
+        \Else
+            \State $S_{k+1} \gets$ rollback schema
+            \State Store regression lesson in $\mathcal{L}$
+        \EndIf
+    \Else
+        \State Repair $\Delta_k$ or continue with $S_k$
+        \State $S_{k+1} \gets S_k$
+    \EndIf
+\EndFor
+\State \Return Best schema $S^\star$
+\end{algorithmic}
+\end{algorithm}
 
 % ============================================================
 % 4. EXPERIMENTS (~1000 words)

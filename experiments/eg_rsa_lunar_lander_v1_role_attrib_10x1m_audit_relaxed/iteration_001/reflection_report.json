@@ -1,0 +1,78 @@
+{
+  "reflection_summary": "Agent exploits dense r_approach_region by repeatedly entering and leaving the landing pad region (9 toggles in an episode) without achieving a single successful landing. The dense progress rewards dominate episode returns (~2593) and misalign with the terminal goal, creating a loitering local optimum. Terminal event bonuses are never triggered, and the landing behavior is unstable (high contact toggles). Reward hacking is evident.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Episode reward mean 2593, std 1524, all from dense components; terminal events never paid.",
+      "Dominant component r_approach_region (ratio 0.404), r_landing_quality (0.385), r_stability (0.207).",
+      "r_approach_progress nearly zero (mean 0.0019, trigger rate 0.14).",
+      "landing_region toggled 9 times per episode on average; contact toggles max 581.",
+      "Episode length ~757 steps, success/stable_landing/safe_contact rates all 0%.",
+      "Shaping_goal_mismatch and repeated_event_exploitation flags active; no component dominance above 0.5."
+    ],
+    "likely_true_failures": [
+      "Reward hacking: agent learns to loiter near the pad, repeatedly triggering dense approach/stability rewards without landing.",
+      "Shaping–goal mismatch: dense rewards for proximity do not lead to terminal completion.",
+      "Unstable contact behavior: legs toggling indicates no clean landing, likely due to hovering/bouncing."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_approach_region pays a continuous reward for being in the landing region, making loitering profitable.",
+      "Terminal bonuses (40 and 10) are insufficient relative to total accumulable dense reward, so agent ignores them.",
+      "Stability and landing quality dense rewards may reward partial upright posture without landing.",
+      "Missing penalty for leaving the region or reward for sustained stay; progress reward too weak to overcome station-keeping exploitation."
+    ],
+    "failure_kind": "reward_hack",
+    "confidence": 0.85
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Reducing dense rewards alone would destroy the approach gradient; increasing terminal rewards alone may leave them unreachable. The changes must be applied together to shift the agent from loitering to landing without losing all guidance.",
+    "max_reasonable_edits": 1,
+    "editor_constraints": [
+      "Simultaneously reduce per‑step reward for stationary or oscillating presence in the landing region, and make terminal landing rewards large enough to dominate potential remaining dense accumulation.",
+      "Convert r_approach_region from a dense metric_value to a progress‑based (e.g., metric_delta) or event‑based reward, or severely cap its total per‑episode contribution.",
+      "Ensure terminal conditions (stable_landing, safe_contact) are achievable within typical episode lengths; relax duration_steps if needed.",
+      "Do not add step penalties that punish normal flight or exploration.",
+      "Maintain some stability incentive, but only when the lander is actually descending/landing, not just hovering."
+    ],
+    "must_preserve": [
+      "A clear gradient toward the landing pad (e.g., via approach progress or an approach event bonus).",
+      "An incentive to achieve a successful landing that is much larger than any dense reward farmable by loitering.",
+      "Stability guidance that helps the lander stay upright once on the ground, not during prolonged hovering."
+    ],
+    "must_avoid": [
+      "Dense rewards that pay while the agent stays inside the landing region without making new progress.",
+      "Terminal bonuses so large that they cause instability or catastrophic forgetting of approach behavior.",
+      "Any penalty that would deter the agent from initially approaching the pad."
+    ],
+    "expected_effect": "Episode reward mean will drop initially as loitering payouts decrease. Success/landing rate should rise if terminal rewards become reachable and dominant. Training may temporarily destabilize as the agent transitions from loitering policy to landing policy.",
+    "risk_analysis": "If terminal rewards remain unreachable (e.g., conditions too strict) after dense rewards are reduced, the agent will stop approaching the pad and the policy may collapse. The rebalancing must be paired with a check that the terminal condition is triggered at least once in exploratory rollouts."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "Terminal bonuses are unchanged while dense rewards (especially r_approach_region) are drastically reduced—this removes the only working guidance.",
+      "The edit introduces per‑step penalties that dominate positive signals and prevent any reward accumulation.",
+      "The terminal landing condition is tightened further (e.g., longer duration_steps) without evidence that it was too easy."
+    ],
+    "package_should_be_accepted_if": [
+      "It replaces a dense r_approach_region with an event or delta reward that cannot be repeatedly farmed by toggling.",
+      "It sets the terminal stable_landing bonus to at least 100× the typical per‑step dense reward, so landing clearly dominates loitering.",
+      "It includes a mechanism to penalize or ignore repeated region entries within the same episode."
+    ],
+    "safety_notes": [
+      "Train a few episodes with the new reward and verify that terminal events eventually trigger before scaling training.",
+      "Watch for residual unstable contact: landing_quality and stability rewards should be applied only when both legs are firmly on the ground.",
+      "If safe_contact remains unused, consider merging its function into the stable_landing event or removing it to reduce noise."
+    ]
+  }
+}
