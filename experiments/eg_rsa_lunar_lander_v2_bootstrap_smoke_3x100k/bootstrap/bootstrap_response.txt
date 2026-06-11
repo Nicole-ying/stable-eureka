@@ -1,95 +1,56 @@
 {
   "reward_blueprint": {
-    "task_objective": "Land the lunar module between the flags with a gentle, centered, upright touchdown while using minimal fuel.",
+    "task_objective": "Land the lunar module safely between the flags, centered, slowly, upright, fuel-efficiently, and end with stable ground contact.",
     "primitive_variable_roles": {
-      "progress_variables": [
-        "y (altitude decrement toward landing pad)",
-        "vy (downward velocity is progress when high, dangerous when low)"
-      ],
-      "safety_variables": [
-        "angle (tilt must be small)",
-        "angular_velocity (should be near zero)",
-        "vx (lateral drift must be low at touchdown)",
-        "x (horizontal centering is critical for a safe landing)"
-      ],
-      "terminal_evidence_variables": [
-        "left_contact",
-        "right_contact",
-        "vy (must be near zero at contact)",
-        "angle (must be near zero at contact)",
-        "x (must be near zero at contact)"
-      ],
-      "control_variables": [
-        "main_engine",
-        "side_engine"
-      ]
+      "progress_variables": ["x", "y", "vx", "vy"],
+      "safety_variables": ["angle", "angular_velocity", "left_contact", "right_contact"],
+      "terminal_evidence_variables": ["left_contact", "right_contact", "vx", "vy", "angle"],
+      "control_variables": ["main_engine", "side_engine"]
     },
     "phase_structure": [
       {
         "phase": "approach_or_progress",
-        "purpose": "encourage the lander to descend toward the landing site while staying reasonably centered and upright",
-        "reward_intent": "dense reward for downward velocity that tapers as altitude decreases, plus centering pressure that strengthens near the ground"
+        "purpose": "encourage measurable progress toward task completion",
+        "reward_intent": "reduce horizontal and vertical distance to target pad while keeping velocities low"
       },
       {
         "phase": "controlled_execution",
-        "purpose": "penalize tilt and angular velocity to keep the lander stable during the descent, and discourage hard impacts",
-        "reward_intent": "constant small penalty for deviation from upright; conditional penalty for high vertical speed when any leg touches the ground"
+        "purpose": "encourage safe/controlled behavior while progress is happening",
+        "reward_intent": "maintain upright orientation and low angular motion"
       },
       {
         "phase": "completion",
-        "purpose": "deliver a one‑time success bonus when the lander achieves a soft, level, and centered touchdown",
-        "reward_intent": "large sparse reward triggered only when both legs are in contact, vertical speed is low, angle is near zero, and horizontal error is small"
+        "purpose": "reward terminal completion evidence once",
+        "reward_intent": "trigger large positive reward when both legs contact ground with low speed and upright attitude; penalize crash with body contacting ground without proper leg contact"
       }
     ],
     "component_blueprint": [
       {
-        "name": "r_progress",
+        "name": "r_progress_guidance",
         "role": "dense_guidance",
         "phase": "approach_or_progress",
-        "design_intent": "reward downward velocity with a gain that shrinks to zero as the lander nears the pad, preventing the agent from maximising descent speed close to the ground",
-        "anti_exploit_note": "tanh(-vy) saturates, and multiplying by clip(y,0,1) makes the reward vanish once altitude reaches zero; the lander cannot gain infinite reward by descending forever"
-      },
-      {
-        "name": "r_centering",
-        "role": "dense_guidance",
-        "phase": "approach_or_progress",
-        "design_intent": "encourage horizontal centering; the penalty grows as the lander gets closer to the ground, forcing final precision",
-        "anti_exploit_note": "the penalty is zero at high altitude, so hovering far away cannot generate reward through centering alone"
+        "design_intent": "Provide a continuous cost minimizing distance to pad center and altitude, plus velocity magnitudes, creating a gradient toward landing.",
+        "anti_exploit_note": "The reward is always non-positive; prolonged states near the ground yield only small negative cumulative cost, so the terminal success reward far outweighs delayed landing, incentivizing completion."
       },
       {
         "name": "r_stability",
         "role": "stability_quality",
         "phase": "controlled_execution",
-        "design_intent": "continuously penalise tilt and angular velocity, making upright flight a prerequisite for receiving progress and eventual terminal success",
-        "anti_exploit_note": "the penalty is always present, so staying upright while hovering does not produce net positive reward because the progress term becomes zero when not descending"
+        "design_intent": "Penalize tilt angle and angular velocity to keep the lander upright and steady.",
+        "anti_exploit_note": "No state can permanently minimize this penalty without being upright near the pad, so it supports progress rather than replacing it."
       },
       {
-        "name": "r_action_cost",
+        "name": "r_control_cost",
         "role": "control_cost",
-        "phase": "controlled_execution",
-        "design_intent": "penalise thruster use proportional to absolute throttle; absolute value prevents signed actions from being rewarded inadvertently",
-        "anti_exploit_note": "using abs() for both main (0‑1) and side (−1 to 1) engines ensures that any non‑zero throttle incurs a cost, and thrust in one direction never yields positive reward"
-      },
-      {
-        "name": "r_soft_touchdown",
-        "role": "safety_constraint",
-        "phase": "controlled_execution",
-        "design_intent": "whenever any leg contacts the ground, penalise vertical and lateral speed to discourage bouncing or sliding; repeated contacts reinforce soft landing behavior",
-        "anti_exploit_note": "the penalty is active only while a leg touches, so the agent cannot accumulate negative reward after coming to rest"
-      },
-      {
-        "name": "r_terminal_success",
-        "role": "terminal_success",
-        "phase": "completion",
-        "design_intent": "grant a large one‑time reward when primitive evidence confirms a successful landing; the event fires at most once (on first satisfying all conditions)",
-        "anti_exploit_note": "the reward is sparse and conditional on multiple stringent criteria; no action can trigger it repeatedly within one episode"
+        "phase": "all",
+        "design_intent": "Penalize engine thrusts to encourage fuel efficiency.",
+        "anti_exploit_note": "Side engine penalty uses absolute value to prevent any signed thrust direction from being rewarded."
       }
     ],
     "anti_exploit_principles": [
-      "Dense rewards vanish or shrink when the lander is not making progress (e.g., r_progress requires descent velocity).",
-      "Stability and centering terms alone produce negative or zero net reward; they only support progress, never replace it.",
-      "Action cost uses absolute values to avoid sign‑flip exploits.",
-      "Terminal success fires only on a specific set of primitive conditions that cannot be faked after episode termination."
+      "All dense shaping rewards are non-positive so that net positive return comes only from the terminal success event, preventing indefinite reward farming.",
+      "Stability and alignment signals are designed as penalties; they support progress toward a good landing but do not provide positive credit that could be exploited without landing.",
+      "Action cost for signed actions uses absolute value to ensure penalty for effort magnitude, never a reward for thrust in one direction."
     ]
   },
   "initial_schema": {
@@ -102,78 +63,61 @@
       {
         "name": "r_progress",
         "type": "formula_component",
-        "variables": ["vy", "y"],
-        "formula": "tanh(-vy) * clip(y, 0, 1)",
-        "weight": 1.0
-      },
-      {
-        "name": "r_centering",
-        "type": "formula_component",
-        "variables": ["x", "y"],
-        "formula": "-abs(x) * (1 - clip(y, 0, 1))",
-        "weight": 1.0
+        "role": "dense_guidance",
+        "formula": "(-abs(x) - abs(y) - 0.1*abs(vx) - 0.1*abs(vy))"
       },
       {
         "name": "r_stability",
         "type": "formula_component",
-        "variables": ["angle", "angular_velocity"],
-        "formula": "-abs(angle) - 0.1 * abs(angular_velocity)",
-        "weight": 1.0
+        "role": "stability_quality",
+        "formula": "(-abs(angle) - 0.1*abs(angular_velocity))"
       },
       {
-        "name": "r_action_cost",
-        "type": "action_penalty",
-        "variables": ["main_engine", "side_engine"],
-        "formula": "-0.3 * abs(main_engine) - 0.3 * abs(side_engine)",
-        "weight": 1.0
-      },
-      {
-        "name": "r_soft_touchdown",
-        "type": "conditional_formula_component",
-        "variables": ["left_contact", "right_contact", "vy", "vx"],
-        "condition": "left_contact or right_contact",
-        "formula": "-(abs(vy) + 0.2 * abs(vx))",
-        "weight": 1.0
+        "name": "r_control_cost",
+        "type": "formula_component",
+        "role": "control_cost",
+        "formula": "(-0.3*main_engine - 0.03*abs(side_engine))"
       }
     ],
     "event_rules": [
       {
-        "name": "terminal_success",
+        "name": "successful_landing",
         "type": "event_predicate",
-        "variables": ["left_contact", "right_contact", "vy", "angle", "x"],
         "condition": {
-          "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(angle) < 0.1 and abs(x) < 0.2"
+          "expression": "left_contact and right_contact and abs(vx) < 0.2 and abs(vy) < 0.2 and abs(angle) < 0.1"
         },
         "reward": 100.0
+      },
+      {
+        "name": "crash",
+        "type": "event_predicate",
+        "condition": {
+          "expression": "(y <= 0) and (not left_contact or not right_contact)"
+        },
+        "reward": -50.0
       }
     ]
   },
   "diagnostics": {
     "expected_failure_modes": [
-      "Agent hovers high without descending because r_progress becomes zero when vy=0, but r_centering and r_stability are too weak to force descent; solved by enough weight on r_progress.",
-      "Agent crashes fast because r_progress encourages high descent speed; clipped by tanh saturation and by r_soft_touchdown penalty on hard impact.",
-      "Agent touches down gently but not centered because r_centering penalty is zero at high altitude; the near‑ground scaling ensures centering becomes strict as landing approaches.",
-      "Agent uses side engine to spin instead of translating, because r_stability only penalises angle; solved by action cost on side_engine and centering pressure that makes spinning counter‑productive."
+      "Agent may learn to hover just above the pad to reduce dense penalty without triggering terminal event, relying on episode timeout to force landing.",
+      "If velocity thresholds in success condition are too strict, the agent might never trigger the terminal reward and achieve only mediocre cumulative returns."
     ],
     "risk_notes": [
-      "r_centering scaling (1 - clip(y,0,1)) can be negative if y<0; assuming the environment keeps y≥0, this is safe.",
-      "r_soft_touchdown fires on single‑leg ground contact, which may train very conservative landing approaches (hovering on one leg); but the large terminal bonus for dual‑contact with strict criteria discourages that.",
-      "tanh(-vy) in r_progress provides limited gradient for large negative vy; the saturating shape may slow early learning of fast descent, but guarantees bounded reward."
+      "Scaling coefficients (0.1, 0.3, 0.03, thresholds 0.2, 0.1) are initial guesses and may need recalibration for the actual environment observation ranges.",
+      "The crash event relies on y <= 0, assuming body-ground contact always indicates a crash; if the environment has a soft touchdown mechanism that momentarily sets y<0, false negatives could occur."
     ]
   },
   "bootstrap_report": {
-    "design_rationale": "The schema decomposes the task into progress (descend while centering), stability (keep upright), control cost (fuel efficiency), soft touchdown (avoid hard impact), and a terminal success bonus. All terms use only primitive variables and allowed functions, with no reference to hidden diagnostics or prior schemas. Dense rewards are designed to vanish when the lander is not making progress, preventing exploitation.",
+    "design_rationale": "The design provides dense, non-positive shaping signals that guide the lander toward the center of the pad with low velocity and upright orientation, ensuring a gradient toward the goal. A large terminal reward for soft, upright two-leg contact outweighs the cumulative dense cost, creating a strong incentive to finish the task rather than linger. A crash penalty deters unsafe impact. Control cost encourages efficiency, with absolute value on the signed side engine to avoid rewarding direction.",
     "assumptions": [
-      "The environment provides continuous observation and action at every step.",
-      "y is always non‑negative; the landing pad is at y≈0.",
-      "main_engine throttle is in [0,1] and side_engine throttle in [-1,1].",
-      "left_contact and right_contact are reliable primitive signals that become true upon ground touch and stay true as long as contact persists; they do not reset after episode start.",
-      "The episode terminates shortly after the terminal success event fires."
+      "The episode terminates upon ground contact or crash.",
+      "The observation variable y represents altitude above ground; x=0 corresponds to the center of the landing pad.",
+      "main_engine is a non-negative throttle (0 to 1) and side_engine is a signed throttle (-1 to +1)."
     ],
     "risk_notes": [
-      "If the environment allows negative y (clipping), the centering scaling (1 - clip(y,0,1)) could become >1, over‑penalising x; this would need a clamp on the multiplier.",
-      "The terminal success event may fire multiple times if the conditions remain true for several steps; the environment should limit the reward to the first occurrence. The schema assumes a one‑shot event mechanism.",
-      "The soft touchdown penalty applies whenever any leg contacts, including during bouncing; repeated penalties effectively punish bouncing, which is intended, but could cause the agent to avoid landing entirely if the penalty is too large relative to the terminal bonus. Tuning coefficients may be needed."
+      "All reward scaling factors and event thresholds are initial estimates; they may require tuning based on the environment's physics and typical observation ranges.",
+      "If the episode does not terminate on crash but only on timeout, the crash penalty might trigger repeatedly; this schema assumes single-trigger events per episode."
     ],
     "primitive_interface_only": true
   }

@@ -1,59 +1,59 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "r_progress contributes 73% of total absolute reward; its mean is 0.444 vs. others near zero or negative.",
-      "Success episode rate is 0.0; safe_contact and stable_landing rates are also 0.0.",
-      "Terminal success event triggered only once in 3 episodes (0.5% of reward).",
-      "r_soft_touchdown triggered on only 3.5% of steps, giving small negative reward.",
-      "Shaping components (r_centering, r_stability) have small magnitudes relative to r_progress.",
-      "No past edit memories or lessons exist to guide correction."
+      "r_progress contributes 96.5% of total reward magnitude.",
+      "Successful landing trigger rate is only 0.005 (1 payment in ~200 steps).",
+      "Zero semantic success rate (0.0) despite a terminal reward being paid in one episode.",
+      "Episodes are short (mean length 66.7 steps) and no safe or stable landings detected.",
+      "Hack flags: high_reward_low_progress, component_dominance, shaping_goal_mismatch all true.",
+      "Agent obtains progress reward largely by staying centered and slow, avoiding ground contact to preserve low velocities."
     ],
     "likely_true_failures": [
-      "r_progress overshadows other shaping objectives, causing the policy to ignore fine‑grained landing requirements.",
-      "The transition from high‑altitude descent shaping to low‑altitude centering/stability is not properly connected, leading to task failure."
+      "Shaping reward (r_progress) is heavily exploitable: it incentivizes hovering near the ground with zero lateral motion rather than completing a terminal landing."
     ],
-    "likely_false_positives": [
-      "The detected component_dominance is real (r_progress is overwhelmingly large), but it reflects a shaping imbalance rather than deliberate reward hacking; the agent is not exploiting a loophole.",
-      "The shaping_goal_mismatch flag is valid because the current shaping rewards do not reliably lead to the terminal success condition."
-    ],
+    "likely_false_positives": [],
     "root_cause_hypotheses": [
-      "r_progress formula ‘tanh(-vy) * clip(y, 0, 1)’ encourages high descent speed at high altitude, but the influence of ‘clip(y,0,1)’ near the ground is too weak to shape a slow final approach.",
-      "Negative components (centering, stability, soft touchdown) are insufficiently weighted to guide the lander through the final seconds of an episode.",
-      "The terminal success reward is too sparse (one‑time bonus of 1.0) to overcome the shaping bias."
+      "The r_progress component’s penalty on velocity and offset, combined with its high weight, outweighs the sparse terminal landing bonus, so the optimal policy is to descend partially and then stabilise just above the surface without touching down."
     ],
-    "failure_kind": "task_failure",
+    "failure_kind": "reward_hack",
     "edit_need": "must_edit",
-    "confidence": 0.8
+    "confidence": 0.85
   },
   "memory_reflection": {
     "lesson_assessments": [],
     "reusable_lessons": [],
     "failed_or_weak_lessons": [],
-    "avoid_actions": [],
-    "recommended_actions": [
-      "Rebalance reward weights to reduce r_progress dominance and strengthen centering/stability near the ground."
+    "avoid_actions": [
+      "Do not increase r_progress weight.",
+      "Do not add similar distance/velocity penalties that could be gamed in the same way.",
+      "Do not rely solely on shaping components to induce landing."
     ],
-    "memory_confidence": 0.1
+    "recommended_actions": [
+      "Reduce the weight of r_progress to diminish its dominance.",
+      "Simultaneously increase the weight of the successful_landing event rule to provide a strong terminal incentive.",
+      "Keep the other components (r_stability, r_control_cost) unchanged to preserve learning signal."
+    ],
+    "memory_confidence": 0.0
   },
   "reward_editor": {
     "edit_decision": "edit",
     "next_action": "apply_edit",
     "plan_type": "coupled_rebalancing",
-    "atomicity": "separable",
+    "atomicity": "atomic",
     "max_reasonable_edits": 2,
-    "rationale": "r_progress dominates (73%) and prevents learning of the final landing phase. We halve its overall weight and modify the formula to scale down its influence at lower altitudes, while preserving a small descent incentive everywhere. This rebalances the reward landscape so that centering, stability, and soft‑touchdown shaping can become effective. The two edits (decrease_weight + replace_formula on r_progress) act together but can be applied independently, though doing both is recommended to avoid either a still‑dominant component or a vanishing descent gradient.",
-    "expected_effect": "r_progress’s absolute contribution will drop, reducing its ratio below 0.5, and the other shaping terms will become relatively salient. After retraining, safe_contact, stable_landing, and success episode rates should increase noticeably. Total episode reward may dip temporarily during adaptation.",
-    "risk_analysis": "If r_progress is weakened too much the lander may stop descending; the floor multiplier of 0.5 in the new formula (plus the weight factor 0.5) maintains a non‑zero descent reward at all altitudes, mitigating that risk. We are not modifying the terminal success condition, so the ultimate goal remains unchanged.",
+    "rationale": "r_progress dominates the reward signal (96.5%) and encourages hovering instead of landing. Reducing its weight to 0.2 while boosting the successful_landing event weight to 20 restores balance: the terminal incentive becomes strong enough to encourage landing, while the reduced shaping still provides dense guidance without overwhelming the objective.",
+    "expected_effect": "r_progress dominance will fall below 50%, r_stability and r_control_cost will influence behavior more, and the strong terminal incentive will push the agent to complete a landing, raising semantic success rate and reducing the hover hack.",
+    "risk_analysis": "If the successful_landing weight is too high, early exploration may struggle because the terminal bonus is rare, and the reduced r_progress weight could slow initial learning. The chosen weights (0.2, 20) aim to balance this. There is a small risk the agent may try to trigger the landing event quickly but clumsily; the stability and control penalties remain to penalise unsafe approaches.",
     "edit_plan": [
       {
         "operator": "decrease_weight",
         "target": "r_progress",
-        "factor": 0.5
+        "factor": 0.2
       },
       {
-        "operator": "replace_formula",
-        "target": "r_progress",
-        "formula": "(0.5 + 0.5 * clip(y, 0, 1)) * tanh(-vy)"
+        "operator": "increase_weight",
+        "target": "successful_landing",
+        "factor": 20.0
       }
     ]
   },
@@ -67,24 +67,22 @@
     "what_failed": [],
     "avoid_next": [],
     "recommend_next": [],
-    "applicability_notes": [
-      "No prior edit memory; first intervention targets the dominant shaping component."
-    ]
+    "applicability_notes": []
   },
-  "diagnosis": "r_progress dominance (73%) prevents stable landing; rebalancing by halving its weight and adding an altitude‑dependent scaling layer so that it remains a gentle progress signal rather than an overwhelming one.",
+  "diagnosis": "r_progress shaping dominates reward, causing agent to hover near ground instead of landing. Reduce r_progress weight to 0.2 and increase successful_landing weight to 20 to rebalance incentives.",
   "edit_plan": [
     {
       "operator": "decrease_weight",
       "target": "r_progress",
-      "factor": 0.5
+      "factor": 0.2
     },
     {
-      "operator": "replace_formula",
-      "target": "r_progress",
-      "formula": "(0.5 + 0.5 * clip(y, 0, 1)) * tanh(-vy)"
+      "operator": "increase_weight",
+      "target": "successful_landing",
+      "factor": 20.0
     }
   ],
   "plan_type": "coupled_rebalancing",
-  "atomicity": "separable",
+  "atomicity": "atomic",
   "max_reasonable_edits": 2
 }

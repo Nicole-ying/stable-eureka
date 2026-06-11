@@ -1,58 +1,42 @@
 {
   "accepted_edits": [
     {
-      "operator": "decrease_weight",
+      "operator": "replace_formula",
       "target": "r_progress",
-      "factor": 0.6
-    },
-    {
-      "operator": "add_component",
-      "component": {
-        "name": "r_approach_slow",
-        "weight": 1.5,
-        "inputs": [],
-        "params": {
-          "formula": "-(abs(vy) + 0.2 * abs(vx))",
-          "condition": "y < 0.5 and not (left_contact and right_contact)"
-        },
-        "clip": null,
-        "enabled": true,
-        "type": "conditional_formula_component"
-      }
+      "formula": "0"
     }
   ],
   "rejected_edits": [],
-  "warnings": [
-    "Accepted atomic package with 2 edits."
-  ],
+  "warnings": [],
   "plan_metadata": {
-    "plan_type": "coupled_rebalancing",
-    "atomicity": "atomic",
-    "max_reasonable_edits": 2,
+    "plan_type": "single_edit",
+    "atomicity": "separable",
+    "max_reasonable_edits": 1,
     "reflection_strategy": {
       "recommended_next_action": "apply_edit",
-      "plan_type": "coupled_rebalancing",
-      "atomicity": "atomic",
-      "why_atomic_or_separable": "Weakening r_progress without simultaneously increasing landing‑phase incentives risks eliminating the descent gradient entirely; an atomic package ensures that the lander still has motivation to approach the ground while being strongly rewarded for gentle, centered touchdown.",
-      "max_reasonable_edits": 2,
+      "plan_type": "single_edit",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "The core problem is the r_progress formula. A single edit to its expression can remove the per‑step existence penalty while preserving stabilising incentives. Terminal rewards may later need rebalancing, but the immediate fix can stand alone.",
+      "max_reasonable_edits": 1,
       "editor_constraints": [
-        "Any edit to r_progress must retain a floor multiplier (e.g., keep the 0.5 + 0.5*clip(y,0,1) structure) to guarantee some descent reward at all altitudes.",
-        "Strengthened landing rewards must use only available state (y, vy, vx, contact flags, x, angle, angular_velocity) and not require unattainable precision.",
-        "Do not remove or disable r_centering, r_stability, or r_soft_touchdown – they encode necessary task structure.",
-        "The total reward scale should remain roughly comparable to current to avoid destabilizing the policy.",
-        "No new state variables beyond the standard observation may be introduced."
+        "Output only one edit to r_progress; do NOT add new components yet.",
+        "Do NOT remove or disable event rules (successful_landing, crash).",
+        "Change the formula so that it does NOT penalise altitude (y) when not on the ground, or use a difference‑based potential to make dense reward non‑decreasing until terminal event.",
+        "Do not introduce positive rewards that can be accumulated indefinitely.",
+        "Maintain the existing weighting unless the formula change naturally changes dominance."
       ],
       "must_preserve": [
-        "The terminal_success event rule as the defining goal of a safe, centered, upright landing.",
-        "At least one continuous shaping component that incentivizes descending toward the ground."
+        "The stability component (r_stability) and control cost (r_control_cost) as they are currently.",
+        "The terminal event rules and their one‑time nature.",
+        "The overall negativity of the dense reward to avoid infinite reward exploits."
       ],
       "must_avoid": [
-        "Avoid making the terminal success condition easier (e.g., relaxing x, vy, or angle thresholds).",
-        "Avoid creating a component that rewards hovering without landing.",
-        "Avoid leaving r_progress ratio above 0.5 after retraining."
+        "Any form of per‑step penalty that grows with episode length when the agent is making progress towards a safe landing.",
+        "Edits that would further shorten the episode by making crashing even more attractive.",
+        "Increasing the weight of terminal rewards without first fixing the dense shaping, as the agent may still pursue early termination to avoid the negative shaping."
       ],
-      "expected_effect": "r_progress dominance should drop below 0.5; landing‑phase components will become more salient. Safe_contact and stable_landing rates should rise above zero, and success rate will follow after retraining. Episode reward mean may dip initially but should improve as the policy adapts.",
-      "risk_analysis": "If landing rewards are introduced too abruptly or at too low an altitude, the agent may avoid descending low enough to trigger them. If r_progress is weakened too aggressively without adequate landing incentive, the lander may hover or wander. The terminal reward must not be over‑amplified to the point of encouraging crash‑bounce strategies. A poorly calibrated edit could lead to a new component dominating and creating a different failure mode."
+      "expected_effect": "The dominance of r_progress should drop, and the agent will no longer be incentivised to end episodes early by crashing. It will then begin to explore learning to land softly, driven primarily by the terminal success reward and the velocity/angular penalties. Task proxies such as safe_contact_rate and stable_landing_rate should rise, while episode length should increase as the agent attempts more careful landings.",
+      "risk_analysis": "If the y‑term is simply removed without adding direction to descend, the agent may hover in place or fly too high, never attempting to land. The editor must ensure the edit still provides a downward incentive without punishing time spent on the descent. Removing all position penalties might leave no guidance toward the pad. The edit must therefore carefully reshape r_progress to encourage approach to (0,0) with low velocities, but only when close to the ground, or use a potential that resets at each episode start."
     }
   }
 }

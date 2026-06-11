@@ -1,124 +1,86 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "r_progress ratio 0.597 (still >0.5 despite previous reduction)",
-      "r_soft_touchdown triggers only 3.5% of steps with small magnitude",
-      "success_episode_rate, safe_contact_rate, stable_landing_rate all 0.0",
-      "terminal_success paid only once in 3 episodes",
-      "shaping_goal_mismatch flag active, hack_score 0.2 (low)",
-      "episode reward mean 6.41 (low for a successful landing scenario)"
+      "mean episode reward -76.8, std 10.5",
+      "r_progress contributes 95% of total reward signal, mean -1.122 per step",
+      "episodes are short (mean 67 steps), suggesting early termination",
+      "successful_landing triggered once but success_episode_rate 0.0",
+      "safe_contact_episode_rate and stable_landing_episode_rate 0.0",
+      "contact toggles multiple times (mean 2.67, max 4), indicating bouncing/unstable contact",
+      "hack flags: high_reward_low_progress, component_dominance, shaping_goal_mismatch"
     ],
     "likely_true_failures": [
-      "Landing‑oriented components (r_centering, r_stability, r_soft_touchdown) remain too weak relative to r_progress to guide final approach and touchdown.",
-      "r_progress still provides a dominant descent signal that masks the fine‑grained signals needed for a centered, slow, upright landing."
+      "Agent learns to crash early to minimise cumulative negative shaping from r_progress.",
+      "The dense r_progress proxy does not align with the true task of stable soft landing; it penalises every step spent in the air, promoting fast descents and crashes."
     ],
     "likely_false_positives": [
-      "The shaping_goal_mismatch detection is accurate, not a false positive.",
-      "No component dominance hack; the agent is not exploiting a loophole, merely failing the task."
+      "Component dominance is a symptom of the flawed reward design, not a separate hack.",
+      "High reward (less negative) relative to progress is caused by early crashing strategy, not by agent exploiting repeated events."
     ],
     "root_cause_hypotheses": [
-      "r_progress, though weakened, still dominates the reward landscape, overshadowing landing‑phase shaping.",
-      "Insufficient reward for slow, stable descent during the final approach before ground contact.",
-      "The soft‑touchdown component activates too late and with too little magnitude to influence approach behavior."
+      "r_progress contains a constant per‑step penalty (e.g., -abs(y)) that makes the optimal policy end the episode as early as possible (crash).",
+      "The terminal success bonus (+1) is too small to overcome the negative shaping accumulated during a proper landing attempt."
     ],
-    "failure_kind": "task_failure",
+    "failure_kind": "reward_hack",
     "edit_need": "must_edit",
-    "confidence": 0.85
+    "confidence": 0.9
   },
   "memory_reflection": {
-    "lesson_assessments": [
-      "Weak positive edit from previous iteration (decrease_weight r_progress by 0.5 + replace formula) improved task/semantic scores slightly but did not enable landing."
-    ],
-    "reusable_lessons": [
-      "Reducing r_progress dominance can improve shaping balance, but a more aggressive rebalancing with added landing-phase incentives is needed."
-    ],
-    "failed_or_weak_lessons": [
-      "The sole previous lesson is weak_positive and insufficient to achieve task success."
-    ],
-    "avoid_actions": [
-      "Do not only weaken r_progress further without strengthening landing‑phase shaping; this may remove the only descent incentive.",
-      "Do not make the terminal success condition easier, as it already encodes the correct goal."
-    ],
-    "recommended_actions": [
-      "Apply a coupled rebalancing that simultaneously reduces r_progress dominance and amplifies reward for soft, slow descent near the ground before touchdown, e.g., via a new approach-speed component or by widening r_soft_touchdown’s condition and increasing its weight."
-    ],
-    "memory_confidence": 0.3
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
   },
   "reward_editor": {
     "edit_decision": "edit",
     "next_action": "apply_edit",
-    "plan_type": "coupled_rebalancing",
-    "atomicity": "atomic",
-    "max_reasonable_edits": 2,
-    "rationale": "r_progress remains dominant (~60%), and no landing‑phase signal shapes slow centered descent before contact. We atomically reduce r_progress weight by factor 0.6 (to 0.3) and add a new conditional component that penalizes speed when altitude is low and both contacts are not yet made. The two edits together ensure descent incentive continues (floor ~0.15) while strongly encouraging the agent to slow down in the critical final approach phase.",
-    "expected_effect": "r_progress dominance should drop below 0.5. The new r_approach_slow component will give meaningful negative reward for fast descent when y < 0.5 and not both contacts, thereby guiding the lander to approach gently. Safe_contact and stable_landing rates should rise above zero, and success rate should improve after retraining. Episode reward mean may dip initially but recover.",
-    "risk_analysis": "If r_approach_slow is too punitive or its condition activates too early (y<0.5), the agent might avoid descending that low; however, the component is a penalty only, and the r_progress floor still provides positive descent incentive. The terminal success bonus remains sparse and one‑time, so no hack risk. If r_progress is weakened too much, descent may stall—factor 0.6 leaves weight 0.3 and a floor multiplier of 0.5, guaranteeing at least 0.15 reward per step near ground, which should prevent stalling.",
+    "plan_type": "single_edit",
+    "atomicity": "separable",
+    "max_reasonable_edits": 1,
+    "rationale": "The r_progress component's per-step negative formula drives the agent to crash early. Replacing its formula with a constant 0 removes the existence penalty while preserving the component slot for future potential-based shaping. This severs the direct link between episode length and reward, allowing the agent to attempt longer, deliberate landings without being punished. The remaining stability and control components provide mild shaping, and the terminal success event (+1) remains the primary goal signal. The crash event's unintended positive reward is a known risk but is not addressed in this single edit per the reflection strategy; it can be handled in a subsequent edit if needed.",
+    "expected_effect": "r_progress dominance collapses to 0, eliminating the incentive to end episodes prematurely. Episode length should increase, and the agent will begin to explore landing softly. Safe_contact_rate and stable_landing_rate may rise, while success_episode_rate should eventually become non-zero as the agent learns to aim for the terminal success event.",
+    "risk_analysis": "Without any dense progress signal, the agent may experience sparse reward and slow learning. The crash event still pays +1, which may tempt early crashing; however, because r_progress no longer adds a per-step penalty, a full landing attempt is no longer strictly worse than a crash in terms of dense reward, so the agent has a chance to discover that a successful landing yields a comparable terminal bonus. If crashing remains dominant, a follow-up edit to the crash event (e.g., making its weight negative) will be necessary.",
     "edit_plan": [
       {
-        "operator": "decrease_weight",
+        "operator": "replace_formula",
         "target": "r_progress",
-        "factor": 0.6
-      },
-      {
-        "operator": "add_conditional_formula_component",
-        "component": {
-          "name": "r_approach_slow",
-          "weight": 1.5,
-          "inputs": [],
-          "params": {
-            "formula": "-(abs(vy) + 0.2 * abs(vx))",
-            "condition": "y < 0.5 and not (left_contact and right_contact)"
-          },
-          "clip": null,
-          "enabled": true
-        }
+        "formula": "0"
       }
     ]
   },
   "auditor_check": {
     "approved": true,
-    "issues": [],
+    "issues": [
+      "The crash event_predicate still gives a positive reward (+1) for crashing, which may continue to incentivise early termination. This was noted in the reflection safety notes but is outside the scope of this single-edit plan. A future edit should address the crash rule (e.g., decrease weight, or change condition to a harsh crash only) to fully eliminate the perverse incentive."
+    ],
     "final_action": "apply_edit"
   },
   "distilled_lessons": {
     "what_worked": [],
     "what_failed": [
-      "Previous edit (decrease r_progress weight by 0.5 + formula change) only slightly improved task metrics; it did not achieve landing success."
+      "Using a dense per-step penalty for spatial and velocity deviation encourages fast, unsafe termination rather than careful landing."
     ],
     "avoid_next": [
-      "Do not rely solely on r_progress weight reduction without amplifying landing‑phase shaping."
+      "Do not introduce per-step penalties that grow with episode length without progress alignment.",
+      "Avoid positive crash bonuses without corresponding penalties for unsafe behaviour."
     ],
     "recommend_next": [
-      "Coupled rebalancing: concurrently reduce r_progress and add or strengthen approach‑speed components to shape the final descent."
+      "When designing progress shaping, use potential-based functions that give zero or diminishing cost near the goal state.",
+      "Ensure terminal success events are large enough to dominate any residual negative shaping, and that unintended positive terminal events are eliminated or negated."
     ],
-    "applicability_notes": [
-      "Applicable when shaping‑goal mismatch persists and r_progress is still the dominant component (>0.5 ratio).",
-      "Use when terminal success is sparse and landing‑oriented components are under‑utilized."
-    ]
+    "applicability_notes": "This lesson is task-specific but generalises to any environment where an agent can prematurely terminate to avoid per-step costs."
   },
-  "diagnosis": "Persistent shaping-goal mismatch: r_progress still dominant (~60%), landing‑phase incentives too weak. Atomic coupled rebalancing reduces r_progress weight to 0.3 and adds r_approach_slow, penalizing speed when altitude <0.5 and before both contacts, to shape gentle final descent.",
+  "diagnosis": "The r_progress component's per-step negative penalty makes crashing the dominant strategy. Replacing its formula with 0 removes the existence penalty and is the necessary first step to realign learning toward stable landing.",
   "edit_plan": [
     {
-      "operator": "decrease_weight",
+      "operator": "replace_formula",
       "target": "r_progress",
-      "factor": 0.6
-    },
-    {
-      "operator": "add_conditional_formula_component",
-      "component": {
-        "name": "r_approach_slow",
-        "weight": 1.5,
-        "inputs": [],
-        "params": {
-          "formula": "-(abs(vy) + 0.2 * abs(vx))",
-          "condition": "y < 0.5 and not (left_contact and right_contact)"
-        },
-        "clip": null,
-        "enabled": true
-      }
+      "formula": "0"
     }
   ],
-  "plan_type": "coupled_rebalancing",
-  "atomicity": "atomic",
-  "max_reasonable_edits": 2
+  "plan_type": "single_edit",
+  "atomicity": "separable",
+  "max_reasonable_edits": 1
 }
