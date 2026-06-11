@@ -8,9 +8,10 @@ from typing import Any, Dict, List, Optional
 class RewardComponent:
     """One editable reward component.
 
-    v1 adds semantic metadata so tools can reason over reward roles rather than
-    environment-specific component names. These metadata fields do not affect
-    reward execution; they are used by diagnostics, memory, and repair tools.
+    AST-first V2:
+      - formula_component requires params.formula_ast
+      - conditional_formula_component requires params.condition_ast and params.formula_ast
+      - string formula/condition fields are not the trusted source of execution
     """
 
     name: str
@@ -28,10 +29,12 @@ class RewardComponent:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RewardComponent":
         params = dict(data.get("params", {}) or {})
-        if "formula" in data and "formula" not in params:
-            params["formula"] = data["formula"]
-        if "condition" in data and "condition" not in params:
-            params["condition"] = data["condition"]
+
+        if "formula_ast" in data and "formula_ast" not in params:
+            params["formula_ast"] = data["formula_ast"]
+        if "condition_ast" in data and "condition_ast" not in params:
+            params["condition_ast"] = data["condition_ast"]
+
         return cls(
             name=data["name"],
             type=data["type"],
@@ -40,7 +43,6 @@ class RewardComponent:
             params=params,
             clip=data.get("clip"),
             enabled=bool(data.get("enabled", True)),
-            # Accept both canonical semantic_role and raw LLM alias role.
             semantic_role=data.get("semantic_role") or data.get("role"),
             reward_timing=data.get("reward_timing"),
             behavior_channel=data.get("behavior_channel"),
@@ -63,10 +65,10 @@ class RewardComponent:
             data["reward_timing"] = self.reward_timing
         if self.behavior_channel is not None:
             data["behavior_channel"] = self.behavior_channel
-        if self.type in {"formula_component", "conditional_formula_component"} and "formula" in self.params:
-            data["formula"] = self.params.get("formula")
-        if self.type == "conditional_formula_component" and "condition" in self.params:
-            data["condition"] = self.params.get("condition")
+        if self.type in {"formula_component", "conditional_formula_component", "action_penalty"} and "formula_ast" in self.params:
+            data["formula_ast"] = self.params.get("formula_ast")
+        if self.type == "conditional_formula_component" and "condition_ast" in self.params:
+            data["condition_ast"] = self.params.get("condition_ast")
         if self.metadata:
             data["metadata"] = self.metadata
         return data
@@ -76,8 +78,8 @@ class RewardComponent:
 class EventRule:
     """Optional event-style reward rule.
 
-    Event rules are useful for one-time bonuses and duration-conditioned bonuses.
-    v1 also preserves semantic metadata for role-based diagnostics.
+    AST-first event_predicate:
+      condition.expr_ast is the trusted executable predicate.
     """
 
     name: str
@@ -94,17 +96,18 @@ class EventRule:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EventRule":
         raw_condition = data.get("condition", {})
-        if isinstance(raw_condition, str):
-            condition = {"expression": raw_condition}
-        else:
-            condition = dict(raw_condition or {})
+        condition = dict(raw_condition or {}) if isinstance(raw_condition, dict) else {}
+
+        if "condition_ast" in data and "expr_ast" not in condition:
+            condition["expr_ast"] = data["condition_ast"]
+        if "expr_ast" in data and "expr_ast" not in condition:
+            condition["expr_ast"] = data["expr_ast"]
         if "duration_steps" in data and "duration_steps" not in condition:
             condition["duration_steps"] = data["duration_steps"]
+
         return cls(
             name=data["name"],
             type=data["type"],
-            # Runtime uses weight. Accept raw LLM reward as alias so direct
-            # RewardSchema.from_dict does not silently drop event reward magnitude.
             weight=float(data.get("weight", data.get("reward", 1.0))),
             condition=condition,
             one_time=bool(data.get("one_time", False)),
@@ -124,6 +127,8 @@ class EventRule:
             "one_time": self.one_time,
             "enabled": self.enabled,
         }
+        if self.type == "event_predicate" and "expr_ast" in self.condition:
+            data["condition_ast"] = self.condition.get("expr_ast")
         if self.semantic_role is not None:
             data["semantic_role"] = self.semantic_role
         if self.reward_timing is not None:

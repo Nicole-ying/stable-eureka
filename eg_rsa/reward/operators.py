@@ -7,10 +7,9 @@ from eg_rsa.reward.schema import EventRule, RewardComponent, RewardSchema
 
 
 class RewardEditOperatorApplier:
-    """Apply a constrained edit plan to a RewardSchema.
+    """Apply constrained AST-first edit plans to RewardSchema.
 
-    V2 allows formula-native edits while still executing only trusted schema
-    operations. LLMs output edit instructions, not Python code.
+    LLMs output edit instructions and AST objects, never Python code or formula strings.
     """
 
     ALLOWED_OPERATORS = {
@@ -22,7 +21,6 @@ class RewardEditOperatorApplier:
         "add_event_rule",
         "convert_to_one_time_event",
         "add_duration_condition",
-        "reshape_sparse_to_dense",
         "replace_formula",
         "replace_condition",
         "add_formula_component",
@@ -60,21 +58,20 @@ class RewardEditOperatorApplier:
     @staticmethod
     def allowed_operator_descriptions() -> List[Dict[str, Any]]:
         return [
-            {"operator": "increase_weight", "required": ["target", "factor"], "description": "Multiply an existing component or event rule weight by factor > 1."},
-            {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply an existing component or event rule weight by 0 < factor < 1."},
+            {"operator": "increase_weight", "required": ["target", "factor"], "description": "Multiply existing reward item weight by factor > 1."},
+            {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply existing reward item weight by 0 < factor < 1."},
             {"operator": "clip_component", "required": ["target", "clip"], "description": "Set existing component clip range [min, max]."},
-            {"operator": "disable_component", "required": ["target"], "description": "Disable a harmful or redundant existing component or event rule."},
-            {"operator": "replace_formula", "required": ["target", "formula"], "description": "Replace params.formula of an existing formula/action component. Formula must use allowed primitive variables/functions."},
-            {"operator": "replace_condition", "required": ["target", "condition"], "description": "Replace condition of an existing conditional component or event_predicate rule."},
-            {"operator": "add_formula_component", "required": ["component"], "description": "Add a formula_component using primitive variables/functions."},
-            {"operator": "add_conditional_formula_component", "required": ["component"], "description": "Add a conditional_formula_component with condition and formula using primitive variables/functions."},
-            {"operator": "add_action_penalty", "required": ["component"], "description": "V2 alias: add a formula_component with semantic_role=control_cost. The custom formula must be reward-signed."},
-            {"operator": "add_event_predicate", "required": ["event_rule"], "description": "Add an event_predicate with condition.expression using primitive variables/functions."},
-            {"operator": "add_component", "required": ["component"], "description": "Backward-compatible add_component; V2 should prefer add_formula_component/add_conditional_formula_component/add_action_penalty."},
-            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Backward-compatible add_event_rule; V2 should prefer add_event_predicate."},
-            {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert an event rule or event_bonus component into one-time reward."},
-            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Set an event rule duration requirement."},
-            {"operator": "reshape_sparse_to_dense", "required": ["target", "new_type"], "description": "Change a sparse event-like component into a supported dense shaping component type."},
+            {"operator": "disable_component", "required": ["target"], "description": "Disable harmful/redundant component or event rule."},
+            {"operator": "replace_formula", "required": ["target", "formula_ast"], "description": "Replace params.formula_ast of an existing AST formula component."},
+            {"operator": "replace_condition", "required": ["target", "condition_ast"], "description": "Replace params.condition_ast or event condition.expr_ast."},
+            {"operator": "add_formula_component", "required": ["component.formula_ast"], "description": "Add formula_component using AST IR."},
+            {"operator": "add_conditional_formula_component", "required": ["component.condition_ast", "component.formula_ast"], "description": "Add conditional_formula_component using AST IR."},
+            {"operator": "add_action_penalty", "required": ["component.formula_ast"], "description": "Alias for AST formula_component with semantic_role=control_cost."},
+            {"operator": "add_event_predicate", "required": ["event_rule.condition.expr_ast"], "description": "Add event_predicate using AST boolean predicate."},
+            {"operator": "add_component", "required": ["component"], "description": "Backward-compatible structural add; AST fields are still required for formula types."},
+            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Backward-compatible event add; event_predicate requires condition.expr_ast."},
+            {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert event rule or event_bonus component into one-time event."},
+            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Set event rule duration requirement."},
         ]
 
     @staticmethod
@@ -121,26 +118,32 @@ class RewardEditOperatorApplier:
     @staticmethod
     def _replace_formula(schema: RewardSchema, edit: Dict[str, Any]) -> None:
         target = edit["target"]
-        formula = str(edit["formula"])
+        formula_ast = edit.get("formula_ast")
+        if formula_ast is None:
+            raise ValueError("replace_formula requires formula_ast")
         component = schema.get_component(target)
         if component is None:
             raise ValueError("replace_formula target must be a component")
         if component.type not in RewardEditOperatorApplier.FORMULA_COMPONENT_TYPES:
             raise ValueError(f"replace_formula target must be formula-native component, got {component.type}")
         component.params = dict(component.params or {})
-        component.params["formula"] = formula
+        component.params["formula_ast"] = formula_ast
 
     @staticmethod
     def _replace_condition(schema: RewardSchema, edit: Dict[str, Any]) -> None:
         target = edit["target"]
-        condition = edit["condition"]
+        condition_ast = edit.get("condition_ast")
+        if condition_ast is None and isinstance(edit.get("condition"), dict):
+            condition_ast = edit["condition"].get("expr_ast") or edit["condition"].get("condition_ast")
+        if condition_ast is None:
+            raise ValueError("replace_condition requires condition_ast")
 
         component = schema.get_component(target)
         if component is not None:
             if component.type != "conditional_formula_component":
                 raise ValueError("replace_condition component target must be conditional_formula_component")
             component.params = dict(component.params or {})
-            component.params["condition"] = str(condition)
+            component.params["condition_ast"] = condition_ast
             return
 
         rule = schema.get_event_rule(target)
@@ -148,13 +151,8 @@ class RewardEditOperatorApplier:
             if rule.type != "event_predicate":
                 raise ValueError("replace_condition event target must be event_predicate")
             old = dict(rule.condition or {})
-            if isinstance(condition, dict):
-                new_condition = dict(condition)
-            else:
-                new_condition = {"expression": str(condition)}
-            if "duration_steps" not in new_condition and "duration_steps" in old:
-                new_condition["duration_steps"] = old["duration_steps"]
-            rule.condition = new_condition
+            old["expr_ast"] = condition_ast
+            rule.condition = old
             return
 
         raise ValueError(f"replace_condition target not found: {target}")
@@ -185,19 +183,11 @@ class RewardEditOperatorApplier:
 
     @staticmethod
     def _add_action_penalty(schema: RewardSchema, edit: Dict[str, Any]) -> None:
-        # V2 convergence:
-        # LLM-generated action costs are formula_component/control_cost.
-        # Legacy action_penalty remains supported by runtime but should not be
-        # introduced by formula-native self-evolution.
         component = dict(edit["component"])
         component["type"] = "formula_component"
         component.setdefault("semantic_role", "control_cost")
         component.setdefault("reward_timing", "dense")
         component.setdefault("behavior_channel", "control")
-        params = dict(component.get("params", {}) or {})
-        if "formula" in component and "formula" not in params:
-            params["formula"] = component["formula"]
-        component["params"] = params
         RewardEditOperatorApplier._add_component(schema, {"component": component})
 
     @staticmethod
@@ -251,16 +241,3 @@ class RewardEditOperatorApplier:
         if duration_steps <= 0:
             raise ValueError("duration_steps must be positive")
         rule.condition["duration_steps"] = duration_steps
-
-    @staticmethod
-    def _reshape_sparse_to_dense(schema: RewardSchema, edit: Dict[str, Any]) -> None:
-        component = schema.get_component(edit["target"])
-        if component is None:
-            raise ValueError("reshape_sparse_to_dense target must be a component")
-        new_type = edit["new_type"]
-        if new_type not in RewardEditOperatorApplier.ADDABLE_COMPONENT_TYPES:
-            raise ValueError(f"reshape_sparse_to_dense new_type must be supported; got {new_type}")
-        component.type = new_type
-        if "params" in edit:
-            component.params.update(edit["params"])
-        component.enabled = True

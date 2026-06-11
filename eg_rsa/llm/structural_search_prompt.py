@@ -6,6 +6,14 @@ from typing import Any, Dict, List
 from eg_rsa.reward.operators import RewardEditOperatorApplier
 
 
+def _ast_grammar() -> Dict[str, Any]:
+    return {
+        "leaf": [{"var": "x"}, {"const": 0.5}, {"bool": True}],
+        "numeric_ops": ["add", "sub", "mul", "div", "neg", "abs", "min", "max", "clip"],
+        "boolean_ops": ["and", "or", "not", "lt", "le", "gt", "ge", "eq", "ne"],
+    }
+
+
 def build_structural_search_prompt(
     task_description: str,
     current_reward_schema: Dict[str, Any],
@@ -15,30 +23,28 @@ def build_structural_search_prompt(
 ) -> str:
     allowed_ops = RewardEditOperatorApplier.allowed_operator_descriptions()
     allowed_vars = structural_context.get("allowed_formula_variables", [])
-    allowed_funcs = structural_context.get("allowed_formula_functions", [])
 
     return f"""
-You are the Structural Search sub-agent of EG-RSA-V2.
+You are the Structural Search sub-agent of EG-RSA-V2 AST-IR.
 
-Your job is to propose one minimal formula-native structural reward edit when local edits are insufficient.
 Return one JSON object only.
 
 Primitive-only constraints:
 1. Do NOT use environment oracle reward or official reward values.
 2. Do NOT write Python code.
-3. Do NOT invent hidden task metrics, hidden event predicates, hidden variables, or hidden rewards.
-4. Prefer primitive formula edits over metric-based edits.
-5. Formula expressions may use only these variables: {json.dumps(allowed_vars, ensure_ascii=False)}
-6. Formula expressions may call only these functions: {json.dumps(allowed_funcs, ensure_ascii=False)}
-7. If no safe structural edit exists, return edit_decision="no_edit" and next_action="continue_training".
+3. Do NOT output string formulas or string conditions.
+4. Use formula_ast / condition_ast / condition.expr_ast only.
+5. Formula AST variables may use only: {json.dumps(allowed_vars, ensure_ascii=False)}
+6. If no safe structural edit exists, return edit_decision="no_edit" and next_action="continue_training".
+
+AST grammar:
+{json.dumps(_ast_grammar(), indent=2, ensure_ascii=False)}
 
 Preferred structural edits:
 1. add_formula_component
 2. add_conditional_formula_component
 3. add_action_penalty
 4. add_event_predicate
-
-Avoid metric_value / metric_delta unless there is no formula-native alternative.
 
 Required add_formula_component schema:
 {{
@@ -47,28 +53,9 @@ Required add_formula_component schema:
     "name": "r_unique_formula_component",
     "type": "formula_component",
     "weight": 1.0,
-    "formula": "1.0 - min(abs(x), 1.0)",
-    "params": {{"formula": "1.0 - min(abs(x), 1.0)"}},
-    "clip": [0.0, 1.0],
-    "enabled": true,
-    "semantic_role": "dense_guidance",
-    "reward_timing": "dense",
-    "behavior_channel": "progress"
-  }}
-}}
-
-Required add_conditional_formula_component schema:
-{{
-  "operator": "add_conditional_formula_component",
-  "component": {{
-    "name": "r_unique_conditional_component",
-    "type": "conditional_formula_component",
-    "weight": 1.0,
-    "condition": "some primitive condition",
-    "formula": "some primitive formula",
+    "formula_ast": {{"op": "sub", "left": {{"const": 1.0}}, "right": {{"op": "min", "args": [{{"op": "abs", "arg": {{"var": "x"}}}}, {{"const": 1.0}}]}}}},
     "params": {{
-      "condition": "some primitive condition",
-      "formula": "some primitive formula"
+      "formula_ast": {{"op": "sub", "left": {{"const": 1.0}}, "right": {{"op": "min", "args": [{{"op": "abs", "arg": {{"var": "x"}}}}, {{"const": 1.0}}]}}}}
     }},
     "clip": [0.0, 1.0],
     "enabled": true,
@@ -86,7 +73,7 @@ Required add_event_predicate schema:
     "type": "event_predicate",
     "weight": 20.0,
     "condition": {{
-      "expression": "primitive boolean expression",
+      "expr_ast": {{"op": "and", "args": [{{"var": "left_contact"}}, {{"var": "right_contact"}}]}},
       "duration_steps": 1
     }},
     "one_time": true,

@@ -6,59 +6,97 @@ from typing import Any, Dict, List
 from eg_rsa.reward.operators import RewardEditOperatorApplier
 
 
+def _ast_grammar() -> Dict[str, Any]:
+    return {
+        "leaf": [{"var": "x"}, {"const": 0.5}, {"bool": True}],
+        "numeric": [
+            {"op": "add", "args": [{"var": "x"}, {"var": "y"}]},
+            {"op": "sub", "left": {"const": 1.0}, "right": {"var": "x"}},
+            {"op": "mul", "args": [{"const": 0.5}, {"op": "abs", "arg": {"var": "vx"}}]},
+            {"op": "neg", "arg": {"var": "main_engine"}},
+            {"op": "abs", "arg": {"var": "angle"}},
+            {"op": "min", "args": [{"var": "x"}, {"const": 1.0}]},
+            {"op": "max", "args": [{"var": "x"}, {"const": 0.0}]},
+            {"op": "clip", "args": [{"var": "x"}, {"const": -1.0}, {"const": 1.0}]},
+        ],
+        "boolean": [
+            {"op": "and", "args": [{"var": "left_contact"}, {"var": "right_contact"}]},
+            {"op": "or", "args": [{"var": "left_contact"}, {"var": "right_contact"}]},
+            {"op": "not", "arg": {"var": "left_contact"}},
+            {"op": "lt", "left": {"op": "abs", "arg": {"var": "vy"}}, "right": {"const": 0.4}},
+            {"op": "gt", "left": {"op": "abs", "arg": {"var": "angle"}}, "right": {"const": 0.6}},
+        ],
+    }
+
+
 def build_edit_prompt(
     task_description: str,
     current_reward_schema: Dict[str, Any],
     diagnostic_report: Dict[str, Any],
     retrieved_memories: List[Dict[str, Any]],
-    retrieved_lessons: List[Dict[str, Any]] | None = None,
-    reflection_report: Dict[str, Any] | None = None,
+    retrieved_lessons: List[Dict[str, Any]] = None,
+    reflection_report: Dict[str, Any] = None,
 ) -> str:
-    """Build the formula-native constrained prompt for the EG-RSA edit agent."""
-
     allowed_ops = RewardEditOperatorApplier.allowed_operator_descriptions()
+    allowed_vars = (
+        current_reward_schema.get("metadata", {}).get("allowed_formula_variables", [])
+        if isinstance(current_reward_schema, dict)
+        else []
+    )
 
     return f"""
-You are the Reward EditAgent of EG-RSA-V2.
-A separate ReflectionAgent has already analyzed diagnostics and memory.
-Your job is to turn that reflection strategy into a concrete executable reward edit plan.
+You are the Reward EditAgent of EG-RSA-V2 AST-IR.
 
 Return one JSON object only.
 
-Mission constraints:
-1. Improve reward search through memory-guided and reflection-guided editing.
-2. Obey ReflectionAgent.memory_use_policy:
-   - use memory layers that ReflectionAgent marked useful;
-   - ignore memory layers that ReflectionAgent marked unreliable;
-   - if you override the reflection memory policy, explain why in risk_analysis.
-3. Do NOT use environment oracle reward or official reward values for decisions.
-4. Do NOT write Python code.
-5. Do NOT invent new edit operators.
-6. Prefer formula-native edits for V2 schemas:
-   - replace_formula
-   - replace_condition
-   - add_formula_component
-   - add_conditional_formula_component
-   - add_action_penalty
-   - add_event_predicate
-7. Use metric_value / metric_delta only when the current structural context explicitly exposes a primitive-generated metric and a formula-native edit is not suitable.
-8. Formula and condition edits must use only primitive variables already present in the schema/interface.
-9. Do not merely tune weights if the root cause is missing progress structure or wrong formula/condition structure.
-10. If a component is useful in intent but unsafe in formula, prefer replace_formula or replace_condition over disable_component.
-11. If no reliable edit exists, choose continue_training or structural_search.
+Hard AST constraints:
+1. Do NOT write Python code.
+2. Do NOT output string formula, string condition, expression, or formula fields.
+3. Formula edits must use formula_ast.
+4. Condition edits must use condition_ast or condition.expr_ast.
+5. AST variables must come from allowed variables.
+6. Prefer minimal edits. If no reliable edit exists, choose continue_training or structural_search.
 
-Formula-native design principles:
-1. Dense reward should be progress-aligned, not merely passive state maintenance.
-2. Stability/control components should support task progress rather than replace it.
-3. Terminal success should be sparse, one-time, and based on primitive terminal evidence.
-4. Action penalty must not become positive reward for any action direction.
-5. A coupled edit package may combine weight change + formula/condition repair when both are required.
+Allowed variables:
+{json.dumps(allowed_vars, ensure_ascii=False)}
 
-Allowed next_action values:
-- apply_edit: use edit_plan to update the schema.
-- structural_search: the issue needs a new formula-native structural signal.
-- continue_training: the reward is plausible and insufficient training is the main hypothesis.
-- early_stop: no reliable edit or search direction exists.
+AST grammar:
+{json.dumps(_ast_grammar(), indent=2, ensure_ascii=False)}
+
+Allowed edit operators:
+{json.dumps(allowed_ops, indent=2, ensure_ascii=False)}
+
+Examples:
+- replace_formula:
+{{
+  "operator": "replace_formula",
+  "target": "r_progress_guidance",
+  "formula_ast": {{"op": "sub", "left": {{"const": 1.0}}, "right": {{"op": "min", "args": [{{"op": "abs", "arg": {{"var": "x"}}}}, {{"const": 1.0}}]}}}}
+}}
+
+- replace_condition:
+{{
+  "operator": "replace_condition",
+  "target": "r_primitive_terminal_success",
+  "condition_ast": {{"op": "and", "args": [{{"var": "left_contact"}}, {{"var": "right_contact"}}]}}
+}}
+
+- add_formula_component:
+{{
+  "operator": "add_formula_component",
+  "component": {{
+    "name": "r_new_progress_ast",
+    "type": "formula_component",
+    "weight": 0.5,
+    "formula_ast": {{"op": "sub", "left": {{"const": 1.0}}, "right": {{"op": "min", "args": [{{"op": "abs", "arg": {{"var": "x"}}}}, {{"const": 1.0}}]}}}},
+    "params": {{"formula_ast": {{"op": "sub", "left": {{"const": 1.0}}, "right": {{"op": "min", "args": [{{"op": "abs", "arg": {{"var": "x"}}}}, {{"const": 1.0}}]}}}}}},
+    "clip": [0.0, 1.0],
+    "enabled": true,
+    "semantic_role": "dense_guidance",
+    "reward_timing": "dense",
+    "behavior_channel": "progress"
+  }}
+}}
 
 Task description:
 {task_description}
@@ -77,9 +115,6 @@ Raw memory cards:
 
 Distilled lesson cards:
 {json.dumps(retrieved_lessons or [], indent=2, ensure_ascii=False)}
-
-Allowed edit operators:
-{json.dumps(allowed_ops, indent=2, ensure_ascii=False)}
 
 Return exactly this JSON format:
 {{

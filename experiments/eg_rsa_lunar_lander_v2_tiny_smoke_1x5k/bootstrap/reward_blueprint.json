@@ -1,0 +1,72 @@
+{
+  "task_objective": "Land the lunar module safely between the flags, centered, slow, upright, fuel-efficient, and end with stable ground contact.",
+  "primitive_variable_roles": {
+    "progress_variables": [
+      "y",
+      "x"
+    ],
+    "safety_variables": [
+      "vx",
+      "vy",
+      "angle",
+      "angular_velocity"
+    ],
+    "terminal_evidence_variables": [
+      "left_contact",
+      "right_contact",
+      "vy",
+      "vx",
+      "angle"
+    ],
+    "control_variables": [
+      "main_engine",
+      "side_engine"
+    ]
+  },
+  "phase_structure": [
+    {
+      "phase": "approach_or_progress",
+      "purpose": "encourage measurable progress toward landing zone by descending and centering",
+      "reward_intent": "Reward lower y (closer to ground) and smaller |x|, while already penalizing excessive speed and tilt to avoid crashing."
+    },
+    {
+      "phase": "controlled_execution",
+      "purpose": "encourage extra caution when near ground to ensure soft touchdown",
+      "reward_intent": "Conditional penalty on velocity and tilt when y is small, emphasising gentle final descent."
+    },
+    {
+      "phase": "completion",
+      "purpose": "grant a large one‑time bonus for a stable landing",
+      "reward_intent": "Trigger when both legs are in contact and velocities/angle are within safe bounds; also penalise a hard crash."
+    }
+  ],
+  "component_blueprint": [
+    {
+      "name": "r_progress_guidance",
+      "role": "dense_guidance",
+      "phase": "approach_or_progress",
+      "design_intent": "Creates a shaped reward that increases as the lander descends (lower y) and stays centered (x≈0), while continuous penalties on speed and tilt prevent the agent from simply crashing down.",
+      "anti_exploit_note": "The -y term gives a monotonically higher reward as altitude decreases; the agent cannot exploit this by hovering (y stays high, reward stays low) or by crashing (large vy/vx/angle penalties dominate). Thus dense reward is aligned with safe progress."
+    },
+    {
+      "name": "r_near_ground_quality",
+      "role": "stability_quality",
+      "phase": "controlled_execution",
+      "design_intent": "Adds extra penalty on velocity and tilt only when the lander is close to the ground, encouraging a very soft final segment.",
+      "anti_exploit_note": "This component is inactive while y is large, so the agent cannot accumulate easy reward earlier by hovering low; it only tightens landing quality when touchdown is imminent."
+    },
+    {
+      "name": "r_control_cost",
+      "role": "control_cost",
+      "phase": "approach_or_progress",
+      "design_intent": "Penalizes fuel consumption to encourage efficient use of the main and side engines.",
+      "anti_exploit_note": "main_engine is non‑negative, side_engine is signed; using abs(side_engine) ensures any lateral thrust costs fuel. The formula is reward‑signed (negative), so it always reduces total reward and cannot be exploited to create positive reward."
+    }
+  ],
+  "anti_exploit_principles": [
+    "Dense reward should not be maximized indefinitely without progress (e.g., by hovering) because -y remains low at high altitude.",
+    "Stability/alignment penalties are present globally but increase near ground, so they support progress rather than replace it.",
+    "Action cost uses abs(side_engine) and penalizes both directions equally, preventing any signed action from accidentally becoming a positive reward.",
+    "Terminal success is sparse and one‑time, based only on primitive terminal evidence, so the agent cannot repeatedly collect it."
+  ]
+}

@@ -9,7 +9,7 @@ from eg_rsa.diagnostics.event_evaluator import EventEvaluator
 from eg_rsa.diagnostics.task_metrics import TaskMetricEvaluator
 from eg_rsa.env_adapters.box_obs_adapter import BoxObsAdapter
 from eg_rsa.env_adapters.action_primitive_mapper import ActionPrimitiveMapper
-from eg_rsa.reward.safe_formula_eval import safe_eval_formula
+from eg_rsa.reward.formula_ast import eval_formula_ast
 from eg_rsa.reward.schema import RewardSchema
 
 
@@ -154,13 +154,13 @@ class SchemaRewardWrapper(gym.Wrapper):
         duration_steps = int(condition.get("duration_steps", 1) or 1)
 
         if rule_type == "event_predicate":
-            expr = condition.get("expression") or condition.get("formula")
-            if not expr:
+            expr_ast = condition.get("expr_ast") or condition.get("condition_ast")
+            if expr_ast is None:
                 base_ok = False
             else:
                 base_ok = bool(
-                    self._safe_formula(
-                        expr=str(expr),
+                    self._safe_ast(
+                        ast_node=expr_ast,
                         obs_map=obs_map,
                         action=action,
                         events=events,
@@ -200,30 +200,37 @@ class SchemaRewardWrapper(gym.Wrapper):
         params = dict(params or {})
 
         if typ == "formula_component":
-            return self._safe_formula(
-                expr=str(params.get("formula", "0.0")),
+            ast_node = params.get("formula_ast")
+            if ast_node is None:
+                raise ValueError(f"formula_component {name} requires params.formula_ast")
+            return float(self._safe_ast(
+                ast_node=ast_node,
                 obs_map=obs_map,
                 action=action,
                 events=events,
                 task_metrics=task_metrics,
-            )
+            ))
 
         if typ == "conditional_formula_component":
-            cond = self._safe_formula(
-                expr=str(params.get("condition", "False")),
+            condition_ast = params.get("condition_ast")
+            formula_ast = params.get("formula_ast")
+            if condition_ast is None or formula_ast is None:
+                raise ValueError(f"conditional_formula_component {name} requires condition_ast and formula_ast")
+            cond = self._safe_ast(
+                ast_node=condition_ast,
                 obs_map=obs_map,
                 action=action,
                 events=events,
                 task_metrics=task_metrics,
             )
             if bool(cond):
-                return self._safe_formula(
-                    expr=str(params.get("formula", "0.0")),
+                return float(self._safe_ast(
+                    ast_node=formula_ast,
                     obs_map=obs_map,
                     action=action,
                     events=events,
                     task_metrics=task_metrics,
-                )
+                ))
             return 0.0
 
         if typ == "distance_penalty":
@@ -240,15 +247,15 @@ class SchemaRewardWrapper(gym.Wrapper):
             return -math.sqrt(sum(float(obs_map.get(k, 0.0)) ** 2 for k in inputs))
 
         if typ == "action_penalty":
-            formula = params.get("formula")
-            if isinstance(formula, str) and formula.strip():
-                return self._safe_formula(
-                    expr=formula,
+            ast_node = params.get("formula_ast")
+            if ast_node is not None:
+                return float(self._safe_ast(
+                    ast_node=ast_node,
                     obs_map=obs_map,
                     action=action,
                     events=events,
                     task_metrics=task_metrics,
-                )
+                ))
             return 0.0 if action is None else -float(np.sum(np.square(np.asarray(action, dtype=float))))
 
         if typ == "constant_alive":
@@ -294,9 +301,9 @@ class SchemaRewardWrapper(gym.Wrapper):
 
         return 0.0
 
-    def _safe_formula(
+    def _safe_ast(
         self,
-        expr: str,
+        ast_node: Any,
         obs_map: Dict[str, float],
         action: Optional[Any],
         events: Dict[str, bool],
@@ -308,7 +315,7 @@ class SchemaRewardWrapper(gym.Wrapper):
             events=events,
             task_metrics=task_metrics,
         )
-        return safe_eval_formula(expr, variables=variables)
+        return eval_formula_ast(ast_node, variables=variables)
 
     def _primitive_vars(
         self,

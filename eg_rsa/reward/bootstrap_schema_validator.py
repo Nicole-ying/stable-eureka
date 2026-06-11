@@ -5,8 +5,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from eg_rsa.reward.formula_validator import FormulaValidator
-from eg_rsa.reward.safe_formula_eval import safe_eval_formula
+from eg_rsa.reward.formula_ast import validate_formula_ast
 
 
 @dataclass
@@ -24,19 +23,11 @@ class BootstrapSchemaValidationResult:
 
 
 class BootstrapSchemaValidator:
-    """Validate LLM-generated V2 bootstrap output.
-
-    This validator is intentionally formula-native and environment-agnostic.
-    It checks safe syntax, schema structure, blueprint-schema consistency, and
-    generic action-penalty sign safety. It does not contain task-specific banned
-    component names or task-specific reward fixes.
-    """
+    """Validate AST-first V2 bootstrap output."""
 
     SUPPORTED_COMPONENT_TYPES = {
         "formula_component",
         "conditional_formula_component",
-        # legacy built-in; V2 LLM bootstrap should not attach custom formulas
-        "action_penalty",
     }
 
     SUPPORTED_EVENT_TYPES = {
@@ -90,7 +81,6 @@ class BootstrapSchemaValidator:
             event_rules = []
 
         allowed_vars = set(primitive_interface.get("allowed_formula_variables", []))
-        allowed_funcs = set(primitive_interface.get("allowed_formula_functions", []))
         semantic_roles = set(primitive_interface.get("semantic_roles", []))
 
         names = set()
@@ -106,6 +96,7 @@ class BootstrapSchemaValidator:
             name = component.get("name")
             ctype = component.get("type")
             role = component.get("semantic_role")
+            params = dict(component.get("params", {}) or {})
 
             if not name:
                 errors.append("Component missing name")
@@ -117,7 +108,7 @@ class BootstrapSchemaValidator:
 
             if ctype not in cls.SUPPORTED_COMPONENT_TYPES:
                 errors.append(
-                    f"Unsupported component type in V2 bootstrap schema: {ctype}. "
+                    f"Unsupported AST component type: {ctype}. "
                     f"Supported: {sorted(cls.SUPPORTED_COMPONENT_TYPES)}"
                 )
 
@@ -128,7 +119,7 @@ class BootstrapSchemaValidator:
             else:
                 warnings.append(f"Component {name} missing semantic_role")
 
-            if role in {"dense_guidance", "safety_constraint"}:
+            if role in {"dense_guidance", "safety_constraint", "stability_quality"}:
                 progress_like_count += 1
 
             try:
@@ -138,39 +129,30 @@ class BootstrapSchemaValidator:
             except Exception:
                 errors.append(f"Component {name} has invalid weight")
 
-            params = dict(component.get("params", {}) or {})
-            formula = component.get("formula") or params.get("formula")
-            condition = component.get("condition") or params.get("condition")
+            formula_ast = component.get("formula_ast") or params.get("formula_ast")
+            condition_ast = component.get("condition_ast") or params.get("condition_ast")
 
             if ctype in cls.SUPPORTED_COMPONENT_TYPES:
-                if ctype == "action_penalty":
-                    if formula:
-                        warnings.append(
-                            f"action_penalty {name} has custom formula; V2 normalizer "
-                            "should convert it to formula_component with semantic_role=control_cost"
-                        )
-                    else:
-                        warnings.append(
-                            f"legacy action_penalty {name} has no custom formula; runtime uses built-in -sum(action^2)"
-                        )
-                elif not formula:
-                    errors.append(f"{ctype} {name} missing formula")
+                if formula_ast is None:
+                    errors.append(f"{ctype} {name} missing formula_ast")
                 else:
-                    validation = FormulaValidator.validate_expression(str(formula), allowed_vars, allowed_funcs)
+                    validation = validate_formula_ast(formula_ast, allowed_vars)
                     if not validation.ok:
-                        errors.extend([f"{name}.formula: {e}" for e in validation.errors])
+                        errors.extend([f"{name}.formula_ast: {e}" for e in validation.errors])
 
             if ctype == "conditional_formula_component":
-                if not condition:
-                    errors.append(f"conditional_formula_component {name} missing condition")
+                if condition_ast is None:
+                    errors.append(f"conditional_formula_component {name} missing condition_ast")
                 else:
-                    validation = FormulaValidator.validate_expression(str(condition), allowed_vars, allowed_funcs)
+                    validation = validate_formula_ast(condition_ast, allowed_vars)
                     if not validation.ok:
-                        errors.extend([f"{name}.condition: {e}" for e in validation.errors])
+                        errors.extend([f"{name}.condition_ast: {e}" for e in validation.errors])
 
-            # action_penalty custom formulas are normalized to formula_component
-            # before validation in normal V2 bootstrap flow. Do not hard-fail raw
-            # bootstrap output here for a formula that runtime would ignore.
+            if "formula" in component or "formula" in params:
+                errors.append(f"{name}: string formula is forbidden in AST-first schema; use formula_ast")
+
+            if "condition" in component or "condition" in params:
+                errors.append(f"{name}: string condition is forbidden in AST-first schema; use condition_ast")
 
         for rule in event_rules:
             if not isinstance(rule, dict):
@@ -191,7 +173,7 @@ class BootstrapSchemaValidator:
 
             if rtype not in cls.SUPPORTED_EVENT_TYPES:
                 errors.append(
-                    f"Unsupported event rule type in V2 bootstrap schema: {rtype}. "
+                    f"Unsupported AST event rule type: {rtype}. "
                     f"Supported: {sorted(cls.SUPPORTED_EVENT_TYPES)}"
                 )
 
@@ -206,35 +188,22 @@ class BootstrapSchemaValidator:
                 terminal_count += 1
 
             condition = rule.get("condition", {})
-            if isinstance(condition, str):
-                expr = condition
-            elif isinstance(condition, dict):
-                expr = condition.get("expression") or condition.get("formula")
-                if not expr:
-                    expr = rule.get("expression") or rule.get("formula")
-                    if expr:
-                        warnings.append(
-                            f"Event rule {name} used top-level expression/formula; "
-                            "normalizer should move it into condition.expression"
-                        )
-            else:
-                expr = rule.get("expression") or rule.get("formula")
-                if expr:
-                    warnings.append(
-                        f"Event rule {name} missing condition dict but has top-level expression/formula"
-                    )
-                else:
-                    expr = None
-                    errors.append(f"Event rule {name} condition must be string or dict")
+            if not isinstance(condition, dict):
+                errors.append(f"Event rule {name} condition must be dict")
+                continue
 
-            if not expr:
-                errors.append(f"event_predicate {name} missing condition expression")
+            expr_ast = rule.get("condition_ast") or rule.get("expr_ast") or condition.get("expr_ast") or condition.get("condition_ast")
+            if expr_ast is None:
+                errors.append(f"event_predicate {name} missing condition.expr_ast")
             else:
-                validation = FormulaValidator.validate_expression(str(expr), allowed_vars, allowed_funcs)
+                validation = validate_formula_ast(expr_ast, allowed_vars)
                 if not validation.ok:
-                    errors.extend([f"{name}.condition: {e}" for e in validation.errors])
+                    errors.extend([f"{name}.condition_ast: {e}" for e in validation.errors])
 
-            if isinstance(condition, dict) and "duration_steps" in condition:
+            if "expression" in condition or "formula" in condition or "expression" in rule or "formula" in rule:
+                errors.append(f"{name}: string event expression is forbidden in AST-first schema; use condition.expr_ast")
+
+            if "duration_steps" in condition:
                 try:
                     if int(condition["duration_steps"]) <= 0:
                         errors.append(f"Event rule {name} has invalid duration_steps")
@@ -259,57 +228,11 @@ class BootstrapSchemaValidator:
         return BootstrapSchemaValidationResult(ok=(len(errors) == 0), errors=errors, warnings=warnings)
 
     @staticmethod
-    def _check_action_penalty_sign_safety(
-        name: str,
-        formula: str,
-        weight: Any,
-        allowed_vars: set[str],
-    ) -> str:
-        try:
-            w = float(weight)
-        except Exception:
-            return ""
-
-        base = {var: 0.0 for var in allowed_vars}
-        samples = [
-            {"main_engine": 0.0, "side_engine": 0.0},
-            {"main_engine": 1.0, "side_engine": 0.0},
-            {"main_engine": 0.0, "side_engine": 1.0},
-            {"main_engine": 0.0, "side_engine": -1.0},
-            {"main_engine": 1.0, "side_engine": 1.0},
-            {"main_engine": 1.0, "side_engine": -1.0},
-        ]
-
-        for sample in samples:
-            variables = dict(base)
-            variables.update(sample)
-            try:
-                raw = float(safe_eval_formula(formula, variables=variables))
-            except Exception:
-                continue
-            value = w * raw
-            if value > 1e-9:
-                return (
-                    f"action_penalty {name} can produce positive reward under sampled action "
-                    f"{sample}: weight * formula = {value:.6g}. "
-                    "Action penalties must not reward action direction."
-                )
-        return ""
-
-    @staticmethod
     def _blueprint_warnings(blueprint: Dict[str, Any], schema: Dict[str, Any]) -> List[str]:
         warnings: List[str] = []
         if not isinstance(blueprint, dict):
             warnings.append("reward_blueprint missing or not a dict")
             return warnings
-
-        roles = blueprint.get("primitive_variable_roles", {})
-        if not isinstance(roles, dict):
-            warnings.append("reward_blueprint.primitive_variable_roles missing or not a dict")
-
-        phases = blueprint.get("phase_structure", [])
-        if not isinstance(phases, list) or not phases:
-            warnings.append("reward_blueprint.phase_structure missing or empty")
 
         component_blueprint = blueprint.get("component_blueprint", [])
         if not isinstance(component_blueprint, list) or not component_blueprint:

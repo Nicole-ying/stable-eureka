@@ -1,0 +1,76 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean is 957, but no terminal success events occur (success_episode_rate = 0.0).",
+      "Episodes always last 1000 steps (max), meaning the agent never terminates early by landing or crashing.",
+      "The r_progress_guidance component contributes 70.4% of the total component sum, dominating the reward.",
+      "High progress_score_mean (0.945) and dense progress guidance payoffs show the agent maintains low x, vx, vy values, yet never lands.",
+      "Contact toggle mean is 654.33, indicating many ground contacts but no stable landing; safe_contact_rate and stable_landing_rate are 0.0.",
+      "No crash safety events were triggered, so the agent avoids dangerous velocities/angles but also avoids the landing criteria."
+    ],
+    "likely_true_failures": [
+      "Reward hacking via dense shaping exploitation: the agent learns to hover near the center instead of landing.",
+      "Shaping–goal mismatch: the dense progress_guidance incentivizes staying airborne with low deviations, not the terminal landing goal."
+    ],
+    "likely_false_positives": [
+      "The component_dominance flag is a true indicator here; it is not a false positive.",
+      "The unstable_contact_behavior flag correctly identifies lack of stable ground contact."
+    ],
+    "root_cause_hypotheses": [
+      "The weight of r_progress_guidance (0.8) is too high relative to the terminal success reward (60.0), creating a local optimum where hovering yields more cumulative reward than attempting a risky landing.",
+      "The dense guidance formula penalizes |x|, |vx|, |vy| in a way that can be satisfied without landing; the agent can keep x≈0 and velocities near zero by bobbing or hovering.",
+      "The one‑time terminal success event is too difficult to trigger under the current policy because the agent never tries the final approach, as the dense component already gives high scores.",
+      "Possible absence of an anti‑bouncing or time‑penalty component allows the agent to accumulate reward indefinitely through repetitive contact toggles."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "The dense progress_guidance dominates 70.4% of component reward and creates a local optimum where hovering yields high cumulative scores, preventing the agent from ever attempting a landing (zero terminal success). To break the hack, we must reduce the dominance of r_progress_guidance and increase the incentive for terminal success proportionally. This is a coupled rebalancing package: halving the progress_guidance weight (factor 0.5) and doubling the terminal success weight (factor 2.0) shifts the reward landscape toward landing, while retaining enough dense guidance for stable learning.",
+    "expected_effect": "Reducing r_progress_guidance weight will lower the reward for hovering, and doubling r_primitive_terminal_success will make a successful landing far more attractive than the cumulative dense reward. The agent should then attempt landings; we expect episode length to drop from max timeout to actual landings or crashes, with an increase in terminal success rate and a decrease in unstable contact toggles. The risk of reward hacking should drop significantly.",
+    "risk_analysis": "If the weight shift is too aggressive and the agent still cannot immediately achieve terminal success, total episode reward could drop sharply, potentially causing training instability or collapse in exploration. The agent might start crashing deliberately to trigger a terminal event (crash penalty -30 is still less negative than missing the success bonus? careful balance). Unstable contact might persist if bouncing is not specifically penalized. Monitor for sudden drops in episode length and safety events.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_progress_guidance",
+        "factor": 0.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_primitive_terminal_success",
+        "factor": 2.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Reward hacking: agent exploits dense progress_guidance (70.4% dominance) by hovering without landing. Weight rebalancing needed.",
+  "edit_plan": [],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

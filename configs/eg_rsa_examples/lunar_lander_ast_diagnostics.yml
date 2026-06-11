@@ -1,0 +1,155 @@
+source: manual_ast_lunar_lander_diagnostics
+
+observation_mapping:
+  x: 0
+  y: 1
+  vx: 2
+  vy: 3
+  angle: 4
+  angular_velocity: 5
+  left_contact: 6
+  right_contact: 7
+
+action_variables:
+  - name: main_engine
+    description: Main engine action or throttle.
+    type: float
+  - name: side_engine
+    description: Side engine action or throttle.
+    type: float
+
+action_mapping:
+  type: discrete_lookup
+  variables:
+    main_engine:
+      "2": 1.0
+      default: 0.0
+    side_engine:
+      "1": -1.0
+      "3": 1.0
+      default: 0.0
+
+events:
+  left_contact:
+    type: threshold_gt
+    var: left_contact
+    threshold: 0.5
+
+  right_contact:
+    type: threshold_gt
+    var: right_contact
+    threshold: 0.5
+
+  contact:
+    type: any
+    events:
+      - left_contact
+      - right_contact
+
+  both_contact:
+    type: all
+    events:
+      - left_contact
+      - right_contact
+
+  centered:
+    type: threshold_abs
+    var: x
+    threshold: 0.25
+
+  slow_vx:
+    type: threshold_abs
+    var: vx
+    threshold: 0.4
+
+  slow_vy:
+    type: threshold_abs
+    var: vy
+    threshold: 0.4
+
+  upright:
+    type: threshold_abs
+    var: angle
+    threshold: 0.4
+
+  safe_contact:
+    type: all
+    events:
+      - contact
+      - slow_vx
+      - slow_vy
+      - upright
+
+  stable_landing_condition:
+    type: all
+    events:
+      - both_contact
+      - centered
+      - slow_vx
+      - slow_vy
+      - upright
+
+  engine_on:
+    type: action_nonzero
+
+task_metrics:
+  success:
+    type: event_success
+    event: stable_landing_condition
+
+  landing_region_score:
+    type: target_region
+    inputs:
+      - x
+    center:
+      - 0.0
+    tolerance:
+      - 0.25
+
+  approach_region_score:
+    type: target_region
+    inputs:
+      - x
+      - y
+    center:
+      - 0.0
+      - 0.0
+    tolerance:
+      - 1.0
+      - 1.0
+
+  velocity_smoothness:
+    type: raw_abs_inverse
+    inputs:
+      - vx
+      - vy
+
+  stability:
+    type: bounded_stability
+    inputs:
+      - angle
+      - angular_velocity
+    scales:
+      - 0.4
+      - 0.5
+
+  landing_quality:
+    type: metric_mean
+    metrics:
+      - landing_region_score
+      - velocity_smoothness
+      - stability
+
+  progress:
+    type: metric_mean
+    metrics:
+      - landing_region_score
+      - velocity_smoothness
+      - stability
+
+  energy_cost:
+    type: action_cost
+
+  two_leg_contact_evidence:
+    type: event_score
+    event: both_contact
