@@ -8,6 +8,7 @@ import yaml
 
 from eg_rsa.llm.bootstrap_agent import BootstrapAgent
 from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
+from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.schema_sources.base import SchemaSource
 
@@ -68,12 +69,24 @@ class LLMBootstrapSchemaSource(SchemaSource):
             blueprint = {}
             if blueprint_path.exists():
                 blueprint = json.loads(blueprint_path.read_text(encoding="utf-8"))
+
+            schema_dict, canonical_report = SchemaCanonicalizer.canonicalize_schema(
+                schema=schema_dict,
+                primitive_interface=primitive_interface,
+                reward_blueprint=blueprint,
+            )
+
             validation = BootstrapSchemaValidator.validate_schema(
                 schema_dict,
                 primitive_interface,
                 reward_blueprint=blueprint,
             )
+
+            self._write_json(bootstrap_dir / "schema_canonicalization_report.json", canonical_report)
+            self._write_json(bootstrap_dir / "canonical_initial_schema.json", schema_dict)
             self._write_json(bootstrap_dir / "bootstrap_validation.json", validation.to_dict())
+            self._write_json(schema_path, schema_dict)
+
             if not validation.ok:
                 raise ValueError(f"Reused generated_initial_schema.json failed validation: {validation.errors}")
             return RewardSchema.from_dict(schema_dict)
@@ -82,6 +95,11 @@ class LLMBootstrapSchemaSource(SchemaSource):
         result = self.bootstrap_agent.generate_bootstrap(
             primitive_interface=primitive_interface,
             task_description=task_description,
+        )
+
+        result, canonical_report = SchemaCanonicalizer.canonicalize_bootstrap_result(
+            result,
+            primitive_interface,
         )
 
         schema_dict = result.get("initial_schema")
@@ -93,6 +111,8 @@ class LLMBootstrapSchemaSource(SchemaSource):
         self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
         self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
         self._write_json(bootstrap_dir / "bootstrap_response.json", result)
+        self._write_json(bootstrap_dir / "schema_canonicalization_report.json", canonical_report)
+        self._write_json(bootstrap_dir / "canonical_initial_schema.json", schema_dict)
         self._write_json(bootstrap_dir / "bootstrap_validation.json", validation.to_dict())
         self._write_json(schema_path, schema_dict)
         self._write_json(blueprint_path, result.get("reward_blueprint", {}) or {})

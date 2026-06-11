@@ -94,6 +94,8 @@ class SafeRewardCompiler:
 {i}            "angular_velocity": _get("angular_velocity", _get("angularVelocity", 0.0)),
 {i}            "left_contact": bool(obs_map.get("left_contact", obs_map.get("leftContact", False))) if isinstance(obs_map, dict) else False,
 {i}            "right_contact": bool(obs_map.get("right_contact", obs_map.get("rightContact", False))) if isinstance(obs_map, dict) else False,
+{i}            "contact": bool(obs_map.get("contact", False)) if isinstance(obs_map, dict) else False,
+{i}            "both_contact": bool(obs_map.get("both_contact", False)) if isinstance(obs_map, dict) else False,
 {i}            "main_engine": _action_value(0, 0.0),
 {i}            "side_engine": _action_value(1, 0.0),
 {i}        }}
@@ -127,7 +129,11 @@ class SafeRewardCompiler:
 {i}        elif ctype == "velocity_penalty":
 {i}            raw = -math.sqrt(sum(_get(key) ** 2 for key in inputs))
 {i}        elif ctype == "action_penalty":
-{i}            raw = 0.0 if action is None else -float(np.sum(np.square(np.asarray(action, dtype=float))))
+{i}            formula = params.get("formula")
+{i}            if isinstance(formula, str) and formula.strip():
+{i}                raw = _safe_formula(formula)
+{i}            else:
+{i}                raw = 0.0 if action is None else -float(np.sum(np.square(np.asarray(action, dtype=float))))
 {i}        elif ctype == "constant_alive":
 {i}            raw = float(params.get("value", 1.0))
 {i}        elif ctype == "event_bonus":
@@ -217,6 +223,19 @@ class SafeRewardCompiler:
                     f"Unsupported component type: {component.type}. "
                     f"Supported: {sorted(SafeRewardCompiler.SUPPORTED_COMPONENTS)}"
                 )
+            if component.type == "action_penalty" and component.params.get("formula"):
+                result = FormulaValidator.validate_expression(
+                    str(component.params.get("formula")),
+                    allowed_variables={
+                        "x", "y", "vx", "vy", "angle", "angular_velocity",
+                        "left_contact", "right_contact", "main_engine", "side_engine",
+                        "contact", "both_contact",
+                    },
+                    allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
+                )
+                if not result.ok:
+                    raise ValueError(f"Unsafe action_penalty formula for {component.name}: {result.errors}")
+
             if component.type in {"formula_component", "conditional_formula_component"}:
                 formula = component.params.get("formula")
                 if not isinstance(formula, str) or not formula.strip():
@@ -226,6 +245,7 @@ class SafeRewardCompiler:
                     allowed_variables={
                         "x", "y", "vx", "vy", "angle", "angular_velocity",
                         "left_contact", "right_contact", "main_engine", "side_engine",
+                        "contact", "both_contact",
                     },
                     allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
                 )
@@ -265,6 +285,7 @@ class SafeRewardCompiler:
                     allowed_variables={
                         "x", "y", "vx", "vy", "angle", "angular_velocity",
                         "left_contact", "right_contact", "main_engine", "side_engine",
+                        "contact", "both_contact",
                     },
                     allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
                 )
