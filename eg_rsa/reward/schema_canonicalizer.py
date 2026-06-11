@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from typing import Any, Dict, List, Tuple
 
 from eg_rsa.reward.safe_formula_eval import safe_eval_formula
@@ -175,6 +176,22 @@ class SchemaCanonicalizer:
         elif "condition" in params:
             comp["condition"] = params["condition"]
 
+        # Normalize common LLM expression syntax before validation/runtime.
+        if isinstance(params.get("formula"), str):
+            before = params["formula"]
+            after = cls._normalize_expression_syntax(before)
+            if after != before:
+                params["formula"] = after
+                comp["formula"] = after
+                notes.append(f"Component {name}: normalized formula syntax from {before!r} to {after!r}.")
+        if isinstance(params.get("condition"), str):
+            before = params["condition"]
+            after = cls._normalize_expression_syntax(before)
+            if after != before:
+                params["condition"] = after
+                comp["condition"] = after
+                notes.append(f"Component {name}: normalized condition syntax from {before!r} to {after!r}.")
+
         ctype = comp.get("type")
 
         # If LLM emits action_penalty with custom formula, convert to formula_component.
@@ -307,12 +324,55 @@ class SchemaCanonicalizer:
                 "into condition.expression."
             )
 
+        # Normalize common LLM expression syntax before validation/runtime.
+        for expr_key in ("expression", "formula"):
+            if isinstance(condition.get(expr_key), str):
+                before = condition[expr_key]
+                after = cls._normalize_expression_syntax(before)
+                if after != before:
+                    condition[expr_key] = after
+                    notes.append(f"Event rule {name}: normalized {expr_key} syntax from {before!r} to {after!r}.")
+
         condition.setdefault("duration_steps", int(out.get("duration_steps", condition.get("duration_steps", 1)) or 1))
         out["condition"] = condition
 
         out.pop("expression", None)
         out.pop("formula", None)
         out.pop("duration_steps", None)
+        return out
+
+    @staticmethod
+    def _normalize_expression_syntax(expr: str) -> str:
+        """Normalize common LLM/C/JSON boolean syntax into Python-safe syntax.
+
+        This repair is intentionally conservative. It fixes syntax sugar only.
+        It does not invent variables, metrics, events, or task-specific logic.
+        """
+
+        if not isinstance(expr, str):
+            return expr
+
+        out = str(expr).strip()
+
+        if out.startswith("```") and out.endswith("```"):
+            lines = out.splitlines()
+            if len(lines) >= 3:
+                out = "\n".join(lines[1:-1]).strip()
+
+        out = out.strip("`").strip()
+
+        out = out.replace("&&", " and ")
+        out = out.replace("||", " or ")
+
+        out = re.sub(r"\btrue\b", "True", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bfalse\b", "False", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bnull\b", "None", out, flags=re.IGNORECASE)
+
+        # Replace unary ! while keeping != unchanged.
+        out = re.sub(r"(?<![=!<>])!(?!=)", " not ", out)
+
+        out = re.sub(r"\s+", " ", out).strip()
+
         return out
 
     @staticmethod

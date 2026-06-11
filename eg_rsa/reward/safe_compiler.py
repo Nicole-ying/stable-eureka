@@ -300,6 +300,7 @@ class SafeRewardCompiler:
                         allowed_variables={
                             "x", "y", "vx", "vy", "angle", "angular_velocity",
                             "left_contact", "right_contact", "main_engine", "side_engine",
+                            "contact", "both_contact",
                         },
                         allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
                     )
