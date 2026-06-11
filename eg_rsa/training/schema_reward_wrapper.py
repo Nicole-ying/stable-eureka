@@ -310,8 +310,8 @@ class SchemaRewardWrapper(gym.Wrapper):
         )
         return safe_eval_formula(expr, variables=variables)
 
-    @staticmethod
     def _primitive_vars(
+        self,
         obs_map: Dict[str, float],
         action: Optional[Any],
         events: Dict[str, bool],
@@ -352,7 +352,9 @@ class SchemaRewardWrapper(gym.Wrapper):
 
     @staticmethod
     def _action_to_engine_vars(action: Optional[Any]) -> Tuple[float, float]:
-        """Map LunarLander actions to primitive engine variables.
+        """LEGACY fallback only. Active runtime uses ActionPrimitiveMapper.
+
+        Map LunarLander actions to primitive engine variables.
 
         Discrete LunarLander:
             0 = do nothing

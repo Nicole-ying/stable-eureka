@@ -68,11 +68,51 @@ class SafeRewardCompiler:
 {i}        if name in task_metrics:
 {i}            return float(task_metrics.get(name, default))
 {i}        return float(default)
-{i}    def _action_value(index, default=0.0):
+{i}    def _action_array():
 {i}        if action is None:
-{i}            return float(default)
-{i}        arr = np.asarray(action, dtype=float).reshape(-1)
-{i}        return float(arr[index]) if index < len(arr) else float(default)
+{i}            return np.asarray([], dtype=float)
+{i}        return np.asarray(action, dtype=float).reshape(-1)
+{i}    def _map_action_primitives():
+{i}        metadata = schema.get("metadata", {{}}) or {{}}
+{i}        mapping = metadata.get("action_mapping", {{}}) or {{}}
+{i}        action_variables = metadata.get("action_variables", []) or []
+{i}        arr = _action_array()
+{i}        out = {{}}
+{i}        mapping_type = mapping.get("type")
+{i}        if mapping_type == "discrete_lookup":
+{i}            a = int(round(float(arr[0]))) if arr.size else 0
+{i}            for name, table in (mapping.get("variables", {{}}) or {{}}).items():
+{i}                if not isinstance(table, dict):
+{i}                    continue
+{i}                default = float(table.get("default", 0.0) or 0.0)
+{i}                value = table.get(str(a), table.get(a, default))
+{i}                out[str(name)] = float(value)
+{i}            return out
+{i}        if mapping_type == "continuous_indices":
+{i}            for name, index in (mapping.get("variables", {{}}) or {{}}).items():
+{i}                try:
+{i}                    idx = int(index)
+{i}                except Exception:
+{i}                    out[str(name)] = 0.0
+{i}                    continue
+{i}                out[str(name)] = float(arr[idx]) if idx < arr.size else 0.0
+{i}            return out
+{i}        names = [
+{i}            str(item.get("name"))
+{i}            for item in action_variables
+{i}            if isinstance(item, dict) and item.get("name")
+{i}        ]
+{i}        if set(names) >= {{"main_engine", "side_engine"}} and arr.size == 1:
+{i}            a = int(round(float(arr[0])))
+{i}            return {{
+{i}                "main_engine": 1.0 if a == 2 else 0.0,
+{i}                "side_engine": -1.0 if a == 1 else (1.0 if a == 3 else 0.0),
+{i}            }}
+{i}        for idx, value in enumerate(arr):
+{i}            out[f"action_{{idx}}"] = float(value)
+{i}        for idx, name in enumerate(names):
+{i}            out[name] = float(arr[idx]) if idx < arr.size else 0.0
+{i}        return out
 {i}    def _clip_fn(value, low, high):
 {i}        return float(np.clip(float(value), float(low), float(high)))
 {i}    _allowed_formula_functions = {{
@@ -85,7 +125,7 @@ class SafeRewardCompiler:
 {i}        "clip": _clip_fn,
 {i}    }}
 {i}    def _primitive_vars():
-{i}        return {{
+{i}        variables = {{
 {i}            "x": _get("x", 0.0),
 {i}            "y": _get("y", 0.0),
 {i}            "vx": _get("vx", 0.0),
@@ -96,9 +136,9 @@ class SafeRewardCompiler:
 {i}            "right_contact": bool(obs_map.get("right_contact", obs_map.get("rightContact", False))) if isinstance(obs_map, dict) else False,
 {i}            "contact": bool(obs_map.get("contact", False)) if isinstance(obs_map, dict) else False,
 {i}            "both_contact": bool(obs_map.get("both_contact", False)) if isinstance(obs_map, dict) else False,
-{i}            "main_engine": _action_value(0, 0.0),
-{i}            "side_engine": _action_value(1, 0.0),
 {i}        }}
+{i}        variables.update(_map_action_primitives())
+{i}        return variables
 {i}    def _safe_formula(expr):
 {i}        if not isinstance(expr, str) or not expr.strip():
 {i}            return 0.0

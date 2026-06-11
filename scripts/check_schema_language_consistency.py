@@ -15,6 +15,7 @@ from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema_transition import SchemaTransitionEngine
 from eg_rsa.env_adapters.action_primitive_mapper import ActionPrimitiveMapper
+from eg_rsa.training.schema_reward_wrapper import SchemaRewardWrapper
 
 
 def main() -> None:
@@ -106,6 +107,26 @@ def main() -> None:
     assert mapper.map(2)["main_engine"] == 1.0
     assert mapper.map(1)["side_engine"] == -1.0
     assert mapper.map(3)["side_engine"] == 1.0
+
+    # Verify wrapper primitive action mapping uses the same interface-driven mapper.
+    class DummyWrapper:
+        action_mapper = ActionPrimitiveMapper.from_primitive_interface(primitive)
+
+    dummy = DummyWrapper()
+    vars_for_action_2 = SchemaRewardWrapper._primitive_vars(
+        dummy,
+        obs_map={"x": 0, "y": 0, "vx": 0, "vy": 0, "angle": 0, "angular_velocity": 0},
+        action=2,
+        events={},
+        task_metrics={},
+    )
+    assert vars_for_action_2["main_engine"] == 1.0, vars_for_action_2
+    assert vars_for_action_2["side_engine"] == 0.0, vars_for_action_2
+
+    # Verify compiled artifact preserves action_mapping metadata.
+    compiled = SafeRewardCompiler.compile(schema)
+    assert "_map_action_primitives" in compiled, compiled
+    assert "action_mapping" in compiled, compiled
 
 
     class Validation:
