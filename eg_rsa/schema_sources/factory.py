@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Optional
 
 from eg_rsa.schema_sources.base import SchemaSource
 from eg_rsa.schema_sources.manual import ManualSchemaSource
+from eg_rsa.schema_sources.llm_bootstrap import LLMBootstrapSchemaSource
 
 
 def _infer_schema_source_config(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -60,11 +61,11 @@ def build_schema_source(
         return ManualSchemaSource(config=config)
 
     if source_type == "llm_bootstrap":
-        raise NotImplementedError(
-            "LLMBootstrapSchemaSource is not implemented yet. "
-            "Patch A only introduces the SchemaSource architecture. "
-            "Patch B will add eg_rsa/schema_sources/llm_bootstrap.py and "
-            "eg_rsa/llm/bootstrap_agent.py."
+        return LLMBootstrapSchemaSource(
+            config=config,
+            output_dir=output_dir,
+            llm_client=llm_client,
+            task_description_loader=task_description_loader,
         )
 
     raise ValueError(

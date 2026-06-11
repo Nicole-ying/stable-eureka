@@ -27,12 +27,17 @@ class RewardComponent:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RewardComponent":
+        params = dict(data.get("params", {}) or {})
+        if "formula" in data and "formula" not in params:
+            params["formula"] = data["formula"]
+        if "condition" in data and "condition" not in params:
+            params["condition"] = data["condition"]
         return cls(
             name=data["name"],
             type=data["type"],
             weight=float(data.get("weight", 1.0)),
             inputs=list(data.get("inputs", [])),
-            params=dict(data.get("params", {})),
+            params=params,
             clip=data.get("clip"),
             enabled=bool(data.get("enabled", True)),
             semantic_role=data.get("semantic_role"),
@@ -57,6 +62,10 @@ class RewardComponent:
             data["reward_timing"] = self.reward_timing
         if self.behavior_channel is not None:
             data["behavior_channel"] = self.behavior_channel
+        if self.type in {"formula_component", "conditional_formula_component"} and "formula" in self.params:
+            data["formula"] = self.params.get("formula")
+        if self.type == "conditional_formula_component" and "condition" in self.params:
+            data["condition"] = self.params.get("condition")
         if self.metadata:
             data["metadata"] = self.metadata
         return data
@@ -83,11 +92,18 @@ class EventRule:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "EventRule":
+        raw_condition = data.get("condition", {})
+        if isinstance(raw_condition, str):
+            condition = {"expression": raw_condition}
+        else:
+            condition = dict(raw_condition or {})
+        if "duration_steps" in data and "duration_steps" not in condition:
+            condition["duration_steps"] = data["duration_steps"]
         return cls(
             name=data["name"],
             type=data["type"],
             weight=float(data.get("weight", 1.0)),
-            condition=dict(data.get("condition", {})),
+            condition=condition,
             one_time=bool(data.get("one_time", False)),
             enabled=bool(data.get("enabled", True)),
             semantic_role=data.get("semantic_role"),

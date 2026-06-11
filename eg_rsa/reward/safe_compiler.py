@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from eg_rsa.reward.schema import RewardSchema
+from eg_rsa.reward.formula_validator import FormulaValidator
 
 
 class SafeRewardCompiler:
@@ -27,6 +28,8 @@ class SafeRewardCompiler:
         "metric_delta",
         "metric_threshold_bonus",
         "metric_stagnation_penalty",
+        "formula_component",
+        "conditional_formula_component",
     }
 
     @staticmethod
@@ -60,7 +63,47 @@ class SafeRewardCompiler:
 {i}    individual_reward = {{}}
 {i}    total_reward = 0.0
 {i}    def _get(name, default=0.0):
-{i}        return float(obs_map.get(name, default))
+{i}        if isinstance(obs_map, dict) and name in obs_map:
+{i}            return float(obs_map.get(name, default))
+{i}        if name in task_metrics:
+{i}            return float(task_metrics.get(name, default))
+{i}        return float(default)
+{i}    def _action_value(index, default=0.0):
+{i}        if action is None:
+{i}            return float(default)
+{i}        arr = np.asarray(action, dtype=float).reshape(-1)
+{i}        return float(arr[index]) if index < len(arr) else float(default)
+{i}    def _clip_fn(value, low, high):
+{i}        return float(np.clip(float(value), float(low), float(high)))
+{i}    _allowed_formula_functions = {{
+{i}        "abs": abs,
+{i}        "min": min,
+{i}        "max": max,
+{i}        "sqrt": math.sqrt,
+{i}        "exp": math.exp,
+{i}        "tanh": math.tanh,
+{i}        "clip": _clip_fn,
+{i}    }}
+{i}    def _primitive_vars():
+{i}        return {{
+{i}            "x": _get("x", 0.0),
+{i}            "y": _get("y", 0.0),
+{i}            "vx": _get("vx", 0.0),
+{i}            "vy": _get("vy", 0.0),
+{i}            "angle": _get("angle", 0.0),
+{i}            "angular_velocity": _get("angular_velocity", _get("angularVelocity", 0.0)),
+{i}            "left_contact": bool(obs_map.get("left_contact", obs_map.get("leftContact", False))) if isinstance(obs_map, dict) else False,
+{i}            "right_contact": bool(obs_map.get("right_contact", obs_map.get("rightContact", False))) if isinstance(obs_map, dict) else False,
+{i}            "main_engine": _action_value(0, 0.0),
+{i}            "side_engine": _action_value(1, 0.0),
+{i}        }}
+{i}    def _safe_formula(expr):
+{i}        if not isinstance(expr, str) or not expr.strip():
+{i}            return 0.0
+{i}        safe_locals = {{}}
+{i}        safe_locals.update(_allowed_formula_functions)
+{i}        safe_locals.update(_primitive_vars())
+{i}        return float(eval(compile(expr, "<eg_rsa_formula>", "eval"), {{"__builtins__": {{}}}}, safe_locals))
 {i}    def _clip(value, clip_range):
 {i}        if clip_range is None:
 {i}            return float(value)
@@ -120,6 +163,11 @@ class SafeRewardCompiler:
 {i}            else:
 {i}                self._eg_rsa_metric_stagnation_counts[name] = 0
 {i}            raw = -1.0 if self._eg_rsa_metric_stagnation_counts.get(name, 0) >= window else 0.0
+{i}        elif ctype == "formula_component":
+{i}            raw = _safe_formula(component.get("formula") or params.get("formula", "0.0"))
+{i}        elif ctype == "conditional_formula_component":
+{i}            cond_expr = component.get("condition") or params.get("condition", "False")
+{i}            raw = _safe_formula(component.get("formula") or params.get("formula", "0.0")) if bool(_safe_formula(cond_expr)) else 0.0
 {i}        value = weight * _clip(raw, component.get("clip"))
 {i}        individual_reward[name] = float(value)
 {i}        total_reward += float(value)
@@ -128,13 +176,18 @@ class SafeRewardCompiler:
 {i}            continue
 {i}        name = rule["name"]
 {i}        weight = float(rule.get("weight", 1.0))
+{i}        rtype = rule.get("type", "event_bonus")
 {i}        condition = rule.get("condition", {{}})
-{i}        duration_steps = int(condition.get("duration_steps", 1) or 1)
-{i}        base_ok = True
-{i}        for key, expected in condition.items():
-{i}            if key == "duration_steps":
-{i}                continue
-{i}            base_ok = base_ok and (state_flags.get(key, False) == expected)
+{i}        duration_steps = int(condition.get("duration_steps", 1) or 1) if isinstance(condition, dict) else 1
+{i}        if rtype == "event_predicate":
+{i}            expr = condition.get("expression") or condition.get("formula") or "False"
+{i}            base_ok = bool(_safe_formula(expr))
+{i}        else:
+{i}            base_ok = True
+{i}            for key, expected in condition.items():
+{i}                if key == "duration_steps":
+{i}                    continue
+{i}                base_ok = base_ok and (state_flags.get(key, False) == expected)
 {i}        if base_ok:
 {i}            self._eg_rsa_event_rule_duration_counts[name] = self._eg_rsa_event_rule_duration_counts.get(name, 0) + 1
 {i}        else:
@@ -164,6 +217,34 @@ class SafeRewardCompiler:
                     f"Unsupported component type: {component.type}. "
                     f"Supported: {sorted(SafeRewardCompiler.SUPPORTED_COMPONENTS)}"
                 )
+            if component.type in {"formula_component", "conditional_formula_component"}:
+                formula = component.params.get("formula")
+                if not isinstance(formula, str) or not formula.strip():
+                    raise ValueError(f"{component.type} {component.name} requires params.formula")
+                result = FormulaValidator.validate_expression(
+                    formula,
+                    allowed_variables={
+                        "x", "y", "vx", "vy", "angle", "angular_velocity",
+                        "left_contact", "right_contact", "main_engine", "side_engine",
+                    },
+                    allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
+                )
+                if not result.ok:
+                    raise ValueError(f"Unsafe formula for {component.name}: {result.errors}")
+                if component.type == "conditional_formula_component":
+                    condition = component.params.get("condition")
+                    if not isinstance(condition, str) or not condition.strip():
+                        raise ValueError(f"conditional_formula_component {component.name} requires params.condition")
+                    result = FormulaValidator.validate_expression(
+                        condition,
+                        allowed_variables={
+                            "x", "y", "vx", "vy", "angle", "angular_velocity",
+                            "left_contact", "right_contact", "main_engine", "side_engine",
+                        },
+                        allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
+                    )
+                    if not result.ok:
+                        raise ValueError(f"Unsafe condition for {component.name}: {result.errors}")
             if component.clip is not None:
                 if len(component.clip) != 2 or component.clip[0] > component.clip[1]:
                     raise ValueError(f"Invalid clip range for {component.name}: {component.clip}")
@@ -171,9 +252,23 @@ class SafeRewardCompiler:
             if rule.name in names:
                 raise ValueError(f"Duplicate reward item name: {rule.name}")
             names.add(rule.name)
-            if rule.type != "event_bonus":
+            if rule.type not in {"event_bonus", "event_predicate"}:
                 raise ValueError(f"Unsupported event rule type: {rule.type}")
             if not isinstance(rule.condition, dict) or not rule.condition:
                 raise ValueError(f"Event rule {rule.name} must have a non-empty condition")
+            if rule.type == "event_predicate":
+                expr = rule.condition.get("expression") or rule.condition.get("formula")
+                if not isinstance(expr, str) or not expr.strip():
+                    raise ValueError(f"event_predicate {rule.name} requires condition.expression")
+                result = FormulaValidator.validate_expression(
+                    expr,
+                    allowed_variables={
+                        "x", "y", "vx", "vy", "angle", "angular_velocity",
+                        "left_contact", "right_contact", "main_engine", "side_engine",
+                    },
+                    allowed_functions={"abs", "min", "max", "sqrt", "exp", "tanh", "clip"},
+                )
+                if not result.ok:
+                    raise ValueError(f"Unsafe event predicate for {rule.name}: {result.errors}")
             if "duration_steps" in rule.condition and int(rule.condition["duration_steps"]) <= 0:
                 raise ValueError(f"Event rule {rule.name} has invalid duration_steps")
