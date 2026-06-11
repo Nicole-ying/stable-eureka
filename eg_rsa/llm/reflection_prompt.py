@@ -21,6 +21,11 @@ Mission:
 - Preserve the LLM's strategic reasoning as an explicit reflection report.
 - Distinguish true reward hacking from task failure, detector false positives, and training insufficiency.
 - Use memory as evidence, not as decoration.
+- Explicitly judge the three memory layers:
+  1. raw memory cards: exact past edit/outcome traces;
+  2. distilled lesson cards: compressed reusable lessons;
+  3. outcome lessons: before/after causal lessons from committed edits.
+- Decide which memory layers should be used, ignored, or treated as conflicting evidence.
 - Decide whether the next edit should be a single edit, an atomic coupled rebalancing package,
   structural search, continue training, or early stop.
 
@@ -63,6 +68,18 @@ Return exactly this JSON format:
     "conflicting_lessons": [],
     "avoid_actions": [],
     "recommended_actions": [],
+    "memory_confidence": 0.0
+  }},
+  "memory_use_policy": {{
+    "use_raw_memory_cards": true,
+    "use_distilled_lesson_cards": true,
+    "use_outcome_lessons": true,
+    "raw_memory_reason": "why raw edit/outcome traces are useful or ignored",
+    "lesson_memory_reason": "why distilled lessons are useful or ignored",
+    "outcome_lesson_reason": "why outcome lessons are useful or ignored",
+    "selected_memory_ids": [],
+    "ignored_memory_ids": [],
+    "conflict_resolution": "how to resolve contradictory memories",
     "memory_confidence": 0.0
   }},
   "strategy": {{

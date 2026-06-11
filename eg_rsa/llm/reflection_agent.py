@@ -53,6 +53,21 @@ class ReflectionAgent:
         parsed.setdefault("reflection_summary", "ReflectionAgent produced a normalized reflection report.")
         parsed.setdefault("failure_assessment", {})
         parsed.setdefault("memory_assessment", {})
+        memory_use_policy = dict(parsed.get("memory_use_policy", {}) or {})
+        memory_use_policy.setdefault("use_raw_memory_cards", True)
+        memory_use_policy.setdefault("use_distilled_lesson_cards", True)
+        memory_use_policy.setdefault("use_outcome_lessons", True)
+        memory_use_policy.setdefault("raw_memory_reason", "")
+        memory_use_policy.setdefault("lesson_memory_reason", "")
+        memory_use_policy.setdefault("outcome_lesson_reason", "")
+        memory_use_policy.setdefault("selected_memory_ids", [])
+        memory_use_policy.setdefault("ignored_memory_ids", [])
+        memory_use_policy.setdefault("conflict_resolution", "")
+        memory_use_policy.setdefault(
+            "memory_confidence",
+            parsed.get("memory_assessment", {}).get("memory_confidence", 0.0),
+        )
+        parsed["memory_use_policy"] = memory_use_policy
         parsed.setdefault("auditor_hints", {})
         return parsed
 
@@ -94,6 +109,18 @@ class ReflectionAgent:
                 "avoid_actions": avoid_actions,
                 "recommended_actions": [],
                 "memory_confidence": 0.3,
+            },
+            "memory_use_policy": {
+                "use_raw_memory_cards": bool(retrieved_lessons),
+                "use_distilled_lesson_cards": bool(retrieved_lessons),
+                "use_outcome_lessons": bool(retrieved_lessons),
+                "raw_memory_reason": "Fallback mode uses retrieved evidence when available.",
+                "lesson_memory_reason": "Fallback mode treats distilled lessons as lightweight guidance.",
+                "outcome_lesson_reason": "Fallback mode treats outcome lessons as causal evidence when available.",
+                "selected_memory_ids": [],
+                "ignored_memory_ids": [],
+                "conflict_resolution": "Prefer measured outcome lessons over unsupported raw memories.",
+                "memory_confidence": 0.3 if retrieved_lessons else 0.0,
             },
             "strategy": {
                 "recommended_next_action": "apply_edit",

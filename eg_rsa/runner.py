@@ -214,12 +214,24 @@ class EGRSARunner:
             self._write_json(iter_dir / "retrieved_lessons.json", retrieved_lessons)
             self._write_json(iter_dir / "retrieved_outcome_lessons.json", retrieved_outcome_lessons)
 
-            agent_action_decision = self.agent_action_controller.decide(
-                diagnostic_report=diagnostic_report,
-                semantic_outcome=semantic_outcome,
-                retrieved_lessons=retrieved_lessons,
-            )
-            self._write_json(iter_dir / "agent_action_decision.json", agent_action_decision.to_dict())
+            agent_active = bool(self.config.get("agent_action_controller", {}).get("active", False))
+            if agent_active:
+                agent_action_decision = self.agent_action_controller.decide(
+                    diagnostic_report=diagnostic_report,
+                    semantic_outcome=semantic_outcome,
+                    retrieved_lessons=retrieved_lessons,
+                )
+                self._write_json(iter_dir / "agent_action_decision.json", agent_action_decision.to_dict())
+            else:
+                agent_action_decision = None
+                self._write_json(
+                    iter_dir / "agent_action_decision.json",
+                    {
+                        "active": False,
+                        "normalized_action": "disabled",
+                        "reason": "Slim V2 pipeline disables rule-backed AgentActionController by default. ReflectionAgent decides strategy.",
+                    },
+                )
 
             should_edit = iteration < iterations - 1
             gate_result = None
@@ -232,8 +244,7 @@ class EGRSARunner:
             next_action = "final_iteration" if iteration == iterations - 1 else "apply_edit"
 
             if should_edit:
-                agent_active = bool(self.config.get("agent_action_controller", {}).get("active", True))
-                agent_action = agent_action_decision.normalized_action()
+                agent_action = agent_action_decision.normalized_action() if agent_action_decision is not None else "disabled"
 
                 if agent_active and agent_action == "continue_training":
                     reflection_report = {

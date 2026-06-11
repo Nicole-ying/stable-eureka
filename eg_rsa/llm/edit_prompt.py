@@ -27,21 +27,25 @@ Return one JSON object only.
 
 Mission constraints:
 1. Improve reward search through memory-guided and reflection-guided editing.
-2. Do NOT use environment oracle reward or official reward values for decisions.
-3. Do NOT write Python code.
-4. Do NOT invent new edit operators.
-5. Prefer formula-native edits for V2 schemas:
+2. Obey ReflectionAgent.memory_use_policy:
+   - use memory layers that ReflectionAgent marked useful;
+   - ignore memory layers that ReflectionAgent marked unreliable;
+   - if you override the reflection memory policy, explain why in risk_analysis.
+3. Do NOT use environment oracle reward or official reward values for decisions.
+4. Do NOT write Python code.
+5. Do NOT invent new edit operators.
+6. Prefer formula-native edits for V2 schemas:
    - replace_formula
    - replace_condition
    - add_formula_component
    - add_conditional_formula_component
    - add_action_penalty
    - add_event_predicate
-6. Use metric_value / metric_delta only when the current structural context explicitly exposes a primitive-generated metric and a formula-native edit is not suitable.
-7. Formula and condition edits must use only primitive variables already present in the schema/interface.
-8. Do not merely tune weights if the root cause is missing progress structure or wrong formula/condition structure.
-9. If a component is useful in intent but unsafe in formula, prefer replace_formula or replace_condition over disable_component.
-10. If no reliable edit exists, choose continue_training or structural_search.
+7. Use metric_value / metric_delta only when the current structural context explicitly exposes a primitive-generated metric and a formula-native edit is not suitable.
+8. Formula and condition edits must use only primitive variables already present in the schema/interface.
+9. Do not merely tune weights if the root cause is missing progress structure or wrong formula/condition structure.
+10. If a component is useful in intent but unsafe in formula, prefer replace_formula or replace_condition over disable_component.
+11. If no reliable edit exists, choose continue_training or structural_search.
 
 Formula-native design principles:
 1. Dense reward should be progress-aligned, not merely passive state maintenance.
