@@ -25,6 +25,7 @@ from eg_rsa.reward.operators import RewardEditOperatorApplier
 from eg_rsa.reward.outcome_acceptor import OutcomeAcceptor
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema import RewardSchema
+from eg_rsa.reward.schema_transition import SchemaTransitionEngine
 from eg_rsa.schema_sources.factory import build_schema_source
 from eg_rsa.training.eg_rsa_trainer import EGRSATrainer
 from eg_rsa.agent.action_controller import AgentActionController
@@ -323,7 +324,7 @@ class EGRSARunner:
             if edit_plan:
                 scale_audit = ScaleAuditTool.audit(
                     schema=schema,
-                    edit_plan=edit_plan,
+                    edit_plan=committed_edits,
                     trajectories=trajectories,
                     config=self.config.get("scale_audit", {}),
                 )
@@ -448,12 +449,25 @@ class EGRSARunner:
                 self._write_json(iter_dir / "edit_gate.json", gate_result.to_dict())
             self._write_json(iter_dir / "edit_plan.json", {"edit_plan": edit_plan})
 
+            transition_result = SchemaTransitionEngine.resolve(
+                schema=schema,
+                edit_plan=edit_plan,
+                validation=validation,
+                candidate_result=candidate_result,
+                gate_result=gate_result,
+                next_action=next_action,
+                should_edit=should_edit,
+                operator_constraints_enabled=self.mode.use_operator_constraints,
+            )
+            committed_edits = transition_result.committed_edits
+            self._write_json(iter_dir / "schema_transition.json", transition_result.to_dict())
+
             outcome = {
-                "status": "pending" if should_edit and edit_plan else "not_applicable",
+                "status": "pending" if should_edit and committed_edits else "not_applicable",
                 "before": current_metrics,
                 "after": {},
                 "delta": {},
-                "note": "Pending until the edited schema is trained in the next iteration." if should_edit and edit_plan else "No edit was generated for this iteration.",
+                "note": "Pending until the committed schema transition is trained in the next iteration." if should_edit and committed_edits else "No schema transition was committed for this iteration.",
             }
             memory_card = MemoryCard(
                 memory_id=f"iter_{iteration:03d}_to_{iteration + 1:03d}",
@@ -480,6 +494,8 @@ class EGRSARunner:
                     "edit_generated": should_edit,
                     "edit_decision": edit_decision,
                     "next_action": next_action,
+                    "schema_transition": transition_result.to_dict(),
+                    "committed_edits": committed_edits,
                     "agent_analysis": {
                         "reflection_report": reflection_report,
                         "diagnostic_analysis": edit_response.get("diagnostic_analysis", {}),
@@ -491,7 +507,7 @@ class EGRSARunner:
                 },
             )
 
-            if self.mode.use_memory and should_edit and edit_plan:
+            if self.mode.use_memory and should_edit and committed_edits:
                 memory_store.append(memory_card)
                 pending_memory_id = memory_card.memory_id
                 pending_before = current_metrics
@@ -515,8 +531,12 @@ class EGRSARunner:
                     "retrieved_outcome_lessons": retrieved_outcome_lessons,
                     "reflection_strategy": reflection_report.get("strategy", {}) if reflection_report else {},
                     "edit_plan": edit_plan,
+                    "committed_edits": committed_edits,
+                    "transition_decision": transition_result.decision,
+                    "schema_transition": transition_result.to_dict(),
                     "edit_decision": edit_decision,
-                    "next_action": next_action,
+                    "next_action": transition_result.next_action,
+                    "requested_next_action": next_action,
                     "structural_search_used": bool(structural_response),
                     "edit_diagnosis": edit_response.get("diagnosis", ""),
                     "edit_validation_errors": validation.errors,
@@ -533,61 +553,57 @@ class EGRSARunner:
             self._write_json(self.output_dir / "run_history.json", run_history)
 
             if should_edit:
-                if edit_plan:
-                    schema = RewardEditOperatorApplier.apply(schema, edit_plan)
+                if transition_result.decision == "commit":
+                    schema = transition_result.next_schema
                     self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
-                elif next_action == "continue_training":
+
+                elif transition_result.decision in {"continue", "reject"}:
                     model_path = iter_dir / "model.zip"
                     if model_path.exists():
                         next_init_model_path = model_path
+                        continue_file = (
+                            "structural_search_continue.json"
+                            if transition_result.next_action == "structural_search"
+                            else "continue_training.json"
+                        )
                         self._write_json(
-                            iter_dir / "continue_training.json",
+                            iter_dir / continue_file,
                             {
-                                "next_action": next_action,
+                                "next_action": transition_result.next_action,
+                                "requested_next_action": transition_result.requested_next_action,
+                                "transition_decision": transition_result.decision,
                                 "continued_schema": True,
+                                "schema_changed": False,
                                 "init_model_path_for_next_iteration": str(model_path),
-                                "reason": edit_response.get("diagnosis", ""),
+                                "reason": transition_result.reason,
                             },
                         )
                         self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
                     else:
-                        stop_reason = "Stopped after continue_training because current iteration model.zip was not found."
+                        stop_reason = f"Stopped after {transition_result.decision} because current iteration model.zip was not found."
                         self._write_json(
                             iter_dir / "stop_reason.json",
-                            {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
-                        )
-                        break
-                elif next_action == "structural_search":
-                    # structural_search is an internal recovery route, not a terminal
-                    # condition. If no structural edit survived validation/audit in this
-                    # iteration, continue training the current schema from the latest
-                    # checkpoint so the multi-iteration smoke test can keep collecting
-                    # evidence.
-                    model_path = iter_dir / "model.zip"
-                    if model_path.exists():
-                        next_init_model_path = model_path
-                        self._write_json(
-                            iter_dir / "structural_search_continue.json",
                             {
-                                "next_action": next_action,
-                                "continued_schema": True,
-                                "init_model_path_for_next_iteration": str(model_path),
-                                "reason": edit_response.get("diagnosis", ""),
+                                "next_action": transition_result.next_action,
+                                "requested_next_action": transition_result.requested_next_action,
+                                "transition_decision": transition_result.decision,
+                                "reason": stop_reason,
+                                "diagnosis": edit_response.get("diagnosis", ""),
                             },
                         )
-                        self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
-                    else:
-                        stop_reason = "Stopped after structural_search because current iteration model.zip was not found."
-                        self._write_json(
-                            iter_dir / "stop_reason.json",
-                            {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
-                        )
                         break
-                elif next_action == "early_stop":
-                    stop_reason = f"Stopped after next_action={next_action}: {edit_response.get('diagnosis', '')}"
+
+                elif transition_result.decision == "stop":
+                    stop_reason = f"Stopped after schema transition requested stop: {edit_response.get('diagnosis', '')}"
                     self._write_json(
                         iter_dir / "stop_reason.json",
-                        {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
+                        {
+                            "next_action": transition_result.next_action,
+                            "requested_next_action": transition_result.requested_next_action,
+                            "transition_decision": transition_result.decision,
+                            "reason": stop_reason,
+                            "diagnosis": edit_response.get("diagnosis", ""),
+                        },
                     )
                     break
 
