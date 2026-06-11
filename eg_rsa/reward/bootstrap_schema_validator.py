@@ -69,9 +69,35 @@ class BootstrapSchemaValidator:
         names = set()
         semantic_seen = set()
 
-        def has_forbidden(text: Any) -> bool:
-            s = str(text).lower()
-            return any(term in s for term in forbidden_terms)
+        def normalize_identifier(value: Any) -> str:
+            return str(value).strip().lower()
+
+        def is_forbidden_symbol(value: Any) -> bool:
+            """Return True only for exact human-defined V1 symbols.
+
+            Do not use substring matching here. For example, the component name
+            "r_angular_stability" should be allowed because it can be a new
+            concept synthesized from angle/angular_velocity. What is forbidden is
+            directly referencing the existing V1 metric/event symbol "stability".
+            """
+            return normalize_identifier(value) in set(forbidden_terms)
+
+        def warn_if_name_matches_forbidden(name: Any) -> None:
+            if is_forbidden_symbol(name):
+                warnings.append(f"Reward item name exactly matches forbidden V1 symbol: {name}")
+
+        def forbid_metric_reference(item_name: str, params: Dict[str, Any]) -> None:
+            metric = params.get("metric")
+            if metric is not None and is_forbidden_symbol(metric):
+                errors.append(f"{item_name} directly references forbidden V1 metric: {metric}")
+
+        def forbid_event_condition_keys(item_name: str, condition: Any) -> None:
+            if isinstance(condition, dict):
+                for key in condition.keys():
+                    if key in {"duration_steps", "expression", "formula"}:
+                        continue
+                    if is_forbidden_symbol(key):
+                        errors.append(f"{item_name} directly references forbidden V1 event/predicate: {key}")
 
         for component in components:
             if not isinstance(component, dict):
@@ -89,8 +115,7 @@ class BootstrapSchemaValidator:
                 errors.append(f"Duplicate reward item name: {name}")
             names.add(name)
 
-            if has_forbidden(name):
-                errors.append(f"Component name contains forbidden term: {name}")
+            warn_if_name_matches_forbidden(name)
 
             if ctype not in cls.SUPPORTED_COMPONENT_TYPES:
                 errors.append(f"Unsupported component type in bootstrap schema: {ctype}")
@@ -110,6 +135,7 @@ class BootstrapSchemaValidator:
                 errors.append(f"Component {name} has invalid weight")
 
             params = dict(component.get("params", {}) or {})
+            forbid_metric_reference(str(name), params)
             formula = component.get("formula") or params.get("formula")
             condition = component.get("condition") or params.get("condition")
 
@@ -117,8 +143,6 @@ class BootstrapSchemaValidator:
                 if not formula:
                     errors.append(f"{ctype} {name} missing formula")
                 else:
-                    if has_forbidden(formula):
-                        errors.append(f"Formula for {name} contains forbidden term")
                     result = FormulaValidator.validate_expression(str(formula), allowed_vars, allowed_funcs)
                     if not result.ok:
                         errors.extend([f"{name}.formula: {e}" for e in result.errors])
@@ -127,8 +151,6 @@ class BootstrapSchemaValidator:
                 if not condition:
                     errors.append(f"conditional_formula_component {name} missing condition")
                 else:
-                    if has_forbidden(condition):
-                        errors.append(f"Condition for {name} contains forbidden term")
                     result = FormulaValidator.validate_expression(str(condition), allowed_vars, allowed_funcs)
                     if not result.ok:
                         errors.extend([f"{name}.condition: {e}" for e in result.errors])
@@ -149,8 +171,7 @@ class BootstrapSchemaValidator:
                 errors.append(f"Duplicate reward item name: {name}")
             names.add(name)
 
-            if has_forbidden(name):
-                errors.append(f"Event rule name contains forbidden term: {name}")
+            warn_if_name_matches_forbidden(name)
 
             if rtype not in cls.SUPPORTED_EVENT_TYPES:
                 errors.append(f"Unsupported event rule type in bootstrap schema: {rtype}")
@@ -163,6 +184,7 @@ class BootstrapSchemaValidator:
                 warnings.append(f"Event rule {name} missing semantic_role")
 
             condition = rule.get("condition", {})
+            forbid_event_condition_keys(str(name), condition)
             expr = None
             if isinstance(condition, str):
                 expr = condition
@@ -175,8 +197,6 @@ class BootstrapSchemaValidator:
                 if not expr:
                     errors.append(f"event_predicate {name} missing condition expression")
                 else:
-                    if has_forbidden(expr):
-                        errors.append(f"Condition for {name} contains forbidden term")
                     result = FormulaValidator.validate_expression(str(expr), allowed_vars, allowed_funcs)
                     if not result.ok:
                         errors.extend([f"{name}.condition: {e}" for e in result.errors])
