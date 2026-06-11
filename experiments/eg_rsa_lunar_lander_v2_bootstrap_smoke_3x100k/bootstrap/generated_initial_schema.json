@@ -2,122 +2,104 @@
   "version": 2,
   "metadata": {
     "source": "llm_bootstrap",
-    "task": "LunarLander-v3"
+    "task": "LunarLander-v3",
+    "reward_blueprint_present": true
   },
   "components": [
     {
+      "name": "r_progress",
+      "type": "formula_component",
+      "variables": [
+        "vy",
+        "y"
+      ],
+      "formula": "tanh(-vy) * clip(y, 0, 1)",
+      "weight": 1.0,
+      "enabled": true,
+      "params": {
+        "formula": "tanh(-vy) * clip(y, 0, 1)"
+      }
+    },
+    {
       "name": "r_centering",
       "type": "formula_component",
-      "weight": 1.0,
-      "formula": "1.0 - tanh(abs(x))",
-      "clip": [
-        0.0,
-        1.0
+      "variables": [
+        "x",
+        "y"
       ],
+      "formula": "-abs(x) * (1 - clip(y, 0, 1))",
+      "weight": 1.0,
       "enabled": true,
-      "semantic_role": "dense_guidance",
-      "reward_timing": "dense",
-      "behavior_channel": "position",
       "params": {
-        "formula": "1.0 - tanh(abs(x))"
+        "formula": "-abs(x) * (1 - clip(y, 0, 1))"
       }
     },
     {
       "name": "r_stability",
       "type": "formula_component",
+      "variables": [
+        "angle",
+        "angular_velocity"
+      ],
+      "formula": "-abs(angle) - 0.1 * abs(angular_velocity)",
       "weight": 1.0,
-      "formula": "exp(-(abs(angle) + abs(angular_velocity)))",
-      "clip": [
-        0.0,
-        1.0
-      ],
       "enabled": true,
-      "semantic_role": "stability_quality",
-      "reward_timing": "dense",
-      "behavior_channel": "attitude",
       "params": {
-        "formula": "exp(-(abs(angle) + abs(angular_velocity)))"
+        "formula": "-abs(angle) - 0.1 * abs(angular_velocity)"
       }
     },
     {
-      "name": "r_horizontal_stabilizer",
-      "type": "conditional_formula_component",
-      "weight": 0.5,
-      "condition": "y < 0.5",
-      "formula": "exp(-abs(vx))",
-      "clip": [
-        0.0,
-        1.0
+      "name": "r_action_cost",
+      "type": "action_penalty",
+      "variables": [
+        "main_engine",
+        "side_engine"
       ],
-      "enabled": true,
-      "semantic_role": "stability_quality",
-      "reward_timing": "dense",
-      "behavior_channel": "velocity",
-      "params": {
-        "formula": "exp(-abs(vx))",
-        "condition": "y < 0.5"
-      }
-    },
-    {
-      "name": "r_descent_control",
-      "type": "conditional_formula_component",
+      "formula": "-0.3 * abs(main_engine) - 0.3 * abs(side_engine)",
       "weight": 1.0,
-      "condition": "y < 0.5",
-      "formula": "exp(-(abs(vy) + abs(angle)))",
-      "clip": [
-        0.0,
-        1.0
+      "enabled": true,
+      "params": {
+        "formula": "-0.3 * abs(main_engine) - 0.3 * abs(side_engine)"
+      }
+    },
+    {
+      "name": "r_soft_touchdown",
+      "type": "conditional_formula_component",
+      "variables": [
+        "left_contact",
+        "right_contact",
+        "vy",
+        "vx"
       ],
+      "condition": "left_contact or right_contact",
+      "formula": "-(abs(vy) + 0.2 * abs(vx))",
+      "weight": 1.0,
       "enabled": true,
-      "semantic_role": "safety_constraint",
-      "reward_timing": "dense",
-      "behavior_channel": "approach",
       "params": {
-        "formula": "exp(-(abs(vy) + abs(angle)))",
-        "condition": "y < 0.5"
-      }
-    },
-    {
-      "name": "r_fuel_main",
-      "type": "action_penalty",
-      "weight": -0.01,
-      "formula": "main_engine",
-      "enabled": true,
-      "semantic_role": "control_cost",
-      "reward_timing": "dense",
-      "behavior_channel": "throttle",
-      "params": {
-        "formula": "main_engine"
-      }
-    },
-    {
-      "name": "r_fuel_side",
-      "type": "action_penalty",
-      "weight": -0.01,
-      "formula": "side_engine",
-      "enabled": true,
-      "semantic_role": "control_cost",
-      "reward_timing": "dense",
-      "behavior_channel": "throttle",
-      "params": {
-        "formula": "side_engine"
+        "formula": "-(abs(vy) + 0.2 * abs(vx))",
+        "condition": "left_contact or right_contact"
       }
     }
   ],
   "event_rules": [
     {
-      "name": "r_safe_landing",
+      "name": "terminal_success",
       "type": "event_predicate",
-      "weight": 80.0,
+      "variables": [
+        "left_contact",
+        "right_contact",
+        "vy",
+        "angle",
+        "x"
+      ],
       "condition": {
-        "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(vx) < 0.2 and abs(angle) < 0.2",
+        "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(angle) < 0.1 and abs(x) < 0.2",
         "duration_steps": 1
       },
-      "one_time": true,
+      "reward": 100.0,
       "enabled": true,
-      "semantic_role": "terminal_success",
-      "reward_timing": "sparse_event",
-      "behavior_channel": "goal"
+      "weight": 1.0,
+      "one_time": true
     }
   ]
 }

@@ -207,9 +207,22 @@ class BootstrapSchemaValidator:
                 expr = condition
             elif isinstance(condition, dict):
                 expr = condition.get("expression") or condition.get("formula")
+                if not expr:
+                    expr = rule.get("expression") or rule.get("formula")
+                    if expr:
+                        warnings.append(
+                            f"Event rule {name} used top-level expression/formula; "
+                            "normalizer should move it into condition.expression"
+                        )
             else:
-                expr = None
-                errors.append(f"Event rule {name} condition must be string or dict")
+                expr = rule.get("expression") or rule.get("formula")
+                if expr:
+                    warnings.append(
+                        f"Event rule {name} missing condition dict but has top-level expression/formula"
+                    )
+                else:
+                    expr = None
+                    errors.append(f"Event rule {name} condition must be string or dict")
 
             if not expr:
                 errors.append(f"event_predicate {name} missing condition expression")

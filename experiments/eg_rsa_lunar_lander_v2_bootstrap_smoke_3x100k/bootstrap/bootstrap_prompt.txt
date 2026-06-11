@@ -1,8 +1,12 @@
 You are the EG-RSA-V2 bootstrap agent.
 
 You receive a primitive-only reinforcement-learning task interface.
-You are not given any previous reward schema, previous diagnostic metric names,
-previous event predicate names, or official environment reward feedback.
+You are not given any previous reward schema, previous diagnostic metric definitions,
+previous event predicate definitions, or official environment reward feedback.
+
+Your job has two steps:
+1. Infer a reward design blueprint from the task text and primitive variables.
+2. Compile that blueprint into a safe formula-based reward schema.
 
 Task description:
 Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.
@@ -11,7 +15,7 @@ Primitive interface:
 {
   "version": 1,
   "env": "LunarLander-v3",
-  "purpose": "Primitive-only interface for EG-RSA-V2. This file is the only task-side interface used by V2 bootstrap and runtime setup. It exposes primitive observation/action variables and safe formula functions, but it does not expose the V1 initial reward schema, V1 diagnostic metrics, V1 event predicates, or V1 task description file.",
+  "purpose": "Primitive-only task interface for EG-RSA-V2. This file exposes primitive observation/action variables, allowed formula variables, allowed formula functions, semantic roles, and task text. It does not expose any previous reward schema or previous diagnostic/event definitions.",
   "task_description": "Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.",
   "observation_variables": [
     {
@@ -124,63 +128,123 @@ Primitive interface:
     "right_contact": 7
   },
   "bootstrap_interface_policy": {
-    "principle": "V2 avoids V1 leakage by interface isolation, not by lexical forbidden terms. The LLM is not shown V1 schema files, V1 diagnostic metric names, or V1 event predicate names.",
+    "principle": "V2 avoids previous-schema leakage by interface isolation. The bootstrap agent only receives primitive observation/action variables, safe formula functions, task text, and output format constraints.",
     "formula_boundary": "Generated formulas must use only allowed_formula_variables and allowed_formula_functions.",
     "not_exposed_to_llm": [
-      "configs/eg_rsa_examples/lunar_lander_initial_schema.json",
-      "configs/eg_rsa_examples/lunar_lander_diagnostics.yml",
-      "envs/lunar_lander/task_description.txt"
+      "previous initial reward schema content",
+      "previous diagnostic metric definitions",
+      "previous event predicate definitions",
+      "previous task-specific reward-design files"
     ]
   }
 }
 
-Rules:
-1. Output JSON only. Do not output markdown.
-2. Do not use official environment reward as feedback.
-3. Do not assume any hidden task metrics or event names.
-4. Reward formulas may use only these variables: ['x', 'y', 'vx', 'vy', 'angle', 'angular_velocity', 'left_contact', 'right_contact', 'main_engine', 'side_engine']
-5. Reward formulas may call only these functions: ['abs', 'min', 'max', 'clip', 'sqrt', 'exp', 'tanh']
-6. Use only these schema item types: ['formula_component', 'conditional_formula_component', 'event_predicate', 'action_penalty']
-7. Every component and event rule must have semantic_role from: ['dense_guidance', 'stability_quality', 'terminal_success', 'safety_constraint', 'control_cost']
-8. You may use ordinary English concept names such as stability, soft landing, or safe descent in item names, but every formula must be expressed only with primitive variables.
+Allowed formula variables:
+["x", "y", "vx", "vy", "angle", "angular_velocity", "left_contact", "right_contact", "main_engine", "side_engine"]
 
-Required JSON format:
+Allowed formula functions:
+["abs", "min", "max", "clip", "sqrt", "exp", "tanh"]
+
+Allowed schema item types:
+["formula_component", "conditional_formula_component", "event_predicate", "action_penalty"]
+
+Allowed semantic roles:
+["dense_guidance", "stability_quality", "terminal_success", "safety_constraint", "control_cost"]
+
+Environment-agnostic reward design protocol:
+1. First identify which primitive variables can express progress, safety/control, terminal evidence, and control effort.
+2. Do not jump directly from primitive variables to formulas. Explain the reward blueprint first.
+3. A goal-directed control task usually needs progress guidance, control quality, terminal success, and control cost.
+4. Dense rewards should be progress-aligned. A policy should not receive high dense reward forever by merely staying stable, aligned, or stationary far from completion.
+5. Stability/alignment rewards are useful only when they support progress or completion; they should not replace progress.
+6. Conditional final-phase rewards are allowed, but the schema should also contain a process/progress signal that is not only available at the final instant.
+7. Terminal success should be sparse, one-time, and based only on primitive terminal evidence.
+8. Action penalties must represent effort magnitude. If an action variable can be signed, the penalty expression must not become positive reward for one action direction.
+9. Do not use hidden metrics or invented event names. Every formula must use only allowed primitive variables and allowed functions.
+10. Schema language boundary:
+    - formula_component.formula is a primitive numeric expression.
+    - conditional_formula_component.condition is a primitive boolean expression.
+    - event_predicate.condition.expression is a primitive boolean expression.
+    - Do NOT put event_predicate.expression at the top level of the event rule.
+    - Do NOT reference an event rule by name inside a formula or component condition.
+    - If you need a terminal completion reward, use event_rules with type="event_predicate" rather than a conditional_formula_component that points to an event name.
+11. Output JSON only. Do not output markdown.
+
+Structure-only few-shot example. This is not a reward function to copy:
 {
+  "example_blueprint_only": {
+    "task_type": "goal-directed control task",
+    "reward_structure": [
+      {
+        "role": "progress_guidance",
+        "principle": "encourage measurable movement toward completion, not passive state maintenance"
+      },
+      {
+        "role": "control_quality",
+        "principle": "encourage safe/smooth behavior while the agent is making progress"
+      },
+      {
+        "role": "terminal_success",
+        "principle": "reward primitive terminal evidence once, not repeatedly"
+      },
+      {
+        "role": "control_cost",
+        "principle": "penalize action magnitude; signed actions must not accidentally become positive reward"
+      }
+    ]
+  }
+}
+
+Required output JSON shape:
+{
+  "reward_blueprint": {
+    "task_objective": "one-sentence objective inferred from the task text",
+    "primitive_variable_roles": {
+      "progress_variables": [],
+      "safety_variables": [],
+      "terminal_evidence_variables": [],
+      "control_variables": []
+    },
+    "phase_structure": [
+      {
+        "phase": "approach_or_progress",
+        "purpose": "encourage measurable progress toward task completion",
+        "reward_intent": "what signal should exist in this phase"
+      },
+      {
+        "phase": "controlled_execution",
+        "purpose": "encourage safe/controlled behavior while progress is happening",
+        "reward_intent": "what signal should exist in this phase"
+      },
+      {
+        "phase": "completion",
+        "purpose": "reward terminal completion evidence once",
+        "reward_intent": "what terminal evidence should trigger success"
+      }
+    ],
+    "component_blueprint": [
+      {
+        "name": "r_progress_guidance",
+        "role": "dense_guidance",
+        "phase": "approach_or_progress",
+        "design_intent": "progress signal, not passive state maintenance",
+        "anti_exploit_note": "why this cannot be maximized forever without task progress"
+      }
+    ],
+    "anti_exploit_principles": [
+      "Dense reward should not be maximized indefinitely without progress.",
+      "Passive stability/alignment should support progress rather than replace progress.",
+      "Action cost should penalize effort magnitude and never reward a signed action accidentally."
+    ]
+  },
   "initial_schema": {
     "version": 2,
     "metadata": {
       "source": "llm_bootstrap",
       "task": "..."
     },
-    "components": [
-      {
-        "name": "r_centering",
-        "type": "formula_component",
-        "weight": 1.0,
-        "formula": "1.0 - min(abs(x), 1.0)",
-        "clip": [0.0, 1.0],
-        "enabled": true,
-        "semantic_role": "dense_guidance",
-        "reward_timing": "dense",
-        "behavior_channel": "position"
-      }
-    ],
-    "event_rules": [
-      {
-        "name": "r_soft_landing_contact_once",
-        "type": "event_predicate",
-        "weight": 80.0,
-        "condition": {
-          "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.3",
-          "duration_steps": 3
-        },
-        "one_time": true,
-        "enabled": true,
-        "semantic_role": "terminal_success",
-        "reward_timing": "sparse_event",
-        "behavior_channel": "success"
-      }
-    ]
+    "components": [],
+    "event_rules": []
   },
   "diagnostics": {
     "expected_failure_modes": [],
@@ -194,4 +258,4 @@ Required JSON format:
   }
 }
 
-Generate a compact schema with 3-6 components and 1-3 event rules.
+Generate a compact schema with 3-7 components and 1-3 event rules.

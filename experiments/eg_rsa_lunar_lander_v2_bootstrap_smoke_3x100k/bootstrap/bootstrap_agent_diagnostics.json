@@ -1,12 +1,13 @@
 {
   "expected_failure_modes": [
-    "agent may learn to hover near ground to accumulate dense approach rewards instead of landing",
-    "fuel penalties could discourage necessary engine use for landing, causing crashes",
-    "conditional components only activate below y=0.5; agent may not descend that low"
+    "Agent hovers high without descending because r_progress becomes zero when vy=0, but r_centering and r_stability are too weak to force descent; solved by enough weight on r_progress.",
+    "Agent crashes fast because r_progress encourages high descent speed; clipped by tanh saturation and by r_soft_touchdown penalty on hard impact.",
+    "Agent touches down gently but not centered because r_centering penalty is zero at high altitude; the near‑ground scaling ensures centering becomes strict as landing approaches.",
+    "Agent uses side engine to spin instead of translating, because r_stability only penalises angle; solved by action cost on side_engine and centering pressure that makes spinning counter‑productive."
   ],
   "risk_notes": [
-    "dense guidance on vy near ground might reward slow descent, delaying terminal contact",
-    "one-time landing event may be missed if condition duration is too strict",
-    "weight balance between centering, stability, and fuel cost may need tuning"
+    "r_centering scaling (1 - clip(y,0,1)) can be negative if y<0; assuming the environment keeps y≥0, this is safe.",
+    "r_soft_touchdown fires on single‑leg ground contact, which may train very conservative landing approaches (hovering on one leg); but the large terminal bonus for dual‑contact with strict criteria discourages that.",
+    "tanh(-vy) in r_progress provides limited gradient for large negative vy; the saturating shape may slow early learning of fast descent, but guarantees bounded reward."
   ]
 }

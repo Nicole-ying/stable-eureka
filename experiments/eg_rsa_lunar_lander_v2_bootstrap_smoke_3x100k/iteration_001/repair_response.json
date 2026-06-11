@@ -1,20 +1,20 @@
 {
   "repair_analysis": {
     "risk_source": "scale_risk",
-    "role_level_interpretation": "The ScaleAudit flagged the new altitude_push component (weight 0.5) as high risk because its estimated episode contribution (12.5× terminal scale) could dominate the sparse terminal success reward. The BehaviorRiskAudit found no role-level risk, confirming that the conceptual rebalancing is safe but the magnitude of the new dense guidance component must be reduced.",
-    "what_to_keep": "The coupled rebalancing of decreasing r_stability weight to 0.5 and increasing r_descent_control weight to 2.0 to shift incentives away from high-altitude hovering and toward controlled descent.",
-    "what_to_modify": "The weight of the new altitude_push component from 0.5 to a much smaller value (0.05) so that its cumulative dense reward remains small relative to the terminal success bonus.",
-    "what_to_remove": "The aggressive 0.5 weight on altitude_push that created scale dominance.",
-    "why_repaired_plan_is_safer": "By reducing altitude_push to 0.05, the component provides a gentle, consistent incentive to descend without overwhelming the terminal success reward (max episode contribution ~30 vs terminal 80, ratio ~0.375). This preserves the original intent of breaking the hovering equilibrium while eliminating the scale risk. The decreased stability weight and increased descent_control weight remain supportive, and the whole package will guide the agent gradually toward lower altitude where the strong descent_control activates, leading to safe landings."
+    "role_level_interpretation": "The failed plan added a new dense component (r_approach_slow) that, with weight 1.5, would contribute an estimated 1500× the terminal reward, overwhelming the terminal incentive and destabilising learning. The behavioral risk audit passed, so the only immediate danger is the magnitude of the dense signal. The core intent—shaping the final approach—is sound, but the implementation must avoid extreme scale.",
+    "what_to_keep": "Keep the coupled rebalancing philosophy: simultaneously reduce r_progress dominance and inject approach-phase guidance. Preserve the use of a speed penalty near the ground before both contacts are made.",
+    "what_to_modify": "Instead of adding a new component, repurpose the existing r_soft_touchdown component. Change its condition to trigger earlier (y < 0.5 and not both contacts) and lower its weight to a safe level that provides meaningful but not overwhelming negative reward.",
+    "what_to_remove": "Remove the add_component operator entirely. Do not introduce r_approach_slow or any other new dense component with high weight.",
+    "why_repaired_plan_is_safer": "The repaired plan uses an already existing component, reducing the risk of introducing unintended interactions. The new condition covers the critical approach altitude, and the weight is set to 0.2, keeping its per-step magnitude small (estimated episode contribution well below 50× terminal scale). The r_progress weight decrease is mild (0.5 → 0.4), preserving a gentle descent gradient while lowering its dominance. The terminal reward remains unchanged at scale 1.0, and no single dense component threatens to dominate the episode reward. This combination should improve landing‑phase guidance without triggering scale audits."
   },
-  "diagnosis": "Shaping goal mismatch: heavy unconditional stability reward causes indefinite hovering; need to reduce stability and inject a weak altitude signal to push descent paired with stronger final approach guidance.",
+  "diagnosis": "Persistent shaping-goal mismatch: r_progress still dominant (~60%) and landing-phase incentives too weak. The previous edit only slightly improved metrics. This repair further reduces r_progress weight from 0.5 to 0.4 and repurposes r_soft_touchdown to activate earlier (y < 0.5, before both contacts) with a low weight (0.2) to gently penalise excessive speed during final approach.",
   "reward_editor": {
     "edit_decision": "edit",
     "next_action": "apply_edit",
     "plan_type": "coupled_rebalancing",
     "atomicity": "atomic",
-    "max_reasonable_edits": 3,
-    "rationale": "The agent exploits dense stability and centering rewards to hover high, never triggering descent components or terminal success. The failed edit added an altitude_push with weight 0.5, causing scale risk. The repair retains the rebalancing (reduce stability weight, boost descent_control weight) and adds an altitude_push with a very low weight (0.05) to provide downward pressure without dominating the terminal reward. This coupled change ensures that hovering becomes less profitable, a small per-step altitude reward nudges descent, and once the agent reaches low altitude the boosted descent_control steers a safe landing."
+    "max_reasonable_edits": 2,
+    "rationale": "We must reduce r_progress dominance and add approach-speed shaping without introducing a massive dense term. Modifying an existing component with a carefully chosen low weight achieves this while keeping total reward scale safe. The two edits (decrease r_progress weight, modify r_soft_touchdown condition and weight) form an atomic package because the r_progress reduction alone would be insufficient, and the new condition only makes sense together with a downscaled weight to avoid scale risk."
   },
   "auditor_check": {
     "approved": true,
@@ -24,36 +24,19 @@
   "edit_plan": [
     {
       "operator": "decrease_weight",
-      "target": "r_stability",
-      "factor": 0.5
+      "target": "r_progress",
+      "factor": 0.8
     },
     {
-      "operator": "increase_weight",
-      "target": "r_descent_control",
-      "factor": 2.0
-    },
-    {
-      "operator": "add_component",
-      "component": {
-        "name": "r_altitude_push",
-        "type": "metric_value",
-        "weight": 0.05,
-        "inputs": [],
-        "params": {
-          "formula": "exp(-y)"
-        },
-        "clip": [
-          0.0,
-          1.0
-        ],
-        "enabled": true,
-        "semantic_role": "dense_guidance",
-        "reward_timing": "dense",
-        "behavior_channel": "altitude"
+      "operator": "modify_conditional_formula_component",
+      "target": "r_soft_touchdown",
+      "changes": {
+        "condition": "y < 0.5 and not (left_contact and right_contact)",
+        "weight": 0.2
       }
     }
   ],
   "plan_type": "coupled_rebalancing",
   "atomicity": "atomic",
-  "max_reasonable_edits": 3
+  "max_reasonable_edits": 2
 }

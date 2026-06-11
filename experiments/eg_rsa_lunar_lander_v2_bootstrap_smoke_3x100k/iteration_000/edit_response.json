@@ -1,24 +1,29 @@
 {
   "diagnostic_analysis": {
     "observed_facts": [
-      "Zero terminal success events triggered",
-      "r_horizontal_stabilizer and r_descent_control never activate (condition y<0.5 unmet)",
-      "Episode reward mean 675 but zero successful landings",
-      "Progress score low (~0.51), episodes long (mean 414 steps)",
-      "Dense centering and stability components dominate reward (ratios 0.464 and 0.530)"
+      "r_progress contributes 73% of total absolute reward; its mean is 0.444 vs. others near zero or negative.",
+      "Success episode rate is 0.0; safe_contact and stable_landing rates are also 0.0.",
+      "Terminal success event triggered only once in 3 episodes (0.5% of reward).",
+      "r_soft_touchdown triggered on only 3.5% of steps, giving small negative reward.",
+      "Shaping components (r_centering, r_stability) have small magnitudes relative to r_progress.",
+      "No past edit memories or lessons exist to guide correction."
     ],
     "likely_true_failures": [
-      "Reward hacking: agent learns stable hover at high altitude to maximize continuous centering/stability rewards without descending"
+      "r_progress overshadows other shaping objectives, causing the policy to ignore fine‑grained landing requirements.",
+      "The transition from high‑altitude descent shaping to low‑altitude centering/stability is not properly connected, leading to task failure."
     ],
-    "likely_false_positives": [],
+    "likely_false_positives": [
+      "The detected component_dominance is real (r_progress is overwhelmingly large), but it reflects a shaping imbalance rather than deliberate reward hacking; the agent is not exploiting a loophole.",
+      "The shaping_goal_mismatch flag is valid because the current shaping rewards do not reliably lead to the terminal success condition."
+    ],
     "root_cause_hypotheses": [
-      "Unconditional dense shaping for centering and stability incentivizes staying high",
-      "Conditional approach components never trigger because agent never reaches y<0.5",
-      "No incentive to descend"
+      "r_progress formula ‘tanh(-vy) * clip(y, 0, 1)’ encourages high descent speed at high altitude, but the influence of ‘clip(y,0,1)’ near the ground is too weak to shape a slow final approach.",
+      "Negative components (centering, stability, soft touchdown) are insufficiently weighted to guide the lander through the final seconds of an episode.",
+      "The terminal success reward is too sparse (one‑time bonus of 1.0) to overcome the shaping bias."
     ],
-    "failure_kind": "reward_hack",
+    "failure_kind": "task_failure",
     "edit_need": "must_edit",
-    "confidence": 0.9
+    "confidence": 0.8
   },
   "memory_reflection": {
     "lesson_assessments": [],
@@ -26,51 +31,29 @@
     "failed_or_weak_lessons": [],
     "avoid_actions": [],
     "recommended_actions": [
-      "Reduce weight of r_centering and r_stability",
-      "Add altitude penalty to incentivize descent",
-      "Keep conditional components active so they engage when altitude falls"
+      "Rebalance reward weights to reduce r_progress dominance and strengthen centering/stability near the ground."
     ],
-    "memory_confidence": 0.0
+    "memory_confidence": 0.1
   },
   "reward_editor": {
     "edit_decision": "edit",
     "next_action": "apply_edit",
     "plan_type": "coupled_rebalancing",
-    "atomicity": "atomic",
-    "max_reasonable_edits": 3,
-    "rationale": "The agent exploits dense unconditional centering and stability rewards to hover at high altitude. To break this, we reduce those components' weights and introduce an altitude penalty (negative metric_value on y) to push descent. This package is atomic: reducing weights alone could stall learning; adding penalty alone might not overcome the attractiveness of hovering. Together they shift the reward landscape so that descending becomes more profitable, eventually triggering the existing conditional approach components (r_horizontal_stabilizer, r_descent_control) and the terminal success event.",
-    "expected_effect": "Agent will descend earlier and more often, entering the final approach phase where r_horizontal_stabilizer and r_descent_control activate, leading to stable landing attempts. Episode reward will drop temporarily; landing success rate should increase. Hack risk decreases as dense shaping becomes less dominant and descent is rewarded.",
-    "risk_analysis": "Altitude penalty may cause agent to crash quickly if descent is uncontrolled. However, reduced but still present r_stability and the conditional descent components (once y<0.5) will provide control incentives. Early learning may produce more crashes; this is acceptable as exploration. Monitor and adjust weight factors if crashes remain too high or descent is too timid.",
+    "atomicity": "separable",
+    "max_reasonable_edits": 2,
+    "rationale": "r_progress dominates (73%) and prevents learning of the final landing phase. We halve its overall weight and modify the formula to scale down its influence at lower altitudes, while preserving a small descent incentive everywhere. This rebalances the reward landscape so that centering, stability, and soft‑touchdown shaping can become effective. The two edits (decrease_weight + replace_formula on r_progress) act together but can be applied independently, though doing both is recommended to avoid either a still‑dominant component or a vanishing descent gradient.",
+    "expected_effect": "r_progress’s absolute contribution will drop, reducing its ratio below 0.5, and the other shaping terms will become relatively salient. After retraining, safe_contact, stable_landing, and success episode rates should increase noticeably. Total episode reward may dip temporarily during adaptation.",
+    "risk_analysis": "If r_progress is weakened too much the lander may stop descending; the floor multiplier of 0.5 in the new formula (plus the weight factor 0.5) maintains a non‑zero descent reward at all altitudes, mitigating that risk. We are not modifying the terminal success condition, so the ultimate goal remains unchanged.",
     "edit_plan": [
       {
         "operator": "decrease_weight",
-        "target": "r_centering",
+        "target": "r_progress",
         "factor": 0.5
       },
       {
-        "operator": "decrease_weight",
-        "target": "r_stability",
-        "factor": 0.5
-      },
-      {
-        "operator": "add_component",
-        "component": {
-          "name": "r_altitude_penalty",
-          "type": "metric_value",
-          "weight": -0.1,
-          "inputs": [],
-          "params": {
-            "metric": "y"
-          },
-          "clip": [
-            -0.1,
-            0.0
-          ],
-          "enabled": true,
-          "semantic_role": "progress_incentive",
-          "reward_timing": "dense",
-          "behavior_channel": "altitude"
-        }
+        "operator": "replace_formula",
+        "target": "r_progress",
+        "formula": "(0.5 + 0.5 * clip(y, 0, 1)) * tanh(-vy)"
       }
     ]
   },
@@ -84,108 +67,24 @@
     "what_failed": [],
     "avoid_next": [],
     "recommend_next": [],
-    "applicability_notes": []
+    "applicability_notes": [
+      "No prior edit memory; first intervention targets the dominant shaping component."
+    ]
   },
-  "diagnosis": "High altitude hover exploit; reduce dense hovering incentives and add altitude penalty to promote descent.",
+  "diagnosis": "r_progress dominance (73%) prevents stable landing; rebalancing by halving its weight and adding an altitude‑dependent scaling layer so that it remains a gentle progress signal rather than an overwhelming one.",
   "edit_plan": [
     {
       "operator": "decrease_weight",
-      "target": "r_centering",
+      "target": "r_progress",
       "factor": 0.5
     },
     {
-      "operator": "decrease_weight",
-      "target": "r_stability",
-      "factor": 0.5
-    },
-    {
-      "operator": "add_component",
-      "component": {
-        "name": "r_altitude_penalty",
-        "type": "metric_value",
-        "weight": -0.1,
-        "inputs": [],
-        "params": {
-          "metric": "y"
-        },
-        "clip": [
-          -0.1,
-          0.0
-        ],
-        "enabled": true,
-        "semantic_role": "progress_incentive",
-        "reward_timing": "dense",
-        "behavior_channel": "altitude"
-      }
+      "operator": "replace_formula",
+      "target": "r_progress",
+      "formula": "(0.5 + 0.5 * clip(y, 0, 1)) * tanh(-vy)"
     }
   ],
   "plan_type": "coupled_rebalancing",
-  "atomicity": "atomic",
-  "max_reasonable_edits": 3,
-  "structural_search_response": {
-    "structural_analysis": {
-      "missing_signal_hypothesis": "The agent receives dense stability and centering rewards that lead to high episode reward even though it never lands. The terminal success event r_safe_landing is never triggered, and the conditional descent-control components (y < 0.5) never activate because the agent is not incentivized to descend. A progress‑related penalty or dense signal that encourages steady improvement toward landing is missing.",
-      "why_local_edit_is_insufficient": "Local edits such as adjusting weights or clipping cannot create a new progress incentive; the existing components either do not fire close to the ground or are already dominant. The required signal must introduce a penalty for stagnation, which is not achievable by modifying existing formulas or event rules.",
-      "memory_constraints": [],
-      "safety_constraints": [
-        "No environment reward or official values.",
-        "Only allowed operators and metrics.",
-        "Must not add unprotected repeatable bonuses.",
-        "Edit must be generic and minimal."
-      ]
-    },
-    "reward_editor": {
-      "edit_decision": "edit",
-      "next_action": "apply_edit",
-      "rationale": "A metric_stagnation_penalty on the available 'progress' metric will penalise the agent when it fails to improve over a window, encouraging it to descend and achieve the landing criteria. This is a safe, dense shaping signal that does not rely on environment-specific rewards and respects all structural constraints. Only one component is added, making it minimal.",
-      "edit_plan": [
-        {
-          "operator": "add_component",
-          "component": {
-            "name": "r_progress_stagnation_penalty",
-            "type": "metric_stagnation_penalty",
-            "weight": -0.5,
-            "inputs": [],
-            "params": {
-              "metric": "progress",
-              "threshold": 0.95,
-              "window": 100
-            },
-            "clip": [
-              -1.0,
-              0.0
-            ],
-            "enabled": true
-          }
-        }
-      ]
-    },
-    "auditor_check": {
-      "approved": true,
-      "issues": [],
-      "final_action": "apply_edit"
-    },
-    "diagnosis": "Terminal success never fires; dense shaping already provides high reward without landing. Adding a progress‑stagnation penalty using the configured metric and allowed operators should direct behaviour toward completing the landing.",
-    "edit_plan": [
-      {
-        "operator": "add_component",
-        "component": {
-          "name": "r_progress_stagnation_penalty",
-          "type": "metric_stagnation_penalty",
-          "weight": -0.5,
-          "inputs": [],
-          "params": {
-            "metric": "progress",
-            "threshold": 0.95,
-            "window": 100
-          },
-          "clip": [
-            -1.0,
-            0.0
-          ],
-          "enabled": true
-        }
-      }
-    ]
-  }
+  "atomicity": "separable",
+  "max_reasonable_edits": 2
 }

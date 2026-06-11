@@ -1,13 +1,16 @@
 {
-  "design_rationale": "The schema decomposes landing into dense positional guidance (centering), attitude stability, horizontal velocity suppression near ground, vertical descent quality, and fuel penalties. A single terminal event rewards simultaneous gentle contact with both legs, low vertical/horizontal speeds, and upright attitude. This separates continuous shaping from sparse success and encourages efficient, stable landings.",
+  "design_rationale": "The schema decomposes the task into progress (descend while centering), stability (keep upright), control cost (fuel efficiency), soft touchdown (avoid hard impact), and a terminal success bonus. All terms use only primitive variables and allowed functions, with no reference to hidden diagnostics or prior schemas. Dense rewards are designed to vanish when the lander is not making progress, preventing exploitation.",
   "assumptions": [
-    "landing pad is at x=0 and near y=0",
-    "safe contact velocity thresholds are 0.2 for both vx and vy",
-    "fuel penalties are small enough not to prevent necessary thrust"
+    "The environment provides continuous observation and action at every step.",
+    "y is always non‑negative; the landing pad is at y≈0.",
+    "main_engine throttle is in [0,1] and side_engine throttle in [-1,1].",
+    "left_contact and right_contact are reliable primitive signals that become true upon ground touch and stay true as long as contact persists; they do not reset after episode start.",
+    "The episode terminates shortly after the terminal success event fires."
   ],
   "risk_notes": [
-    "no explicit bounce or crash penalty; agent may bounce after event if it occurs briefly",
-    "lack of max episode length reward may lead to indefinite hovering"
+    "If the environment allows negative y (clipping), the centering scaling (1 - clip(y,0,1)) could become >1, over‑penalising x; this would need a clamp on the multiplier.",
+    "The terminal success event may fire multiple times if the conditions remain true for several steps; the environment should limit the reward to the first occurrence. The schema assumes a one‑shot event mechanism.",
+    "The soft touchdown penalty applies whenever any leg contacts, including during bouncing; repeated penalties effectively punish bouncing, which is intended, but could cause the agent to avoid landing entirely if the penalty is too large relative to the terminal bonus. Tuning coefficients may be needed."
   ],
   "primitive_interface_only": true,
   "primitive_env": "LunarLander-v3"

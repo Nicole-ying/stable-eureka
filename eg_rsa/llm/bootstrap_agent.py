@@ -171,7 +171,14 @@ Environment-agnostic reward design protocol:
 7. Terminal success should be sparse, one-time, and based only on primitive terminal evidence.
 8. Action penalties must represent effort magnitude. If an action variable can be signed, the penalty expression must not become positive reward for one action direction.
 9. Do not use hidden metrics or invented event names. Every formula must use only allowed primitive variables and allowed functions.
-10. Output JSON only. Do not output markdown.
+10. Schema language boundary:
+    - formula_component.formula is a primitive numeric expression.
+    - conditional_formula_component.condition is a primitive boolean expression.
+    - event_predicate.condition.expression is a primitive boolean expression.
+    - Do NOT put event_predicate.expression at the top level of the event rule.
+    - Do NOT reference an event rule by name inside a formula or component condition.
+    - If you need a terminal completion reward, use event_rules with type="event_predicate" rather than a conditional_formula_component that points to an event name.
+11. Output JSON only. Do not output markdown.
 
 Structure-only few-shot example. This is not a reward function to copy:
 {json.dumps(structure_few_shot, indent=2, ensure_ascii=False)}
@@ -208,13 +215,30 @@ Generate a compact schema with 3-7 components and 1-3 event rules.
         schema["metadata"].setdefault("source", "llm_bootstrap")
         schema["metadata"].setdefault("reward_blueprint_present", True)
 
-        for component in schema.get("components", []):
-            if isinstance(component, dict):
-                BootstrapAgent._normalize_component(component)
+        normalization_notes = []
 
+        # Normalize event rules first so component conditions may expand
+        # event-name aliases into primitive expressions.
+        event_expr_by_name: Dict[str, str] = {}
         for rule in schema.get("event_rules", []):
             if isinstance(rule, dict):
-                BootstrapAgent._normalize_event_rule(rule)
+                notes = BootstrapAgent._normalize_event_rule(rule)
+                normalization_notes.extend(notes)
+                expr = BootstrapAgent._event_rule_expression(rule)
+                if rule.get("name") and expr:
+                    event_expr_by_name[str(rule["name"])] = str(expr)
+
+        for component in schema.get("components", []):
+            if isinstance(component, dict):
+                notes = BootstrapAgent._normalize_component(component, event_expr_by_name)
+                normalization_notes.extend(notes)
+
+        if normalization_notes:
+            parsed.setdefault("bootstrap_report", {})
+            parsed["bootstrap_report"].setdefault("normalization_notes", [])
+            parsed["bootstrap_report"]["normalization_notes"].extend(normalization_notes)
+            schema["metadata"].setdefault("normalization_notes", [])
+            schema["metadata"]["normalization_notes"].extend(normalization_notes)
 
         parsed["initial_schema"] = schema
         parsed.setdefault("diagnostics", {})
@@ -224,41 +248,102 @@ Generate a compact schema with 3-7 components and 1-3 event rules.
         return parsed
 
     @staticmethod
-    def _normalize_component(component: Dict[str, Any]) -> None:
+    def _normalize_component(component: Dict[str, Any], event_expr_by_name: Dict[str, str] | None = None) -> list[str]:
+        event_expr_by_name = event_expr_by_name or {}
+        notes: list[str] = []
+
         ctype = component.get("type")
         component.setdefault("enabled", True)
         component.setdefault("weight", 1.0)
         component.setdefault("params", {})
 
+        params = dict(component.get("params", {}) or {})
+
         if "formula" in component:
-            component["params"]["formula"] = component["formula"]
-        elif "formula" in component.get("params", {}):
-            component["formula"] = component["params"]["formula"]
+            params["formula"] = component["formula"]
+        elif "formula" in params:
+            component["formula"] = params["formula"]
 
         if ctype == "conditional_formula_component":
             if "condition" in component:
-                component["params"]["condition"] = component["condition"]
-            elif "condition" in component.get("params", {}):
-                component["condition"] = component["params"]["condition"]
+                params["condition"] = component["condition"]
+            elif "condition" in params:
+                component["condition"] = params["condition"]
+
+            cond = params.get("condition")
+
+            # If the LLM wrote condition=<event_rule_name>, expand it into the
+            # event rule's primitive expression. This keeps the saved schema
+            # primitive-only and avoids introducing event-name variables.
+            if isinstance(cond, str):
+                stripped = cond.strip()
+                if stripped in event_expr_by_name:
+                    expanded = event_expr_by_name[stripped]
+                    params["condition"] = expanded
+                    component["condition"] = expanded
+                    notes.append(
+                        f"Expanded component {component.get('name')} condition event alias "
+                        f"{stripped!r} into primitive expression."
+                    )
+
+        component["params"] = params
+        return notes
 
     @staticmethod
-    def _normalize_event_rule(rule: Dict[str, Any]) -> None:
+    def _normalize_event_rule(rule: Dict[str, Any]) -> list[str]:
+        notes: list[str] = []
+
         rule.setdefault("enabled", True)
         rule.setdefault("weight", 1.0)
         rule.setdefault("one_time", True)
 
         condition = rule.get("condition", {})
+
         if isinstance(condition, str):
             rule["condition"] = {
                 "expression": condition,
                 "duration_steps": int(rule.get("duration_steps", 1) or 1),
             }
-        elif isinstance(condition, dict):
-            condition.setdefault(
-                "duration_steps",
-                int(rule.get("duration_steps", condition.get("duration_steps", 1)) or 1),
+            return notes
+
+        if not isinstance(condition, dict):
+            condition = {}
+
+        condition = dict(condition)
+
+        # Common LLM mistake: putting expression/formula at the event-rule top
+        # level rather than inside condition.expression.
+        top_expr = rule.get("expression") or rule.get("formula")
+        if top_expr and not (condition.get("expression") or condition.get("formula")):
+            condition["expression"] = str(top_expr)
+            notes.append(
+                f"Moved top-level expression/formula of event rule {rule.get('name')} "
+                "into condition.expression."
             )
-            rule["condition"] = condition
+
+        condition.setdefault(
+            "duration_steps",
+            int(rule.get("duration_steps", condition.get("duration_steps", 1)) or 1),
+        )
+
+        rule["condition"] = condition
+
+        # Remove duplicate top-level fields to keep the persisted schema clean.
+        rule.pop("expression", None)
+        rule.pop("formula", None)
+        rule.pop("duration_steps", None)
+
+        return notes
+
+    @staticmethod
+    def _event_rule_expression(rule: Dict[str, Any]) -> str | None:
+        condition = rule.get("condition", {})
+        if isinstance(condition, str):
+            return condition
+        if isinstance(condition, dict):
+            expr = condition.get("expression") or condition.get("formula")
+            return str(expr) if expr else None
+        return None
 
     @staticmethod
     def _fallback_bootstrap(
