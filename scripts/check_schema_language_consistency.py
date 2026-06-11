@@ -14,6 +14,7 @@ from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema_transition import SchemaTransitionEngine
+from eg_rsa.env_adapters.action_primitive_mapper import ActionPrimitiveMapper
 
 
 def main() -> None:
@@ -31,6 +32,17 @@ def main() -> None:
             "terminal_success",
             "safety_constraint",
         ],
+        "action_variables": [
+            {"name": "main_engine", "type": "float"},
+            {"name": "side_engine", "type": "float"},
+        ],
+        "action_mapping": {
+            "type": "discrete_lookup",
+            "variables": {
+                "main_engine": {"2": 1.0, "default": 0.0},
+                "side_engine": {"1": -1.0, "3": 1.0, "default": 0.0},
+            },
+        },
     }
 
     raw_schema = {
@@ -89,6 +101,11 @@ def main() -> None:
 
     schema = RewardSchema.from_dict(canonical)
     SafeRewardCompiler.compile(schema)
+
+    mapper = ActionPrimitiveMapper.from_primitive_interface(primitive)
+    assert mapper.map(2)["main_engine"] == 1.0
+    assert mapper.map(1)["side_engine"] == -1.0
+    assert mapper.map(3)["side_engine"] == 1.0
 
 
     class Validation:

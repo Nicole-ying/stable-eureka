@@ -200,6 +200,8 @@ class LLMBootstrapSchemaSource(SchemaSource):
         return {
             "source": "primitive_interface_generated_runtime_spec",
             "observation_mapping": observation_mapping,
+            "action_variables": primitive_interface.get("action_variables", []),
+            "action_mapping": primitive_interface.get("action_mapping", {}),
             "events": events,
             "task_metrics": task_metrics,
         }

@@ -13,6 +13,7 @@ from eg_rsa.diagnostics.event_evaluator import EventEvaluator
 from eg_rsa.diagnostics.task_metrics import TaskMetricEvaluator
 from eg_rsa.diagnostics.trajectory_recorder import TrajectoryRecorder
 from eg_rsa.env_adapters.box_obs_adapter import BoxObsAdapter
+from eg_rsa.env_adapters.action_primitive_mapper import ActionPrimitiveMapper
 from eg_rsa.evaluation.posthoc_evaluator import PosthocEvaluator
 from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.training.schema_reward_wrapper import SchemaRewardWrapper
@@ -87,7 +88,8 @@ class EGRSATrainer:
         adapter = self._make_adapter()
         event_evaluator = EventEvaluator(self.diagnostic_spec.get("events", {}))
         task_metric_evaluator = TaskMetricEvaluator(self.diagnostic_spec.get("task_metrics", {}))
-        return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator)
+        action_mapper = ActionPrimitiveMapper.from_runtime_spec(self.diagnostic_spec)
+        return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator, action_mapper=action_mapper)
 
     def _make_training_vec_env(self, reward_schema: RewardSchema, n_envs: int = 1):
         if n_envs <= 1:
@@ -103,7 +105,8 @@ class EGRSATrainer:
             adapter = self._make_adapter()
             event_evaluator = EventEvaluator(self.diagnostic_spec.get("events", {}))
             task_metric_evaluator = TaskMetricEvaluator(self.diagnostic_spec.get("task_metrics", {}))
-            return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator)
+            action_mapper = ActionPrimitiveMapper.from_runtime_spec(self.diagnostic_spec)
+            return SchemaRewardWrapper(env, reward_schema, adapter, task_metric_evaluator, event_evaluator, action_mapper=action_mapper)
 
         return SubprocVecEnv([_make_wrapped_env for _ in range(n_envs)], start_method="fork")
 

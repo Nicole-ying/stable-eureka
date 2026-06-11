@@ -73,6 +73,17 @@ class SchemaCanonicalizer:
         data.setdefault("components", [])
         data.setdefault("event_rules", [])
 
+        # Preserve primitive action semantics inside canonical schema metadata
+        # so runtime artifacts can reconstruct formula variables consistently.
+        if primitive_interface.get("action_mapping"):
+            data["metadata"]["action_mapping"] = primitive_interface.get("action_mapping")
+        if primitive_interface.get("action_variables"):
+            data["metadata"]["action_variables"] = primitive_interface.get("action_variables")
+        if primitive_interface.get("allowed_formula_variables"):
+            data["metadata"]["allowed_formula_variables"] = primitive_interface.get("allowed_formula_variables")
+        if primitive_interface.get("allowed_formula_functions"):
+            data["metadata"]["allowed_formula_functions"] = primitive_interface.get("allowed_formula_functions")
+
         notes: List[str] = []
         errors: List[str] = []
 

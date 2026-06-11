@@ -8,6 +8,7 @@ import numpy as np
 from eg_rsa.diagnostics.event_evaluator import EventEvaluator
 from eg_rsa.diagnostics.task_metrics import TaskMetricEvaluator
 from eg_rsa.env_adapters.box_obs_adapter import BoxObsAdapter
+from eg_rsa.env_adapters.action_primitive_mapper import ActionPrimitiveMapper
 from eg_rsa.reward.safe_formula_eval import safe_eval_formula
 from eg_rsa.reward.schema import RewardSchema
 
@@ -32,12 +33,17 @@ class SchemaRewardWrapper(gym.Wrapper):
         obs_adapter: BoxObsAdapter,
         task_metric_evaluator: TaskMetricEvaluator,
         event_evaluator: EventEvaluator,
+        action_mapper: ActionPrimitiveMapper | None = None,
     ):
         super().__init__(env)
         self.reward_schema = reward_schema
         self.obs_adapter = obs_adapter
         self.task_metric_evaluator = task_metric_evaluator
         self.event_evaluator = event_evaluator
+        self.action_mapper = action_mapper or ActionPrimitiveMapper(
+            mapping_spec=(reward_schema.metadata or {}).get("action_mapping", {}),
+            action_variables=(reward_schema.metadata or {}).get("action_variables", []),
+        )
         self._fired_event_rules = set()
         self._event_rule_duration_counts: Dict[str, int] = {}
         self._prev_task_metrics: Dict[str, float] = {}
@@ -327,9 +333,9 @@ class SchemaRewardWrapper(gym.Wrapper):
                 return bool(float(obs_map[obs_name]) > 0.5)
             return bool(default)
 
-        main_engine, side_engine = SchemaRewardWrapper._action_to_engine_vars(action)
+        action_vars = self.action_mapper.map(action)
 
-        return {
+        variables = {
             "x": get_float("x"),
             "y": get_float("y"),
             "vx": get_float("vx"),
@@ -340,9 +346,9 @@ class SchemaRewardWrapper(gym.Wrapper):
             "right_contact": get_bool("right_contact", "right_leg_contact"),
             "contact": bool(events.get("contact", False)),
             "both_contact": bool(events.get("both_contact", False)),
-            "main_engine": float(main_engine),
-            "side_engine": float(side_engine),
         }
+        variables.update({str(k): float(v) for k, v in action_vars.items()})
+        return variables
 
     @staticmethod
     def _action_to_engine_vars(action: Optional[Any]) -> Tuple[float, float]:

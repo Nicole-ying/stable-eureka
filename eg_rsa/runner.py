@@ -487,7 +487,7 @@ class EGRSARunner:
                 next_action=next_action,
                 should_edit=should_edit,
                 operator_constraints_enabled=self.mode.use_operator_constraints,
-                primitive_interface=self.structural_context,
+                primitive_interface=self.structural_context.get("primitive_interface", self.structural_context),
             )
             committed_edits = transition_result.committed_edits
             self._write_json(iter_dir / "schema_transition.json", transition_result.to_dict())
@@ -828,6 +828,10 @@ class EGRSARunner:
                     context["allowed_formula_functions"] = list(
                         primitive.get("allowed_formula_functions", [])
                     )
+                    context["semantic_roles"] = list(primitive.get("semantic_roles", []))
+                    context["action_variables"] = list(primitive.get("action_variables", []))
+                    context["action_mapping"] = dict(primitive.get("action_mapping", {}) or {})
+                    context["primitive_interface"] = primitive
                     context["primitive_interface_path"] = str(p)
                 except json.JSONDecodeError:
                     context["primitive_interface_error"] = f"Failed to parse primitive interface JSON: {p}"
