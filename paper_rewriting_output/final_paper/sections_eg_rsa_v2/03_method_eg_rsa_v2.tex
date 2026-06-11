@@ -1,0 +1,49 @@
+\section{Method}
+
+\subsection{Problem Formulation}
+
+We consider an RL environment with observations $o_t$, actions $a_t$, transition dynamics, and an optional official environment reward $r^{env}_t$. The objective of \methodname{} is to automatically construct and iteratively improve a reward function $R_S(o_t,a_t)$ represented by a reward schema $S$. During reward search, the policy is trained using $R_S$ rather than $r^{env}_t$. If the official environment reward exists, it is reserved for post-hoc reporting and is not provided to the reward search agents, memory system, or edit decisions.
+
+The intended input to the system is minimal: a task description and an environment source or step function. The environment source is used to derive an internal interface, including available observation and action variables. This interface is not treated as a human-designed reward specification; it only constrains the variables and functions that can appear in generated reward formulas.
+
+\subsection{Reward Schema Representation}
+
+A reward schema $S$ is a structured representation of a reward function. It contains a set of reward components $\mathcal{C}$ and event rules $\mathcal{E}$. Each component $c_i \in \mathcal{C}$ has a name, type, weight $w_i$, formula or condition, optional clipping range, and semantic role. Each event rule $e_j \in \mathcal{E}$ defines a predicate over primitive variables and may trigger a sparse one-time reward.
+
+The schema reward is computed as:
+\begin{equation}
+R_S(o_t,a_t) =
+\sum_{c_i \in \mathcal{C}} w_i c_i(o_t,a_t)
++
+\sum_{e_j \in \mathcal{E}} e_j(o_t,a_t).
+\end{equation}
+
+The schema representation has four advantages. First, it avoids executing unrestricted LLM-generated reward code. Second, it supports local editing: the LLM can replace a formula, change a weight, add a component, or modify an event predicate. Third, it enables component-level attribution after training. Fourth, it provides a stable object for memory: the system can record which schema edit caused which outcome.
+
+\subsection{Bootstrap Schema Generation}
+
+At the beginning of a run, a BootstrapAgent generates an initial reward schema from the task description and internal environment interface. The initial schema typically contains dense guidance components, stability or safety components, control cost components, and sparse event predicates. The raw LLM output is not directly executed. It is passed through the SchemaEngine, which canonicalizes aliases, enforces sign conventions for control costs, validates safe formulas, and converts the result into a canonical schema.
+
+\subsection{Non-Oracle Feedback Builder}
+
+After training a policy with the current schema, \methodname{} collects trajectories and constructs a feedback report. The feedback report does not use the official environment reward. It is built from reward component attribution, trajectory summaries, task-proxy diagnostics, reward hacking signals, and outcome comparisons. This feedback provides the evidence used by the reflection and editing stages. The central design principle is that reward search should not depend on oracle task scores.
+
+\subsection{Three-Level Memory}
+
+\methodname{} maintains three memory layers. Raw memory cards store exact edit traces, schema snapshots, diagnostics, and pending outcomes. Distilled lesson cards compress prior runs into reusable lessons, such as edits that often failed or conditions under which coupled rebalancing was useful. Outcome lessons store measured before/after effects of committed edits, making them the most causally grounded memory layer. Unlike simple retrieval-augmented prompting, memory is not automatically trusted. The ReflectionAgent explicitly decides which memory layers to use, which to ignore, and how to resolve conflicts.
+
+\subsection{ReflectionAgent}
+
+The ReflectionAgent receives the current schema, feedback report, and retrieved memory. It does not output executable reward edits. Instead, it produces a reflection report containing a failure assessment, a memory assessment, a memory-use policy over the three memory layers, and a recommended search strategy such as single edit, coupled rebalancing, structural search, continue training, or early stop.
+
+\subsection{EditAgent}
+
+The EditAgent, or reward generation agent, converts the reflection report into a concrete schema edit plan. It may propose edits such as increasing or decreasing a component weight, replacing a component formula, replacing an event condition, adding a formula component, adding a conditional formula component, adding an event predicate, or adding a control-cost component. The EditAgent does not write arbitrary Python code. It outputs a constrained JSON edit plan.
+
+\subsection{SchemaEngine: Canonicalization, Validation, and Transition}
+
+The SchemaEngine is responsible for safe schema execution. It canonicalizes raw LLM output into a standard schema language, validates that formulas use allowed variables and functions, applies only committed edits to the next schema, and checks that the training wrapper and compiled reward artifact implement the same reward semantics. A key distinction is that an accepted edit is not necessarily a committed edit. Only committed edits change the next reward schema.
+
+\subsection{Iterative Reward Self-Evolution}
+
+The iterative loop of \methodname{} consists of: generating an initial schema, training a policy with the current schema reward, collecting trajectories, building non-oracle feedback, retrieving memory, generating a reflection report, producing an edit plan, committing a canonical next schema, and storing the edit outcome back into memory. This loop implements memory-reflective reward self-evolution without using official environment reward as search feedback.

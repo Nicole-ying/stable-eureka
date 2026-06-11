@@ -1,0 +1,27 @@
+\section{Related Work}
+
+\subsection{Reward Design and Reward Shaping}
+
+Reward design is a longstanding challenge in reinforcement learning. Manual reward shaping can improve sample efficiency and stabilize learning, but it requires substantial task expertise and may introduce unintended optimization targets. A shaped reward that appears reasonable at the component level may still lead to reward hacking if the agent discovers shortcuts that exploit the designed signal. Preference-based reinforcement learning addresses reward specification by learning from human comparisons rather than fixed reward functions \cite{christiano2017deep}. In contrast, \methodname{} does not learn a reward model from human labels. It uses LLMs to generate and edit reward schemas, while relying on non-oracle rollout feedback to guide iteration.
+
+\subsection{LLM-Based Reward Generation}
+
+LLMs have recently been used as reward designers. Reward Design with Language Models explores using language models as proxy reward functions based on textual descriptions \cite{kwon2023rewarddesign}. Text2Reward generates dense reward code from natural language goals and compact environment representations, with optional human feedback for refinement \cite{xie2023text2reward}. Eureka demonstrates that coding LLMs can synthesize reward functions from environment code and iteratively improve reward programs, achieving strong performance across a broad set of RL environments \cite{ma2023eureka}.
+
+\methodname{} is closest in spirit to this line of work, but differs in three ways. First, it focuses on reward improvement without using official environment rewards as the search feedback. Second, it represents rewards as structured schemas rather than free-form Python programs, enabling validation, attribution, and transactional edits. Third, it introduces memory-reflective reward iteration, where an LLM explicitly reasons over multiple memory layers before proposing the next reward modification.
+
+\subsection{LLM Agents with Memory and Reflection}
+
+LLM agents often combine reasoning, action, memory, and feedback. ReAct interleaves reasoning traces and environment actions, showing that language models can improve decision-making by combining thought and external interaction \cite{yao2022react}. Reflexion introduces verbal reinforcement learning, where agents reflect on feedback and store reflective text in memory to improve future trials without updating model weights \cite{shinn2023reflexion}. Voyager uses an automatic curriculum, a skill library, and iterative prompting to support open-ended embodied learning in Minecraft \cite{wang2023voyager}. Generative Agents use memory, reflection, and planning to produce believable long-horizon behavior in interactive simulations \cite{park2023generative}.
+
+\methodname{} adopts the insight that memory and reflection can improve LLM-based agents, but applies it to reward function search. The memory in \methodname{} is not merely a record of past conversations or actions. It is organized around reward edits and their measured training outcomes. The ReflectionAgent must decide whether raw edit traces, distilled lessons, or outcome lessons are relevant to the current reward failure before the EditAgent modifies the schema.
+
+\subsection{Reward Hacking and Non-Oracle Feedback}
+
+Reward hacking occurs when an agent optimizes the specified reward while deviating from the designer's intended objective. This issue is especially important in automatic reward design, where an LLM-generated reward may contain exploitable shortcuts. Many approaches detect reward quality using explicit success metrics, human feedback, or oracle evaluation. While useful, such signals may leak task-specific objectives into the reward search process.
+
+\methodname{} separates reward search from official reward feedback. The official environment reward is not used by the reward editor or memory reflection process. Instead, the system constructs feedback from rollout trajectories, reward component attribution, event activation patterns, and behavior diagnostics. This design makes the feedback weaker than oracle task scores, but more aligned with the goal of autonomous reward self-improvement.
+
+\subsection{Structured Reward Programs and Safe Editing}
+
+Direct reward-code generation is expressive but difficult to control. A generated Python function may contain unsafe operations, hidden state, inconsistent scaling, or logic that cannot be locally edited. \methodname{} therefore uses a reward schema as an intermediate representation. Each schema contains typed components and event rules, and reward edits are expressed as constrained operators such as replacing a formula, changing a weight, adding a conditional formula component, or adding an event predicate. This structure enables safe evaluation, component attribution, and memory alignment across iterations.
