@@ -44,6 +44,7 @@ class RewardCandidateEvaluator:
         min_metric_variation = float(config.get("min_metric_variation", 1e-4))
         min_metric_active_rate = float(config.get("min_metric_active_rate", 0.01))
         reject_zero_signal = bool(config.get("reject_zero_signal", True))
+        hard_filter = bool(config.get("hard_filter", False))
 
         result = CandidateEvaluationResult()
         for edit in edit_plan:
@@ -55,6 +56,20 @@ class RewardCandidateEvaluator:
             report = cls._evaluate_one(edit, trajectories)
             result.reports.append(report)
             recommendation = report.get("recommendation", "accept")
+
+            # V2 slim pipeline:
+            # Candidate evaluation is a feedback signal by default. It should not
+            # block formula-native reward self-evolution unless config explicitly
+            # requests hard_filter=true.
+            if not hard_filter:
+                if recommendation not in {"accept", "", None}:
+                    result.warnings.append(
+                        "candidate_evaluator advisory_only: "
+                        + str(report.get("reason", recommendation))
+                    )
+                result.accepted_edits.append(edit)
+                continue
+
             if reject_zero_signal and recommendation == "reject_as_too_sparse":
                 rejected = dict(edit)
                 rejected["candidate_eval_reason"] = report.get("reason")

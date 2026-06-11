@@ -342,12 +342,35 @@ class EGRSARunner:
                 )
                 self._write_json(iter_dir / "behavior_risk_audit.json", behavior_risk_audit)
 
-                scale_audit_active = bool(self.config.get("scale_audit", {}).get("active", True))
-                behavior_risk_active = bool(self.config.get("behavior_risk_audit", {}).get("active", True))
-                repair_enabled = bool(self.config.get("scale_audit", {}).get("repair_enabled", True))
+                scale_cfg = self.config.get("scale_audit", {}) or {}
+                behavior_cfg = self.config.get("behavior_risk_audit", {}) or {}
 
-                scale_flagged = scale_audit_active and not bool(scale_audit.get("audit_pass", True))
-                behavior_flagged = behavior_risk_active and not bool(behavior_risk_audit.get("audit_pass", True))
+                scale_audit_active = bool(scale_cfg.get("active", True))
+                behavior_risk_active = bool(behavior_cfg.get("active", True))
+
+                # V2 slim pipeline:
+                # audit tools are feedback reports by default, not hard execution gates.
+                # Hard blocking is available only when explicitly requested in config.
+                scale_hard_block = bool(scale_cfg.get("hard_block", False))
+                behavior_hard_block = bool(behavior_cfg.get("hard_block", False))
+                repair_enabled = bool(scale_cfg.get("repair_enabled", False))
+
+                scale_flagged = (
+                    scale_audit_active
+                    and scale_hard_block
+                    and not bool(scale_audit.get("audit_pass", True))
+                )
+                behavior_flagged = (
+                    behavior_risk_active
+                    and behavior_hard_block
+                    and not bool(behavior_risk_audit.get("audit_pass", True))
+                )
+
+                edit_response.setdefault("auditor_check", {})
+                edit_response["auditor_check"]["scale_audit_advisory"] = scale_audit
+                edit_response["auditor_check"]["behavior_risk_audit_advisory"] = behavior_risk_audit
+                edit_response["auditor_check"]["scale_hard_block"] = scale_hard_block
+                edit_response["auditor_check"]["behavior_hard_block"] = behavior_hard_block
 
                 if scale_flagged or behavior_flagged:
                     validation.errors.append(
@@ -415,8 +438,14 @@ class EGRSARunner:
                             )
                             self._write_json(iter_dir / "repair_behavior_risk_audit.json", repair_behavior_risk_audit)
 
-                            repair_scale_pass = bool(repair_scale_audit.get("audit_pass", True))
-                            repair_behavior_pass = bool(repair_behavior_risk_audit.get("audit_pass", True))
+                            repair_scale_pass = (
+                                not scale_hard_block
+                                or bool(repair_scale_audit.get("audit_pass", True))
+                            )
+                            repair_behavior_pass = (
+                                not behavior_hard_block
+                                or bool(repair_behavior_risk_audit.get("audit_pass", True))
+                            )
 
                             if repair_scale_pass and repair_behavior_pass:
                                 edit_response["repair_response"] = repair_response

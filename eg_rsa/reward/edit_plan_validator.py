@@ -337,7 +337,77 @@ class EditPlanValidator:
         err = cls._validate_formula_text(formula, structural_context)
         if err:
             return False, err
+
+        contract_error = cls._validate_replace_formula_contract(schema, component, formula)
+        if contract_error:
+            return False, contract_error
+
         return True, ""
+
+    @classmethod
+    def _validate_replace_formula_contract(cls, schema: RewardSchema, component: Any, formula: str) -> str:
+        """Minimal schema-language contract for formula-native replacement.
+
+        This is intentionally not task-specific. It only prevents an edit from
+        silently deleting the sole process signal by replacing it with a constant.
+        More complex quality judgments should be measured by the next rollout
+        and OutcomeAcceptor/Memory, not by hand-coded environment rules.
+        """
+
+        expr = str(formula or "").strip()
+        if not expr:
+            return "replace_formula contract violation: empty formula"
+
+        role = (
+            getattr(component, "semantic_role", None)
+            or getattr(component, "role", None)
+            or getattr(component, "metadata", {}).get("semantic_role", None)
+            if hasattr(component, "metadata")
+            else None
+        )
+
+        # RewardComponent may store arbitrary fields only through params in some
+        # versions, so also inspect params.
+        params = getattr(component, "params", {}) or {}
+        if role is None:
+            role = params.get("semantic_role") or params.get("role")
+
+        is_constant = cls._is_constant_formula(expr)
+
+        if str(role) == "dense_guidance":
+            dense_guidance = []
+            for c in schema.components:
+                c_role = (
+                    getattr(c, "semantic_role", None)
+                    or getattr(c, "role", None)
+                    or (getattr(c, "params", {}) or {}).get("semantic_role")
+                    or (getattr(c, "params", {}) or {}).get("role")
+                )
+                if str(c_role) == "dense_guidance" and getattr(c, "enabled", True):
+                    dense_guidance.append(c.name)
+
+            if len(dense_guidance) <= 1 and is_constant:
+                return (
+                    "replace_formula contract violation: cannot replace the only "
+                    "enabled dense_guidance component with a constant formula. "
+                    "Use reshape formula or explicit disable_component instead."
+                )
+
+        return ""
+
+    @staticmethod
+    def _is_constant_formula(expr: str) -> bool:
+        # Deliberately simple and environment-agnostic: if the expression contains
+        # no alphabetic identifier except allowed function names and numeric
+        # syntax, treat it as constant.
+        lowered = expr.strip().lower()
+        if lowered in {"0", "0.0", "1", "1.0", "-1", "-1.0"}:
+            return True
+
+        identifiers = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", expr))
+        function_names = {"abs", "min", "max", "clip", "sqrt", "exp", "tanh", "and", "or", "not", "true", "false"}
+        identifiers = {x for x in identifiers if x.lower() not in function_names}
+        return len(identifiers) == 0
 
     @classmethod
     def _validate_replace_condition(cls, schema: RewardSchema, edit: Dict[str, Any], structural_context: Dict[str, Any]) -> Tuple[bool, str]:
