@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from eg_rsa.reward.operators import RewardEditOperatorApplier
 from eg_rsa.reward.schema import RewardSchema
+from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 
 
 @dataclass
@@ -67,6 +68,7 @@ class SchemaTransitionEngine:
         next_action: str = "apply_edit",
         should_edit: bool = True,
         operator_constraints_enabled: bool = True,
+        primitive_interface: Optional[Dict[str, Any]] = None,
     ) -> SchemaTransitionResult:
         requested_next_action = str(next_action or "apply_edit")
         validation_errors = cls._get_list(validation, "errors")
@@ -126,6 +128,13 @@ class SchemaTransitionEngine:
         if final_plan:
             try:
                 next_schema = RewardEditOperatorApplier.apply(schema, final_plan)
+                canonical_dict, canonical_report = SchemaCanonicalizer.canonicalize_schema(
+                    next_schema.to_dict(),
+                    primitive_interface=primitive_interface or {},
+                    reward_blueprint={},
+                )
+                next_schema = RewardSchema.from_dict(canonical_dict)
+                trace["schema_canonicalization_report"] = canonical_report
             except Exception as exc:
                 trace["notes"].append(f"Schema apply failed: {exc}")
                 return SchemaTransitionResult(

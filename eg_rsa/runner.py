@@ -487,6 +487,7 @@ class EGRSARunner:
                 next_action=next_action,
                 should_edit=should_edit,
                 operator_constraints_enabled=self.mode.use_operator_constraints,
+                primitive_interface=self.structural_context,
             )
             committed_edits = transition_result.committed_edits
             self._write_json(iter_dir / "schema_transition.json", transition_result.to_dict())

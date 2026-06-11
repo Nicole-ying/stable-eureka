@@ -40,7 +40,8 @@ class RewardComponent:
             params=params,
             clip=data.get("clip"),
             enabled=bool(data.get("enabled", True)),
-            semantic_role=data.get("semantic_role"),
+            # Accept both canonical semantic_role and raw LLM alias role.
+            semantic_role=data.get("semantic_role") or data.get("role"),
             reward_timing=data.get("reward_timing"),
             behavior_channel=data.get("behavior_channel"),
             metadata=dict(data.get("metadata", {})),
@@ -102,11 +103,13 @@ class EventRule:
         return cls(
             name=data["name"],
             type=data["type"],
-            weight=float(data.get("weight", 1.0)),
+            # Runtime uses weight. Accept raw LLM reward as alias so direct
+            # RewardSchema.from_dict does not silently drop event reward magnitude.
+            weight=float(data.get("weight", data.get("reward", 1.0))),
             condition=condition,
             one_time=bool(data.get("one_time", False)),
             enabled=bool(data.get("enabled", True)),
-            semantic_role=data.get("semantic_role"),
+            semantic_role=data.get("semantic_role") or data.get("role"),
             reward_timing=data.get("reward_timing"),
             behavior_channel=data.get("behavior_channel"),
             metadata=dict(data.get("metadata", {})),

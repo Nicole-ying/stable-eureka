@@ -13,6 +13,7 @@ from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
+from eg_rsa.reward.schema_transition import SchemaTransitionEngine
 
 
 def main() -> None:
@@ -88,6 +89,44 @@ def main() -> None:
 
     schema = RewardSchema.from_dict(canonical)
     SafeRewardCompiler.compile(schema)
+
+
+    class Validation:
+        errors = []
+        warnings = []
+
+    schema2 = RewardSchema.from_dict({
+        "version": 2,
+        "components": [],
+        "event_rules": [],
+    })
+
+    transition = SchemaTransitionEngine.resolve(
+        schema=schema2,
+        edit_plan=[
+            {
+                "operator": "add_action_penalty",
+                "component": {
+                    "name": "new_fuel_cost",
+                    "weight": 0.1,
+                    "formula": "main_engine + abs(side_engine)",
+                    "params": {"formula": "main_engine + abs(side_engine)"},
+                    "enabled": True,
+                },
+            }
+        ],
+        validation=Validation(),
+        next_action="apply_edit",
+        should_edit=True,
+        operator_constraints_enabled=True,
+        primitive_interface=primitive,
+    )
+    assert transition.decision == "commit", transition.to_dict()
+    added = transition.next_schema.get_component("new_fuel_cost")
+    assert added is not None, transition.next_schema.to_dict()
+    assert added.type == "formula_component", added.to_dict()
+    assert added.semantic_role == "control_cost", added.to_dict()
+    assert str(added.params.get("formula", "")).startswith("-abs("), added.to_dict()
 
     print(json.dumps({"ok": True, "canonicalization_report": report}, indent=2, ensure_ascii=False))
 

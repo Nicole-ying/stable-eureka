@@ -68,7 +68,7 @@ class RewardEditOperatorApplier:
             {"operator": "replace_condition", "required": ["target", "condition"], "description": "Replace condition of an existing conditional component or event_predicate rule."},
             {"operator": "add_formula_component", "required": ["component"], "description": "Add a formula_component using primitive variables/functions."},
             {"operator": "add_conditional_formula_component", "required": ["component"], "description": "Add a conditional_formula_component with condition and formula using primitive variables/functions."},
-            {"operator": "add_action_penalty", "required": ["component"], "description": "Add an action_penalty. It must not produce positive reward for any sampled action direction."},
+            {"operator": "add_action_penalty", "required": ["component"], "description": "V2 alias: add a formula_component with semantic_role=control_cost. The custom formula must be reward-signed."},
             {"operator": "add_event_predicate", "required": ["event_rule"], "description": "Add an event_predicate with condition.expression using primitive variables/functions."},
             {"operator": "add_component", "required": ["component"], "description": "Backward-compatible add_component; V2 should prefer add_formula_component/add_conditional_formula_component/add_action_penalty."},
             {"operator": "add_event_rule", "required": ["event_rule"], "description": "Backward-compatible add_event_rule; V2 should prefer add_event_predicate."},
@@ -185,8 +185,19 @@ class RewardEditOperatorApplier:
 
     @staticmethod
     def _add_action_penalty(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        # V2 convergence:
+        # LLM-generated action costs are formula_component/control_cost.
+        # Legacy action_penalty remains supported by runtime but should not be
+        # introduced by formula-native self-evolution.
         component = dict(edit["component"])
-        component["type"] = "action_penalty"
+        component["type"] = "formula_component"
+        component.setdefault("semantic_role", "control_cost")
+        component.setdefault("reward_timing", "dense")
+        component.setdefault("behavior_channel", "control")
+        params = dict(component.get("params", {}) or {})
+        if "formula" in component and "formula" not in params:
+            params["formula"] = component["formula"]
+        component["params"] = params
         RewardEditOperatorApplier._add_component(schema, {"component": component})
 
     @staticmethod
