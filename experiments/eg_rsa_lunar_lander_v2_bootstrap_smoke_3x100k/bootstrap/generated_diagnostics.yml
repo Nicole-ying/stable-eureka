@@ -1,13 +1,57 @@
-expected_failure_modes:
-- Agent hovers near ground without landing to collect dense descent rewards indefinitely.
-- Agent lands quickly but flips or crashes because stability penalty insufficiently
-  weighted.
-- Agent overuses side engines causing lateral oscillation and poor centering.
-- Agent learns to abuse soft_landing_approach by staying high with low vy to collect
-  intermediate reward.
-risk_notes:
-- r_fast_descend and r_soft_landing_approach together could create a local optimum
-  where agent descends quickly then uses main engine near ground to zero velocity,
-  but may still crash if timing is off.
-- Fuel penalties are linear with action values; discrete actions (0 or 1) make this
-  equivalent to charge per firing step, which is appropriate.
+source: primitive_interface_generated_runtime_spec
+observation_mapping:
+  x: 0
+  y: 1
+  vx: 2
+  vy: 3
+  angle: 4
+  angular_velocity: 5
+  left_contact: 6
+  right_contact: 7
+events:
+  left_contact:
+    type: threshold_gt
+    var: left_contact
+    threshold: 0.5
+  right_contact:
+    type: threshold_gt
+    var: right_contact
+    threshold: 0.5
+  contact:
+    type: any
+    events:
+    - left_contact
+    - right_contact
+  both_contact:
+    type: all
+    events:
+    - left_contact
+    - right_contact
+  engine_on:
+    type: action_nonzero
+task_metrics:
+  horizontal_centering:
+    type: raw_abs_inverse
+    inputs:
+    - x
+  velocity_smoothness:
+    type: raw_abs_inverse
+    inputs:
+    - vx
+    - vy
+  attitude_smoothness:
+    type: raw_abs_inverse
+    inputs:
+    - angle
+    - angular_velocity
+  energy_cost:
+    type: action_cost
+  progress:
+    type: metric_mean
+    metrics:
+    - horizontal_centering
+    - velocity_smoothness
+    - attitude_smoothness
+  two_leg_contact_evidence:
+    type: event_score
+    event: both_contact

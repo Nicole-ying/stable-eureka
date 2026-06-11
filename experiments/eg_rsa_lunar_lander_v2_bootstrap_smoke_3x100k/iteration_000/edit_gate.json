@@ -3,16 +3,18 @@
     {
       "operator": "add_component",
       "component": {
-        "name": "r_landing_quality_guidance",
-        "type": "metric_value",
-        "weight": 1.0,
+        "name": "r_progress_stagnation_penalty",
+        "type": "metric_stagnation_penalty",
+        "weight": -0.5,
         "inputs": [],
         "params": {
-          "metric": "landing_quality"
+          "metric": "progress",
+          "threshold": 0.95,
+          "window": 100
         },
         "clip": [
-          0.0,
-          1.0
+          -1.0,
+          0.0
         ],
         "enabled": true
       }
@@ -25,31 +27,30 @@
   "plan_metadata": {
     "plan_type": "coupled_rebalancing",
     "atomicity": "atomic",
-    "max_reasonable_edits": 2,
+    "max_reasonable_edits": 4,
     "reflection_strategy": {
       "recommended_next_action": "apply_edit",
       "plan_type": "coupled_rebalancing",
       "atomicity": "atomic",
-      "why_atomic_or_separable": "Reducing exploitable dense rewards without also providing achievable terminal or progress-based signals would eliminate all learning gradients. Both must change together.",
-      "max_reasonable_edits": 2,
+      "why_atomic_or_separable": "Reducing dense shaping rewards without fixing descent incentives could stall learning. Fixing conditions alone may still be overpowered by dense rewards. The package must coordinate weight reductions and condition fixes to shift the reward landscape toward descent and safe landing.",
+      "max_reasonable_edits": 4,
       "editor_constraints": [
-        "Reduce r_x_centering weight to near zero, as it is the primary exploited dense reward that encourages staying centered without landing.",
-        "Reduce r_angular_stability weight to prevent stabilizing without progressing towards touchdown.",
-        "Adjust r_fast_descend and r_soft_landing_approach into a single monotonically increasing progress feature, e.g., a potential based on distance to the pad.",
-        "Make the terminal success condition slightly more attainable by relaxing the angle and x thresholds, while still ensuring a safe landing.",
-        "Ensure any new dense reward is non-negative and zero when not descending, to avoid rewarding hovering."
+        "Do not remove or disable the r_safe_landing event rule; it must remain as the terminal success signal.",
+        "Keep fuel penalties moderate to allow exploration.",
+        "If altering r_horizontal_stabilizer and r_descent_control, ensure the condition triggers sufficiently early to guide the approach (e.g., using altitude thresholds that are reachable).",
+        "Consider making r_centering and r_stability conditional on being in the final descent phase (e.g., only when altitude is below a threshold or when vertical velocity indicates descent)."
       ],
       "must_preserve": [
-        "The existence of a large sparse terminal success reward to incentivize safe landing.",
-        "Some form of descent guidance to help the agent reach the pad."
+        "r_safe_landing terminal success event",
+        "Basic safety constraints (e.g., limits on velocities in terminal condition)"
       ],
       "must_avoid": [
-        "Dense rewards that can be maximized by staying at high altitude.",
-        "Conflicting incentives that reward fast descent at high altitude but punish it at low altitude.",
-        "Over-reliance on negative fuel penalties, which already dominate magnitude and can lead to unsafe fuel-saving behavior."
+        "Overly punitive penalties that cause the agent to avoid any descent or make learning impossible",
+        "Removing stability incentives entirely before the approach phase",
+        "Introducing new sparse rewards that can be repeatedly triggered without completing the landing task"
       ],
-      "expected_effect": "Lower overall reward but higher episode success rate; reward reflects genuine progress towards landing.",
-      "risk_analysis": "If dense shaping is removed without adequate terminal reward guidance, learning may stall. Relaxing terminal condition too much could lead to unsafe landings. Adjusting descent shaping must be done carefully to avoid introducing new exploitation loopholes."
+      "expected_effect": "Shift reward landscape to penalize high-altitude hovering and encourage descent. Episode reward will drop temporarily; final landing success rate should increase. Hack risk decreases as shaping becomes progress-gated.",
+      "risk_analysis": "If done poorly, the agent might learn to crash quickly to trigger some event or oscillate between descent and ascent. The package must ensure that the approach shaping is continuous and that the terminal reward is clearly preferred. Over‑penalizing altitude could lead to uncontrolled falls."
     }
   }
 }

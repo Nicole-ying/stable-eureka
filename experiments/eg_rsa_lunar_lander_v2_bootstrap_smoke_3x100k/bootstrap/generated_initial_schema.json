@@ -2,14 +2,14 @@
   "version": 2,
   "metadata": {
     "source": "llm_bootstrap",
-    "task": "LunarLander-v3 safe landing between flags"
+    "task": "LunarLander-v3"
   },
   "components": [
     {
-      "name": "r_x_centering",
+      "name": "r_centering",
       "type": "formula_component",
       "weight": 1.0,
-      "formula": "1.0 - min(abs(x), 1.0)",
+      "formula": "1.0 - tanh(abs(x))",
       "clip": [
         0.0,
         1.0
@@ -19,14 +19,14 @@
       "reward_timing": "dense",
       "behavior_channel": "position",
       "params": {
-        "formula": "1.0 - min(abs(x), 1.0)"
+        "formula": "1.0 - tanh(abs(x))"
       }
     },
     {
-      "name": "r_angular_stability",
+      "name": "r_stability",
       "type": "formula_component",
       "weight": 1.0,
-      "formula": "exp(- (abs(angle) + abs(angular_velocity)))",
+      "formula": "exp(-(abs(angle) + abs(angular_velocity)))",
       "clip": [
         0.0,
         1.0
@@ -34,82 +34,90 @@
       "enabled": true,
       "semantic_role": "stability_quality",
       "reward_timing": "dense",
-      "behavior_channel": "stability",
+      "behavior_channel": "attitude",
       "params": {
-        "formula": "exp(- (abs(angle) + abs(angular_velocity)))"
+        "formula": "exp(-(abs(angle) + abs(angular_velocity)))"
       }
     },
     {
-      "name": "r_fast_descend",
-      "type": "formula_component",
-      "weight": 0.2,
-      "formula": "clip(-vy, 0.0, 1.0) * clip(y / 1.5, 0.0, 1.0)",
+      "name": "r_horizontal_stabilizer",
+      "type": "conditional_formula_component",
+      "weight": 0.5,
+      "condition": "y < 0.5",
+      "formula": "exp(-abs(vx))",
       "clip": [
         0.0,
         1.0
       ],
       "enabled": true,
-      "semantic_role": "dense_guidance",
+      "semantic_role": "stability_quality",
       "reward_timing": "dense",
-      "behavior_channel": "descent",
+      "behavior_channel": "velocity",
       "params": {
-        "formula": "clip(-vy, 0.0, 1.0) * clip(y / 1.5, 0.0, 1.0)"
+        "formula": "exp(-abs(vx))",
+        "condition": "y < 0.5"
       }
     },
     {
-      "name": "r_soft_landing_approach",
-      "type": "formula_component",
-      "weight": 1.5,
-      "formula": "clip(1.0 - abs(vy) / 0.5, 0.0, 1.0) * clip(1.0 - y / 1.5, 0.0, 1.0)",
+      "name": "r_descent_control",
+      "type": "conditional_formula_component",
+      "weight": 1.0,
+      "condition": "y < 0.5",
+      "formula": "exp(-(abs(vy) + abs(angle)))",
       "clip": [
         0.0,
         1.0
       ],
       "enabled": true,
-      "semantic_role": "dense_guidance",
+      "semantic_role": "safety_constraint",
       "reward_timing": "dense",
-      "behavior_channel": "descent",
+      "behavior_channel": "approach",
       "params": {
-        "formula": "clip(1.0 - abs(vy) / 0.5, 0.0, 1.0) * clip(1.0 - y / 1.5, 0.0, 1.0)"
+        "formula": "exp(-(abs(vy) + abs(angle)))",
+        "condition": "y < 0.5"
       }
     },
     {
-      "name": "fuel_main_penalty",
+      "name": "r_fuel_main",
       "type": "action_penalty",
-      "weight": -0.3,
-      "action": "main_engine",
+      "weight": -0.01,
+      "formula": "main_engine",
       "enabled": true,
       "semantic_role": "control_cost",
       "reward_timing": "dense",
-      "behavior_channel": "fuel",
-      "params": {}
+      "behavior_channel": "throttle",
+      "params": {
+        "formula": "main_engine"
+      }
     },
     {
-      "name": "fuel_side_penalty",
+      "name": "r_fuel_side",
       "type": "action_penalty",
-      "weight": -0.1,
-      "action": "side_engine",
+      "weight": -0.01,
+      "formula": "side_engine",
       "enabled": true,
       "semantic_role": "control_cost",
       "reward_timing": "dense",
-      "behavior_channel": "fuel",
-      "params": {}
+      "behavior_channel": "throttle",
+      "params": {
+        "formula": "side_engine"
+      }
     }
   ],
   "event_rules": [
     {
-      "name": "successful_touchdown",
+      "name": "r_safe_landing",
       "type": "event_predicate",
-      "weight": 100.0,
+      "weight": 80.0,
       "condition": {
-        "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.2 and abs(x) < 0.2",
-        "duration_steps": 3
+        "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(vx) < 0.2 and abs(angle) < 0.2",
+        "duration_steps": 1
       },
       "one_time": true,
       "enabled": true,
       "semantic_role": "terminal_success",
       "reward_timing": "sparse_event",
-      "behavior_channel": "success"
+      "behavior_channel": "goal"
     }
   ]
 }

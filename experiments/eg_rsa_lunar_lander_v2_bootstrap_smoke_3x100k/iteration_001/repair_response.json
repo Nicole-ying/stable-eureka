@@ -1,0 +1,59 @@
+{
+  "repair_analysis": {
+    "risk_source": "scale_risk",
+    "role_level_interpretation": "The ScaleAudit flagged the new altitude_push component (weight 0.5) as high risk because its estimated episode contribution (12.5× terminal scale) could dominate the sparse terminal success reward. The BehaviorRiskAudit found no role-level risk, confirming that the conceptual rebalancing is safe but the magnitude of the new dense guidance component must be reduced.",
+    "what_to_keep": "The coupled rebalancing of decreasing r_stability weight to 0.5 and increasing r_descent_control weight to 2.0 to shift incentives away from high-altitude hovering and toward controlled descent.",
+    "what_to_modify": "The weight of the new altitude_push component from 0.5 to a much smaller value (0.05) so that its cumulative dense reward remains small relative to the terminal success bonus.",
+    "what_to_remove": "The aggressive 0.5 weight on altitude_push that created scale dominance.",
+    "why_repaired_plan_is_safer": "By reducing altitude_push to 0.05, the component provides a gentle, consistent incentive to descend without overwhelming the terminal success reward (max episode contribution ~30 vs terminal 80, ratio ~0.375). This preserves the original intent of breaking the hovering equilibrium while eliminating the scale risk. The decreased stability weight and increased descent_control weight remain supportive, and the whole package will guide the agent gradually toward lower altitude where the strong descent_control activates, leading to safe landings."
+  },
+  "diagnosis": "Shaping goal mismatch: heavy unconditional stability reward causes indefinite hovering; need to reduce stability and inject a weak altitude signal to push descent paired with stronger final approach guidance.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "The agent exploits dense stability and centering rewards to hover high, never triggering descent components or terminal success. The failed edit added an altitude_push with weight 0.5, causing scale risk. The repair retains the rebalancing (reduce stability weight, boost descent_control weight) and adds an altitude_push with a very low weight (0.05) to provide downward pressure without dominating the terminal reward. This coupled change ensures that hovering becomes less profitable, a small per-step altitude reward nudges descent, and once the agent reaches low altitude the boosted descent_control steers a safe landing."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_stability",
+      "factor": 0.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_control",
+      "factor": 2.0
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_altitude_push",
+        "type": "metric_value",
+        "weight": 0.05,
+        "inputs": [],
+        "params": {
+          "formula": "exp(-y)"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "altitude"
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

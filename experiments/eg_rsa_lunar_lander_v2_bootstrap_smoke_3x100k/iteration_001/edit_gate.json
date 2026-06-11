@@ -1,0 +1,56 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_progress_delta",
+        "type": "metric_delta",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "progress"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 1 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Decreasing r_stability weight alone may remove shaping entirely and cause failure; increasing r_descent_control alone may not overcome the existing stability incentive at altitude. The package must be applied together to redirect behavior toward descent.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Reduce the weight of r_stability (e.g., to 0.5) to lessen its dominance during early flight while keeping it active.",
+        "Increase the weight of r_descent_control (e.g., to 2.0) to strengthen descent incentives.",
+        "Adjust the condition of r_descent_control (and optionally r_horizontal_stabilizer) to activate at a higher y threshold (e.g., y<1.5) so they trigger before the final approach phase.",
+        "Ensure the terminal event r_safe_landing remains unchanged in its success criteria.",
+        "Do not add large fixed terminal reward that would render early shaping ineffective.",
+        "Keep fuel penalty magnitudes similar to avoid unintended throttle behavior."
+      ],
+      "must_preserve": [
+        "Terminal event success condition (r_safe_landing).",
+        "Low fuel penalty magnitudes to maintain control effort sensitivity."
+      ],
+      "must_avoid": [
+        "Removing r_stability entirely, which could lead to unstable descent or crashes.",
+        "Making the terminal reward too large early on, which could cause sparse reward problems.",
+        "Introducing new components that directly compete with descent without balance."
+      ],
+      "expected_effect": "The agent should begin descending earlier in the episode, triggering the low-altitude components and eventually achieving safe landings. Total episode reward may initially drop as the agent shifts from hovering to landing, but terminal success should become attainable.",
+      "risk_analysis": "Risk of instability if stability weight is reduced too quickly; risk of overly vertical trajectories if descent control dominates; the new condition thresholds must be set high enough to activate before the agent must commit to landing, but not so high that they activate during normal hovering."
+    }
+  }
+}

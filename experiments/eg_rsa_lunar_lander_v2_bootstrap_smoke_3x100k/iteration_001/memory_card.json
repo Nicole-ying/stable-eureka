@@ -1,0 +1,802 @@
+{
+  "memory_id": "iter_001_to_002",
+  "env_family": "landing_control",
+  "failure_modes": [
+    "shaping_goal_mismatch"
+  ],
+  "reward_attribution": {
+    "episode_reward_mean": 1014.7048935414679,
+    "episode_reward_std": 37.58826978134004,
+    "component_stats": {
+      "r_centering": {
+        "sum": 1451.6328520055424,
+        "abs_sum": 1451.6328520055424,
+        "mean": 0.7919437272261551,
+        "std": 0.15250960243889558,
+        "min": 0.2340441841596741,
+        "max": 0.9988629345560271,
+        "ratio": 0.4713377272787887,
+        "trigger_rate": 1.0
+      },
+      "r_stability": {
+        "sum": 1609.8518286188619,
+        "abs_sum": 1609.8518286188619,
+        "mean": 0.8782606811886863,
+        "std": 0.08307068001689268,
+        "min": 0.5865646399700639,
+        "max": 0.9929775826556425,
+        "ratio": 0.5227106159167575,
+        "trigger_rate": 1.0
+      },
+      "r_horizontal_stabilizer": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_descent_control": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_fuel_main": {
+        "sum": -17.299999999999997,
+        "abs_sum": 17.299999999999997,
+        "mean": -0.009438079650845607,
+        "std": 0.002302921842518787,
+        "min": -0.01,
+        "max": -0.0,
+        "ratio": 0.005617221097371465,
+        "trigger_rate": 0.9438079650845608
+      },
+      "r_fuel_side": {
+        "sum": -0.07,
+        "abs_sum": 1.03,
+        "mean": -3.818876159301692e-05,
+        "std": 0.0023701782865497498,
+        "min": -0.01,
+        "max": 0.01,
+        "ratio": 0.0003344357069533301,
+        "trigger_rate": 0.05619203491543917
+      },
+      "r_safe_landing": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      }
+    },
+    "dominant_component": "r_stability",
+    "dominant_component_ratio": 0.5227106159167575
+  },
+  "edit_plan": [],
+  "outcome": {
+    "status": "not_applicable",
+    "before": {
+      "task_score": 0.4073639231082988,
+      "semantic_score": 0.4073639231082988,
+      "selection_score": 0.6147278462165975,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": false,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "after": {},
+    "delta": {},
+    "note": "No edit was generated for this iteration."
+  },
+  "lesson": "Shaping goal mismatch: heavy unconditional stability reward causes indefinite hovering; need to reduce stability and inject an altitude signal to push descent paired with stronger final approach guidance.",
+  "metadata": {
+    "config_path": "configs/eg_rsa_deepseek_v2_bootstrap_smoke.yml",
+    "iteration": 1,
+    "schema_snapshot": {
+      "version": 2,
+      "components": [
+        {
+          "name": "r_centering",
+          "type": "formula_component",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "formula": "1.0 - tanh(abs(x))"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "position",
+          "formula": "1.0 - tanh(abs(x))"
+        },
+        {
+          "name": "r_stability",
+          "type": "formula_component",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "formula": "exp(-(abs(angle) + abs(angular_velocity)))"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "stability_quality",
+          "reward_timing": "dense",
+          "behavior_channel": "attitude",
+          "formula": "exp(-(abs(angle) + abs(angular_velocity)))"
+        },
+        {
+          "name": "r_horizontal_stabilizer",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula": "exp(-abs(vx))",
+            "condition": "y < 0.5"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "stability_quality",
+          "reward_timing": "dense",
+          "behavior_channel": "velocity",
+          "formula": "exp(-abs(vx))",
+          "condition": "y < 0.5"
+        },
+        {
+          "name": "r_descent_control",
+          "type": "conditional_formula_component",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "formula": "exp(-(abs(vy) + abs(angle)))",
+            "condition": "y < 0.5"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "approach",
+          "formula": "exp(-(abs(vy) + abs(angle)))",
+          "condition": "y < 0.5"
+        },
+        {
+          "name": "r_fuel_main",
+          "type": "action_penalty",
+          "weight": -0.01,
+          "inputs": [],
+          "params": {
+            "formula": "main_engine"
+          },
+          "clip": null,
+          "enabled": true,
+          "semantic_role": "control_cost",
+          "reward_timing": "dense",
+          "behavior_channel": "throttle"
+        },
+        {
+          "name": "r_fuel_side",
+          "type": "action_penalty",
+          "weight": -0.01,
+          "inputs": [],
+          "params": {
+            "formula": "side_engine"
+          },
+          "clip": null,
+          "enabled": true,
+          "semantic_role": "control_cost",
+          "reward_timing": "dense",
+          "behavior_channel": "throttle"
+        }
+      ],
+      "event_rules": [
+        {
+          "name": "r_safe_landing",
+          "type": "event_predicate",
+          "weight": 80.0,
+          "condition": {
+            "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(vx) < 0.2 and abs(angle) < 0.2",
+            "duration_steps": 1
+          },
+          "one_time": true,
+          "enabled": true,
+          "semantic_role": "terminal_success",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "goal"
+        }
+      ],
+      "metadata": {
+        "source": "llm_bootstrap",
+        "task": "LunarLander-v3"
+      }
+    },
+    "validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution."
+    ],
+    "validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_progress_delta",
+            "type": "metric_delta",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "progress"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [
+        {
+          "candidate_type": "metric_process",
+          "metric": "progress",
+          "component_type": "metric_delta",
+          "metric_variation": 0.448357818179778,
+          "active_rate": 0.4192139737991266,
+          "signal_density": "dense",
+          "recommendation": "accept",
+          "reason": "Metric component r_progress_delta has variation=0.448358, active_rate=0.419214 on current rollouts."
+        }
+      ],
+      "warnings": []
+    },
+    "gate_result": {
+      "accepted_edits": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_progress_delta",
+            "type": "metric_delta",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "progress"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Accepted atomic package with 1 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 2,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Decreasing r_stability weight alone may remove shaping entirely and cause failure; increasing r_descent_control alone may not overcome the existing stability incentive at altitude. The package must be applied together to redirect behavior toward descent.",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Reduce the weight of r_stability (e.g., to 0.5) to lessen its dominance during early flight while keeping it active.",
+            "Increase the weight of r_descent_control (e.g., to 2.0) to strengthen descent incentives.",
+            "Adjust the condition of r_descent_control (and optionally r_horizontal_stabilizer) to activate at a higher y threshold (e.g., y<1.5) so they trigger before the final approach phase.",
+            "Ensure the terminal event r_safe_landing remains unchanged in its success criteria.",
+            "Do not add large fixed terminal reward that would render early shaping ineffective.",
+            "Keep fuel penalty magnitudes similar to avoid unintended throttle behavior."
+          ],
+          "must_preserve": [
+            "Terminal event success condition (r_safe_landing).",
+            "Low fuel penalty magnitudes to maintain control effort sensitivity."
+          ],
+          "must_avoid": [
+            "Removing r_stability entirely, which could lead to unstable descent or crashes.",
+            "Making the terminal reward too large early on, which could cause sparse reward problems.",
+            "Introducing new components that directly compete with descent without balance."
+          ],
+          "expected_effect": "The agent should begin descending earlier in the episode, triggering the low-altitude components and eventually achieving safe landings. Total episode reward may initially drop as the agent shifts from hovering to landing, but terminal success should become attainable.",
+          "risk_analysis": "Risk of instability if stability weight is reduced too quickly; risk of overly vertical trajectories if descent control dominates; the new condition thresholds must be set high enough to activate before the agent must commit to landing, but not so high that they activate during normal hovering."
+        }
+      }
+    },
+    "reflection_report": {
+      "reflection_summary": "The lunar lander agent achieves high episode reward (~1014) from dense shaping components (primarily r_stability) without ever triggering the low-altitude conditional components (r_horizontal_stabilizer, r_descent_control) or the terminal safe landing event. The diagnostic flag 'shaping_goal_mismatch' is confirmed. The agent exploits stability and centering rewards while avoiding descent, consistent with reward hacking.",
+      "failure_assessment": {
+        "observed_facts": [
+          "Episode reward mean 1014.7 with standard deviation 37.6, but 0% success rate and no terminal safe landings.",
+          "r_stability contributes 52.3% of total reward sum, with high mean (0.88) and low variance.",
+          "r_centering also provides substantial shaping reward (47.1% of total).",
+          "r_horizontal_stabilizer and r_descent_control have zero sum, mean, and trigger rate, meaning the condition y<0.5 never activates.",
+          "Fuel penalties are small (r_fuel_main triggered 94% of steps, but total penalty negligible).",
+          "Episode length ~611 steps, indicating agent sustains flight without landing.",
+          "Semantic outcome shows progress score ~0.47 but no terminal goal evidence.",
+          "Diagnostic hack score 0.2 with only 'shaping_goal_mismatch' flagged."
+        ],
+        "likely_true_failures": [
+          "Shaping rewards (r_stability, r_centering) incentivize stable hovering at high altitude, causing the agent to avoid descending to altitudes where low-altitude components activate and terminal success is possible."
+        ],
+        "likely_false_positives": [],
+        "root_cause_hypotheses": [
+          "The heavy, unconditional weight of r_stability throughout the episode encourages the agent to maintain stable flight far above the landing zone. The conditional components designed to guide descent never activate because the agent's policy never satisfies y<0.5. The small fuel penalty does not offset the large stability gains, leaving no incentive to descend."
+        ],
+        "failure_kind": "reward_hack",
+        "confidence": 0.9
+      },
+      "memory_assessment": {
+        "reusable_lessons": [],
+        "failed_or_weak_lessons": [],
+        "conflicting_lessons": [],
+        "avoid_actions": [],
+        "recommended_actions": [],
+        "memory_confidence": 0.0
+      },
+      "strategy": {
+        "recommended_next_action": "apply_edit",
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "why_atomic_or_separable": "Decreasing r_stability weight alone may remove shaping entirely and cause failure; increasing r_descent_control alone may not overcome the existing stability incentive at altitude. The package must be applied together to redirect behavior toward descent.",
+        "max_reasonable_edits": 2,
+        "editor_constraints": [
+          "Reduce the weight of r_stability (e.g., to 0.5) to lessen its dominance during early flight while keeping it active.",
+          "Increase the weight of r_descent_control (e.g., to 2.0) to strengthen descent incentives.",
+          "Adjust the condition of r_descent_control (and optionally r_horizontal_stabilizer) to activate at a higher y threshold (e.g., y<1.5) so they trigger before the final approach phase.",
+          "Ensure the terminal event r_safe_landing remains unchanged in its success criteria.",
+          "Do not add large fixed terminal reward that would render early shaping ineffective.",
+          "Keep fuel penalty magnitudes similar to avoid unintended throttle behavior."
+        ],
+        "must_preserve": [
+          "Terminal event success condition (r_safe_landing).",
+          "Low fuel penalty magnitudes to maintain control effort sensitivity."
+        ],
+        "must_avoid": [
+          "Removing r_stability entirely, which could lead to unstable descent or crashes.",
+          "Making the terminal reward too large early on, which could cause sparse reward problems.",
+          "Introducing new components that directly compete with descent without balance."
+        ],
+        "expected_effect": "The agent should begin descending earlier in the episode, triggering the low-altitude components and eventually achieving safe landings. Total episode reward may initially drop as the agent shifts from hovering to landing, but terminal success should become attainable.",
+        "risk_analysis": "Risk of instability if stability weight is reduced too quickly; risk of overly vertical trajectories if descent control dominates; the new condition thresholds must be set high enough to activate before the agent must commit to landing, but not so high that they activate during normal hovering."
+      },
+      "auditor_hints": {
+        "package_should_be_rejected_if": [
+          "It reduces r_stability weight without increasing r_descent_control or equivalent descent incentive.",
+          "It increases r_descent_control weight or loosens its condition without decreasing the early-flight reward from stability/centering.",
+          "It modifies the terminal event to be more permissive (e.g., relaxing contact or velocity constraints).",
+          "It introduces a large unconditional fixed reward that overshadows shaping."
+        ],
+        "package_should_be_accepted_if": [
+          "It rebalances the weights of r_stability and r_descent_control so that total shaping reward during high altitude decreases and descent-phase reward increases, while preserving the terminal success criteria.",
+          "It adjusts condition thresholds to make low-altitude components active earlier, enabling a smooth transition from stable flight to controlled landing."
+        ],
+        "safety_notes": [
+          "Ensure the edit does not incentivize high-speed impacts or unstable ground contact; stability must remain relevant near the surface.",
+          "Avoid sudden changes in reward structure that could cause policy collapse; smooth transition is preferred."
+        ]
+      }
+    },
+    "semantic_outcome": {
+      "episode_count": 3,
+      "semantic_score": 0.4073639231082988,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.46846392310829876,
+      "progress_score_std": 0.019409368185524953,
+      "episode_length_mean": 611.0,
+      "episode_length_std": 34.2442209236342,
+      "contact_toggle_mean": 0.0,
+      "contact_toggle_max": 0.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": false,
+      "event_rule_payment_stats": {
+        "r_safe_landing": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_safe_landing"
+      ],
+      "one_time_rule_names": [
+        "r_safe_landing"
+      ],
+      "semantic_risks": []
+    },
+    "structural_response": {
+      "structural_analysis": {
+        "missing_signal_hypothesis": "The agent receives strong dense rewards for stability and centering while hovering at safe altitude, but no incentive to descend and attempt landing. Terminal success event never triggers, and conditional descent shaping never activates because y never drops below 0.5. A progress improvement signal is missing.",
+        "why_local_edit_is_insufficient": "Local edits such as adjusting weights or clipping existing components cannot introduce a new behavioral channel like descent progress; they would only affect existing components that already misalign. The terminal event is unreachable as it stands, so no local edit can create a landing incentive.",
+        "memory_constraints": [],
+        "safety_constraints": [
+          "Do not add unprotected repeatable event bonuses; use one_time=true and/or duration_steps for event rules. Ensure new component does not enable reward hacking by incentivizing fake progress."
+        ]
+      },
+      "reward_editor": {
+        "edit_decision": "edit",
+        "next_action": "apply_edit",
+        "rationale": "Adding a metric_delta component on the 'progress' task metric provides dense step-by-step reward for improving the composite progress score, which aggregates centering, velocity smoothness, and attitude smoothness. This encourages gradual improvement towards a safe landing configuration without requiring a specific y condition. It is safe because it is clipped and uses generic task metrics that are inherently aligned with landing quality.",
+        "edit_plan": [
+          {
+            "operator": "add_component",
+            "component": {
+              "name": "r_progress_delta",
+              "type": "metric_delta",
+              "weight": 1.0,
+              "inputs": [],
+              "params": {
+                "metric": "progress"
+              },
+              "clip": [
+                0.0,
+                1.0
+              ],
+              "enabled": true
+            }
+          }
+        ]
+      },
+      "auditor_check": {
+        "approved": true,
+        "issues": [],
+        "final_action": "apply_edit"
+      },
+      "diagnosis": "Hovering exploit due to dense stability reward dominating and absence of descent incentive. No terminal landing events ever triggered. Added progress delta component to encourage gradual improvement toward landing, breaking the stationary equilibrium.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_progress_delta",
+            "type": "metric_delta",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "progress"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    },
+    "edit_generated": true,
+    "edit_decision": "edit",
+    "next_action": "structural_search",
+    "agent_analysis": {
+      "reflection_report": {
+        "reflection_summary": "The lunar lander agent achieves high episode reward (~1014) from dense shaping components (primarily r_stability) without ever triggering the low-altitude conditional components (r_horizontal_stabilizer, r_descent_control) or the terminal safe landing event. The diagnostic flag 'shaping_goal_mismatch' is confirmed. The agent exploits stability and centering rewards while avoiding descent, consistent with reward hacking.",
+        "failure_assessment": {
+          "observed_facts": [
+            "Episode reward mean 1014.7 with standard deviation 37.6, but 0% success rate and no terminal safe landings.",
+            "r_stability contributes 52.3% of total reward sum, with high mean (0.88) and low variance.",
+            "r_centering also provides substantial shaping reward (47.1% of total).",
+            "r_horizontal_stabilizer and r_descent_control have zero sum, mean, and trigger rate, meaning the condition y<0.5 never activates.",
+            "Fuel penalties are small (r_fuel_main triggered 94% of steps, but total penalty negligible).",
+            "Episode length ~611 steps, indicating agent sustains flight without landing.",
+            "Semantic outcome shows progress score ~0.47 but no terminal goal evidence.",
+            "Diagnostic hack score 0.2 with only 'shaping_goal_mismatch' flagged."
+          ],
+          "likely_true_failures": [
+            "Shaping rewards (r_stability, r_centering) incentivize stable hovering at high altitude, causing the agent to avoid descending to altitudes where low-altitude components activate and terminal success is possible."
+          ],
+          "likely_false_positives": [],
+          "root_cause_hypotheses": [
+            "The heavy, unconditional weight of r_stability throughout the episode encourages the agent to maintain stable flight far above the landing zone. The conditional components designed to guide descent never activate because the agent's policy never satisfies y<0.5. The small fuel penalty does not offset the large stability gains, leaving no incentive to descend."
+          ],
+          "failure_kind": "reward_hack",
+          "confidence": 0.9
+        },
+        "memory_assessment": {
+          "reusable_lessons": [],
+          "failed_or_weak_lessons": [],
+          "conflicting_lessons": [],
+          "avoid_actions": [],
+          "recommended_actions": [],
+          "memory_confidence": 0.0
+        },
+        "strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Decreasing r_stability weight alone may remove shaping entirely and cause failure; increasing r_descent_control alone may not overcome the existing stability incentive at altitude. The package must be applied together to redirect behavior toward descent.",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Reduce the weight of r_stability (e.g., to 0.5) to lessen its dominance during early flight while keeping it active.",
+            "Increase the weight of r_descent_control (e.g., to 2.0) to strengthen descent incentives.",
+            "Adjust the condition of r_descent_control (and optionally r_horizontal_stabilizer) to activate at a higher y threshold (e.g., y<1.5) so they trigger before the final approach phase.",
+            "Ensure the terminal event r_safe_landing remains unchanged in its success criteria.",
+            "Do not add large fixed terminal reward that would render early shaping ineffective.",
+            "Keep fuel penalty magnitudes similar to avoid unintended throttle behavior."
+          ],
+          "must_preserve": [
+            "Terminal event success condition (r_safe_landing).",
+            "Low fuel penalty magnitudes to maintain control effort sensitivity."
+          ],
+          "must_avoid": [
+            "Removing r_stability entirely, which could lead to unstable descent or crashes.",
+            "Making the terminal reward too large early on, which could cause sparse reward problems.",
+            "Introducing new components that directly compete with descent without balance."
+          ],
+          "expected_effect": "The agent should begin descending earlier in the episode, triggering the low-altitude components and eventually achieving safe landings. Total episode reward may initially drop as the agent shifts from hovering to landing, but terminal success should become attainable.",
+          "risk_analysis": "Risk of instability if stability weight is reduced too quickly; risk of overly vertical trajectories if descent control dominates; the new condition thresholds must be set high enough to activate before the agent must commit to landing, but not so high that they activate during normal hovering."
+        },
+        "auditor_hints": {
+          "package_should_be_rejected_if": [
+            "It reduces r_stability weight without increasing r_descent_control or equivalent descent incentive.",
+            "It increases r_descent_control weight or loosens its condition without decreasing the early-flight reward from stability/centering.",
+            "It modifies the terminal event to be more permissive (e.g., relaxing contact or velocity constraints).",
+            "It introduces a large unconditional fixed reward that overshadows shaping."
+          ],
+          "package_should_be_accepted_if": [
+            "It rebalances the weights of r_stability and r_descent_control so that total shaping reward during high altitude decreases and descent-phase reward increases, while preserving the terminal success criteria.",
+            "It adjusts condition thresholds to make low-altitude components active earlier, enabling a smooth transition from stable flight to controlled landing."
+          ],
+          "safety_notes": [
+            "Ensure the edit does not incentivize high-speed impacts or unstable ground contact; stability must remain relevant near the surface.",
+            "Avoid sudden changes in reward structure that could cause policy collapse; smooth transition is preferred."
+          ]
+        }
+      },
+      "diagnostic_analysis": {
+        "observed_facts": [
+          "Episode reward mean 1014.7 with zero successful landings.",
+          "r_stability contributes 52.3% of total reward, with high mean and low variance, indicating stable hovering.",
+          "r_centering also contributes significantly (47.1%).",
+          "Conditional descent components (r_horizontal_stabilizer, r_descent_control) never activate because altitude never drops below 0.5.",
+          "Fuel penalties are negligible, not discouraging prolonged hovering.",
+          "Episode length ~611 steps suggests sustained flight without touchdown."
+        ],
+        "likely_true_failures": [
+          "Shaping rewards for stability and centering incentivize hovering at high altitude, preventing the agent from descending to altitudes where low‑altitude components and terminal success become possible."
+        ],
+        "likely_false_positives": [],
+        "root_cause_hypotheses": [
+          "The heavy, unconditional weight of r_stability throughout the episode encourages the agent to maintain stable flight far above the landing zone. The descent‑guiding components never activate because the agent never satisfies y<0.5, and the small fuel penalty does not overcome the large stability gains, leaving no incentive to descend."
+        ],
+        "failure_kind": "reward_hack",
+        "edit_need": "must_edit",
+        "confidence": 0.9
+      },
+      "memory_reflection": {
+        "lesson_assessments": [],
+        "reusable_lessons": [],
+        "failed_or_weak_lessons": [],
+        "avoid_actions": [],
+        "recommended_actions": [],
+        "memory_confidence": 0.0
+      },
+      "reward_editor": {
+        "edit_decision": "edit",
+        "next_action": "apply_edit",
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "rationale": "The agent hacks the dense shaping by exploiting r_stability and r_centering to hover, never triggering the descent components. A coupled rebalance is needed: reduce the overpowering early‑flight stability reward, add a new altitude‑pushing dense component to break the hovering equilibrium, and increase the weight of r_descent_control so that once the agent is forced lower, the final landing guidance is strong. The reflection’s suggestion to raise the condition threshold cannot be executed because no operator modifies an existing component’s condition; instead, we introduce a metric‑based component that rewards low altitude directly, achieving the same early‑activation effect while staying within allowed operators.",
+        "expected_effect": "The altitude incentive will push the agent to descend gradually; with less stability reward, hovering becomes less attractive. As altitude drops below 0.5, the boosted r_descent_control will guide a smooth approach, leading to safe landings. Initial episode reward may drop as the policy transitions, but terminal success should become attainable.",
+        "risk_analysis": "Reducing stability too aggressively could cause uncontrolled flight; the moderate weight reduction and the new altitude incentive together should guide a gradual descent. There is a risk that the policy learns to crash quickly to minimise the new altitude penalty, but the boosted r_descent_control (which enters only at low altitude) will penalise high vertical/angular deviation, and the terminal event still requires soft, upright contact, so high‑speed impacts would yield very low total reward. Fuel penalties remain small, preserving throttle economy.",
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_stability",
+            "factor": 0.5
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_descent_control",
+            "factor": 2.0
+          },
+          {
+            "operator": "add_component",
+            "component": {
+              "name": "r_altitude_push",
+              "type": "metric_value",
+              "weight": 0.5,
+              "inputs": [],
+              "params": {
+                "formula": "exp(-y)"
+              },
+              "clip": [
+                0.0,
+                1.0
+              ],
+              "enabled": true,
+              "semantic_role": "dense_guidance",
+              "reward_timing": "dense",
+              "behavior_channel": "altitude"
+            }
+          }
+        ]
+      },
+      "auditor_check": {
+        "approved": true,
+        "issues": [],
+        "final_action": "apply_edit",
+        "tool_audit_flagged": true,
+        "scale_audit_flagged": true,
+        "behavior_risk_flagged": false,
+        "scale_audit": {
+          "tool": "scale_audit",
+          "audit_pass": false,
+          "terminal_scale": 80.0,
+          "horizon": 1000,
+          "reports": [
+            {
+              "operator": "add_component",
+              "target": null,
+              "risk_level": "high",
+              "warnings": [
+                "New dense component may contribute 12.50x terminal scale; reduce weight or run candidate sweep."
+              ],
+              "estimated_episode_contribution": 1000.0,
+              "terminal_scale": 80.0,
+              "dense_to_terminal_ratio": 12.5
+            }
+          ]
+        },
+        "behavior_risk_audit": {
+          "tool": "behavior_risk_audit",
+          "audit_pass": true,
+          "risk_basis": "semantic_role_attribution",
+          "max_severity": "low",
+          "risk_counts": {
+            "high": 0,
+            "medium": 0,
+            "low": 0
+          },
+          "role_delta": {
+            "terminal_success": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "dense_guidance": {
+              "touched": true,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 1.0,
+              "targets": [
+                "r_progress_delta"
+              ],
+              "operators": [
+                "add_component"
+              ]
+            },
+            "stability_quality": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "control_cost": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "safety_constraint": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            }
+          },
+          "behavior_evidence": {
+            "success_evidence": 0.0,
+            "stability_evidence": 0.0,
+            "progress_evidence": 0.46846392310829876,
+            "instability_signal": 0.0,
+            "hack_score": 0.2,
+            "reward_repetition_risk": false,
+            "high_reward_low_progress": false,
+            "shaping_goal_mismatch": true
+          },
+          "attribution_evidence": {
+            "dominant_component": "r_stability",
+            "dominant_component_ratio": 0.5227106159167575,
+            "dominant_role": "stability_quality",
+            "role_ratio": {
+              "dense_guidance": 0.4713377272787887,
+              "stability_quality": 0.5227106159167575,
+              "safety_constraint": 0.0,
+              "control_cost": 0.005951656804324796,
+              "terminal_success": 0.0
+            }
+          },
+          "thresholds": {
+            "weak_success_evidence": 0.5,
+            "weak_stability_evidence": 0.5,
+            "large_role_increase_factor": 2.5,
+            "moderate_role_increase_factor": 1.5,
+            "large_guidance_drop_factor": 0.25,
+            "moderate_guidance_drop_factor": 0.5,
+            "large_stability_drop_factor": 0.5,
+            "dominance_ratio_threshold": 0.65,
+            "high_instability_signal": 50.0
+          },
+          "audit_policy": {
+            "block_medium": false,
+            "medium_risk_budget_when_weak_success": 2,
+            "block_medium_under_weak_success": false
+          },
+          "risks": [],
+          "repair_summary": "No role-level attribution risk detected."
+        }
+      },
+      "distilled_lessons": {
+        "what_worked": [],
+        "what_failed": [],
+        "avoid_next": [],
+        "recommend_next": [],
+        "applicability_notes": []
+      }
+    }
+  }
+}
