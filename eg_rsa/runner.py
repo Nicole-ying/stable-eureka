@@ -25,6 +25,7 @@ from eg_rsa.reward.operators import RewardEditOperatorApplier
 from eg_rsa.reward.outcome_acceptor import OutcomeAcceptor
 from eg_rsa.reward.safe_compiler import SafeRewardCompiler
 from eg_rsa.reward.schema import RewardSchema
+from eg_rsa.schema_sources.factory import build_schema_source
 from eg_rsa.training.eg_rsa_trainer import EGRSATrainer
 from eg_rsa.agent.action_controller import AgentActionController
 from eg_rsa.tools.outcome_lesson_builder import OutcomeLessonBuilder
@@ -50,9 +51,15 @@ class EGRSARunner:
         self.structural_search_agent = StructuralSearchAgent(llm_client=llm_client)
         self.agent_action_controller = AgentActionController(self.config.get("agent_action_controller", {}))
         self.structural_context = self._load_structural_context()
+        self.schema_source = build_schema_source(
+            config=self.config,
+            output_dir=self.output_dir,
+            llm_client=llm_client,
+            task_description_loader=self._load_task_description,
+        )
 
     def run(self) -> None:
-        schema = self._load_schema(Path(self.config["eg_rsa"]["initial_schema_path"]))
+        schema = self.schema_source.load_or_create()
         iterations = int(self.config.get("eg_rsa", {}).get("iterations", 1))
         if self.mode.one_shot:
             iterations = 1
