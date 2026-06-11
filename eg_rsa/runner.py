@@ -700,14 +700,67 @@ class EGRSARunner:
         return p.read_text(encoding="utf-8") if p.exists() else ""
 
     def _load_structural_context(self) -> Dict[str, Any]:
-        path = Path(self.config.get("eg_rsa", {}).get("diagnostic_spec_path", ""))
-        if not path.exists():
-            return {"available_events": [], "available_task_metrics": [], "preferred_success_events": []}
-        spec = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        """Load structural context safely for both manual and primitive-only runs.
+
+        Manual/V1-style runs may provide eg_rsa.diagnostic_spec_path directly.
+        Primitive-only V2 runs do not provide that path at config-load time.
+        In V2, LLMBootstrapSchemaSource creates bootstrap/generated_diagnostics.yml
+        during schema_source.load_or_create(), then runner reloads this context.
+        """
+
+        eg_cfg = self.config.get("eg_rsa", {}) or {}
+
+        spec: Dict[str, Any] = {}
+        raw_path = eg_cfg.get("diagnostic_spec_path")
+
+        if raw_path:
+            path = Path(raw_path)
+            if path.is_file():
+                spec = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
         events = spec.get("events", {}) or {}
         metrics = spec.get("task_metrics", {}) or {}
-        preferred_success_events = [cfg.get("event") for cfg in metrics.values() if isinstance(cfg, dict) and cfg.get("type") == "event_success" and cfg.get("event")]
-        return {"available_events": sorted(events.keys()), "event_specs": events, "available_task_metrics": sorted(metrics.keys()), "task_metric_specs": metrics, "preferred_success_events": preferred_success_events}
+
+        preferred_success_events = [
+            cfg.get("event")
+            for cfg in metrics.values()
+            if isinstance(cfg, dict)
+            and cfg.get("type") == "event_success"
+            and cfg.get("event")
+        ]
+
+        context: Dict[str, Any] = {
+            "available_events": sorted(events.keys()),
+            "event_specs": events,
+            "available_task_metrics": sorted(metrics.keys()),
+            "task_metric_specs": metrics,
+            "preferred_success_events": preferred_success_events,
+        }
+
+        source_cfg = eg_cfg.get("schema_source", {}) or {}
+        primitive_path = source_cfg.get("primitive_interface_path")
+
+        # Backward-compatible fallback for older temporary V2 configs.
+        if not primitive_path:
+            bootstrap_cfg = eg_cfg.get("bootstrap", {}) or {}
+            primitive_path = bootstrap_cfg.get("primitive_interface_path")
+
+        if primitive_path:
+            p = Path(primitive_path)
+            if p.is_file():
+                try:
+                    primitive = json.loads(p.read_text(encoding="utf-8"))
+                    context["allowed_formula_variables"] = list(
+                        primitive.get("allowed_formula_variables", [])
+                    )
+                    context["allowed_formula_functions"] = list(
+                        primitive.get("allowed_formula_functions", [])
+                    )
+                    context["primitive_interface_path"] = str(p)
+                except json.JSONDecodeError:
+                    context["primitive_interface_error"] = f"Failed to parse primitive interface JSON: {p}"
+
+        return context
 
     @staticmethod
     def _task_score(trajectories: List[dict]) -> float:
