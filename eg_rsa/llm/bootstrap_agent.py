@@ -7,7 +7,7 @@ from eg_rsa.llm.json_parser import extract_json_object
 
 
 class BootstrapAgent:
-    """Generate an initial reward schema from a primitive task interface."""
+    """Generate an initial reward schema from a primitive-only task interface."""
 
     def __init__(self, llm_client: Optional[Any] = None):
         self.llm_client = llm_client
@@ -19,17 +19,16 @@ class BootstrapAgent:
         primitive_interface: Dict[str, Any],
         task_description: str = "",
     ) -> Dict[str, Any]:
+        prompt = self._build_prompt(primitive_interface, task_description)
+        self.last_prompt = prompt
+
         if self.llm_client is None:
             result = self._fallback_bootstrap(primitive_interface, task_description)
-            self.last_prompt = self._build_prompt(primitive_interface, task_description)
             self.last_response_text = json.dumps(result, indent=2, ensure_ascii=False)
             return result
 
-        prompt = self._build_prompt(primitive_interface, task_description)
-        self.last_prompt = prompt
         response_text = self.llm_client.generate(prompt)
         self.last_response_text = response_text
-
         parsed = extract_json_object(response_text)
         return self._normalize(parsed, primitive_interface)
 
@@ -37,30 +36,34 @@ class BootstrapAgent:
     def _build_prompt(primitive_interface: Dict[str, Any], task_description: str) -> str:
         allowed_vars = primitive_interface.get("allowed_formula_variables", [])
         allowed_funcs = primitive_interface.get("allowed_formula_functions", [])
-        forbidden = primitive_interface.get("forbidden_bootstrap_terms", [])
         semantic_roles = primitive_interface.get("semantic_roles", [])
+        allowed_component_types = primitive_interface.get(
+            "allowed_component_types_v2",
+            ["formula_component", "conditional_formula_component", "event_predicate", "action_penalty"],
+        )
 
         return f"""
-You are the reward bootstrap agent for EG-RSA-V2.
+You are the EG-RSA-V2 bootstrap agent.
 
-Goal:
-Generate an initial reward schema and diagnostic notes from a primitive environment interface.
+You receive a primitive-only reinforcement-learning task interface.
+You are not given any previous reward schema, previous diagnostic metric names,
+previous event predicate names, or official environment reward feedback.
 
 Task description:
 {task_description or primitive_interface.get("task_description", "")}
 
-Primitive interface JSON:
+Primitive interface:
 {json.dumps(primitive_interface, indent=2, ensure_ascii=False)}
 
-Strict rules:
+Rules:
 1. Output JSON only. Do not output markdown.
-2. Do not use the official environment reward.
-3. Do not use manually pre-defined high-level predicate names.
-4. Forbidden terms: {forbidden}
-5. You may invent your own reward concepts, but they must be expressed using primitive variables only.
-6. Allowed formula variables: {allowed_vars}
-7. Allowed formula functions: {allowed_funcs}
-8. Allowed semantic roles: {semantic_roles}
+2. Do not use official environment reward as feedback.
+3. Do not assume any hidden task metrics or event names.
+4. Reward formulas may use only these variables: {allowed_vars}
+5. Reward formulas may call only these functions: {allowed_funcs}
+6. Use only these schema item types: {allowed_component_types}
+7. Every component and event rule must have semantic_role from: {semantic_roles}
+8. You may use ordinary English concept names such as stability, soft landing, or safe descent in item names, but every formula must be expressed only with primitive variables.
 
 Required JSON format:
 {{
@@ -76,7 +79,7 @@ Required JSON format:
         "type": "formula_component",
         "weight": 1.0,
         "formula": "1.0 - min(abs(x), 1.0)",
-        "clip": [-1.0, 1.0],
+        "clip": [0.0, 1.0],
         "enabled": true,
         "semantic_role": "dense_guidance",
         "reward_timing": "dense",
@@ -85,7 +88,7 @@ Required JSON format:
     ],
     "event_rules": [
       {{
-        "name": "r_soft_two_leg_touchdown_once",
+        "name": "r_soft_landing_contact_once",
         "type": "event_predicate",
         "weight": 80.0,
         "condition": {{
@@ -108,7 +111,7 @@ Required JSON format:
     "design_rationale": "...",
     "assumptions": [],
     "risk_notes": [],
-    "forbidden_terms_checked": true
+    "primitive_interface_only": true
   }}
 }}
 
@@ -140,9 +143,8 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
         parsed["initial_schema"] = schema
         parsed.setdefault("diagnostics", {})
         parsed.setdefault("bootstrap_report", {})
-        parsed["bootstrap_report"].setdefault("forbidden_terms_checked", True)
+        parsed["bootstrap_report"].setdefault("primitive_interface_only", True)
         parsed["bootstrap_report"].setdefault("primitive_env", primitive_interface.get("env"))
-
         return parsed
 
     @staticmethod
@@ -191,59 +193,60 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
                 {
                     "name": "r_centering_from_x",
                     "type": "formula_component",
-                    "weight": 1.0,
+                    "weight": 0.8,
                     "formula": "1.0 - min(abs(x), 1.0)",
                     "params": {"formula": "1.0 - min(abs(x), 1.0)"},
-                    "clip": [-1.0, 1.0],
+                    "clip": [0.0, 1.0],
                     "enabled": True,
                     "semantic_role": "dense_guidance",
                     "reward_timing": "dense",
                     "behavior_channel": "position",
                 },
                 {
-                    "name": "r_slow_descent_from_vy",
+                    "name": "r_smooth_velocity",
                     "type": "formula_component",
-                    "weight": 0.8,
-                    "formula": "1.0 - min(abs(vy), 1.0)",
-                    "params": {"formula": "1.0 - min(abs(vy), 1.0)"},
-                    "clip": [-1.0, 1.0],
+                    "weight": 0.5,
+                    "formula": "1.0 - min(abs(vx) + abs(vy), 1.0)",
+                    "params": {"formula": "1.0 - min(abs(vx) + abs(vy), 1.0)"},
+                    "clip": [0.0, 1.0],
                     "enabled": True,
                     "semantic_role": "stability_quality",
                     "reward_timing": "dense",
-                    "behavior_channel": "descent",
+                    "behavior_channel": "velocity",
                 },
                 {
-                    "name": "r_upright_from_angle",
+                    "name": "r_upright_attitude",
                     "type": "formula_component",
-                    "weight": 0.8,
-                    "formula": "1.0 - min(abs(angle), 1.0)",
-                    "params": {"formula": "1.0 - min(abs(angle), 1.0)"},
-                    "clip": [-1.0, 1.0],
+                    "weight": 0.5,
+                    "formula": "1.0 - min(abs(angle) + abs(angular_velocity), 1.0)",
+                    "params": {"formula": "1.0 - min(abs(angle) + abs(angular_velocity), 1.0)"},
+                    "clip": [0.0, 1.0],
                     "enabled": True,
                     "semantic_role": "stability_quality",
                     "reward_timing": "dense",
                     "behavior_channel": "attitude",
                 },
                 {
-                    "name": "r_control_cost_from_action",
+                    "name": "r_control_cost",
                     "type": "action_penalty",
-                    "weight": 0.02,
-                    "params": {},
-                    "clip": None,
+                    "weight": 0.05,
+                    "formula": "-(main_engine + abs(side_engine))",
+                    "params": {"formula": "-(main_engine + abs(side_engine))"},
+                    "clip": [-1.0, 0.0],
                     "enabled": True,
                     "semantic_role": "control_cost",
                     "reward_timing": "dense",
-                    "behavior_channel": "energy",
+                    "behavior_channel": "action",
                 },
             ],
             "event_rules": [
                 {
-                    "name": "r_soft_two_leg_touchdown_once",
+                    "name": "r_soft_two_leg_contact_once",
                     "type": "event_predicate",
                     "weight": 80.0,
                     "condition": {
                         "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.3",
-                        "duration_steps": 3,
+                        "duration_steps": 2,
                     },
                     "one_time": True,
                     "enabled": True,
@@ -258,25 +261,23 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
             "initial_schema": schema,
             "diagnostics": {
                 "expected_failure_modes": [
-                    "hovering_without_touchdown",
-                    "hard_contact",
-                    "off_center_touchdown",
-                    "fuel_overuse",
+                    "dense_reward_without_terminal_event",
+                    "excessive_action_cost_avoidance",
+                    "unstable_contact_behavior",
                 ],
                 "risk_notes": [
-                    "Dense centering and stability rewards may be exploited without touchdown.",
+                    "Dense rewards may be exploited without achieving contact.",
                     "Terminal event is one-time to reduce repeated contact exploitation.",
                 ],
             },
             "bootstrap_report": {
-                "design_rationale": "Fallback bootstrap creates primitive-variable rewards for centering, slow descent, upright attitude, control cost, and soft two-leg touchdown.",
+                "design_rationale": "Fallback bootstrap uses only primitive variables for centering, smooth velocity, upright attitude, control cost, and soft two-leg contact.",
                 "assumptions": [
-                    "x, vy, angle, and contact flags are available as primitive variables.",
-                    "Low vertical speed and upright angle are useful touchdown priors.",
+                    "The primitive interface exposes x, vx, vy, angle, angular_velocity, and contact flags."
                 ],
                 "risk_notes": [
-                    "This fallback schema is conservative and should be improved by LLM bootstrap when available."
+                    "This fallback is conservative and should be replaced by an LLM-generated bootstrap when available."
                 ],
-                "forbidden_terms_checked": True,
+                "primitive_interface_only": True,
             },
         }

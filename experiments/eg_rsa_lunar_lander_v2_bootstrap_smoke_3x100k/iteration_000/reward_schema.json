@@ -1,0 +1,121 @@
+{
+  "version": 2,
+  "components": [
+    {
+      "name": "r_x_centering",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula": "1.0 - min(abs(x), 1.0)"
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "position",
+      "formula": "1.0 - min(abs(x), 1.0)"
+    },
+    {
+      "name": "r_angular_stability",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula": "exp(- (abs(angle) + abs(angular_velocity)))"
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "stability_quality",
+      "reward_timing": "dense",
+      "behavior_channel": "stability",
+      "formula": "exp(- (abs(angle) + abs(angular_velocity)))"
+    },
+    {
+      "name": "r_fast_descend",
+      "type": "formula_component",
+      "weight": 0.2,
+      "inputs": [],
+      "params": {
+        "formula": "clip(-vy, 0.0, 1.0) * clip(y / 1.5, 0.0, 1.0)"
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "descent",
+      "formula": "clip(-vy, 0.0, 1.0) * clip(y / 1.5, 0.0, 1.0)"
+    },
+    {
+      "name": "r_soft_landing_approach",
+      "type": "formula_component",
+      "weight": 1.5,
+      "inputs": [],
+      "params": {
+        "formula": "clip(1.0 - abs(vy) / 0.5, 0.0, 1.0) * clip(1.0 - y / 1.5, 0.0, 1.0)"
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "descent",
+      "formula": "clip(1.0 - abs(vy) / 0.5, 0.0, 1.0) * clip(1.0 - y / 1.5, 0.0, 1.0)"
+    },
+    {
+      "name": "fuel_main_penalty",
+      "type": "action_penalty",
+      "weight": -0.3,
+      "inputs": [],
+      "params": {},
+      "clip": null,
+      "enabled": true,
+      "semantic_role": "control_cost",
+      "reward_timing": "dense",
+      "behavior_channel": "fuel"
+    },
+    {
+      "name": "fuel_side_penalty",
+      "type": "action_penalty",
+      "weight": -0.1,
+      "inputs": [],
+      "params": {},
+      "clip": null,
+      "enabled": true,
+      "semantic_role": "control_cost",
+      "reward_timing": "dense",
+      "behavior_channel": "fuel"
+    }
+  ],
+  "event_rules": [
+    {
+      "name": "successful_touchdown",
+      "type": "event_predicate",
+      "weight": 100.0,
+      "condition": {
+        "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.2 and abs(x) < 0.2",
+        "duration_steps": 3
+      },
+      "one_time": true,
+      "enabled": true,
+      "semantic_role": "terminal_success",
+      "reward_timing": "sparse_event",
+      "behavior_channel": "success"
+    }
+  ],
+  "metadata": {
+    "source": "llm_bootstrap",
+    "task": "LunarLander-v3 safe landing between flags"
+  }
+}

@@ -1,0 +1,199 @@
+You are the reward bootstrap agent for EG-RSA-V2.
+
+Goal:
+Generate an initial reward schema and diagnostic notes from a primitive environment interface.
+
+Task description:
+This environment is a classic rocket trajectory optimization problem. It is optimal to fire the engine at full throttle or turn it off. This is the reason why this environment has discrete actions: engine on or off.
+The landing pad is always at coordinates (0,0). The coordinates are the first two numbers in the state vector. Landing outside of the landing pad is possible. Fuel is infinite, so an agent can learn to fly and then land on its first attempt.
+The goal is to land at the pad in the middle of the two flags, as fast as possible, with the least fuel spent. The lander starts at the top center of the viewport with a random initial force applied to its center of mass.
+Action Space: There are four discrete actions available:
+    0: do nothing
+    1: fire left orientation engine
+    2: fire main engine
+    3: fire right orientation engine
+Observation Space: The state is an 8-dimensional vector: the coordinates of the lander in x & y, its linear velocities in x & y, its angle, its angular velocity, and two booleans that represent whether each leg is in contact with the ground or not.
+The episode finishes if:
+    1) the lander crashes (the lander body gets in contact with the moon);
+    2) the lander gets outside of the viewport (`x` coordinate is greater than 1);
+    3) the lander is not awake.
+
+Primitive interface JSON:
+{
+  "version": 1,
+  "env": "LunarLander-v3",
+  "purpose": "Primitive task interface for EG-RSA-V2 LLM bootstrapping. This file intentionally avoids exposing human-defined V1 reward predicates or diagnostic metrics as directly reusable symbols. The LLM may still synthesize concepts such as angular stability from primitive variables like angle and angular_velocity.",
+  "task_description": "Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.",
+  "observation_variables": [
+    {
+      "name": "x",
+      "description": "Horizontal position relative to landing pad center.",
+      "type": "float"
+    },
+    {
+      "name": "y",
+      "description": "Vertical position.",
+      "type": "float"
+    },
+    {
+      "name": "vx",
+      "description": "Horizontal velocity.",
+      "type": "float"
+    },
+    {
+      "name": "vy",
+      "description": "Vertical velocity.",
+      "type": "float"
+    },
+    {
+      "name": "angle",
+      "description": "Lander tilt angle.",
+      "type": "float"
+    },
+    {
+      "name": "angular_velocity",
+      "description": "Angular velocity.",
+      "type": "float"
+    },
+    {
+      "name": "left_contact",
+      "description": "Whether the left leg contacts ground.",
+      "type": "bool"
+    },
+    {
+      "name": "right_contact",
+      "description": "Whether the right leg contacts ground.",
+      "type": "bool"
+    }
+  ],
+  "action_variables": [
+    {
+      "name": "main_engine",
+      "description": "Main engine action or throttle.",
+      "type": "float"
+    },
+    {
+      "name": "side_engine",
+      "description": "Side engine action or throttle.",
+      "type": "float"
+    }
+  ],
+  "allowed_formula_variables": [
+    "x",
+    "y",
+    "vx",
+    "vy",
+    "angle",
+    "angular_velocity",
+    "left_contact",
+    "right_contact",
+    "main_engine",
+    "side_engine"
+  ],
+  "allowed_formula_functions": [
+    "abs",
+    "min",
+    "max",
+    "clip",
+    "sqrt",
+    "exp",
+    "tanh"
+  ],
+  "allowed_component_types_v2": [
+    "formula_component",
+    "conditional_formula_component",
+    "event_predicate",
+    "action_penalty"
+  ],
+  "forbidden_bootstrap_terms": [
+    "landing_region",
+    "safe_contact",
+    "stable_landing_condition",
+    "approach_region_score",
+    "landing_quality"
+  ],
+  "bootstrap_requirements": {
+    "must_generate_initial_schema": true,
+    "must_generate_diagnostic_predicates": true,
+    "must_assign_semantic_roles": true,
+    "must_include_hacking_risk_notes": true,
+    "official_environment_reward_forbidden_as_feedback": true,
+    "posthoc_oracle_evaluation_allowed": true
+  },
+  "semantic_roles": [
+    "dense_guidance",
+    "stability_quality",
+    "terminal_success",
+    "safety_constraint",
+    "control_cost"
+  ],
+  "forbidden_symbol_policy": {
+    "meaning": "Forbidden terms are human-defined V1 metric/event/predicate identifiers. They must not be referenced directly as params.metric, event condition keys, or formula variables. They are not banned as ordinary English words inside component names.",
+    "component_name_policy": "warn_on_exact_identifier_only",
+    "formula_policy": "enforced_by_formula_variable_whitelist",
+    "metric_reference_policy": "forbid_exact_match",
+    "event_reference_policy": "forbid_exact_match"
+  }
+}
+
+Strict rules:
+1. Output JSON only. Do not output markdown.
+2. Do not use the official environment reward.
+3. Do not use manually pre-defined high-level predicate names.
+4. Forbidden terms: ['landing_region', 'safe_contact', 'stable_landing_condition', 'approach_region_score', 'landing_quality']
+5. You may invent your own reward concepts, but they must be expressed using primitive variables only.
+6. Allowed formula variables: ['x', 'y', 'vx', 'vy', 'angle', 'angular_velocity', 'left_contact', 'right_contact', 'main_engine', 'side_engine']
+7. Allowed formula functions: ['abs', 'min', 'max', 'clip', 'sqrt', 'exp', 'tanh']
+8. Allowed semantic roles: ['dense_guidance', 'stability_quality', 'terminal_success', 'safety_constraint', 'control_cost']
+
+Required JSON format:
+{
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap",
+      "task": "..."
+    },
+    "components": [
+      {
+        "name": "r_centering",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula": "1.0 - min(abs(x), 1.0)",
+        "clip": [-1.0, 1.0],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "position"
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "r_soft_two_leg_touchdown_once",
+        "type": "event_predicate",
+        "weight": 80.0,
+        "condition": {
+          "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.3",
+          "duration_steps": 3
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "success"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [],
+    "risk_notes": []
+  },
+  "bootstrap_report": {
+    "design_rationale": "...",
+    "assumptions": [],
+    "risk_notes": [],
+    "forbidden_terms_checked": true
+  }
+}
+
+Generate a compact schema with 3-6 components and 1-3 event rules.

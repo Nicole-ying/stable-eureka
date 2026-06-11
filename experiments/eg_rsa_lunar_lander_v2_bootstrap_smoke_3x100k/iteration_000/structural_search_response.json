@@ -1,0 +1,61 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "The agent receives high rewards from fuel penalties and dense shaping components such as r_x_centering, r_fast_descend, and r_soft_landing_approach, but these do not specifically require proximity to the landing pad with stability. As a result, the policy can achieve high reward without actually touching down in the correct region. A missing signal is a dense reward for achieving the target region (landing pad) and stability, which directly aligns with the success condition.",
+    "why_local_edit_is_insufficient": "Local operators like weight adjustments to existing components cannot introduce a new well-aligned signal metric. The existing dense components do not encode the full landing region requirement; they reward x-centering, angular stability, and descent behaviors separately, but not the combination of being near the pad and stable simultaneously before contact. Simply increasing weights of existing components would not resolve the shaping goal mismatch.",
+    "memory_constraints": [],
+    "safety_constraints": [
+      "Must not repeat the successful_touchdown condition",
+      "Avoid introducing event bonus without one_time or duration_gate",
+      "Use only available metrics and safe operators"
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a metric_value component for landing_quality provides a dense, non-exploitable reward signal that is maximal only when the lander is within the landing pad region and has stable motion. This directly guides the policy toward the terminal success condition. The metric is defined from configured metrics landing_region_score and stability, which are themselves based on raw state variables within safe bounds. No new events or reward hacking vectors are introduced, and the component is clipped to [0,1] with a modest weight of 1.0, which will not overwhelm the reward.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_quality_guidance",
+          "type": "metric_value",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Structural diagnosis: policy achieves high reward but fails to reach terminal success due to shaping components that do not sufficiently reward the combination of being in the landing region and stable. A dense metric_value component for landing_quality is added to bridge the gap.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_quality_guidance",
+        "type": "metric_value",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ]
+}

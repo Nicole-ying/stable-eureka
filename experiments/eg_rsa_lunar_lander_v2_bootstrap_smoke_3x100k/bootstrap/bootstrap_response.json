@@ -1,0 +1,143 @@
+{
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap",
+      "task": "LunarLander-v3 safe landing between flags"
+    },
+    "components": [
+      {
+        "name": "r_x_centering",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula": "1.0 - min(abs(x), 1.0)",
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "position",
+        "params": {
+          "formula": "1.0 - min(abs(x), 1.0)"
+        }
+      },
+      {
+        "name": "r_angular_stability",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula": "exp(- (abs(angle) + abs(angular_velocity)))",
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "stability",
+        "params": {
+          "formula": "exp(- (abs(angle) + abs(angular_velocity)))"
+        }
+      },
+      {
+        "name": "r_fast_descend",
+        "type": "formula_component",
+        "weight": 0.2,
+        "formula": "clip(-vy, 0.0, 1.0) * clip(y / 1.5, 0.0, 1.0)",
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "descent",
+        "params": {
+          "formula": "clip(-vy, 0.0, 1.0) * clip(y / 1.5, 0.0, 1.0)"
+        }
+      },
+      {
+        "name": "r_soft_landing_approach",
+        "type": "formula_component",
+        "weight": 1.5,
+        "formula": "clip(1.0 - abs(vy) / 0.5, 0.0, 1.0) * clip(1.0 - y / 1.5, 0.0, 1.0)",
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "descent",
+        "params": {
+          "formula": "clip(1.0 - abs(vy) / 0.5, 0.0, 1.0) * clip(1.0 - y / 1.5, 0.0, 1.0)"
+        }
+      },
+      {
+        "name": "fuel_main_penalty",
+        "type": "action_penalty",
+        "weight": -0.3,
+        "action": "main_engine",
+        "enabled": true,
+        "semantic_role": "control_cost",
+        "reward_timing": "dense",
+        "behavior_channel": "fuel",
+        "params": {}
+      },
+      {
+        "name": "fuel_side_penalty",
+        "type": "action_penalty",
+        "weight": -0.1,
+        "action": "side_engine",
+        "enabled": true,
+        "semantic_role": "control_cost",
+        "reward_timing": "dense",
+        "behavior_channel": "fuel",
+        "params": {}
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "successful_touchdown",
+        "type": "event_predicate",
+        "weight": 100.0,
+        "condition": {
+          "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.2 and abs(x) < 0.2",
+          "duration_steps": 3
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "success"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [
+      "Agent hovers near ground without landing to collect dense descent rewards indefinitely.",
+      "Agent lands quickly but flips or crashes because stability penalty insufficiently weighted.",
+      "Agent overuses side engines causing lateral oscillation and poor centering.",
+      "Agent learns to abuse soft_landing_approach by staying high with low vy to collect intermediate reward."
+    ],
+    "risk_notes": [
+      "r_fast_descend and r_soft_landing_approach together could create a local optimum where agent descends quickly then uses main engine near ground to zero velocity, but may still crash if timing is off.",
+      "Fuel penalties are linear with action values; discrete actions (0 or 1) make this equivalent to charge per firing step, which is appropriate."
+    ]
+  },
+  "bootstrap_report": {
+    "design_rationale": "The reward is constructed from primitive variables to shape the lander toward a centered, upright, low-velocity touchdown using a minimal set of dense components and a single sparse terminal event. Centering and angular stability provide continuous guidance. The descent components encourage efficient early fall and careful final approach. Fuel costs discourage unnecessary engine use. The terminal success event gives a large reward for a stable two-leg contact under strict conditions.",
+    "assumptions": [
+      "y coordinate roughly within [0, 1.5] throughout episode.",
+      "main_engine and side_engine action values are 0 or 1 per step (discrete throttle).",
+      "Left/right contact booleans become true only when legs touch ground; not simultaneously true during a crash where body touches first."
+    ],
+    "risk_notes": [
+      "No explicit crash penalty – sparse success and episode termination implicitly discourage crashing, but may slow learning of avoidance.",
+      "Using y/1.5 assumes max altitude; if environment resets from varying heights, scaling may need adjustment."
+    ],
+    "forbidden_terms_checked": true,
+    "primitive_env": "LunarLander-v3"
+  }
+}

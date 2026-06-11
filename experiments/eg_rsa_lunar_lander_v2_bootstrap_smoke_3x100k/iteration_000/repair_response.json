@@ -1,0 +1,80 @@
+{
+  "repair_analysis": {
+    "risk_source": "Scale risk from adding a new dense component (r_landing_quality_guidance) with weight 1.0, which could contribute up to 10x the terminal reward over the episode horizon.",
+    "role_level_interpretation": "ScaleAudit flagged the dense-to-terminal ratio as high (10.0); BehaviorRiskAudit found no role-level behavior risk. The risk is purely scale, not a role-dominance or exploitation shift.",
+    "what_to_keep": "The core plan: decreasing over-exploited dense guidance (r_x_centering and r_angular_stability), disabling the overly stringent original terminal event, and adding a relaxed, achievable terminal success event.",
+    "what_to_modify": "Reduce the weight of the new r_landing_quality_guidance component from 1.0 to 0.1 to keep episode-level dense contribution within the terminal reward scale.",
+    "what_to_remove": "None.",
+    "why_repaired_plan_is_safer": "The repaired plan preserves the useful intent of reducing shaping exploitation and providing a learnable sparse signal, while ensuring the new dense component cannot overwhelm the terminal incentive – its maximum 100-episode contribution now matches the 100-point terminal success, preventing scale dominance."
+  },
+  "diagnosis": "Agent exploits dense centering and stability rewards to hover without landing; adding a relaxed terminal event and a landing-quality dense signal with a safe weight addresses the shaping mismatch while repairing the scale risk.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 5,
+    "rationale": "Reducing exploitable dense weights and providing an achievable terminal success are atomic changes; the new dense landing-quality component is added with weight 0.1 to avoid scale risk while still guiding toward the landing pad."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_x_centering",
+      "factor": 0.1
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_angular_stability",
+      "factor": 0.1
+    },
+    {
+      "operator": "disable_component",
+      "target": "successful_touchdown"
+    },
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "successful_touchdown_relaxed",
+        "type": "event_predicate",
+        "weight": 100.0,
+        "condition": {
+          "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.5 and abs(x) < 0.5",
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "success"
+      }
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_quality_guidance",
+        "type": "metric_value",
+        "weight": 0.1,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "landing"
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 5
+}

@@ -60,6 +60,7 @@ class EGRSARunner:
 
     def run(self) -> None:
         schema = self.schema_source.load_or_create()
+        self.structural_context = self._load_structural_context()
         iterations = int(self.config.get("eg_rsa", {}).get("iterations", 1))
         if self.mode.one_shot:
             iterations = 1
@@ -675,7 +676,24 @@ class EGRSARunner:
         return {"attribution": attribution if self.mode.use_attribution else {}, "diagnostics": diagnostics, "semantic_outcome": semantic_outcome, "experiment_mode": self.mode.to_dict()}
 
     def _load_task_description(self) -> str:
-        path = self.config.get("eg_rsa", {}).get("task_description_path")
+        eg_cfg = self.config.get("eg_rsa", {}) or {}
+        inline = eg_cfg.get("task_description_inline")
+        if inline:
+            return str(inline)
+
+        source_cfg = eg_cfg.get("schema_source", {}) or {}
+        primitive_path = source_cfg.get("primitive_interface_path")
+        if primitive_path:
+            p = Path(primitive_path)
+            if p.exists():
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                    if data.get("task_description"):
+                        return str(data["task_description"])
+                except json.JSONDecodeError:
+                    pass
+
+        path = eg_cfg.get("task_description_path")
         if not path:
             return self.config.get("environment", {}).get("name", "")
         p = Path(path)

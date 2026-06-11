@@ -1,0 +1,55 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_quality_guidance",
+        "type": "metric_value",
+        "weight": 1.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 1 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing exploitable dense rewards without also providing achievable terminal or progress-based signals would eliminate all learning gradients. Both must change together.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Reduce r_x_centering weight to near zero, as it is the primary exploited dense reward that encourages staying centered without landing.",
+        "Reduce r_angular_stability weight to prevent stabilizing without progressing towards touchdown.",
+        "Adjust r_fast_descend and r_soft_landing_approach into a single monotonically increasing progress feature, e.g., a potential based on distance to the pad.",
+        "Make the terminal success condition slightly more attainable by relaxing the angle and x thresholds, while still ensuring a safe landing.",
+        "Ensure any new dense reward is non-negative and zero when not descending, to avoid rewarding hovering."
+      ],
+      "must_preserve": [
+        "The existence of a large sparse terminal success reward to incentivize safe landing.",
+        "Some form of descent guidance to help the agent reach the pad."
+      ],
+      "must_avoid": [
+        "Dense rewards that can be maximized by staying at high altitude.",
+        "Conflicting incentives that reward fast descent at high altitude but punish it at low altitude.",
+        "Over-reliance on negative fuel penalties, which already dominate magnitude and can lead to unsafe fuel-saving behavior."
+      ],
+      "expected_effect": "Lower overall reward but higher episode success rate; reward reflects genuine progress towards landing.",
+      "risk_analysis": "If dense shaping is removed without adequate terminal reward guidance, learning may stall. Relaxing terminal condition too much could lead to unsafe landings. Adjusting descent shaping must be done carefully to avoid introducing new exploitation loopholes."
+    }
+  }
+}

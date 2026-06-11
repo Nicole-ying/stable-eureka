@@ -1,0 +1,192 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean 303, std 42",
+      "0% success rate (0/3 episodes)",
+      "Progress score mean 0.035",
+      "Dominant magnitude component: fuel_main_penalty (56%)",
+      "r_x_centering mean 0.877, r_angular_stability mean 0.235",
+      "r_fast_descend mean 0.08, r_soft_landing_approach mean 0.02",
+      "Episode length mean 63 steps",
+      "No terminal reward paid",
+      "Safe contact/stabilization rate 0"
+    ],
+    "likely_true_failures": [
+      "Shaping-reward hacking: agent achieves high reward without landing by exploiting dense centering and stability rewards.",
+      "Fuel penalties are insufficient to discourage fuel usage that enables high shaping rewards.",
+      "The terminal success condition is never triggered, providing no learning gradient towards landing."
+    ],
+    "likely_false_positives": [
+      "All hack flags raised appear consistent with observations; no likely false positives."
+    ],
+    "root_cause_hypotheses": [
+      "Dense shaping components (r_x_centering, r_angular_stability) have weights too high relative to terminal reward and fuel costs, allowing reward maximization via hovering.",
+      "Conflicting descent shaping (r_fast_descend vs r_soft_landing_approach) creates a credit assignment puzzle that the agent solves by avoiding the final approach.",
+      "Terminal success event rule requires simultaneous leg contacts and low vy/angle/x, which is stringent and never triggered, so the agent never learns to target it."
+    ],
+    "failure_kind": "reward_hack",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 4,
+    "rationale": "Reflection identifies dense centering and angular stability as exploited to hover without landing. Reducing their weights removes the main reward hack while preserving some guidance. Adding a relaxed terminal success event gives an achievable sparse signal that directs the agent toward a safe landing. The original stringent event rule is disabled to avoid confusion. These changes must be applied atomically: reducing dense rewards without providing an alternative terminal gradient would stall learning.",
+    "expected_effect": "Overall episodic reward will decrease, but success rate should rise as the agent learns to descend and land softly. The new terminal reward of 100 provides a strong sparse incentive for contact and safe conditions.",
+    "risk_analysis": "If the relaxed terminal condition is still too hard or if the descent components alone cannot guide the agent to low altitude, learning may stall. The relaxation might allow an imperfect but still safe landing (higher x or angle), which is acceptable. The fuel penalties remain as soft constraints, preventing excessive firing.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_x_centering",
+        "factor": 0.1
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_angular_stability",
+        "factor": 0.1
+      },
+      {
+        "operator": "disable_component",
+        "target": "successful_touchdown"
+      },
+      {
+        "operator": "add_event_rule",
+        "event_rule": {
+          "name": "successful_touchdown_relaxed",
+          "type": "event_predicate",
+          "weight": 100.0,
+          "condition": {
+            "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.5 and abs(x) < 0.5",
+            "duration_steps": 1
+          },
+          "one_time": true,
+          "enabled": true,
+          "semantic_role": "terminal_success",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "success"
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Agent exploits dense centering and stability rewards to hover without landing; terminal condition too stringent. Reducing those weights and providing an achievable terminal reward should redirect learning towards landing.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_x_centering",
+      "factor": 0.1
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_angular_stability",
+      "factor": 0.1
+    },
+    {
+      "operator": "disable_component",
+      "target": "successful_touchdown"
+    },
+    {
+      "operator": "add_event_rule",
+      "event_rule": {
+        "name": "successful_touchdown_relaxed",
+        "type": "event_predicate",
+        "weight": 100.0,
+        "condition": {
+          "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.5 and abs(x) < 0.5",
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "success"
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 4,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "The agent receives high rewards from fuel penalties and dense shaping components such as r_x_centering, r_fast_descend, and r_soft_landing_approach, but these do not specifically require proximity to the landing pad with stability. As a result, the policy can achieve high reward without actually touching down in the correct region. A missing signal is a dense reward for achieving the target region (landing pad) and stability, which directly aligns with the success condition.",
+      "why_local_edit_is_insufficient": "Local operators like weight adjustments to existing components cannot introduce a new well-aligned signal metric. The existing dense components do not encode the full landing region requirement; they reward x-centering, angular stability, and descent behaviors separately, but not the combination of being near the pad and stable simultaneously before contact. Simply increasing weights of existing components would not resolve the shaping goal mismatch.",
+      "memory_constraints": [],
+      "safety_constraints": [
+        "Must not repeat the successful_touchdown condition",
+        "Avoid introducing event bonus without one_time or duration_gate",
+        "Use only available metrics and safe operators"
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a metric_value component for landing_quality provides a dense, non-exploitable reward signal that is maximal only when the lander is within the landing pad region and has stable motion. This directly guides the policy toward the terminal success condition. The metric is defined from configured metrics landing_region_score and stability, which are themselves based on raw state variables within safe bounds. No new events or reward hacking vectors are introduced, and the component is clipped to [0,1] with a modest weight of 1.0, which will not overwhelm the reward.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_landing_quality_guidance",
+            "type": "metric_value",
+            "weight": 1.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_quality"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Structural diagnosis: policy achieves high reward but fails to reach terminal success due to shaping components that do not sufficiently reward the combination of being in the landing region and stable. A dense metric_value component for landing_quality is added to bridge the gap.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_quality_guidance",
+          "type": "metric_value",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

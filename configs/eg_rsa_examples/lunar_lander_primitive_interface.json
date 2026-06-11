@@ -1,7 +1,7 @@
 {
   "version": 1,
   "env": "LunarLander-v3",
-  "purpose": "Primitive task interface for EG-RSA-V2 LLM bootstrapping. This file intentionally avoids exposing human-defined V1 reward predicates or diagnostic metrics as directly reusable symbols. The LLM may still synthesize concepts such as angular stability from primitive variables like angle and angular_velocity.",
+  "purpose": "Primitive-only interface for EG-RSA-V2. This file is the only task-side interface used by V2 bootstrap and runtime setup. It exposes primitive observation/action variables and safe formula functions, but it does not expose the V1 initial reward schema, V1 diagnostic metrics, V1 event predicates, or V1 task description file.",
   "task_description": "Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.",
   "observation_variables": [
     {
@@ -84,20 +84,17 @@
     "event_predicate",
     "action_penalty"
   ],
-  "forbidden_bootstrap_terms": [
-    "landing_region",
-    "safe_contact",
-    "stable_landing_condition",
-    "approach_region_score",
-    "landing_quality"
-  ],
   "bootstrap_requirements": {
     "must_generate_initial_schema": true,
     "must_generate_diagnostic_predicates": true,
     "must_assign_semantic_roles": true,
     "must_include_hacking_risk_notes": true,
     "official_environment_reward_forbidden_as_feedback": true,
-    "posthoc_oracle_evaluation_allowed": true
+    "posthoc_oracle_evaluation_allowed": true,
+    "no_v1_schema_exposure": true,
+    "no_v1_diagnostic_metric_exposure": true,
+    "no_v1_task_description_file_exposure": true,
+    "formula_must_use_only_primitive_variables": true
   },
   "semantic_roles": [
     "dense_guidance",
@@ -106,11 +103,23 @@
     "safety_constraint",
     "control_cost"
   ],
-  "forbidden_symbol_policy": {
-    "meaning": "Forbidden terms are human-defined V1 metric/event/predicate identifiers. They must not be referenced directly as params.metric, event condition keys, or formula variables. They are not banned as ordinary English words inside component names.",
-    "component_name_policy": "warn_on_exact_identifier_only",
-    "formula_policy": "enforced_by_formula_variable_whitelist",
-    "metric_reference_policy": "forbid_exact_match",
-    "event_reference_policy": "forbid_exact_match"
+  "observation_mapping": {
+    "x": 0,
+    "y": 1,
+    "vx": 2,
+    "vy": 3,
+    "angle": 4,
+    "angular_velocity": 5,
+    "left_contact": 6,
+    "right_contact": 7
+  },
+  "bootstrap_interface_policy": {
+    "principle": "V2 avoids V1 leakage by interface isolation, not by lexical forbidden terms. The LLM is not shown V1 schema files, V1 diagnostic metric names, or V1 event predicate names.",
+    "formula_boundary": "Generated formulas must use only allowed_formula_variables and allowed_formula_functions.",
+    "not_exposed_to_llm": [
+      "configs/eg_rsa_examples/lunar_lander_initial_schema.json",
+      "configs/eg_rsa_examples/lunar_lander_diagnostics.yml",
+      "envs/lunar_lander/task_description.txt"
+    ]
   }
 }
