@@ -17,6 +17,12 @@ class EditAgent:
 
     def __init__(self, llm_client: Optional[Any] = None):
         self.llm_client = llm_client
+        self.last_prompt: str = ""
+        self.last_response_text: str = ""
+        self.last_parsed_response: Dict[str, Any] = {}
+        self.last_repair_prompt: str = ""
+        self.last_repair_response_text: str = ""
+        self.last_repair_parsed_response: Dict[str, Any] = {}
 
     def generate_edit_plan(
         self,
@@ -38,8 +44,11 @@ class EditAgent:
             retrieved_lessons=retrieved_lessons or [],
             reflection_report=reflection_report or {},
         )
+        self.last_prompt = prompt
         response_text = self.llm_client.generate(prompt)
+        self.last_response_text = response_text
         parsed = extract_json_object(response_text)
+        self.last_parsed_response = dict(parsed or {})
         if "edit_plan" not in parsed or not isinstance(parsed["edit_plan"], list):
             raise ValueError("LLM edit response must contain a list field named edit_plan")
         return self._normalize_response(parsed, reflection_report or {})
@@ -95,8 +104,11 @@ class EditAgent:
             scale_audit_report=scale_audit_report or {},
             behavior_risk_report=behavior_risk_report or {},
         )
+        self.last_repair_prompt = prompt
         response_text = self.llm_client.generate(prompt)
+        self.last_repair_response_text = response_text
         parsed = extract_json_object(response_text)
+        self.last_repair_parsed_response = dict(parsed or {})
         if "edit_plan" not in parsed or not isinstance(parsed["edit_plan"], list):
             raise ValueError("LLM repair response must contain a list field named edit_plan")
         return self._normalize_response(parsed, reflection_report or {})

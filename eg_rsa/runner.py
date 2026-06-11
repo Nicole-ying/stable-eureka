@@ -286,6 +286,9 @@ class EGRSARunner:
                         retrieved_lessons,
                     )
                     self._write_json(iter_dir / "reflection_report.json", reflection_report)
+                    self._write_text(iter_dir / "reflection_prompt.txt", getattr(self.reflection_agent, "last_prompt", ""))
+                    self._write_text(iter_dir / "reflection_response_raw.txt", getattr(self.reflection_agent, "last_response_text", ""))
+                    self._write_json(iter_dir / "reflection_response_parsed.json", getattr(self.reflection_agent, "last_parsed_response", {}) or {})
                     edit_response = self.edit_agent.generate_edit_plan(
                         task_description,
                         schema.to_dict(),
@@ -294,6 +297,9 @@ class EGRSARunner:
                         retrieved_lessons,
                         reflection_report,
                     )
+                    self._write_text(iter_dir / "edit_prompt.txt", getattr(self.edit_agent, "last_prompt", ""))
+                    self._write_text(iter_dir / "edit_response_raw.txt", getattr(self.edit_agent, "last_response_text", ""))
+                    self._write_json(iter_dir / "edit_response_parsed.json", getattr(self.edit_agent, "last_parsed_response", {}) or {})
                     edit_decision = self._extract_edit_decision(edit_response)
                     next_action = self._extract_next_action(edit_response)
                     plan_metadata = self._extract_plan_metadata(edit_response, reflection_report)
@@ -315,6 +321,9 @@ class EGRSARunner:
                             self.structural_context,
                         )
                         self._write_json(iter_dir / "structural_search_response.json", structural_response)
+                        self._write_text(iter_dir / "structural_search_prompt.txt", getattr(self.structural_search_agent, "last_prompt", ""))
+                        self._write_text(iter_dir / "structural_search_response_raw.txt", getattr(self.structural_search_agent, "last_response_text", ""))
+                        self._write_json(iter_dir / "structural_search_response_parsed.json", getattr(self.structural_search_agent, "last_parsed_response", {}) or {})
                         sp_meta = self._extract_plan_metadata(structural_response, reflection_report)
                         edit_plan, validation, candidate_result, gate_result, next_action = self._validate_evaluate_and_gate_edit_plan(
                             schema,
@@ -407,6 +416,9 @@ class EGRSARunner:
                             behavior_risk_report=behavior_risk_audit,
                         )
                         self._write_json(iter_dir / "repair_response.json", repair_response)
+                        self._write_text(iter_dir / "repair_prompt.txt", getattr(self.edit_agent, "last_repair_prompt", ""))
+                        self._write_text(iter_dir / "repair_response_raw.txt", getattr(self.edit_agent, "last_repair_response_text", ""))
+                        self._write_json(iter_dir / "repair_response_parsed.json", getattr(self.edit_agent, "last_repair_parsed_response", {}) or {})
 
                         repair_decision = self._extract_edit_decision(repair_response)
                         repair_next_action = self._extract_next_action(repair_response)

@@ -19,6 +19,9 @@ class StructuralSearchAgent:
 
     def __init__(self, llm_client: Optional[Any] = None):
         self.llm_client = llm_client
+        self.last_prompt: str = ""
+        self.last_response_text: str = ""
+        self.last_parsed_response: Dict[str, Any] = {}
 
     def generate_structural_edit(
         self,
@@ -37,8 +40,11 @@ class StructuralSearchAgent:
             retrieved_lessons=retrieved_lessons,
             structural_context=structural_context,
         )
+        self.last_prompt = prompt
         response_text = self.llm_client.generate(prompt)
+        self.last_response_text = response_text
         parsed = extract_json_object(response_text)
+        self.last_parsed_response = dict(parsed or {})
         if "edit_plan" not in parsed or not isinstance(parsed["edit_plan"], list):
             raise ValueError("Structural search response must contain list field edit_plan")
         return self._normalize_response(parsed, structural_context)
