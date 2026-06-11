@@ -121,7 +121,14 @@ class EditPlanValidator:
         elif op == "add_conditional_formula_component":
             component["type"] = "conditional_formula_component"
         elif op == "add_action_penalty":
-            component["type"] = "action_penalty"
+            # V2 schema-language convergence:
+            # a custom action-cost formula is a formula_component with
+            # semantic_role=control_cost. The legacy action_penalty component
+            # is runtime built-in and ignores custom formulas.
+            component["type"] = "formula_component"
+            component.setdefault("semantic_role", "control_cost")
+            component.setdefault("reward_timing", "dense")
+            component.setdefault("behavior_channel", "control")
 
         params = dict(component.get("params", {}) or {})
 

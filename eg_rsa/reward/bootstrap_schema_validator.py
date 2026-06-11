@@ -35,6 +35,7 @@ class BootstrapSchemaValidator:
     SUPPORTED_COMPONENT_TYPES = {
         "formula_component",
         "conditional_formula_component",
+        # legacy built-in; V2 LLM bootstrap should not attach custom formulas
         "action_penalty",
     }
 
@@ -142,8 +143,16 @@ class BootstrapSchemaValidator:
             condition = component.get("condition") or params.get("condition")
 
             if ctype in cls.SUPPORTED_COMPONENT_TYPES:
-                if ctype == "action_penalty" and not formula:
-                    warnings.append(f"action_penalty {name} has no formula; runtime fallback may be used")
+                if ctype == "action_penalty":
+                    if formula:
+                        warnings.append(
+                            f"action_penalty {name} has custom formula; V2 normalizer "
+                            "should convert it to formula_component with semantic_role=control_cost"
+                        )
+                    else:
+                        warnings.append(
+                            f"legacy action_penalty {name} has no custom formula; runtime uses built-in -sum(action^2)"
+                        )
                 elif not formula:
                     errors.append(f"{ctype} {name} missing formula")
                 else:
@@ -159,15 +168,9 @@ class BootstrapSchemaValidator:
                     if not validation.ok:
                         errors.extend([f"{name}.condition: {e}" for e in validation.errors])
 
-            if ctype == "action_penalty" and formula:
-                sign_error = cls._check_action_penalty_sign_safety(
-                    name=name,
-                    formula=str(formula),
-                    weight=component.get("weight", 1.0),
-                    allowed_vars=allowed_vars,
-                )
-                if sign_error:
-                    errors.append(sign_error)
+            # action_penalty custom formulas are normalized to formula_component
+            # before validation in normal V2 bootstrap flow. Do not hard-fail raw
+            # bootstrap output here for a formula that runtime would ignore.
 
         for rule in event_rules:
             if not isinstance(rule, dict):

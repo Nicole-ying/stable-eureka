@@ -2,65 +2,78 @@
   "version": 2,
   "metadata": {
     "source": "llm_bootstrap",
-    "task": "LunarLander-v3",
+    "task": "LunarLander-v3 safe landing between flags",
     "reward_blueprint_present": true
   },
   "components": [
     {
-      "name": "r_progress",
       "type": "formula_component",
+      "name": "progress_guidance",
       "role": "dense_guidance",
-      "formula": "(-abs(x) - abs(y) - 0.1*abs(vx) - 0.1*abs(vy))",
-      "enabled": true,
       "weight": 1.0,
+      "formula": "-0.005 * min(sqrt(x*x + y*y), 10)",
+      "enabled": true,
       "params": {
-        "formula": "(-abs(x) - abs(y) - 0.1*abs(vx) - 0.1*abs(vy))"
+        "formula": "-0.005 * min(sqrt(x*x + y*y), 10)"
       }
     },
     {
-      "name": "r_stability",
       "type": "formula_component",
+      "name": "stability_quality",
       "role": "stability_quality",
-      "formula": "(-abs(angle) - 0.1*abs(angular_velocity))",
-      "enabled": true,
       "weight": 1.0,
+      "formula": "-0.01 * (abs(angle) + abs(angular_velocity) + abs(vx))",
+      "enabled": true,
       "params": {
-        "formula": "(-abs(angle) - 0.1*abs(angular_velocity))"
+        "formula": "-0.01 * (abs(angle) + abs(angular_velocity) + abs(vx))"
       }
     },
     {
-      "name": "r_control_cost",
-      "type": "formula_component",
-      "role": "control_cost",
-      "formula": "(-0.3*main_engine - 0.03*abs(side_engine))",
-      "enabled": true,
+      "type": "conditional_formula_component",
+      "name": "soft_landing_vertical",
+      "role": "stability_quality",
+      "condition": "y < 0.5",
+      "formula": "-0.1 * abs(vy)",
       "weight": 1.0,
+      "enabled": true,
       "params": {
-        "formula": "(-0.3*main_engine - 0.03*abs(side_engine))"
+        "formula": "-0.1 * abs(vy)",
+        "condition": "y < 0.5"
+      }
+    },
+    {
+      "type": "action_penalty",
+      "name": "fuel_cost",
+      "role": "control_cost",
+      "weight": 0.05,
+      "formula": "abs(main_engine) + abs(side_engine)",
+      "enabled": true,
+      "params": {
+        "formula": "abs(main_engine) + abs(side_engine)"
       }
     }
   ],
   "event_rules": [
     {
-      "name": "successful_landing",
       "type": "event_predicate",
+      "name": "soft_landing_success",
       "condition": {
         "expression": "left_contact and right_contact and abs(vx) < 0.2 and abs(vy) < 0.2 and abs(angle) < 0.1",
         "duration_steps": 1
       },
-      "reward": 100.0,
+      "reward": 100,
       "enabled": true,
       "weight": 1.0,
       "one_time": true
     },
     {
-      "name": "crash",
       "type": "event_predicate",
+      "name": "hard_landing_penalty",
       "condition": {
-        "expression": "(y <= 0) and (not left_contact or not right_contact)",
+        "expression": "left_contact and right_contact and (abs(vy) > 1.0 or abs(vx) > 1.0)",
         "duration_steps": 1
       },
-      "reward": -50.0,
+      "reward": -100,
       "enabled": true,
       "weight": 1.0,
       "one_time": true

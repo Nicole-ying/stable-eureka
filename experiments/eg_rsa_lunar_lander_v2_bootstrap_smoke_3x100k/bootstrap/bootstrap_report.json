@@ -1,13 +1,15 @@
 {
-  "design_rationale": "The design provides dense, non-positive shaping signals that guide the lander toward the center of the pad with low velocity and upright orientation, ensuring a gradient toward the goal. A large terminal reward for soft, upright two-leg contact outweighs the cumulative dense cost, creating a strong incentive to finish the task rather than linger. A crash penalty deters unsafe impact. Control cost encourages efficiency, with absolute value on the signed side engine to avoid rewarding direction.",
+  "design_rationale": "We use a distance‑based potential to provide dense progress guidance that monotonically improves as the lander approaches the pad. Stability is reinforced with small penalties on tilt, angular velocity, and lateral velocity. A near‑ground vertical speed penalty encourages a gentle touchdown. Terminal success is credited only when both legs are planted with low speed and upright attitude, while a symmetric hard‑landing penalty discourages high‑speed contacts. Fuel efficiency is enforced via absolute action penalties.",
   "assumptions": [
-    "The episode terminates upon ground contact or crash.",
-    "The observation variable y represents altitude above ground; x=0 corresponds to the center of the landing pad.",
-    "main_engine is a non-negative throttle (0 to 1) and side_engine is a signed throttle (-1 to +1)."
+    "Altitude (y) is measured positively upward from the ground.",
+    "The landing pad center is at x=0.",
+    "Left and right contacts become true exactly when the respective legs touch the ground and remain true thereafter until the episode resets.",
+    "Episode termination happens after a successful (or failed) landing; no reward leakage from repeated contacts."
   ],
   "risk_notes": [
-    "All reward scaling factors and event thresholds are initial estimates; they may require tuning based on the environment's physics and typical observation ranges.",
-    "If the episode does not terminate on crash but only on timeout, the crash penalty might trigger repeatedly; this schema assumes single-trigger events per episode."
+    "No explicit penalty for crashing (e.g., body hit) besides missing the success reward and possibly incurring the hard‑landing penalty if both legs contact at high speed; if the environment terminates on body strike without both legs down, the agent receives no terminal reward, which is acceptable negative reinforcement.",
+    "The hard‑landing penalty threshold is somewhat arbitrary and may need tuning to avoid discouraging all landings.",
+    "Bouncing (repeated on‑off contacts) could trigger multiple event firings if the environment does not lock contacts; this schema does not guard against that because we lack memory of previous contact state."
   ],
   "primitive_interface_only": true,
   "primitive_env": "LunarLander-v3"
