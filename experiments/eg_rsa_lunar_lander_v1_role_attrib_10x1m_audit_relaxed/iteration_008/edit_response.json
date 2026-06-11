@@ -1,0 +1,162 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "50% stable landing success rate over 6 evaluation episodes.",
+      "Contact toggles mean 28.8, max 63 – severe unstable contact behaviour.",
+      "Dense r_landing_quality ratio 0.558, r_stability ratio 0.300 – together ~86% of episode reward.",
+      "Terminal bonus r_stable_landing_once weight 80, triggered in 3/6 episodes.",
+      "Hack_score 0.0; only unstable_contact_behavior flag is true.",
+      "Previous edit (decrease_weight on stability/quality by 0.1, terminal ×3) caused success rate to drop to 0% and introduced true hack risk."
+    ],
+    "likely_true_failures": [
+      "Shaping‑goal mismatch: dense stability/quality rewards are earned during unstable leg toggling, providing sufficient score without achieving the 5‑step stable condition.",
+      "Task failure due to insufficient incentive to refine landing from rough to clean stable landing."
+    ],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [
+      "r_landing_quality and r_stability reward posture and contact even during leg toggling, making a rough landing profitable.",
+      "The 5‑step stable condition for r_stable_landing_once is rarely achieved from the oscillating policy, so the terminal bonus does not dominate behaviour.",
+      "Simple removal of dense stability/quality guidance destroys the shaping signal and makes the terminal condition unreachable."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "The principle of converting dense exploitable rewards to sparse event‑based incentives is directly applicable to the current stability/quality mismatch. Successfully moved agent from loitering to 83% landing success."
+      },
+      {
+        "lesson_id": "lesson_iter_006_to_007",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Drastic weight reduction of dense stability/quality without structural change collapsed learning and introduced hack risk; must avoid similar solo decreases."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_006_to_007"
+    ],
+    "avoid_actions": [
+      "Do not apply a solo or drastic weight decrease on r_landing_quality or r_stability without providing alternative shaping.",
+      "Do not increase terminal bonus without first ensuring the terminal condition remains reachable.",
+      "Do not add new dense rewards that pay during unstable contact."
+    ],
+    "recommended_actions": [
+      "Structural edit to gate r_landing_quality and r_stability on stable ground contact (both_contact true for N steps), making them near‑sparse.",
+      "Keep approach progress signals unchanged.",
+      "Optionally retain a small un‑gated fraction of stability/quality for weak approach gradient."
+    ],
+    "memory_confidence": 0.9
+  },
+  "reward_editor": {
+    "edit_decision": "no_edit",
+    "next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "rationale": "The dense stability/quality rewards (r_stability, r_landing_quality) dominate episode returns and pay during unstable leg toggling, creating a shaping‑goal mismatch that limits stable landing success to 50%. A previous attempt to drastically reduce their weights and boost the terminal bonus collapsed learning (0% success) because it removed necessary shaping without replacing it. The lesson from iter_001_to_002 shows that converting a dense exploitable reward into a gated sparse event can resolve the mismatch without destroying guidance. However, the allowed operators do not include a direct method to add an event‑based condition to existing metric_value components. Therefore, a structural search direction is proposed: explore adding new event rules that pay stability/quality‑like rewards only when both legs are in firm contact (e.g., using the `both_contact` event with a small duration_steps), and then disable or drastically reduce the dense components. This preserves the gradient toward stable settling while eliminating payouts during toggling. The approach progression signals (r_approach_progress, r_landing_region_entry_once) and terminal bonus will remain untouched.",
+    "expected_effect": "Episode rewards from unstable phases will drop sharply, increasing the relative dominance of the terminal success bonus and pulling the policy toward cleaner landings. Success rate should rise above 50% after training. Contact toggle counts should decrease, and `unstable_contact_behavior` should resolve in the next diagnostic run.",
+    "risk_analysis": "If the gated event rules are too strict (e.g., require too many consecutive stable contact steps), the agent may receive no stability/quality reward at all during early landing attempts and could stop approaching the pad. To mitigate, start with a short duration (e.g., 2–3 steps of `both_contact`) and monitor that terminal events still trigger. If success collapses, relax the gate or add back a tiny un‑gated dense component as fallback.",
+    "edit_plan": []
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "structural_search"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing that disables a dense exploitable reward and adds a sparse event bonus plus a boosted terminal bonus can resolve shaping‑goal mismatch (lesson_iter_001_to_002)."
+    ],
+    "what_failed": [
+      "Drastic weight reduction on dense stability/quality without structural change (lesson_iter_006_to_007) leads to policy collapse and hack risk."
+    ],
+    "avoid_next": [
+      "Solo decrease_weight on stability/quality components.",
+      "Increasing terminal bonus without ensuring reachability.",
+      "Adding new dense rewards that trigger during unstable contact."
+    ],
+    "recommend_next": [
+      "Explore structural changes that gate dense stability/quality rewards on stable contact events (e.g., both_contact).",
+      "Convert dense components into event bonuses that pay only during clean ground contact phases."
+    ],
+    "applicability_notes": "Current state parallels the pre‑edit situation of iter_001, where dense rewards for region proximity caused loitering; the same principle of moving to gated sparse rewards applies here for stability/quality during unstable landings."
+  },
+  "diagnosis": "Shaping‑goal mismatch: dense r_landing_quality and r_stability pay during unstable leg toggling, masking the terminal success incentive. Structural search proposed to gate these rewards on stable ground contact via new event rules, then reduce or disable the dense components.",
+  "edit_plan": [],
+  "plan_type": "structural_search",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 1,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "The agent achieves landing region entry and receives dense rewards from landing_quality and stability, but fails to consistently reach stable landing (success rate 0.5). A one-time bonus for crossing a high landing_quality threshold (0.9) provides an intermediate signal that bridges the gap between existing dense shaping and the terminal stable_landing_once bonus, encouraging the agent to refine its landing state.",
+      "why_local_edit_is_insufficient": "Local weight adjustments (increase/decrease) on existing components risk repeating the harmful rebalancing shown in the iter_006 lesson, where drastically reducing dense quality/stability destroyed progress. Adding a sparse, one-time intermediate bonus is safer and directly addresses the missing guidance without altering existing components.",
+      "memory_constraints": [],
+      "safety_constraints": [
+        "One-time bonus prevents repeated exploitation",
+        "Uses only configured metric landing_quality",
+        "Threshold set close to stable condition to avoid trivial acquisition"
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Adding a metric_threshold_bonus for landing_quality > 0.9 creates a non-exploitable intermediate goal. It is generic (uses configured task metric), one-time, and complements existing dense and terminal rewards. The lesson evidence supports sparse intermediate signals over dense weight rebalancing when success rate is sub-optimal but not zero.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_high_landing_quality_bonus",
+            "type": "metric_threshold_bonus",
+            "weight": 20.0,
+            "inputs": [],
+            "params": {
+              "metric": "landing_quality",
+              "threshold": 0.9,
+              "direction": "ge"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "Structural intermediate signal needed to raise success rate from 0.5 by rewarding high-quality landing precursor.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_high_landing_quality_bonus",
+          "type": "metric_threshold_bonus",
+          "weight": 20.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality",
+            "threshold": 0.9,
+            "direction": "ge"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  }
+}

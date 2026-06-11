@@ -1,0 +1,60 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_high_landing_quality_achieved",
+        "type": "metric_threshold_bonus",
+        "weight": 0.5,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "threshold": 0.9,
+          "direction": "ge",
+          "one_time": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "stability"
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "single_edit",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "reflection_strategy": {
+      "recommended_next_action": "structural_search",
+      "plan_type": "structural_search",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "A structural change to gate dense rewards on ground contact must be applied as a single coordinated edit (e.g., change component type or add condition field). It cannot be split into weight changes without losing the intended behavioural shaping.",
+      "max_reasonable_edits": 1,
+      "editor_constraints": [
+        "Modify r_landing_quality and r_stability so they only pay when both legs are firmly in contact with the ground (e.g., gate on both_contact being true and stable for a few steps). This can be done by converting them to event‑based components or by adding a condition field (if supported by the schema engine).",
+        "If gating is not feasible, consider converting them into event bonuses that trigger on entry into a stable-contact state and optionally pay a bonus for sustained stable contact, but do not pay per step during toggling.",
+        "Retain a small fraction (≤20% of current weight) of r_stability or r_landing_quality that remains un‑gated to provide a weak gradient toward the landing region, so the agent does not lose all approach motivation.",
+        "Do not change the terminal landing bonus (80) or approach progress signals unless the structural change fails to improve success rate after a training cycle.",
+        "Do not add any new per‑step penalties that could discourage exploration or initial descents."
+      ],
+      "must_preserve": [
+        "A clear gradient toward the landing pad (r_approach_progress, r_landing_region_entry_once).",
+        "A terminal success bonus that makes a clean stable landing the most rewarding single event by a wide margin.",
+        "Some stability/quality guidance that distinguishes between rough bouncing and a clean settled landing."
+      ],
+      "must_avoid": [
+        "Dense stability/quality rewards that pay during unstable leg toggling – they currently mask the need for true stable landing.",
+        "Complete removal of all dense stability/quality signals, which was shown to collapse learning.",
+        "Making the terminal stable landing condition stricter (e.g., increasing duration_steps) without evidence that it is too easy."
+      ],
+      "expected_effect": "Dense payout from unstable phases will drop sharply, increasing the relative dominance of the terminal bonus, while the gated rewards still guide the final settling phase. This should pull the policy toward cleaner landings and raise the stable landing rate above 50%. Episode reward mean may decrease initially as rough-landing payouts vanish, but recovery and higher success should follow.",
+      "risk_analysis": "If the gating condition is too strict (e.g., requires 10 steps of stable contact), the agent may not receive any dense reward during early landing attempts and could stop approaching the pad. To mitigate, start with a gate that requires only a brief stable contact (e.g., 2–3 steps) and monitor that the terminal event still triggers in some rollouts. If the agent loses all landing behaviour, relax the gate or fall back to the current schema."
+    }
+  }
+}

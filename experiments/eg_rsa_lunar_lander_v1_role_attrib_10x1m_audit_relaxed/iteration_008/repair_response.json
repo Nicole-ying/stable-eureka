@@ -1,0 +1,52 @@
+{
+  "repair_analysis": {
+    "risk_source": "both scale_risk and role_level_behavior_risk (regression pattern risk)",
+    "role_level_interpretation": "The proposed edit adds a new dense stability_quality component with high weight (20.0), which would greatly increase the stability_quality role's dominance and risks repeating the regression seen in lesson_iter_006_to_007 where excessive stability_quality changes combined with terminal increase led to policy collapse. Scale audit shows estimated contribution 250x terminal scale, creating unsafe dominance.",
+    "what_to_keep": "The intent to provide an intermediate signal for high landing quality as a bridge toward stable landing. The existing approach progress signals and terminal bonus should be unchanged.",
+    "what_to_modify": "Convert the dense metric_threshold_bonus into a one‑time sparse event with drastically reduced weight (0.5) to avoid per‑step accumulation and scale risk.",
+    "what_to_remove": "The add_component operator with weight 20.0. Remove the dense component entirely.",
+    "why_repaired_plan_is_safer": "By using a one‑time bonus with a modest weight, we provide a sparse intermediate incentive that cannot dominate the episode return, eliminating the scale risk (dense_to_terminal ratio becomes negligible). It avoids repeating the regression pattern because it does not add dense weight to the already dominant stability_quality role; instead it adds a sparse event akin to the successful pattern from iter_001 where sparse event bonuses improved success without regression. This preserves the original shaping while nudging the agent toward higher‑quality landings."
+  },
+  "diagnosis": "Scale audit flagged high risk (250x terminal). Behavior risk flagged similarity to a regression lesson that harmed stability_quality role. Repair converts proposed dense component into a safe sparse event bonus with minimal weight.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "rationale": "The failed plan's high-weight dense bonus would cause unsafe scale dominance and risk repeating a regression pattern. By adding a one‑time metric_threshold_bonus with weight 0.5, we preserve the intermediate signal without significant scale or role-dominance risk. The reward function remains well-structured, and the previous successful sparse‑event pattern supports this approach."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_high_landing_quality_achieved",
+        "type": "metric_threshold_bonus",
+        "weight": 0.5,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "threshold": 0.9,
+          "direction": "ge",
+          "one_time": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "stability"
+      }
+    }
+  ],
+  "plan_type": "single_edit",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 1
+}

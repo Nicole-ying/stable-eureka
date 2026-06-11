@@ -1,0 +1,151 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Episode reward mean 55.97, dominated by r_landing_region_entry_once (ratio 0.878).",
+      "Success rate 0.0; stable_landing and safe_contact never paid.",
+      "All 6 episodes received the region-entry bonus exactly once; terminal rewards never triggered.",
+      "Dense components (r_approach_progress, r_stability, r_landing_quality) contribute very little (sum ~6).",
+      "Episode length mean 71.7, contact toggles mean 2.5 (max 6), moderate instability.",
+      "Hack flags: component_dominance true, shaping_goal_mismatch true; no repeated event exploitation."
+    ],
+    "likely_true_failures": [
+      "Task failure: the agent can reach the pad region but cannot complete a landing because the dense guidance for controlled descent is too weak.",
+      "Shaping–goal mismatch: dense rewards do not provide a meaningful gradient toward stable ground contact, leaving the terminal bonus unreachable."
+    ],
+    "likely_false_positives": [
+      "Component dominance flag is a false positive for reward hacking – the region‑entry bonus is one‑time and not exploitable; it dominates only because all other rewards are tiny."
+    ],
+    "root_cause_hypotheses": [
+      "The dense stability and landing quality components (weights 1 and 2) are too small to strongly encourage upright, soft touchdown behaviour.",
+      "The terminal landing condition (5 consecutive stable steps) is too difficult for the current policy to discover; no intermediate reward explicitly reinforces progress toward a clean landing.",
+      "Once inside the landing region the agent receives almost no reward signal that differentiates a good landing from a crash."
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "quality": "strong",
+        "status": "reusable_now",
+        "reason": "Successfully resolved a similar shaping–goal mismatch by pairing reduced dense exploitation with a dominant terminal bonus and progress incentives. The principle of coupling progress guidance with terminal incentive is applicable, though the current edit focuses on adding new guidance rather than reducing existing components."
+      },
+      {
+        "lesson_id": "lesson_iter_006_to_007",
+        "quality": "failed",
+        "status": "weak_or_failed",
+        "reason": "Drastic reduction of dense stability/quality weights combined with a large terminal bonus increase destroyed all landing ability. This teaches that dense stability/quality rewards must be preserved at a level sufficient to guide descent."
+      }
+    ],
+    "reusable_lessons": [
+      "lesson_iter_001_to_002"
+    ],
+    "failed_or_weak_lessons": [
+      "lesson_iter_006_to_007"
+    ],
+    "avoid_actions": [
+      "Do not reduce the weights of r_landing_quality or r_stability; the harmful lesson shows that weak dense stability guidance makes the terminal bonus unreachable.",
+      "Do not increase r_stable_landing_once weight alone without also adding intermediate landing progress signals.",
+      "Do not add new dense rewards that could be farmed by repeatedly entering/leaving the landing region."
+    ],
+    "recommended_actions": [
+      "Add a metric_delta component on 'landing_quality' with positive_only=true to provide a dense signal for improving the landing posture.",
+      "Moderately increase the terminal landing bonus (r_stable_landing_once) to make a successful landing clearly more attractive once achievable."
+    ],
+    "memory_confidence": 0.8
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "The agent currently gets stuck after entering the landing region because the dense stability and landing quality signals are too weak to guide an actual touchdown, and the terminal landing bonus (80) is unreachable. Adding a new metric_delta component on landing_quality (positive_only) gives a continuous progress signal for every improvement in landing posture, creating a bridge from approach to touchdown. Simultaneously, increasing r_stable_landing_once from 80 to 120 makes a successful landing clearly dominant once the policy discovers it, without overwhelming the learning signal. Both changes are needed together: the delta reward alone may not make the terminal condition reachable, and the terminal bonus alone without intermediate gradient would remain undiscovered.",
+    "expected_effect": "The new landing progress reward will provide dense guidance, helping the agent improve landing quality step by step. The increased terminal bonus will incentivize the policy to achieve stable landings once it gets close. Together, the success rate should start rising from 0% toward 50‑80%. Episode reward may increase modestly as landings become successful.",
+    "risk_analysis": "If the landing_quality metric is not smoothly informative, the delta reward may provide weak guidance. However, previous memories indicate correlation with stable contact. The terminal bonus increase is moderate (120 vs 200+) so it will not destabilize training if terminal condition is still undiscovered; the dense delta will at least improve contact behavior. Post-edit monitoring should confirm that terminal reward starts firing in some rollouts.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_landing_progress",
+          "type": "metric_delta",
+          "weight": 2.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality",
+            "positive_only": true
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress"
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_stable_landing_once",
+        "factor": 1.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Adding a dense progress metric_delta on landing_quality paired with a moderate terminal success bonus increase provides a bridge from approach to stable landing."
+    ],
+    "what_failed": [
+      "Drastically reducing dense stability/quality weights while increasing terminal bonus can destroy all landing ability when the terminal condition is still unreachable."
+    ],
+    "avoid_next": [
+      "Solo decrease_weight on stability or landing quality without adding substitute landing guidance.",
+      "Increasing the terminal bonus to very high values (>200) without providing intermediate progress signals.",
+      "Adding dense rewards that can be farmed by repeatedly entering the landing region."
+    ],
+    "recommend_next": [
+      "When the agent reaches the pad region but fails to land, add a metric_delta on landing_quality to reward every improvement in landing posture, and moderately increase the terminal landing bonus."
+    ],
+    "applicability_notes": "These lessons apply to landing tasks where the approach gradient works but the landing phase lacks fine-grained reward signal."
+  },
+  "diagnosis": "Task failure: agent reaches landing region but cannot land due to insufficient dense guidance for descent. Proposed edit adds a positive delta reward on landing_quality and moderately increases the terminal landing bonus to build a bridge from approach to touchdown, while preserving existing approach and stability incentives.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_progress",
+        "type": "metric_delta",
+        "weight": 2.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

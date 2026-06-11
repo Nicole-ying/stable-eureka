@@ -1,0 +1,55 @@
+{
+  "repair_analysis": {
+    "risk_source": "both",
+    "role_level_interpretation": "ScaleAudit flagged that the proposed dense delta component (r_landing_progress, weight 2.0) could contribute up to 2000 per episode, a 25× ratio to the current terminal bonus of 80. This would risk making the dense guidance overshadow the terminal success incentive, perpetuating the shaping-–goal mismatch. BehaviorRiskAudit noted a medium similarity to a past regression lesson (iter_006_to_007) where a large terminal success increase combined with reduction of stability/quality guidance caused total loss of landing capability. However, the current plan does not reduce stability/quality; it adds new guidance and only moderately increases terminal. The overlapping role (terminal_success) triggers the warning, but the harmful pattern from that lesson (removing dense guidance) is absent.",
+    "what_to_keep": "The original intent to bridge the approach-to-landing gap with a positive delta signal on landing_quality and a moderate terminal bonus increase.",
+    "what_to_modify": "Reduce the weight of the new r_landing_progress component to 0.3 to keep its theoretical maximum contribution well below the terminal bonus (max ~300 vs 120 after increase, ratio 2.5). Keep the terminal increase moderate (factor 1.5, from 80 to 120) to avoid destabilizing the learning signal.",
+    "what_to_remove": "The original weight of 2.0 on r_landing_progress; no other changes.",
+    "why_repaired_plan_is_safer": "The new component now provides a dense improvement signal without risk of dominating the terminal bonus. The low weight (0.3) ensures even an upper-bound episode contribution (300) is only 2.5× the terminal reward, compared to 25× in the original plan. The terminal increase to 120 (factor 1.5) is conservative and does not repeat the regression lesson's drastic 3× jump combined with stability/quality reduction. The existing stability_quality and approach_progress components remain unchanged, preserving the guidance that the harmful lesson showed is critical."
+  },
+  "diagnosis": "Task failure: the agent reaches the landing region but cannot complete a landing due to weak dense guidance for descent. The repair adds a low-weight positive delta reward on landing_quality (weight 0.3) to softly reward each improvement in landing posture, and moderately increases the terminal landing bonus from 80 to 120 to reinforce stable touchdown. Both changes together create a learning bridge without scale dominance or repeating past regression.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "rationale": "Adding a metric_delta component (weight 0.3) on landing_quality (positive_only) delivers a continuous progress signal that directly rewards improvements in landing posture, bridging the gap between approach and terminal success. The moderate terminal bonus increase (from 80 to 120) makes a clean landing clearly attractive once discovered, without overwhelming the dense guidance or repeating the harmful pattern of drastic stability cuts. The low dense weight prevents the shaping-–goal mismatch flagged by ScaleAudit, and the preserving of all existing stability/quality and approach components avoids the regression seen in lesson_iter_006_to_007."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_progress",
+        "type": "metric_delta",
+        "weight": 0.3,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 2
+}

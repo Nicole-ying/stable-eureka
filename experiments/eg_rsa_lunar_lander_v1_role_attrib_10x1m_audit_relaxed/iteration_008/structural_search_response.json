@@ -1,0 +1,65 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "The agent achieves landing region entry and receives dense rewards from landing_quality and stability, but fails to consistently reach stable landing (success rate 0.5). A one-time bonus for crossing a high landing_quality threshold (0.9) provides an intermediate signal that bridges the gap between existing dense shaping and the terminal stable_landing_once bonus, encouraging the agent to refine its landing state.",
+    "why_local_edit_is_insufficient": "Local weight adjustments (increase/decrease) on existing components risk repeating the harmful rebalancing shown in the iter_006 lesson, where drastically reducing dense quality/stability destroyed progress. Adding a sparse, one-time intermediate bonus is safer and directly addresses the missing guidance without altering existing components.",
+    "memory_constraints": [],
+    "safety_constraints": [
+      "One-time bonus prevents repeated exploitation",
+      "Uses only configured metric landing_quality",
+      "Threshold set close to stable condition to avoid trivial acquisition"
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Adding a metric_threshold_bonus for landing_quality > 0.9 creates a non-exploitable intermediate goal. It is generic (uses configured task metric), one-time, and complements existing dense and terminal rewards. The lesson evidence supports sparse intermediate signals over dense weight rebalancing when success rate is sub-optimal but not zero.",
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_high_landing_quality_bonus",
+          "type": "metric_threshold_bonus",
+          "weight": 20.0,
+          "inputs": [],
+          "params": {
+            "metric": "landing_quality",
+            "threshold": 0.9,
+            "direction": "ge"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "Structural intermediate signal needed to raise success rate from 0.5 by rewarding high-quality landing precursor.",
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_high_landing_quality_bonus",
+        "type": "metric_threshold_bonus",
+        "weight": 20.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "threshold": 0.9,
+          "direction": "ge"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ]
+}

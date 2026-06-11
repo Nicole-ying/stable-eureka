@@ -1,0 +1,88 @@
+{
+  "reflection_summary": "The agent enters the landing region, collects the one‑time region‑entry bonus (50), and then fails to land (success rate 0%). The region‑entry bonus dominates the total episode reward (ratio 0.88), creating a component‑dominance flag and a shaping–goal mismatch because the dense guidance (r_approach_progress, r_stability, r_landing_quality) is too weak to guide a successful landing. Terminal bonuses (stable_landing 80, safe_contact 10) never fire. This is not reward hacking; it is a task failure where the agent lacks the intermediate reward signal needed to learn the descent and touchdown behaviour.",
+  "failure_assessment": {
+    "observed_facts": [
+      "Episode reward mean 55.97, dominated by r_landing_region_entry_once (ratio 0.878).",
+      "Success rate 0.0; stable_landing and safe_contact never paid.",
+      "All 6 episodes received the region‑entry bonus exactly once; terminal rewards never triggered.",
+      "Dense components (r_approach_progress, r_stability, r_landing_quality) contribute very little (sum ~6).",
+      "Episode length mean 71.7, contact toggles mean 2.5 (max 6), moderate instability.",
+      "Hack flags: component_dominance true, shaping_goal_mismatch true; no repeated event exploitation."
+    ],
+    "likely_true_failures": [
+      "Task failure: the agent can reach the pad region but cannot complete a landing because the dense guidance for controlled descent is too weak.",
+      "Shaping–goal mismatch: dense rewards do not provide a meaningful gradient toward stable ground contact, leaving the terminal bonus unreachable."
+    ],
+    "likely_false_positives": [
+      "Component dominance flag is a false positive for reward hacking – the region‑entry bonus is one‑time and not exploitable; it dominates only because all other rewards are tiny."
+    ],
+    "root_cause_hypotheses": [
+      "The dense stability and landing quality components (weights 1 and 2) are too small to strongly encourage upright, soft touchdown behaviour.",
+      "The terminal landing condition (5 consecutive stable steps) is too difficult for the current policy to discover; no intermediate reward explicitly reinforces progress toward a clean landing.",
+      "The approach gradient (r_approach_progress, region entry) works, but once the agent is inside the region it receives almost no reward signal that differentiates a good landing from a crash."
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.85
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "lesson_iter_001_to_002: disabling a dense loitering reward and pairing a one‑time entry bonus with an increased terminal bonus moved the agent from loitering to landing. The principle of rebalancing dense exploitation with terminal dominance is applicable, but the current problem is lack of landing capability, not loitering.",
+      "lesson_iter_006_to_007 (harmful): drastic reduction of r_landing_quality and r_stability combined with a large terminal bonus increase caused the agent to lose all landing ability. This teaches that the dense stability/quality rewards must be preserved at a level sufficient to guide the descent."
+    ],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Do not reduce the weights of r_landing_quality or r_stability; the harmful lesson shows that weak dense stability guidance makes the terminal bonus unreachable.",
+      "Do not increase r_stable_landing_once weight alone without also adding intermediate landing progress signals, because the terminal condition may stay undiscovered.",
+      "Do not add penalties that could discourage the agent from approaching the pad."
+    ],
+    "recommended_actions": [
+      "Add a new component that rewards positive deltas in landing_quality (metric_delta, positive_only) to provide a dense signal for improving the landing posture.",
+      "Optionally increase the terminal landing bonus (r_stable_landing_once) moderately to make a successful landing clearly more attractive once the agent can achieve it.",
+      "Keep r_approach_progress, r_landing_region_entry_once, and the existing r_stability and r_landing_quality components unchanged to maintain the approach gradient."
+    ],
+    "memory_confidence": 0.8
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Adding only a landing‑progress reward might not be enough if the terminal bonus remains unreachable; increasing the terminal bonus alone without intermediate guidance risks the policy never discovering the landing sequence. Both changes must be applied together to create a bridge from approach to a clean touchdown.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Add a new metric_delta component on 'landing_quality' with positive_only=true, weight ~2.0–3.0, clipped [0,1], to reward every improvement in landing posture.",
+      "Increase the weight of r_stable_landing_once from 80 to 120–150 to make a successful landing strongly dominant once achievable.",
+      "Do not modify the existing r_approach_progress, r_landing_region_entry_once, r_stability, r_landing_quality, r_energy, or r_safe_contact_once components.",
+      "Ensure that any new component uses only existing metrics and does not introduce per‑step penalties that hurt exploration."
+    ],
+    "must_preserve": [
+      "The approach gradient provided by r_approach_progress and r_landing_region_entry_once.",
+      "The existing dense stability and landing_quality rewards, as they carry important state information for landing.",
+      "Energy penalty at its current low level to avoid distorting action selection."
+    ],
+    "must_avoid": [
+      "Reducing or disabling r_stability/r_landing_quality – the harmful lesson shows that doing so collapses landing capability.",
+      "Making the terminal landing bonus so large that it destabilises training if the condition is never met.",
+      "Adding any new unconditional dense reward that would pay during hovering far from the pad."
+    ],
+    "expected_effect": "The new landing‑progress reward will give a continuous signal to improve landing_quality, helping the agent descend softly and keep legs on the ground. Combined with a larger terminal bonus, the policy should start to discover stable landings, raising success rate from 0% toward the 50‑80% range. Total episode reward may increase modestly as the agent learns to land.",
+    "risk_analysis": "If the landing_quality metric is not sufficiently smooth or informative, the delta reward may provide little guidance. However, prior memories indicate that landing_quality does correlate with stable contact. The terminal bonus increase is moderate enough to avoid overwhelming the learning signal. The main risk is that the agent remains unable to trigger the terminal condition; in that case, the dense landing progress might at least produce a better contact behaviour. Monitoring after the edit should confirm that the terminal landing bonus eventually fires in some rollouts."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "It proposes to reduce r_stability or r_landing_quality weights without adding substitute landing guidance.",
+      "It increases r_stable_landing_once to >200 while leaving all dense components unchanged, risking policy collapse if terminal remains unreachable.",
+      "It adds a dense reward that can be farmed by repeatedly entering and leaving the landing region."
+    ],
+    "package_should_be_accepted_if": [
+      "It introduces a metric_delta on landing_quality (or stability) that rewards progress toward a clean landing.",
+      "It moderately increases the terminal landing bonus to make successful landing worthwhile, while preserving the existing approach and stability incentives.",
+      "It does not alter the successful approach components (r_approach_progress, r_landing_region_entry_once)."
+    ],
+    "safety_notes": [
+      "After applying the edit, evaluate a few training episodes to ensure the new delta reward is triggered and terminal landings begin to appear.",
+      "Watch for unstable contact behaviour (contact toggle count). If it increases, the delta reward may need to be clamped or combined with a stability gate.",
+      "If safe_contact continues to be unused, consider increasing its weight or relaxing its duration requirement, but not in this edit."
+    ]
+  }
+}

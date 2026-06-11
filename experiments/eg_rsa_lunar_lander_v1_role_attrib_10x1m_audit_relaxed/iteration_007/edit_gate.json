@@ -1,0 +1,65 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_landing_progress",
+        "type": "metric_delta",
+        "weight": 2.0,
+        "inputs": [],
+        "params": {
+          "metric": "landing_quality",
+          "positive_only": true
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_stable_landing_once",
+      "factor": 1.5
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Terminal target r_stable_landing_once has low step evidence but episode semantic evidence is present; warning only.",
+    "Accepted atomic package with 2 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Adding only a landing‑progress reward might not be enough if the terminal bonus remains unreachable; increasing the terminal bonus alone without intermediate guidance risks the policy never discovering the landing sequence. Both changes must be applied together to create a bridge from approach to a clean touchdown.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Add a new metric_delta component on 'landing_quality' with positive_only=true, weight ~2.0–3.0, clipped [0,1], to reward every improvement in landing posture.",
+        "Increase the weight of r_stable_landing_once from 80 to 120–150 to make a successful landing strongly dominant once achievable.",
+        "Do not modify the existing r_approach_progress, r_landing_region_entry_once, r_stability, r_landing_quality, r_energy, or r_safe_contact_once components.",
+        "Ensure that any new component uses only existing metrics and does not introduce per‑step penalties that hurt exploration."
+      ],
+      "must_preserve": [
+        "The approach gradient provided by r_approach_progress and r_landing_region_entry_once.",
+        "The existing dense stability and landing_quality rewards, as they carry important state information for landing.",
+        "Energy penalty at its current low level to avoid distorting action selection."
+      ],
+      "must_avoid": [
+        "Reducing or disabling r_stability/r_landing_quality – the harmful lesson shows that doing so collapses landing capability.",
+        "Making the terminal landing bonus so large that it destabilises training if the condition is never met.",
+        "Adding any new unconditional dense reward that would pay during hovering far from the pad."
+      ],
+      "expected_effect": "The new landing‑progress reward will give a continuous signal to improve landing_quality, helping the agent descend softly and keep legs on the ground. Combined with a larger terminal bonus, the policy should start to discover stable landings, raising success rate from 0% toward the 50‑80% range. Total episode reward may increase modestly as the agent learns to land.",
+      "risk_analysis": "If the landing_quality metric is not sufficiently smooth or informative, the delta reward may provide little guidance. However, prior memories indicate that landing_quality does correlate with stable contact. The terminal bonus increase is moderate enough to avoid overwhelming the learning signal. The main risk is that the agent remains unable to trigger the terminal condition; in that case, the dense landing progress might at least produce a better contact behaviour. Monitoring after the edit should confirm that the terminal landing bonus eventually fires in some rollouts."
+    }
+  }
+}

@@ -60,7 +60,8 @@ def main() -> None:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    imageio.mimsave(out, frames, fps=args.fps)
+    duration = 1000 / args.fps  # ms per frame
+    imageio.mimsave(out, frames, duration=duration, loop=0)
 
     print(f"[OK] saved: {out}")
     print(f"return={ep_return:.2f}, length={ep_len}, frames={len(frames)}")
