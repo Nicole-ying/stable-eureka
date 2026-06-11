@@ -1,0 +1,46 @@
+{
+  "repair_analysis": {
+    "risk_source": "scale_risk",
+    "role_level_interpretation": "Behavior risk audit passed; no severe role-level issues. The only risk is scale: the dense contribution from the added component could overwhelm the sparse terminal reward.",
+    "what_to_keep": "The structural insight to add a dense progress component (metric_delta on approach_region_score) to break the zero-reward deadlock.",
+    "what_to_modify": "Reduce the weight of the new r_approach_progress component from 1.0 to 0.05, cutting the estimated maximum dense contribution from 1000 to 50.",
+    "what_to_remove": "Nothing.",
+    "why_repaired_plan_is_safer": "The lowered weight ensures the dense guidance signal stays well below the terminal success scale (100), preventing it from dominating learning while still providing a small, non-zero shaping reward that encourages approach behavior."
+  },
+  "diagnosis": "Zero reward due to inaccessible variable names in formula components. Structural search correctly identified a metric_delta on approach_region_score as a feasible dense signal, but the original weight of 1.0 triggered a scale audit failure. The repair fixes the scale issue without altering the core idea.",
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "rationale": "Adding r_approach_progress at weight 0.05 gives a safe, small dense reward for improvement in the approach metric. The estimated maximal episode contribution is ~50, far below the terminal success reward of 100, so the terminal incentive remains salient. No other components are changed, keeping the existing safety constraints intact. This is a single atomic edit that unblocks learning without introducing scale or role-level risks."
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "edit_plan": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_approach_progress",
+        "type": "metric_delta",
+        "weight": 0.05,
+        "inputs": [],
+        "params": {
+          "metric": "approach_region_score"
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true
+      }
+    }
+  ],
+  "plan_type": "single_edit",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 1
+}

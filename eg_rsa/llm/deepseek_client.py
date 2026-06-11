@@ -21,7 +21,7 @@ class DeepSeekClient:
             raise RuntimeError(f"Missing required environment variable: {credential_env}")
         self.model = model
         self.temperature = float(temperature)
-        self.client = OpenAI(api_key=credential, base_url=base_url)
+        self.client = OpenAI(api_key=credential, base_url=base_url, timeout=120.0)
 
     def generate(self, prompt: str) -> str:
         response = self.client.chat.completions.create(

@@ -1,0 +1,146 @@
+{
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap",
+      "task": "Lunar lander safe pinpoint landing with minimal fuel."
+    },
+    "components": [
+      {
+        "name": "r_centering",
+        "type": "formula_component",
+        "weight": 0.5,
+        "formula": "1.0 - min(abs(x), 1.0)",
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "position",
+        "params": {
+          "formula": "1.0 - min(abs(x), 1.0)"
+        }
+      },
+      {
+        "name": "r_soft_descent",
+        "type": "conditional_formula_component",
+        "weight": 0.3,
+        "condition": "y < 0.5",
+        "formula": "clip(vy, -1.0, 0.0)",
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "vertical_speed",
+        "params": {
+          "formula": "clip(vy, -1.0, 0.0)",
+          "condition": "y < 0.5"
+        }
+      },
+      {
+        "name": "r_upright",
+        "type": "formula_component",
+        "weight": 0.5,
+        "formula": "- clip(abs(angle) + abs(angular_velocity), 0.0, 1.0)",
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "attitude",
+        "params": {
+          "formula": "- clip(abs(angle) + abs(angular_velocity), 0.0, 1.0)"
+        }
+      },
+      {
+        "name": "r_fuel",
+        "type": "action_penalty",
+        "weight": 0.1,
+        "formula": "-(main_engine + abs(side_engine))",
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "control_cost",
+        "reward_timing": "dense",
+        "behavior_channel": "action",
+        "params": {
+          "formula": "-(main_engine + abs(side_engine))"
+        }
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "r_success_touchdown",
+        "type": "event_predicate",
+        "weight": 100.0,
+        "condition": {
+          "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(vx) < 0.2 and abs(angle) < 0.1",
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "success"
+      },
+      {
+        "name": "r_crash_penalty",
+        "type": "event_predicate",
+        "weight": -100.0,
+        "condition": {
+          "expression": "(abs(x) > 0.99) or ((left_contact or right_contact) and (abs(vy) > 0.8 or abs(angle) > 0.8))",
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "failure"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [
+      "Agent hovers indefinitely near x=0 to collect dense centering reward without landing.",
+      "Agent may repeatedly crash softly to exploit reset mechanism if crash penalty insufficient.",
+      "Agent might oscillate orientation to avoid upright penalty while not landing.",
+      "Low fuel penalty weight could lead to excessive throttling.",
+      "High descent speed near ground without leg contact may not be penalized enough if soft_descent weight is too low."
+    ],
+    "risk_notes": [
+      "Centering reward could cause over-staying near center; ensure total episode budget motivates timely landing via fuel penalty and success bonus.",
+      "Crash penalty defined only on leg contact and extreme velocity/angle; may miss body-first crashes where legs never touch; relies on environment episodic termination to limit exploit.",
+      "Success threshold for touchdown: vx<0.2, vy<0.2, angle<0.1 might be too strict/lenient; monitor first successful landings.",
+      "No explicit reward for hovering close to ground; descent guidance only activates when y<0.5, gap between ground and flag position may require tuning.",
+      "Agent may develop 'suicidal' descents that trigger crash penalty only once but learn to get high centering reward before that, requiring careful weight balance."
+    ]
+  },
+  "bootstrap_report": {
+    "design_rationale": "The reward uses a centered position term for lateral guidance, a conditional descent-speed penalty for soft landing preparation, an upright stability term for attitude control, and a fuel-cost penalty for efficiency. Sparse events provide a large success bonus for simultaneous two-leg soft upright touchdown and a large crash penalty for extreme conditions or leaving the viewport. The combination is intended to shape the full approach sequence.",
+    "assumptions": [
+      "Coordinates are normalized: x in approximately [-1,1], landing pad at (0,0) with flags nearby.",
+      "The lander starts with random initial thrust; dense rewards apply from the first step.",
+      "Left and right leg contact booleans reliably indicate ground contact.",
+      "The environment terminates episode on crash or exiting viewport, making sparse event triggers feasible.",
+      "Conditional component y<0.5 selects the lower half of the viewport where descent guidance matters."
+    ],
+    "risk_notes": [
+      "The agent may exploit centering term by hovering; fuel penalty must be large enough to counteract.",
+      "No penalty for high horizontal velocity until touchdown; a fast skid could still satisfy success if vx low at contact.",
+      "Crash threshold (vy>0.8, angle>0.8) may be high, missing moderate crashes; later tuning will tighten limits.",
+      "Centering reward only covers x, not y proximity to pad; agent could be high and still collect reward, potentially delaying descent.",
+      "All dense components are linear/absolute-value based, which may cause high-speed jittering if weights are too high."
+    ],
+    "forbidden_terms_checked": true,
+    "primitive_env": "LunarLander-v3"
+  }
+}

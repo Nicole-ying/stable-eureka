@@ -1,0 +1,77 @@
+{
+  "reflection_summary": "All reward components show zero-valued statistics across all episodes, suggesting the reward schema is not being evaluated correctly or the variable bindings are broken. The episode reward mean is 0.0, despite non-zero episode lengths. This nullifies detection of hack patterns; the detector flags (high_reward_low_progress, shaping_goal_mismatch) are likely false positives due to the degenerate reward signal.",
+  "failure_assessment": {
+    "observed_facts": [
+      "episode_reward_mean = 0.0",
+      "all component sums, means, min, max = 0.0",
+      "episode_length_mean = 68.67",
+      "terminal reward paid episode rate = 0.0",
+      "no success or crash terminal reward triggered"
+    ],
+    "likely_true_failures": [
+      "Reward function components are not producing any non-zero values, likely due to incorrect variable names or missing state bindings.",
+      "The agent receives no useful reward signal, so learning cannot make progress."
+    ],
+    "likely_false_positives": [
+      "high_reward_low_progress flag: reward is low/zero, not high.",
+      "shaping_goal_mismatch flag: may be triggered because dense shaping exists but progress is zero due to zero reward."
+    ],
+    "root_cause_hypotheses": [
+      "Variable names in reward formulas (e.g., 'x', 'vy', 'main_engine', 'side_engine') do not match actual environment observation/action names, causing evaluations to default to zero.",
+      "The reward component evaluation pipeline is not connected to the environment state/action during diagnostics.",
+      "The formulas may be syntactically valid but rely on missing bindings that silently yield zero."
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Don't blindly modify weights or formulas without first ensuring the reward components actually produce non-zero values."
+    ],
+    "recommended_actions": [
+      "Investigate why all components evaluate to zero. Check variable bindings for state variables (x, y, vy, angle, angular_velocity) and action indicators (main_engine, side_engine).",
+      "Ensure that the environment's observation and actions are correctly mapped. Run a diagnostic with a dummy state to verify formula outputs."
+    ],
+    "memory_confidence": 0.0
+  },
+  "strategy": {
+    "recommended_next_action": "structural_search",
+    "plan_type": "structural_search",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "If variable bindings are wrong, all components are affected, so corrections must be done together to avoid inconsistent state access.",
+    "max_reasonable_edits": 1,
+    "editor_constraints": [
+      "Verify that environment observation variables are named correctly (e.g., observation[0] = x, observation[1] = y, observation[3] = vy, observation[4] = angle, observation[5] = angular_velocity).",
+      "Compute main_engine = (action==2)?1:0, side_engine = (action in {1,3})?1:0, ensuring formulas use these correctly.",
+      "Do not change weights or clip ranges until the zero-value issue is resolved.",
+      "After fixing bindings, test to confirm non-zero component statistics."
+    ],
+    "must_preserve": [
+      "Semantic roles and reward timing of all components.",
+      "Terminal success and crash conditions, but verify variable access within them."
+    ],
+    "must_avoid": [
+      "Adding new components before fixing existing bindings.",
+      "Unnecessary structural changes unrelated to the zero-value problem."
+    ],
+    "expected_effect": "If variable bindings are corrected, dense components will produce non-zero values, enabling the agent to learn. False detector flags will likely disappear, and task progress should improve if the shaping is reasonable.",
+    "risk_analysis": "If the zero-value issue persists after fixing variable names, the problem might be deeper in the pipeline (e.g., formula evaluation engine). This could waste time if not diagnosed quickly."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "Does not address the zero-value problem.",
+      "Introduces new components while existing ones are still broken.",
+      "Changes semantics without verifying variable access."
+    ],
+    "package_should_be_accepted_if": [
+      "Explicitly fixes variable name mapping for all components.",
+      "Includes a verification step to test non-zero output."
+    ],
+    "safety_notes": [
+      "Ensure that episode termination criteria (crash, out-of-bounds) correctly trigger the event rules after the fix."
+    ]
+  }
+}

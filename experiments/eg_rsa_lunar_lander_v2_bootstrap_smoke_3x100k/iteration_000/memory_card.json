@@ -1,0 +1,871 @@
+{
+  "memory_id": "iter_000_to_001",
+  "env_family": "landing_control",
+  "failure_modes": [
+    "high_reward_low_progress",
+    "shaping_goal_mismatch"
+  ],
+  "reward_attribution": {
+    "episode_reward_mean": 0.0,
+    "episode_reward_std": 0.0,
+    "component_stats": {
+      "r_centering": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_soft_descent": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_upright": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_fuel": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": -0.0,
+        "max": -0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_success_touchdown": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_crash_penalty": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      }
+    },
+    "dominant_component": null,
+    "dominant_component_ratio": 0.0
+  },
+  "edit_plan": [],
+  "outcome": {
+    "status": "not_applicable",
+    "before": {
+      "task_score": 0.1659005932995769,
+      "semantic_score": 0.1659005932995769,
+      "selection_score": -0.06819881340084621,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": true,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": false,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "after": {},
+    "delta": {},
+    "note": "No edit was generated for this iteration."
+  },
+  "lesson": "Zero reward due to likely variable binding issue; all components evaluate to zero, preventing any learning. Recommend structural investigation rather than reward editing.",
+  "metadata": {
+    "config_path": "configs/eg_rsa_deepseek_v2_bootstrap_smoke.yml",
+    "iteration": 0,
+    "schema_snapshot": {
+      "version": 2,
+      "components": [
+        {
+          "name": "r_centering",
+          "type": "formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula": "1.0 - min(abs(x), 1.0)"
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "position",
+          "formula": "1.0 - min(abs(x), 1.0)"
+        },
+        {
+          "name": "r_soft_descent",
+          "type": "conditional_formula_component",
+          "weight": 0.3,
+          "inputs": [],
+          "params": {
+            "formula": "clip(vy, -1.0, 0.0)",
+            "condition": "y < 0.5"
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "vertical_speed",
+          "formula": "clip(vy, -1.0, 0.0)",
+          "condition": "y < 0.5"
+        },
+        {
+          "name": "r_upright",
+          "type": "formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula": "- clip(abs(angle) + abs(angular_velocity), 0.0, 1.0)"
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "stability_quality",
+          "reward_timing": "dense",
+          "behavior_channel": "attitude",
+          "formula": "- clip(abs(angle) + abs(angular_velocity), 0.0, 1.0)"
+        },
+        {
+          "name": "r_fuel",
+          "type": "action_penalty",
+          "weight": 0.1,
+          "inputs": [],
+          "params": {
+            "formula": "-(main_engine + abs(side_engine))"
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "control_cost",
+          "reward_timing": "dense",
+          "behavior_channel": "action"
+        }
+      ],
+      "event_rules": [
+        {
+          "name": "r_success_touchdown",
+          "type": "event_predicate",
+          "weight": 100.0,
+          "condition": {
+            "expression": "left_contact and right_contact and abs(vy) < 0.2 and abs(vx) < 0.2 and abs(angle) < 0.1",
+            "duration_steps": 1
+          },
+          "one_time": true,
+          "enabled": true,
+          "semantic_role": "terminal_success",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "success"
+        },
+        {
+          "name": "r_crash_penalty",
+          "type": "event_predicate",
+          "weight": -100.0,
+          "condition": {
+            "expression": "(abs(x) > 0.99) or ((left_contact or right_contact) and (abs(vy) > 0.8 or abs(angle) > 0.8))",
+            "duration_steps": 1
+          },
+          "one_time": true,
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "failure"
+        }
+      ],
+      "metadata": {
+        "source": "llm_bootstrap",
+        "task": "Lunar lander safe pinpoint landing with minimal fuel."
+      }
+    },
+    "validation_errors": [
+      "Tool audit flagged edit_plan; requesting Agent repair instead of direct execution.",
+      "Repaired edit_plan also failed tool audit; using continue_training."
+    ],
+    "validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_approach_stability_delta",
+            "type": "metric_delta",
+            "weight": 0.5,
+            "inputs": [],
+            "params": {
+              "metric": "approach_and_stability"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [
+        {
+          "candidate_type": "metric_process",
+          "metric": "approach_and_stability",
+          "component_type": "metric_delta",
+          "metric_variation": 0.30708436776618026,
+          "active_rate": 0.4682926829268293,
+          "signal_density": "dense",
+          "recommendation": "accept",
+          "reason": "Metric component r_approach_stability_delta has variation=0.307084, active_rate=0.468293 on current rollouts."
+        }
+      ],
+      "warnings": []
+    },
+    "gate_result": {
+      "accepted_edits": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_approach_stability_delta",
+            "type": "metric_delta",
+            "weight": 0.5,
+            "inputs": [],
+            "params": {
+              "metric": "approach_and_stability"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [],
+      "plan_metadata": {
+        "plan_type": "structural_search",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 1,
+        "reflection_strategy": {
+          "recommended_next_action": "structural_search",
+          "plan_type": "structural_search",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "If variable bindings are wrong, all components are affected, so corrections must be done together to avoid inconsistent state access.",
+          "max_reasonable_edits": 1,
+          "editor_constraints": [
+            "Verify that environment observation variables are named correctly (e.g., observation[0] = x, observation[1] = y, observation[3] = vy, observation[4] = angle, observation[5] = angular_velocity).",
+            "Compute main_engine = (action==2)?1:0, side_engine = (action in {1,3})?1:0, ensuring formulas use these correctly.",
+            "Do not change weights or clip ranges until the zero-value issue is resolved.",
+            "After fixing bindings, test to confirm non-zero component statistics."
+          ],
+          "must_preserve": [
+            "Semantic roles and reward timing of all components.",
+            "Terminal success and crash conditions, but verify variable access within them."
+          ],
+          "must_avoid": [
+            "Adding new components before fixing existing bindings.",
+            "Unnecessary structural changes unrelated to the zero-value problem."
+          ],
+          "expected_effect": "If variable bindings are corrected, dense components will produce non-zero values, enabling the agent to learn. False detector flags will likely disappear, and task progress should improve if the shaping is reasonable.",
+          "risk_analysis": "If the zero-value issue persists after fixing variable names, the problem might be deeper in the pipeline (e.g., formula evaluation engine). This could waste time if not diagnosed quickly."
+        }
+      }
+    },
+    "reflection_report": {
+      "reflection_summary": "All reward components show zero-valued statistics across all episodes, suggesting the reward schema is not being evaluated correctly or the variable bindings are broken. The episode reward mean is 0.0, despite non-zero episode lengths. This nullifies detection of hack patterns; the detector flags (high_reward_low_progress, shaping_goal_mismatch) are likely false positives due to the degenerate reward signal.",
+      "failure_assessment": {
+        "observed_facts": [
+          "episode_reward_mean = 0.0",
+          "all component sums, means, min, max = 0.0",
+          "episode_length_mean = 68.67",
+          "terminal reward paid episode rate = 0.0",
+          "no success or crash terminal reward triggered"
+        ],
+        "likely_true_failures": [
+          "Reward function components are not producing any non-zero values, likely due to incorrect variable names or missing state bindings.",
+          "The agent receives no useful reward signal, so learning cannot make progress."
+        ],
+        "likely_false_positives": [
+          "high_reward_low_progress flag: reward is low/zero, not high.",
+          "shaping_goal_mismatch flag: may be triggered because dense shaping exists but progress is zero due to zero reward."
+        ],
+        "root_cause_hypotheses": [
+          "Variable names in reward formulas (e.g., 'x', 'vy', 'main_engine', 'side_engine') do not match actual environment observation/action names, causing evaluations to default to zero.",
+          "The reward component evaluation pipeline is not connected to the environment state/action during diagnostics.",
+          "The formulas may be syntactically valid but rely on missing bindings that silently yield zero."
+        ],
+        "failure_kind": "task_failure",
+        "confidence": 0.9
+      },
+      "memory_assessment": {
+        "reusable_lessons": [],
+        "failed_or_weak_lessons": [],
+        "conflicting_lessons": [],
+        "avoid_actions": [
+          "Don't blindly modify weights or formulas without first ensuring the reward components actually produce non-zero values."
+        ],
+        "recommended_actions": [
+          "Investigate why all components evaluate to zero. Check variable bindings for state variables (x, y, vy, angle, angular_velocity) and action indicators (main_engine, side_engine).",
+          "Ensure that the environment's observation and actions are correctly mapped. Run a diagnostic with a dummy state to verify formula outputs."
+        ],
+        "memory_confidence": 0.0
+      },
+      "strategy": {
+        "recommended_next_action": "structural_search",
+        "plan_type": "structural_search",
+        "atomicity": "atomic",
+        "why_atomic_or_separable": "If variable bindings are wrong, all components are affected, so corrections must be done together to avoid inconsistent state access.",
+        "max_reasonable_edits": 1,
+        "editor_constraints": [
+          "Verify that environment observation variables are named correctly (e.g., observation[0] = x, observation[1] = y, observation[3] = vy, observation[4] = angle, observation[5] = angular_velocity).",
+          "Compute main_engine = (action==2)?1:0, side_engine = (action in {1,3})?1:0, ensuring formulas use these correctly.",
+          "Do not change weights or clip ranges until the zero-value issue is resolved.",
+          "After fixing bindings, test to confirm non-zero component statistics."
+        ],
+        "must_preserve": [
+          "Semantic roles and reward timing of all components.",
+          "Terminal success and crash conditions, but verify variable access within them."
+        ],
+        "must_avoid": [
+          "Adding new components before fixing existing bindings.",
+          "Unnecessary structural changes unrelated to the zero-value problem."
+        ],
+        "expected_effect": "If variable bindings are corrected, dense components will produce non-zero values, enabling the agent to learn. False detector flags will likely disappear, and task progress should improve if the shaping is reasonable.",
+        "risk_analysis": "If the zero-value issue persists after fixing variable names, the problem might be deeper in the pipeline (e.g., formula evaluation engine). This could waste time if not diagnosed quickly."
+      },
+      "auditor_hints": {
+        "package_should_be_rejected_if": [
+          "Does not address the zero-value problem.",
+          "Introduces new components while existing ones are still broken.",
+          "Changes semantics without verifying variable access."
+        ],
+        "package_should_be_accepted_if": [
+          "Explicitly fixes variable name mapping for all components.",
+          "Includes a verification step to test non-zero output."
+        ],
+        "safety_notes": [
+          "Ensure that episode termination criteria (crash, out-of-bounds) correctly trigger the event rules after the fix."
+        ]
+      }
+    },
+    "semantic_outcome": {
+      "episode_count": 3,
+      "semantic_score": 0.1659005932995769,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.17276725996624356,
+      "progress_score_std": 0.09679942002605872,
+      "episode_length_mean": 68.66666666666667,
+      "episode_length_std": 7.845734863959881,
+      "contact_toggle_mean": 1.6666666666666667,
+      "contact_toggle_max": 2.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": false,
+      "event_rule_payment_stats": {
+        "r_success_touchdown": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_success_touchdown"
+      ],
+      "one_time_rule_names": [
+        "r_crash_penalty",
+        "r_success_touchdown"
+      ],
+      "semantic_risks": []
+    },
+    "structural_response": {
+      "structural_analysis": {
+        "missing_signal_hypothesis": "No positive dense guidance is reaching the agent; all component sums are zero, suggesting the current formula-based components are not providing a usable learning signal. The agent needs a generic process metric that rewards incremental progress toward the landing pad and stable condition.",
+        "why_local_edit_is_insufficient": "Current components already deliver zero reward; increasing weights or adjusting clips would not create a new signal. A new metric-based component is required to introduce a non-zero gradient based on actual task progress.",
+        "memory_constraints": [],
+        "safety_constraints": []
+      },
+      "reward_editor": {
+        "edit_decision": "edit",
+        "next_action": "apply_edit",
+        "rationale": "Adding a metric_delta component on 'approach_and_stability' provides a dense, non-exploitable shaping reward that rewards improvements in landing-region proximity and stability. It uses only configured metrics, is clipped [0,1], and encourages safe progress toward the terminal goal.",
+        "edit_plan": [
+          {
+            "operator": "add_component",
+            "component": {
+              "name": "r_approach_stability_delta",
+              "type": "metric_delta",
+              "weight": 0.5,
+              "inputs": [],
+              "params": {
+                "metric": "approach_and_stability"
+              },
+              "clip": [
+                0.0,
+                1.0
+              ],
+              "enabled": true
+            }
+          }
+        ]
+      },
+      "auditor_check": {
+        "approved": true,
+        "issues": [],
+        "final_action": "apply_edit"
+      },
+      "diagnosis": "Agent receives zero total reward; dense shaping components are not producing usable signal. Adding a metric_delta component on 'approach_and_stability' injects a positive gradient that directly promotes task-relevant progress.",
+      "edit_plan": [
+        {
+          "operator": "add_component",
+          "component": {
+            "name": "r_approach_stability_delta",
+            "type": "metric_delta",
+            "weight": 0.5,
+            "inputs": [],
+            "params": {
+              "metric": "approach_and_stability"
+            },
+            "clip": [
+              0.0,
+              1.0
+            ],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    },
+    "edit_generated": true,
+    "edit_decision": "no_edit",
+    "next_action": "continue_training",
+    "agent_analysis": {
+      "reflection_report": {
+        "reflection_summary": "All reward components show zero-valued statistics across all episodes, suggesting the reward schema is not being evaluated correctly or the variable bindings are broken. The episode reward mean is 0.0, despite non-zero episode lengths. This nullifies detection of hack patterns; the detector flags (high_reward_low_progress, shaping_goal_mismatch) are likely false positives due to the degenerate reward signal.",
+        "failure_assessment": {
+          "observed_facts": [
+            "episode_reward_mean = 0.0",
+            "all component sums, means, min, max = 0.0",
+            "episode_length_mean = 68.67",
+            "terminal reward paid episode rate = 0.0",
+            "no success or crash terminal reward triggered"
+          ],
+          "likely_true_failures": [
+            "Reward function components are not producing any non-zero values, likely due to incorrect variable names or missing state bindings.",
+            "The agent receives no useful reward signal, so learning cannot make progress."
+          ],
+          "likely_false_positives": [
+            "high_reward_low_progress flag: reward is low/zero, not high.",
+            "shaping_goal_mismatch flag: may be triggered because dense shaping exists but progress is zero due to zero reward."
+          ],
+          "root_cause_hypotheses": [
+            "Variable names in reward formulas (e.g., 'x', 'vy', 'main_engine', 'side_engine') do not match actual environment observation/action names, causing evaluations to default to zero.",
+            "The reward component evaluation pipeline is not connected to the environment state/action during diagnostics.",
+            "The formulas may be syntactically valid but rely on missing bindings that silently yield zero."
+          ],
+          "failure_kind": "task_failure",
+          "confidence": 0.9
+        },
+        "memory_assessment": {
+          "reusable_lessons": [],
+          "failed_or_weak_lessons": [],
+          "conflicting_lessons": [],
+          "avoid_actions": [
+            "Don't blindly modify weights or formulas without first ensuring the reward components actually produce non-zero values."
+          ],
+          "recommended_actions": [
+            "Investigate why all components evaluate to zero. Check variable bindings for state variables (x, y, vy, angle, angular_velocity) and action indicators (main_engine, side_engine).",
+            "Ensure that the environment's observation and actions are correctly mapped. Run a diagnostic with a dummy state to verify formula outputs."
+          ],
+          "memory_confidence": 0.0
+        },
+        "strategy": {
+          "recommended_next_action": "structural_search",
+          "plan_type": "structural_search",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "If variable bindings are wrong, all components are affected, so corrections must be done together to avoid inconsistent state access.",
+          "max_reasonable_edits": 1,
+          "editor_constraints": [
+            "Verify that environment observation variables are named correctly (e.g., observation[0] = x, observation[1] = y, observation[3] = vy, observation[4] = angle, observation[5] = angular_velocity).",
+            "Compute main_engine = (action==2)?1:0, side_engine = (action in {1,3})?1:0, ensuring formulas use these correctly.",
+            "Do not change weights or clip ranges until the zero-value issue is resolved.",
+            "After fixing bindings, test to confirm non-zero component statistics."
+          ],
+          "must_preserve": [
+            "Semantic roles and reward timing of all components.",
+            "Terminal success and crash conditions, but verify variable access within them."
+          ],
+          "must_avoid": [
+            "Adding new components before fixing existing bindings.",
+            "Unnecessary structural changes unrelated to the zero-value problem."
+          ],
+          "expected_effect": "If variable bindings are corrected, dense components will produce non-zero values, enabling the agent to learn. False detector flags will likely disappear, and task progress should improve if the shaping is reasonable.",
+          "risk_analysis": "If the zero-value issue persists after fixing variable names, the problem might be deeper in the pipeline (e.g., formula evaluation engine). This could waste time if not diagnosed quickly."
+        },
+        "auditor_hints": {
+          "package_should_be_rejected_if": [
+            "Does not address the zero-value problem.",
+            "Introduces new components while existing ones are still broken.",
+            "Changes semantics without verifying variable access."
+          ],
+          "package_should_be_accepted_if": [
+            "Explicitly fixes variable name mapping for all components.",
+            "Includes a verification step to test non-zero output."
+          ],
+          "safety_notes": [
+            "Ensure that episode termination criteria (crash, out-of-bounds) correctly trigger the event rules after the fix."
+          ]
+        }
+      },
+      "diagnostic_analysis": {
+        "observed_facts": [
+          "All component statistics (sum, mean, min, max) are zero across three episodes.",
+          "Episode reward mean = 0.0.",
+          "Episode lengths are non-zero (mean ~68.7).",
+          "No terminal event (success or crash) triggered."
+        ],
+        "likely_true_failures": [
+          "Reward function components produce no non-zero values, likely due to incorrect variable names or missing state bindings.",
+          "Agent receives no learning signal."
+        ],
+        "likely_false_positives": [
+          "high_reward_low_progress flag: reward is zero, not high.",
+          "shaping_goal_mismatch flag: triggered because progress is zero despite dense shaping existence."
+        ],
+        "root_cause_hypotheses": [
+          "Variable names in formulas (e.g., 'x', 'vy', 'main_engine', 'side_engine') do not match the environment's actual observation/action keys, causing evaluation to default to zero.",
+          "The reward component evaluation pipeline is not receiving state/action data."
+        ],
+        "failure_kind": "task_failure",
+        "edit_need": "must_edit",
+        "confidence": 0.9
+      },
+      "memory_reflection": {
+        "lesson_assessments": [],
+        "reusable_lessons": [],
+        "failed_or_weak_lessons": [],
+        "avoid_actions": [],
+        "recommended_actions": [],
+        "memory_confidence": 0.0
+      },
+      "reward_editor": {
+        "edit_decision": "no_edit",
+        "next_action": "structural_search",
+        "plan_type": "structural_search",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 1,
+        "rationale": "The reflection report strongly suggests a variable binding issue causing all components to evaluate to zero. Fixing this requires investigating environment variable names, which is outside the scope of the available edit operators. Structural search is recommended to verify and correct the variable access before any reward tuning.",
+        "expected_effect": "If variable bindings are corrected, dense components will produce non‑zero values, providing a learning signal. This may resolve the false detector flags and enable task progress.",
+        "risk_analysis": "The root cause might be deeper than variable names (e.g., a pipeline disconnect). If structural investigation does not quickly identify the issue, further time may be lost.",
+        "edit_plan": []
+      },
+      "auditor_check": {
+        "approved": true,
+        "issues": [],
+        "final_action": "structural_search",
+        "tool_audit_flagged": true,
+        "scale_audit_flagged": true,
+        "behavior_risk_flagged": false,
+        "scale_audit": {
+          "tool": "scale_audit",
+          "audit_pass": false,
+          "terminal_scale": 100.0,
+          "horizon": 1000,
+          "reports": [
+            {
+              "operator": "add_component",
+              "target": null,
+              "risk_level": "high",
+              "warnings": [
+                "New dense component may contribute 5.00x terminal scale; reduce weight or run candidate sweep."
+              ],
+              "estimated_episode_contribution": 500.0,
+              "terminal_scale": 100.0,
+              "dense_to_terminal_ratio": 5.0
+            }
+          ]
+        },
+        "behavior_risk_audit": {
+          "tool": "behavior_risk_audit",
+          "audit_pass": true,
+          "risk_basis": "semantic_role_attribution",
+          "max_severity": "low",
+          "risk_counts": {
+            "high": 0,
+            "medium": 0,
+            "low": 0
+          },
+          "role_delta": {
+            "terminal_success": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "dense_guidance": {
+              "touched": true,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.5,
+              "targets": [
+                "r_approach_stability_delta"
+              ],
+              "operators": [
+                "add_component"
+              ]
+            },
+            "stability_quality": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "control_cost": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "safety_constraint": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            }
+          },
+          "behavior_evidence": {
+            "success_evidence": 0.0,
+            "stability_evidence": 0.0,
+            "progress_evidence": 0.17276725996624356,
+            "instability_signal": 1.6666666666666667,
+            "hack_score": 0.4,
+            "reward_repetition_risk": false,
+            "high_reward_low_progress": true,
+            "shaping_goal_mismatch": true
+          },
+          "attribution_evidence": {
+            "dominant_component": null,
+            "dominant_component_ratio": 0.0,
+            "dominant_role": null,
+            "role_ratio": {
+              "dense_guidance": 0.0,
+              "stability_quality": 0.0,
+              "control_cost": 0.0,
+              "terminal_success": 0.0,
+              "safety_constraint": 0.0
+            }
+          },
+          "thresholds": {
+            "weak_success_evidence": 0.5,
+            "weak_stability_evidence": 0.5,
+            "large_role_increase_factor": 2.5,
+            "moderate_role_increase_factor": 1.5,
+            "large_guidance_drop_factor": 0.25,
+            "moderate_guidance_drop_factor": 0.5,
+            "large_stability_drop_factor": 0.5,
+            "dominance_ratio_threshold": 0.65,
+            "high_instability_signal": 50.0
+          },
+          "audit_policy": {
+            "block_medium": false,
+            "medium_risk_budget_when_weak_success": 2,
+            "block_medium_under_weak_success": false
+          },
+          "risks": [],
+          "repair_summary": "No role-level attribution risk detected."
+        },
+        "repair_tool_audit_failed": true,
+        "repair_scale_audit": {
+          "tool": "scale_audit",
+          "audit_pass": false,
+          "terminal_scale": 100.0,
+          "horizon": 1000,
+          "reports": [
+            {
+              "operator": "add_component",
+              "target": null,
+              "risk_level": "high",
+              "warnings": [
+                "New dense component may contribute 0.50x terminal scale; reduce weight or run candidate sweep."
+              ],
+              "estimated_episode_contribution": 50.0,
+              "terminal_scale": 100.0,
+              "dense_to_terminal_ratio": 0.5
+            }
+          ]
+        },
+        "repair_behavior_risk_audit": {
+          "tool": "behavior_risk_audit",
+          "audit_pass": true,
+          "risk_basis": "semantic_role_attribution",
+          "max_severity": "low",
+          "risk_counts": {
+            "high": 0,
+            "medium": 0,
+            "low": 0
+          },
+          "role_delta": {
+            "terminal_success": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "dense_guidance": {
+              "touched": true,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.05,
+              "targets": [
+                "r_approach_stability_delta"
+              ],
+              "operators": [
+                "add_component"
+              ]
+            },
+            "stability_quality": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "control_cost": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "safety_constraint": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            }
+          },
+          "behavior_evidence": {
+            "success_evidence": 0.0,
+            "stability_evidence": 0.0,
+            "progress_evidence": 0.17276725996624356,
+            "instability_signal": 1.6666666666666667,
+            "hack_score": 0.4,
+            "reward_repetition_risk": false,
+            "high_reward_low_progress": true,
+            "shaping_goal_mismatch": true
+          },
+          "attribution_evidence": {
+            "dominant_component": null,
+            "dominant_component_ratio": 0.0,
+            "dominant_role": null,
+            "role_ratio": {
+              "dense_guidance": 0.0,
+              "stability_quality": 0.0,
+              "control_cost": 0.0,
+              "terminal_success": 0.0,
+              "safety_constraint": 0.0
+            }
+          },
+          "thresholds": {
+            "weak_success_evidence": 0.5,
+            "weak_stability_evidence": 0.5,
+            "large_role_increase_factor": 2.5,
+            "moderate_role_increase_factor": 1.5,
+            "large_guidance_drop_factor": 0.25,
+            "moderate_guidance_drop_factor": 0.5,
+            "large_stability_drop_factor": 0.5,
+            "dominance_ratio_threshold": 0.65,
+            "high_instability_signal": 50.0
+          },
+          "audit_policy": {
+            "block_medium": false,
+            "medium_risk_budget_when_weak_success": 2,
+            "block_medium_under_weak_success": false
+          },
+          "risks": [],
+          "repair_summary": "No role-level attribution risk detected."
+        }
+      },
+      "distilled_lessons": {
+        "what_worked": [],
+        "what_failed": [],
+        "avoid_next": [
+          "Do not edit reward weights or add components while all existing components return zero."
+        ],
+        "recommend_next": [
+          "Verify environment observation variable names and formula bindings.",
+          "Ensure action indicators (main_engine, side_engine) are correctly computed."
+        ],
+        "applicability_notes": []
+      }
+    }
+  }
+}
