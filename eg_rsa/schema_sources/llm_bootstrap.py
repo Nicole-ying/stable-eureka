@@ -44,6 +44,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
         schema_path = bootstrap_dir / "generated_initial_schema.json"
         runtime_spec_path = bootstrap_dir / "generated_diagnostics.yml"
+        blueprint_path = bootstrap_dir / "reward_blueprint.json"
         reuse_if_exists = bool(cfg.get("reuse_if_exists", True))
 
         primitive_path = Path(cfg.get("primitive_interface_path", ""))
@@ -64,7 +65,14 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
         if reuse_if_exists and schema_path.exists():
             schema_dict = json.loads(schema_path.read_text(encoding="utf-8"))
-            validation = BootstrapSchemaValidator.validate_schema(schema_dict, primitive_interface)
+            blueprint = {}
+            if blueprint_path.exists():
+                blueprint = json.loads(blueprint_path.read_text(encoding="utf-8"))
+            validation = BootstrapSchemaValidator.validate_schema(
+                schema_dict,
+                primitive_interface,
+                reward_blueprint=blueprint,
+            )
             self._write_json(bootstrap_dir / "bootstrap_validation.json", validation.to_dict())
             if not validation.ok:
                 raise ValueError(f"Reused generated_initial_schema.json failed validation: {validation.errors}")
@@ -80,13 +88,14 @@ class LLMBootstrapSchemaSource(SchemaSource):
         if not isinstance(schema_dict, dict):
             raise ValueError("Bootstrap result must contain dict field initial_schema")
 
-        validation = BootstrapSchemaValidator.validate_schema(schema_dict, primitive_interface)
+        validation = BootstrapSchemaValidator.validate_bootstrap_result(result, primitive_interface)
 
         self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
         self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
         self._write_json(bootstrap_dir / "bootstrap_response.json", result)
         self._write_json(bootstrap_dir / "bootstrap_validation.json", validation.to_dict())
         self._write_json(schema_path, schema_dict)
+        self._write_json(blueprint_path, result.get("reward_blueprint", {}) or {})
         self._write_json(bootstrap_dir / "bootstrap_agent_diagnostics.json", result.get("diagnostics", {}) or {})
         self._write_json(bootstrap_dir / "bootstrap_report.json", result.get("bootstrap_report", {}) or {})
 

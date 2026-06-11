@@ -14,48 +14,47 @@ def build_edit_prompt(
     retrieved_lessons: List[Dict[str, Any]] | None = None,
     reflection_report: Dict[str, Any] | None = None,
 ) -> str:
-    """Build the constrained prompt for the EG-RSA edit agent."""
+    """Build the formula-native constrained prompt for the EG-RSA edit agent."""
 
     allowed_ops = RewardEditOperatorApplier.allowed_operator_descriptions()
+
     return f"""
-You are the Reward EditAgent of EG-RSA.
-A separate ReflectionAgent has already analyzed the diagnostics and memory. Your job is to turn
-that reflection strategy into a concrete executable reward edit plan.
+You are the Reward EditAgent of EG-RSA-V2.
+A separate ReflectionAgent has already analyzed diagnostics and memory.
+Your job is to turn that reflection strategy into a concrete executable reward edit plan.
+
 Return one JSON object only.
 
 Mission constraints:
 1. Improve reward search through memory-guided and reflection-guided editing.
 2. Do NOT use environment oracle reward or official reward values for decisions.
-3. Do NOT use environment-specific hard-coded rules; use only task description, diagnostics, schema, allowed operators, retrieved memory, and reflection report.
-4. Do NOT write Python code.
-5. Do NOT invent new edit operators.
-6. Every edit must use allowed operators and existing targets, except add_component/add_event_rule may create new schema items using configured metrics/events.
+3. Do NOT write Python code.
+4. Do NOT invent new edit operators.
+5. Prefer formula-native edits for V2 schemas:
+   - replace_formula
+   - replace_condition
+   - add_formula_component
+   - add_conditional_formula_component
+   - add_action_penalty
+   - add_event_predicate
+6. Use metric_value / metric_delta only when the current structural context explicitly exposes a primitive-generated metric and a formula-native edit is not suitable.
+7. Formula and condition edits must use only primitive variables already present in the schema/interface.
+8. Do not merely tune weights if the root cause is missing progress structure or wrong formula/condition structure.
+9. If a component is useful in intent but unsafe in formula, prefer replace_formula or replace_condition over disable_component.
+10. If no reliable edit exists, choose continue_training or structural_search.
 
-Reflection alignment rules:
-1. Follow the ReflectionAgent strategy unless you explicitly explain why it is unsafe.
-2. If reflection says plan_type="coupled_rebalancing" and atomicity="atomic", output a coherent package and mark it atomic.
-3. Do NOT let a coupled package degrade into only the negative/decrease edit. If you decrease one dense shaping component to reduce dominance, pair it with the intended positive/completion/process support edits.
-4. If failed lessons say "solo decrease_weight failed", avoid repeating solo decrease_weight.
-5. If you cannot form a safe package, choose structural_search or continue_training rather than a weak single edit.
-
-Critical distinction:
-A detector flag is only a hypothesis. You must distinguish:
-- reward_hack: the behavior actually increases the learned reward;
-- task_failure: the behavior is bad but does not exploit the learned reward;
-- detector_false_positive: the detector fires but the current reward structure no longer supports exploitation.
-
-Memory usage rules:
-1. Raw memory cards are factual records of past edit trials.
-2. Distilled lesson cards are reusable experience extracted from raw memory.
-3. Do not merely mention retrieved lessons. Evaluate their quality and applicability.
-4. Reuse successful lessons only when their applicability matches the current case.
-5. Avoid repeating failed or weak lessons unless you provide strong evidence and a materially different package.
+Formula-native design principles:
+1. Dense reward should be progress-aligned, not merely passive state maintenance.
+2. Stability/control components should support task progress rather than replace it.
+3. Terminal success should be sparse, one-time, and based on primitive terminal evidence.
+4. Action penalty must not become positive reward for any action direction.
+5. A coupled edit package may combine weight change + formula/condition repair when both are required.
 
 Allowed next_action values:
 - apply_edit: use edit_plan to update the schema.
-- structural_search: the issue is not a current hack but poor task guidance; propose a generic structural reward-search direction using allowed operators if possible.
-- continue_training: the reward is plausible and insufficient training is the main hypothesis; use sparingly.
-- early_stop: no reliable edit or search direction exists; stop this reward-search run.
+- structural_search: the issue needs a new formula-native structural signal.
+- continue_training: the reward is plausible and insufficient training is the main hypothesis.
+- early_stop: no reliable edit or search direction exists.
 
 Task description:
 {task_description}
@@ -90,14 +89,7 @@ Return exactly this JSON format:
     "confidence": 0.0
   }},
   "memory_reflection": {{
-    "lesson_assessments": [
-      {{
-        "lesson_id": "lesson id if available",
-        "quality": "strong | moderate | weak | failed",
-        "status": "reusable_now | already_applied | not_applicable | weak_or_failed | conflicting",
-        "reason": "why this lesson should or should not affect the current decision"
-      }}
-    ],
+    "lesson_assessments": [],
     "reusable_lessons": [],
     "failed_or_weak_lessons": [],
     "avoid_actions": [],

@@ -557,7 +557,33 @@ class EGRSARunner:
                             {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
                         )
                         break
-                elif next_action in {"early_stop", "structural_search"}:
+                elif next_action == "structural_search":
+                    # structural_search is an internal recovery route, not a terminal
+                    # condition. If no structural edit survived validation/audit in this
+                    # iteration, continue training the current schema from the latest
+                    # checkpoint so the multi-iteration smoke test can keep collecting
+                    # evidence.
+                    model_path = iter_dir / "model.zip"
+                    if model_path.exists():
+                        next_init_model_path = model_path
+                        self._write_json(
+                            iter_dir / "structural_search_continue.json",
+                            {
+                                "next_action": next_action,
+                                "continued_schema": True,
+                                "init_model_path_for_next_iteration": str(model_path),
+                                "reason": edit_response.get("diagnosis", ""),
+                            },
+                        )
+                        self._write_json(iter_dir / "reward_schema_next.json", schema.to_dict())
+                    else:
+                        stop_reason = "Stopped after structural_search because current iteration model.zip was not found."
+                        self._write_json(
+                            iter_dir / "stop_reason.json",
+                            {"next_action": next_action, "reason": stop_reason, "diagnosis": edit_response.get("diagnosis", "")},
+                        )
+                        break
+                elif next_action == "early_stop":
                     stop_reason = f"Stopped after next_action={next_action}: {edit_response.get('diagnosis', '')}"
                     self._write_json(
                         iter_dir / "stop_reason.json",

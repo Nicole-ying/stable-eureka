@@ -14,63 +14,88 @@ def build_structural_search_prompt(
     structural_context: Dict[str, Any],
 ) -> str:
     allowed_ops = RewardEditOperatorApplier.allowed_operator_descriptions()
+    allowed_vars = structural_context.get("allowed_formula_variables", [])
+    allowed_funcs = structural_context.get("allowed_formula_functions", [])
+
     return f"""
-You are the Structural Search sub-agent of EG-RSA.
-Your job is to propose a generic structural reward edit when local edits are insufficient.
+You are the Structural Search sub-agent of EG-RSA-V2.
+
+Your job is to propose one minimal formula-native structural reward edit when local edits are insufficient.
 Return one JSON object only.
 
-Hard constraints:
+Primitive-only constraints:
 1. Do NOT use environment oracle reward or official reward values.
 2. Do NOT write Python code.
-3. Do NOT invent variables, events, metrics, or operators.
-4. You may only use allowed operators and the available events/metrics listed in structural_context.
-5. Prefer one minimal structural edit. The execution gate will keep at most one edit.
-6. Do not add unprotected repeatable event bonuses. Use one_time=true and/or duration_steps when adding event rules.
-7. This must be generic: no environment-specific hard-coded policy, only configured events/metrics and schema operators.
+3. Do NOT invent hidden task metrics, hidden event predicates, hidden variables, or hidden rewards.
+4. Prefer primitive formula edits over metric-based edits.
+5. Formula expressions may use only these variables: {json.dumps(allowed_vars, ensure_ascii=False)}
+6. Formula expressions may call only these functions: {json.dumps(allowed_funcs, ensure_ascii=False)}
+7. If no safe structural edit exists, return edit_decision="no_edit" and next_action="continue_training".
 
-Structural search purpose:
-- If a known exploit was removed but task guidance remains weak, add a non-exploitable positive or shaping signal using configured events/metrics.
-- If a terminal success event is too sparse or previously failed to trigger, prefer an intermediate metric-based process signal.
-- If current local edits failed, avoid repeating them.
-- If no safe structural edit exists, return edit_decision="no_edit" and next_action="early_stop".
+Preferred structural edits:
+1. add_formula_component
+2. add_conditional_formula_component
+3. add_action_penalty
+4. add_event_predicate
 
-Preferred generic structural edits:
-1. metric_delta: rewards improvement in a configured task metric; useful when terminal success is too sparse.
-2. metric_value: rewards maintaining a high configured task metric; useful for dense guidance.
-3. metric_threshold_bonus: rewards crossing a configured metric threshold; use cautiously.
-4. metric_stagnation_penalty: penalizes lack of progress in a configured metric.
-5. add_event_rule: adds a one-time/duration-gated configured event rule; useful only when the event is realistically reachable.
+Avoid metric_value / metric_delta unless there is no formula-native alternative.
 
-Required add_component schema for metric components:
+Required add_formula_component schema:
 {{
-  "operator": "add_component",
+  "operator": "add_formula_component",
   "component": {{
-    "name": "r_unique_metric_component",
-    "type": "metric_delta | metric_value | metric_threshold_bonus | metric_stagnation_penalty",
+    "name": "r_unique_formula_component",
+    "type": "formula_component",
     "weight": 1.0,
-    "inputs": [],
-    "params": {{"metric": "one_available_task_metric_name"}},
+    "formula": "1.0 - min(abs(x), 1.0)",
+    "params": {{"formula": "1.0 - min(abs(x), 1.0)"}},
     "clip": [0.0, 1.0],
-    "enabled": true
+    "enabled": true,
+    "semantic_role": "dense_guidance",
+    "reward_timing": "dense",
+    "behavior_channel": "progress"
   }}
 }}
-For metric_threshold_bonus, params must include threshold and optional direction="ge" or "le".
-For metric_stagnation_penalty, params must include threshold and window.
 
-Required add_event_rule schema:
-When using add_event_rule, event_rule MUST contain all fields below:
+Required add_conditional_formula_component schema:
 {{
-  "operator": "add_event_rule",
-  "event_rule": {{
-    "name": "r_unique_rule_name",
-    "type": "event_bonus",
-    "weight": 20.0,
-    "condition": {{"one_available_event_name": true, "duration_steps": 3}},
-    "one_time": true,
-    "enabled": true
+  "operator": "add_conditional_formula_component",
+  "component": {{
+    "name": "r_unique_conditional_component",
+    "type": "conditional_formula_component",
+    "weight": 1.0,
+    "condition": "some primitive condition",
+    "formula": "some primitive formula",
+    "params": {{
+      "condition": "some primitive condition",
+      "formula": "some primitive formula"
+    }},
+    "clip": [0.0, 1.0],
+    "enabled": true,
+    "semantic_role": "dense_guidance",
+    "reward_timing": "dense",
+    "behavior_channel": "progress"
   }}
 }}
-Do NOT return compact forms such as {{"event": "...", "weight": 100}}.
+
+Required add_event_predicate schema:
+{{
+  "operator": "add_event_predicate",
+  "event_rule": {{
+    "name": "r_unique_event_predicate",
+    "type": "event_predicate",
+    "weight": 20.0,
+    "condition": {{
+      "expression": "primitive boolean expression",
+      "duration_steps": 1
+    }},
+    "one_time": true,
+    "enabled": true,
+    "semantic_role": "terminal_success",
+    "reward_timing": "sparse_event",
+    "behavior_channel": "completion"
+  }}
+}}
 
 Task description:
 {task_description}
@@ -93,21 +118,21 @@ Allowed edit operators:
 Return exactly this JSON format:
 {{
   "structural_analysis": {{
-    "missing_signal_hypothesis": "what generic reward signal appears missing",
+    "missing_signal_hypothesis": "what primitive-variable reward signal appears missing",
     "why_local_edit_is_insufficient": "why existing local operators are insufficient",
     "memory_constraints": [],
     "safety_constraints": []
   }},
   "reward_editor": {{
     "edit_decision": "edit | no_edit",
-    "next_action": "apply_edit | early_stop",
+    "next_action": "apply_edit | continue_training | early_stop",
     "rationale": "why this structural edit is safe and useful",
     "edit_plan": []
   }},
   "auditor_check": {{
     "approved": true,
     "issues": [],
-    "final_action": "apply_edit | early_stop | reject_edit"
+    "final_action": "apply_edit | continue_training | early_stop | reject_edit"
   }},
   "diagnosis": "short structural-search diagnosis",
   "edit_plan": []

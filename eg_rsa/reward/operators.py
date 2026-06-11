@@ -9,8 +9,8 @@ from eg_rsa.reward.schema import EventRule, RewardComponent, RewardSchema
 class RewardEditOperatorApplier:
     """Apply a constrained edit plan to a RewardSchema.
 
-    LLM outputs must be edit instructions, not executable code. This class is
-    the trusted executor. Unsupported operators fail fast.
+    V2 allows formula-native edits while still executing only trusted schema
+    operations. LLMs output edit instructions, not Python code.
     """
 
     ALLOWED_OPERATORS = {
@@ -23,6 +23,12 @@ class RewardEditOperatorApplier:
         "convert_to_one_time_event",
         "add_duration_condition",
         "reshape_sparse_to_dense",
+        "replace_formula",
+        "replace_condition",
+        "add_formula_component",
+        "add_conditional_formula_component",
+        "add_action_penalty",
+        "add_event_predicate",
     }
 
     METRIC_COMPONENT_TYPES = {
@@ -32,11 +38,13 @@ class RewardEditOperatorApplier:
         "metric_stagnation_penalty",
     }
 
-    # LLM-created components must be executable by both SchemaRewardWrapper and
-    # SafeRewardCompiler. Built-in hand-written schemas may contain other legacy
-    # component types, but add_component is intentionally limited to the generic
-    # metric-based operator family.
-    ADDABLE_COMPONENT_TYPES = set(METRIC_COMPONENT_TYPES)
+    FORMULA_COMPONENT_TYPES = {
+        "formula_component",
+        "conditional_formula_component",
+        "action_penalty",
+    }
+
+    ADDABLE_COMPONENT_TYPES = set(METRIC_COMPONENT_TYPES) | set(FORMULA_COMPONENT_TYPES)
 
     @classmethod
     def apply(cls, schema: RewardSchema, edit_plan: Iterable[Dict[str, Any]]) -> RewardSchema:
@@ -56,14 +64,16 @@ class RewardEditOperatorApplier:
             {"operator": "decrease_weight", "required": ["target", "factor"], "description": "Multiply an existing component or event rule weight by 0 < factor < 1."},
             {"operator": "clip_component", "required": ["target", "clip"], "description": "Set existing component clip range [min, max]."},
             {"operator": "disable_component", "required": ["target"], "description": "Disable a harmful or redundant existing component or event rule."},
-            {
-                "operator": "add_component",
-                "required": ["component"],
-                "description": "Add a new generic metric-based component only. Supported component.type values are metric_value, metric_delta, metric_threshold_bonus, metric_stagnation_penalty. Do not propose step_penalty or arbitrary custom component types.",
-            },
-            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Add a gated event reward rule. The rule condition must reference available event flags; supports one_time and condition.duration_steps."},
-            {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert an event rule or event_bonus component into one-time reward to reduce repeated event exploitation."},
-            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Set an event rule duration requirement. duration_steps=1 makes the event trigger immediately when its condition is true."},
+            {"operator": "replace_formula", "required": ["target", "formula"], "description": "Replace params.formula of an existing formula/action component. Formula must use allowed primitive variables/functions."},
+            {"operator": "replace_condition", "required": ["target", "condition"], "description": "Replace condition of an existing conditional component or event_predicate rule."},
+            {"operator": "add_formula_component", "required": ["component"], "description": "Add a formula_component using primitive variables/functions."},
+            {"operator": "add_conditional_formula_component", "required": ["component"], "description": "Add a conditional_formula_component with condition and formula using primitive variables/functions."},
+            {"operator": "add_action_penalty", "required": ["component"], "description": "Add an action_penalty. It must not produce positive reward for any sampled action direction."},
+            {"operator": "add_event_predicate", "required": ["event_rule"], "description": "Add an event_predicate with condition.expression using primitive variables/functions."},
+            {"operator": "add_component", "required": ["component"], "description": "Backward-compatible add_component; V2 should prefer add_formula_component/add_conditional_formula_component/add_action_penalty."},
+            {"operator": "add_event_rule", "required": ["event_rule"], "description": "Backward-compatible add_event_rule; V2 should prefer add_event_predicate."},
+            {"operator": "convert_to_one_time_event", "required": ["target"], "description": "Convert an event rule or event_bonus component into one-time reward."},
+            {"operator": "add_duration_condition", "required": ["target", "duration_steps"], "description": "Set an event rule duration requirement."},
             {"operator": "reshape_sparse_to_dense", "required": ["target", "new_type"], "description": "Change a sparse event-like component into a supported dense shaping component type."},
         ]
 
@@ -109,6 +119,47 @@ class RewardEditOperatorApplier:
         obj.enabled = False
 
     @staticmethod
+    def _replace_formula(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        target = edit["target"]
+        formula = str(edit["formula"])
+        component = schema.get_component(target)
+        if component is None:
+            raise ValueError("replace_formula target must be a component")
+        if component.type not in RewardEditOperatorApplier.FORMULA_COMPONENT_TYPES:
+            raise ValueError(f"replace_formula target must be formula-native component, got {component.type}")
+        component.params = dict(component.params or {})
+        component.params["formula"] = formula
+
+    @staticmethod
+    def _replace_condition(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        target = edit["target"]
+        condition = edit["condition"]
+
+        component = schema.get_component(target)
+        if component is not None:
+            if component.type != "conditional_formula_component":
+                raise ValueError("replace_condition component target must be conditional_formula_component")
+            component.params = dict(component.params or {})
+            component.params["condition"] = str(condition)
+            return
+
+        rule = schema.get_event_rule(target)
+        if rule is not None:
+            if rule.type != "event_predicate":
+                raise ValueError("replace_condition event target must be event_predicate")
+            old = dict(rule.condition or {})
+            if isinstance(condition, dict):
+                new_condition = dict(condition)
+            else:
+                new_condition = {"expression": str(condition)}
+            if "duration_steps" not in new_condition and "duration_steps" in old:
+                new_condition["duration_steps"] = old["duration_steps"]
+            rule.condition = new_condition
+            return
+
+        raise ValueError(f"replace_condition target not found: {target}")
+
+    @staticmethod
     def _add_component(schema: RewardSchema, edit: Dict[str, Any]) -> None:
         component = RewardComponent.from_dict(edit["component"])
         if component.type not in RewardEditOperatorApplier.ADDABLE_COMPONENT_TYPES:
@@ -121,15 +172,39 @@ class RewardEditOperatorApplier:
         schema.components.append(component)
 
     @staticmethod
+    def _add_formula_component(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        component = dict(edit["component"])
+        component["type"] = "formula_component"
+        RewardEditOperatorApplier._add_component(schema, {"component": component})
+
+    @staticmethod
+    def _add_conditional_formula_component(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        component = dict(edit["component"])
+        component["type"] = "conditional_formula_component"
+        RewardEditOperatorApplier._add_component(schema, {"component": component})
+
+    @staticmethod
+    def _add_action_penalty(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        component = dict(edit["component"])
+        component["type"] = "action_penalty"
+        RewardEditOperatorApplier._add_component(schema, {"component": component})
+
+    @staticmethod
     def _add_event_rule(schema: RewardSchema, edit: Dict[str, Any]) -> None:
         rule = EventRule.from_dict(edit["event_rule"])
         if schema.get_component(rule.name) or schema.get_event_rule(rule.name):
             raise ValueError(f"Reward item already exists: {rule.name}")
-        if rule.type != "event_bonus":
-            raise ValueError("add_event_rule currently supports event_bonus rules only")
+        if rule.type not in {"event_bonus", "event_predicate"}:
+            raise ValueError("add_event_rule supports event_bonus or event_predicate rules")
         if not rule.condition:
             raise ValueError("event_rule condition cannot be empty")
         schema.event_rules.append(rule)
+
+    @staticmethod
+    def _add_event_predicate(schema: RewardSchema, edit: Dict[str, Any]) -> None:
+        rule = dict(edit["event_rule"])
+        rule["type"] = "event_predicate"
+        RewardEditOperatorApplier._add_event_rule(schema, {"event_rule": rule})
 
     @staticmethod
     def _convert_to_one_time_event(schema: RewardSchema, edit: Dict[str, Any]) -> None:
@@ -144,7 +219,16 @@ class RewardEditOperatorApplier:
         if component.type != "event_bonus":
             raise ValueError("convert_to_one_time_event requires event_bonus component or event rule")
         event_name = component.params.get("event", component.name)
-        schema.event_rules.append(EventRule(name=f"{component.name}_one_time", type="event_bonus", weight=component.weight, condition={event_name: True}, one_time=True, enabled=True))
+        schema.event_rules.append(
+            EventRule(
+                name=f"{component.name}_one_time",
+                type="event_bonus",
+                weight=component.weight,
+                condition={event_name: True},
+                one_time=True,
+                enabled=True,
+            )
+        )
         component.enabled = False
 
     @staticmethod
@@ -164,9 +248,7 @@ class RewardEditOperatorApplier:
             raise ValueError("reshape_sparse_to_dense target must be a component")
         new_type = edit["new_type"]
         if new_type not in RewardEditOperatorApplier.ADDABLE_COMPONENT_TYPES:
-            raise ValueError(
-                f"reshape_sparse_to_dense new_type must be supported metric type; got {new_type}"
-            )
+            raise ValueError(f"reshape_sparse_to_dense new_type must be supported; got {new_type}")
         component.type = new_type
         if "params" in edit:
             component.params.update(edit["params"])

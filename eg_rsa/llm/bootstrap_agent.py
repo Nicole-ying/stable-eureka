@@ -7,7 +7,11 @@ from eg_rsa.llm.json_parser import extract_json_object
 
 
 class BootstrapAgent:
-    """Generate an initial reward schema from a primitive-only task interface."""
+    """Generate an initial reward schema from a primitive-only task interface.
+
+    V2 requires the LLM to first produce an explicit reward_blueprint, then
+    compile that blueprint into a safe formula-based reward schema.
+    """
 
     def __init__(self, llm_client: Optional[Any] = None):
         self.llm_client = llm_client
@@ -42,12 +46,102 @@ class BootstrapAgent:
             ["formula_component", "conditional_formula_component", "event_predicate", "action_penalty"],
         )
 
+        output_shape = {
+            "reward_blueprint": {
+                "task_objective": "one-sentence objective inferred from the task text",
+                "primitive_variable_roles": {
+                    "progress_variables": [],
+                    "safety_variables": [],
+                    "terminal_evidence_variables": [],
+                    "control_variables": []
+                },
+                "phase_structure": [
+                    {
+                        "phase": "approach_or_progress",
+                        "purpose": "encourage measurable progress toward task completion",
+                        "reward_intent": "what signal should exist in this phase"
+                    },
+                    {
+                        "phase": "controlled_execution",
+                        "purpose": "encourage safe/controlled behavior while progress is happening",
+                        "reward_intent": "what signal should exist in this phase"
+                    },
+                    {
+                        "phase": "completion",
+                        "purpose": "reward terminal completion evidence once",
+                        "reward_intent": "what terminal evidence should trigger success"
+                    }
+                ],
+                "component_blueprint": [
+                    {
+                        "name": "r_progress_guidance",
+                        "role": "dense_guidance",
+                        "phase": "approach_or_progress",
+                        "design_intent": "progress signal, not passive state maintenance",
+                        "anti_exploit_note": "why this cannot be maximized forever without task progress"
+                    }
+                ],
+                "anti_exploit_principles": [
+                    "Dense reward should not be maximized indefinitely without progress.",
+                    "Passive stability/alignment should support progress rather than replace progress.",
+                    "Action cost should penalize effort magnitude and never reward a signed action accidentally."
+                ]
+            },
+            "initial_schema": {
+                "version": 2,
+                "metadata": {
+                    "source": "llm_bootstrap",
+                    "task": "..."
+                },
+                "components": [],
+                "event_rules": []
+            },
+            "diagnostics": {
+                "expected_failure_modes": [],
+                "risk_notes": []
+            },
+            "bootstrap_report": {
+                "design_rationale": "...",
+                "assumptions": [],
+                "risk_notes": [],
+                "primitive_interface_only": True
+            }
+        }
+
+        structure_few_shot = {
+            "example_blueprint_only": {
+                "task_type": "goal-directed control task",
+                "reward_structure": [
+                    {
+                        "role": "progress_guidance",
+                        "principle": "encourage measurable movement toward completion, not passive state maintenance"
+                    },
+                    {
+                        "role": "control_quality",
+                        "principle": "encourage safe/smooth behavior while the agent is making progress"
+                    },
+                    {
+                        "role": "terminal_success",
+                        "principle": "reward primitive terminal evidence once, not repeatedly"
+                    },
+                    {
+                        "role": "control_cost",
+                        "principle": "penalize action magnitude; signed actions must not accidentally become positive reward"
+                    }
+                ]
+            }
+        }
+
         return f"""
 You are the EG-RSA-V2 bootstrap agent.
 
 You receive a primitive-only reinforcement-learning task interface.
-You are not given any previous reward schema, previous diagnostic metric names,
-previous event predicate names, or official environment reward feedback.
+You are not given any previous reward schema, previous diagnostic metric definitions,
+previous event predicate definitions, or official environment reward feedback.
+
+Your job has two steps:
+1. Infer a reward design blueprint from the task text and primitive variables.
+2. Compile that blueprint into a safe formula-based reward schema.
 
 Task description:
 {task_description or primitive_interface.get("task_description", "")}
@@ -55,67 +149,37 @@ Task description:
 Primitive interface:
 {json.dumps(primitive_interface, indent=2, ensure_ascii=False)}
 
-Rules:
-1. Output JSON only. Do not output markdown.
-2. Do not use official environment reward as feedback.
-3. Do not assume any hidden task metrics or event names.
-4. Reward formulas may use only these variables: {allowed_vars}
-5. Reward formulas may call only these functions: {allowed_funcs}
-6. Use only these schema item types: {allowed_component_types}
-7. Every component and event rule must have semantic_role from: {semantic_roles}
-8. You may use ordinary English concept names such as stability, soft landing, or safe descent in item names, but every formula must be expressed only with primitive variables.
+Allowed formula variables:
+{json.dumps(allowed_vars, ensure_ascii=False)}
 
-Required JSON format:
-{{
-  "initial_schema": {{
-    "version": 2,
-    "metadata": {{
-      "source": "llm_bootstrap",
-      "task": "..."
-    }},
-    "components": [
-      {{
-        "name": "r_centering",
-        "type": "formula_component",
-        "weight": 1.0,
-        "formula": "1.0 - min(abs(x), 1.0)",
-        "clip": [0.0, 1.0],
-        "enabled": true,
-        "semantic_role": "dense_guidance",
-        "reward_timing": "dense",
-        "behavior_channel": "position"
-      }}
-    ],
-    "event_rules": [
-      {{
-        "name": "r_soft_landing_contact_once",
-        "type": "event_predicate",
-        "weight": 80.0,
-        "condition": {{
-          "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.3",
-          "duration_steps": 3
-        }},
-        "one_time": true,
-        "enabled": true,
-        "semantic_role": "terminal_success",
-        "reward_timing": "sparse_event",
-        "behavior_channel": "success"
-      }}
-    ]
-  }},
-  "diagnostics": {{
-    "expected_failure_modes": [],
-    "risk_notes": []
-  }},
-  "bootstrap_report": {{
-    "design_rationale": "...",
-    "assumptions": [],
-    "risk_notes": [],
-    "primitive_interface_only": true
-  }}
-}}
+Allowed formula functions:
+{json.dumps(allowed_funcs, ensure_ascii=False)}
 
-Generate a compact schema with 3-6 components and 1-3 event rules.
+Allowed schema item types:
+{json.dumps(allowed_component_types, ensure_ascii=False)}
+
+Allowed semantic roles:
+{json.dumps(semantic_roles, ensure_ascii=False)}
+
+Environment-agnostic reward design protocol:
+1. First identify which primitive variables can express progress, safety/control, terminal evidence, and control effort.
+2. Do not jump directly from primitive variables to formulas. Explain the reward blueprint first.
+3. A goal-directed control task usually needs progress guidance, control quality, terminal success, and control cost.
+4. Dense rewards should be progress-aligned. A policy should not receive high dense reward forever by merely staying stable, aligned, or stationary far from completion.
+5. Stability/alignment rewards are useful only when they support progress or completion; they should not replace progress.
+6. Conditional final-phase rewards are allowed, but the schema should also contain a process/progress signal that is not only available at the final instant.
+7. Terminal success should be sparse, one-time, and based only on primitive terminal evidence.
+8. Action penalties must represent effort magnitude. If an action variable can be signed, the penalty expression must not become positive reward for one action direction.
+9. Do not use hidden metrics or invented event names. Every formula must use only allowed primitive variables and allowed functions.
+10. Output JSON only. Do not output markdown.
+
+Structure-only few-shot example. This is not a reward function to copy:
+{json.dumps(structure_few_shot, indent=2, ensure_ascii=False)}
+
+Required output JSON shape:
+{json.dumps(output_shape, indent=2, ensure_ascii=False)}
+
+Generate a compact schema with 3-7 components and 1-3 event rules.
 """.strip()
 
     @staticmethod
@@ -126,11 +190,23 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
         if "initial_schema" not in parsed:
             raise ValueError("Bootstrap response missing initial_schema")
 
+        blueprint = parsed.get("reward_blueprint")
+        if not isinstance(blueprint, dict):
+            parsed["reward_blueprint"] = {
+                "task_objective": "missing_blueprint",
+                "primitive_variable_roles": {},
+                "phase_structure": [],
+                "component_blueprint": [],
+                "anti_exploit_principles": [],
+            }
+
         schema = dict(parsed["initial_schema"] or {})
         schema.setdefault("version", 2)
         schema.setdefault("metadata", {})
         schema.setdefault("components", [])
         schema.setdefault("event_rules", [])
+        schema["metadata"].setdefault("source", "llm_bootstrap")
+        schema["metadata"].setdefault("reward_blueprint_present", True)
 
         for component in schema.get("components", []):
             if isinstance(component, dict):
@@ -173,9 +249,15 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
 
         condition = rule.get("condition", {})
         if isinstance(condition, str):
-            rule["condition"] = {"expression": condition, "duration_steps": int(rule.get("duration_steps", 1) or 1)}
+            rule["condition"] = {
+                "expression": condition,
+                "duration_steps": int(rule.get("duration_steps", 1) or 1),
+            }
         elif isinstance(condition, dict):
-            condition.setdefault("duration_steps", int(rule.get("duration_steps", condition.get("duration_steps", 1)) or 1))
+            condition.setdefault(
+                "duration_steps",
+                int(rule.get("duration_steps", condition.get("duration_steps", 1)) or 1),
+            )
             rule["condition"] = condition
 
     @staticmethod
@@ -183,41 +265,86 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
         primitive_interface: Dict[str, Any],
         task_description: str = "",
     ) -> Dict[str, Any]:
+        task = task_description or primitive_interface.get("task_description", "")
+
+        blueprint = {
+            "task_objective": task or "Goal-directed control task",
+            "primitive_variable_roles": {
+                "progress_variables": ["x", "y", "vx", "vy"],
+                "safety_variables": ["vx", "vy", "angle", "angular_velocity"],
+                "terminal_evidence_variables": ["left_contact", "right_contact", "vx", "vy", "angle"],
+                "control_variables": ["main_engine", "side_engine"],
+            },
+            "phase_structure": [
+                {
+                    "phase": "approach_or_progress",
+                    "purpose": "provide a broad process signal toward completion",
+                    "reward_intent": "encourage reducing task-relevant position/velocity error using primitive variables",
+                },
+                {
+                    "phase": "controlled_execution",
+                    "purpose": "keep motion safe while making progress",
+                    "reward_intent": "encourage moderate speed and stable attitude",
+                },
+                {
+                    "phase": "completion",
+                    "purpose": "reward primitive terminal evidence once",
+                    "reward_intent": "reward simultaneous contact and controlled state",
+                },
+            ],
+            "component_blueprint": [
+                {
+                    "name": "r_progress_guidance",
+                    "role": "dense_guidance",
+                    "phase": "approach_or_progress",
+                    "design_intent": "broad progress-aligned dense signal",
+                    "anti_exploit_note": "does not rely solely on passive stability",
+                },
+                {
+                    "name": "r_control_quality",
+                    "role": "stability_quality",
+                    "phase": "controlled_execution",
+                    "design_intent": "safe smooth control during approach",
+                    "anti_exploit_note": "weighted below progress guidance",
+                },
+                {
+                    "name": "r_terminal_success",
+                    "role": "terminal_success",
+                    "phase": "completion",
+                    "design_intent": "one-time primitive terminal evidence",
+                    "anti_exploit_note": "one_time prevents repeated event farming",
+                },
+            ],
+            "anti_exploit_principles": [
+                "Dense rewards should not be maximized indefinitely without progress.",
+                "Control cost is based on action magnitudes.",
+            ],
+        }
+
         schema = {
             "version": 2,
             "metadata": {
                 "source": "fallback_bootstrap",
-                "task": task_description or primitive_interface.get("task_description", ""),
+                "task": task,
+                "reward_blueprint_present": True,
             },
             "components": [
                 {
-                    "name": "r_centering_from_x",
+                    "name": "r_progress_guidance",
                     "type": "formula_component",
                     "weight": 0.8,
-                    "formula": "1.0 - min(abs(x), 1.0)",
-                    "params": {"formula": "1.0 - min(abs(x), 1.0)"},
+                    "formula": "1.0 - min(abs(x) + 0.5 * abs(vx) + 0.5 * abs(vy), 1.0)",
+                    "params": {"formula": "1.0 - min(abs(x) + 0.5 * abs(vx) + 0.5 * abs(vy), 1.0)"},
                     "clip": [0.0, 1.0],
                     "enabled": True,
                     "semantic_role": "dense_guidance",
                     "reward_timing": "dense",
-                    "behavior_channel": "position",
+                    "behavior_channel": "progress",
                 },
                 {
-                    "name": "r_smooth_velocity",
+                    "name": "r_attitude_control",
                     "type": "formula_component",
-                    "weight": 0.5,
-                    "formula": "1.0 - min(abs(vx) + abs(vy), 1.0)",
-                    "params": {"formula": "1.0 - min(abs(vx) + abs(vy), 1.0)"},
-                    "clip": [0.0, 1.0],
-                    "enabled": True,
-                    "semantic_role": "stability_quality",
-                    "reward_timing": "dense",
-                    "behavior_channel": "velocity",
-                },
-                {
-                    "name": "r_upright_attitude",
-                    "type": "formula_component",
-                    "weight": 0.5,
+                    "weight": 0.3,
                     "formula": "1.0 - min(abs(angle) + abs(angular_velocity), 1.0)",
                     "params": {"formula": "1.0 - min(abs(angle) + abs(angular_velocity), 1.0)"},
                     "clip": [0.0, 1.0],
@@ -241,42 +368,41 @@ Generate a compact schema with 3-6 components and 1-3 event rules.
             ],
             "event_rules": [
                 {
-                    "name": "r_soft_two_leg_contact_once",
+                    "name": "r_primitive_terminal_success",
                     "type": "event_predicate",
-                    "weight": 80.0,
+                    "weight": 60.0,
                     "condition": {
-                        "expression": "left_contact and right_contact and abs(vy) < 0.3 and abs(angle) < 0.3",
-                        "duration_steps": 2,
+                        "expression": "left_contact and right_contact and abs(vy) < 0.4 and abs(vx) < 0.4 and abs(angle) < 0.4",
+                        "duration_steps": 1,
                     },
                     "one_time": True,
                     "enabled": True,
                     "semantic_role": "terminal_success",
                     "reward_timing": "sparse_event",
-                    "behavior_channel": "success",
+                    "behavior_channel": "completion",
                 }
             ],
         }
 
         return {
+            "reward_blueprint": blueprint,
             "initial_schema": schema,
             "diagnostics": {
                 "expected_failure_modes": [
-                    "dense_reward_without_terminal_event",
-                    "excessive_action_cost_avoidance",
-                    "unstable_contact_behavior",
+                    "dense reward may still be exploited without terminal completion",
+                    "terminal event may be sparse early in training",
                 ],
                 "risk_notes": [
-                    "Dense rewards may be exploited without achieving contact.",
-                    "Terminal event is one-time to reduce repeated contact exploitation.",
+                    "Fallback schema is intentionally generic and should be improved by EG-RSA iterations."
                 ],
             },
             "bootstrap_report": {
-                "design_rationale": "Fallback bootstrap uses only primitive variables for centering, smooth velocity, upright attitude, control cost, and soft two-leg contact.",
+                "design_rationale": "Fallback bootstrap follows a primitive-only blueprint with progress, control quality, action cost, and one-time terminal evidence.",
                 "assumptions": [
-                    "The primitive interface exposes x, vx, vy, angle, angular_velocity, and contact flags."
+                    "The primitive interface exposes position, velocity, attitude, contact, and action variables."
                 ],
                 "risk_notes": [
-                    "This fallback is conservative and should be replaced by an LLM-generated bootstrap when available."
+                    "This fallback is conservative and not intended as a final reward."
                 ],
                 "primitive_interface_only": True,
             },
