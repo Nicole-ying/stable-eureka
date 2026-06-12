@@ -19,6 +19,10 @@ class SchemaCanonicalizer:
       - Empty or malformed clip ranges are normalized to role-based defaults when
         doing so is unambiguous, because SafeRewardCompiler requires clip to be
         None or a valid [low, high] pair.
+      - Missing event-rule names are filled with stable role/index-based names
+        when the rule has an executable predicate. This keeps LLM field hygiene
+        issues from blocking bootstrap while preserving validator checks for
+        unsafe or incomplete predicates.
     """
 
     @classmethod
@@ -81,11 +85,11 @@ class SchemaCanonicalizer:
         role_hints = cls._build_blueprint_role_hints(reward_blueprint)
 
         canonical_events: List[Dict[str, Any]] = []
-        for raw_rule in data.get("event_rules", []) or []:
+        for event_index, raw_rule in enumerate(data.get("event_rules", []) or []):
             if not isinstance(raw_rule, dict):
                 errors.append("Non-dict event_rule dropped during canonicalization")
                 continue
-            canonical_events.append(cls._canonicalize_event_rule(raw_rule, role_hints, notes))
+            canonical_events.append(cls._canonicalize_event_rule(raw_rule, role_hints, notes, event_index))
 
         canonical_components: List[Dict[str, Any]] = []
         for raw_component in data.get("components", []) or []:
@@ -179,9 +183,10 @@ class SchemaCanonicalizer:
         rule: Dict[str, Any],
         role_hints: Dict[str, Dict[str, Any]],
         notes: List[str],
+        event_index: int = 0,
     ) -> Dict[str, Any]:
         out = copy.deepcopy(rule)
-        name = str(out.get("name", ""))
+        name = str(out.get("name", "") or "")
 
         out.setdefault("enabled", True)
         out.setdefault("one_time", True)
@@ -214,6 +219,12 @@ class SchemaCanonicalizer:
             except Exception:
                 pass
 
+        if not out.get("name"):
+            role_for_name = str(out.get("semantic_role") or "event").lower()
+            out["name"] = cls._default_event_name(role_for_name, event_index)
+            name = str(out["name"])
+            notes.append(f"Event rule missing name: filled name -> {name}.")
+
         out.setdefault("reward_timing", "sparse_event")
         if not out.get("behavior_channel"):
             role = out.get("semantic_role")
@@ -243,6 +254,13 @@ class SchemaCanonicalizer:
         out.pop("formula", None)
         out.pop("duration_steps", None)
         return out
+
+    @staticmethod
+    def _default_event_name(role: str, event_index: int) -> str:
+        safe_role = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in str(role or "event").lower()).strip("_")
+        if not safe_role:
+            safe_role = "event"
+        return f"r_{safe_role}_event_{int(event_index):02d}"
 
     @classmethod
     def _canonicalize_clip(cls, comp: Dict[str, Any], notes: List[str]) -> None:
