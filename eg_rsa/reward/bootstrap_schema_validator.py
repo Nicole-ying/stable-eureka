@@ -129,6 +129,10 @@ class BootstrapSchemaValidator:
             except Exception:
                 errors.append(f"Component {name} has invalid weight")
 
+            clip = component.get("clip")
+            if clip is not None and not cls._is_valid_clip(clip):
+                errors.append(f"Component {name} has invalid clip range: {clip}")
+
             formula_ast = component.get("formula_ast") or params.get("formula_ast")
             condition_ast = component.get("condition_ast") or params.get("condition_ast")
 
@@ -226,6 +230,17 @@ class BootstrapSchemaValidator:
             warnings.extend(cls._blueprint_warnings(reward_blueprint, schema))
 
         return BootstrapSchemaValidationResult(ok=(len(errors) == 0), errors=errors, warnings=warnings)
+
+    @staticmethod
+    def _is_valid_clip(clip: Any) -> bool:
+        if not isinstance(clip, (list, tuple)) or len(clip) != 2:
+            return False
+        try:
+            low = float(clip[0])
+            high = float(clip[1])
+        except Exception:
+            return False
+        return math.isfinite(low) and math.isfinite(high) and low <= high
 
     @staticmethod
     def _blueprint_warnings(blueprint: Dict[str, Any], schema: Dict[str, Any]) -> List[str]:
