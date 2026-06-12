@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
@@ -96,10 +97,18 @@ class LLMBootstrapSchemaSource(SchemaSource):
             return RewardSchema.from_dict(schema_dict)
 
         task_description = primitive_interface.get("task_description", "") or self.task_description_loader()
-        result = self.bootstrap_agent.generate_bootstrap(
-            primitive_interface=primitive_interface,
-            task_description=task_description,
-        )
+        try:
+            result = self.bootstrap_agent.generate_bootstrap(
+                primitive_interface=primitive_interface,
+                task_description=task_description,
+            )
+        except Exception as exc:
+            self._persist_bootstrap_failure(bootstrap_dir, exc)
+            raise RuntimeError(
+                "LLM bootstrap failed before producing a valid JSON object. "
+                f"Raw prompt/response have been saved under: {bootstrap_dir}. "
+                "Inspect bootstrap_response_malformed.txt and bootstrap_parse_error.json."
+            ) from exc
 
         result, canonical_report = SchemaCanonicalizer.canonicalize_bootstrap_result(
             result,
@@ -127,6 +136,34 @@ class LLMBootstrapSchemaSource(SchemaSource):
             raise ValueError(f"Bootstrap schema failed validation: {validation.errors}")
 
         return RewardSchema.from_dict(schema_dict)
+
+    def _persist_bootstrap_failure(self, bootstrap_dir: Path, exc: Exception) -> None:
+        """Persist prompt and raw LLM response when JSON parsing/validation fails early.
+
+        The bootstrap agent stores the raw response in memory before parsing. Without
+        this guard, malformed LLM JSON causes the process to crash before
+        bootstrap_prompt.txt and bootstrap_response.txt are written, making the
+        failure hard to debug or reproduce.
+        """
+        bootstrap_dir.mkdir(parents=True, exist_ok=True)
+        self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
+        self._write_text(bootstrap_dir / "bootstrap_response_malformed.txt", self.bootstrap_agent.last_response_text)
+        self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
+        self._write_json(
+            bootstrap_dir / "bootstrap_parse_error.json",
+            {
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "response_length": len(self.bootstrap_agent.last_response_text or ""),
+                "prompt_length": len(self.bootstrap_agent.last_prompt or ""),
+                "traceback": traceback.format_exc(),
+                "notes": [
+                    "LLM returned text before a valid JSON object could be parsed.",
+                    "The raw response is saved for debugging and possible manual repair.",
+                    "No generated_initial_schema.json was written from this malformed response.",
+                ],
+            },
+        )
 
     def _load_or_generate_primitive_interface(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
         """Load primitive interface or generate it from a Eureka-like task file.
