@@ -20,9 +20,11 @@ class SchemaCanonicalizer:
         doing so is unambiguous, because SafeRewardCompiler requires clip to be
         None or a valid [low, high] pair.
       - Missing event-rule names are filled with stable role/index-based names
-        when the rule has an executable predicate. This keeps LLM field hygiene
-        issues from blocking bootstrap while preserving validator checks for
-        unsafe or incomplete predicates.
+        when the rule has an executable predicate.
+      - Non-executable event rules are dropped. Event rules are optional in
+        source-aware bootstrap; a malformed sparse event should not block a valid
+        dense reward schema from entering training. Missing formulas in dense
+        components remain validation errors.
     """
 
     @classmethod
@@ -87,9 +89,11 @@ class SchemaCanonicalizer:
         canonical_events: List[Dict[str, Any]] = []
         for event_index, raw_rule in enumerate(data.get("event_rules", []) or []):
             if not isinstance(raw_rule, dict):
-                errors.append("Non-dict event_rule dropped during canonicalization")
+                notes.append("Non-dict event_rule dropped during canonicalization.")
                 continue
-            canonical_events.append(cls._canonicalize_event_rule(raw_rule, role_hints, notes, event_index))
+            canonical_rule = cls._canonicalize_event_rule(raw_rule, role_hints, notes, event_index)
+            if canonical_rule is not None:
+                canonical_events.append(canonical_rule)
 
         canonical_components: List[Dict[str, Any]] = []
         for raw_component in data.get("components", []) or []:
@@ -184,7 +188,7 @@ class SchemaCanonicalizer:
         role_hints: Dict[str, Dict[str, Any]],
         notes: List[str],
         event_index: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, Any]]:
         out = copy.deepcopy(rule)
         name = str(out.get("name", "") or "")
 
@@ -219,6 +223,24 @@ class SchemaCanonicalizer:
             except Exception:
                 pass
 
+        condition = out.get("condition", {})
+        condition = dict(condition or {}) if isinstance(condition, dict) else {}
+
+        ast_node = (
+            out.get("condition_ast")
+            or out.get("expr_ast")
+            or condition.get("expr_ast")
+            or condition.get("condition_ast")
+        )
+        if ast_node is None:
+            drop_name = name or str(out.get("semantic_role") or f"event_{event_index}")
+            notes.append(
+                f"Event rule {drop_name}: dropped because it has no executable condition.expr_ast. "
+                "Source-aware bootstrap treats event_rules as optional."
+            )
+            return None
+        condition["expr_ast"] = FormulaAST.normalize(ast_node)
+
         if not out.get("name"):
             role_for_name = str(out.get("semantic_role") or "event").lower()
             out["name"] = cls._default_event_name(role_for_name, event_index)
@@ -232,18 +254,6 @@ class SchemaCanonicalizer:
                 out["behavior_channel"] = "completion"
             elif role == "safety_constraint":
                 out["behavior_channel"] = "safety"
-
-        condition = out.get("condition", {})
-        condition = dict(condition or {}) if isinstance(condition, dict) else {}
-
-        ast_node = (
-            out.get("condition_ast")
-            or out.get("expr_ast")
-            or condition.get("expr_ast")
-            or condition.get("condition_ast")
-        )
-        if ast_node is not None:
-            condition["expr_ast"] = FormulaAST.normalize(ast_node)
 
         condition.setdefault("duration_steps", int(out.get("duration_steps", condition.get("duration_steps", 1)) or 1))
         out["condition"] = condition
