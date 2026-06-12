@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from eg_rsa.reward.formula_ast import validate_formula_ast
-from eg_rsa.schema_sources.interface_verifier import InterfaceContractVerifier
 
 
 @dataclass
@@ -81,17 +80,7 @@ class BootstrapSchemaValidator:
             errors.append("schema.event_rules must be a list")
             event_rules = []
 
-        declared_allowed_vars = set(str(x) for x in primitive_interface.get("allowed_formula_variables", []))
-        runtime_vars = InterfaceContractVerifier.runtime_formula_variables(primitive_interface)
-
-        unavailable = sorted(declared_allowed_vars - runtime_vars)
-        if unavailable:
-            errors.append(
-                "primitive_interface.allowed_formula_variables contains variables that runtime cannot provide: "
-                f"{unavailable}"
-            )
-
-        allowed_vars = declared_allowed_vars & runtime_vars if declared_allowed_vars else runtime_vars
+        allowed_vars = set(primitive_interface.get("allowed_formula_variables", []))
         semantic_roles = set(primitive_interface.get("semantic_roles", []))
 
         names = set()

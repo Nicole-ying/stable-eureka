@@ -1,0 +1,445 @@
+You are the EG-RSA AST bootstrap agent.
+
+You receive a derived primitive RL task interface. You must output AST-first RewardSchema JSON.
+Do not output Python code. Do not output string formulas. Do not output condition strings.
+
+Important input-boundary note:
+- The runtime environment name is not part of the reward-generation input.
+- Do not guess or mention benchmark/environment names.
+- Do not assume task-specific variable names unless they appear in the visible primitive interface.
+- The AST grammar and Required output shape below contain placeholders only.
+- Every placeholder must be replaced with variables from Allowed variables.
+- Do not copy placeholder names into the final JSON.
+
+Task description:
+Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.
+
+Visible primitive interface:
+{
+  "task_description": "Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.",
+  "observation_variables": [
+    {
+      "name": "x_pos",
+      "description": "horizontal position relative to target center",
+      "type": "float"
+    },
+    {
+      "name": "y_pos",
+      "description": "vertical position",
+      "type": "float"
+    },
+    {
+      "name": "x_vel",
+      "description": "horizontal velocity",
+      "type": "float"
+    },
+    {
+      "name": "y_vel",
+      "description": "vertical velocity",
+      "type": "float"
+    },
+    {
+      "name": "angle",
+      "description": "body tilt angle",
+      "type": "float"
+    },
+    {
+      "name": "ang_vel",
+      "description": "angular velocity",
+      "type": "float"
+    },
+    {
+      "name": "left_leg",
+      "description": "left leg ground contact (0/1)",
+      "type": "float"
+    },
+    {
+      "name": "right_leg",
+      "description": "right leg ground contact (0/1)",
+      "type": "float"
+    }
+  ],
+  "action_variables": [
+    {
+      "name": "main_engine",
+      "description": "main upward thrust (0 or 1)",
+      "type": "float"
+    },
+    {
+      "name": "side_engine",
+      "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+      "type": "float"
+    }
+  ],
+  "allowed_formula_variables": [
+    "x_pos",
+    "y_pos",
+    "x_vel",
+    "y_vel",
+    "angle",
+    "ang_vel",
+    "left_leg",
+    "right_leg",
+    "main_engine",
+    "side_engine"
+  ],
+  "allowed_formula_functions": [
+    "abs",
+    "min",
+    "max",
+    "clip",
+    "sqrt",
+    "exp",
+    "tanh"
+  ],
+  "allowed_component_types_v2": [
+    "formula_component",
+    "conditional_formula_component",
+    "event_predicate"
+  ],
+  "bootstrap_requirements": {
+    "must_generate_initial_schema": true,
+    "must_generate_diagnostic_predicates": true,
+    "must_assign_semantic_roles": true,
+    "must_include_hacking_risk_notes": true,
+    "official_environment_reward_forbidden_as_feedback": true,
+    "posthoc_oracle_evaluation_allowed": true,
+    "no_v1_schema_exposure": true,
+    "no_v1_diagnostic_metric_exposure": true,
+    "no_v1_task_description_file_exposure": true,
+    "formula_must_use_only_primitive_variables": true
+  },
+  "semantic_roles": [
+    "dense_guidance",
+    "stability_quality",
+    "terminal_success",
+    "safety_constraint",
+    "control_cost"
+  ],
+  "observation_mapping": {
+    "x_pos": 0,
+    "y_pos": 1,
+    "x_vel": 2,
+    "y_vel": 3,
+    "angle": 4,
+    "ang_vel": 5,
+    "left_leg": 6,
+    "right_leg": 7
+  },
+  "bootstrap_interface_policy": {
+    "principle": "Reward bootstrap receives a derived interface, not a runtime environment name.",
+    "formula_boundary": "formula_ast may use only canonical allowed_formula_variables",
+    "not_exposed_to_llm": [
+      "runtime environment name",
+      "gym_id",
+      "benchmark name",
+      "previous reward schema"
+    ],
+    "contract_verified_by_system": true,
+    "allowed_variables_source": "system_canonical_runtime_contract",
+    "raw_action_variable_policy": "Raw discrete action id is not automatically exposed. Use action_mapping output variables such as main_engine/side_engine."
+  },
+  "action_mapping": {
+    "type": "discrete_lookup",
+    "variables": {
+      "main_engine": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 1.0,
+        "3": 0.0,
+        "default": 0.0
+      },
+      "side_engine": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0,
+        "3": -1.0,
+        "default": 0.0
+      }
+    }
+  }
+}
+
+Allowed variables:
+["x_pos", "y_pos", "x_vel", "y_vel", "angle", "ang_vel", "left_leg", "right_leg", "main_engine", "side_engine"]
+
+Allowed semantic roles:
+["dense_guidance", "stability_quality", "terminal_success", "safety_constraint", "control_cost"]
+
+AST grammar:
+{
+  "leaf_nodes": [
+    {
+      "var": "<allowed_numeric_variable>"
+    },
+    {
+      "var": "<allowed_boolean_variable>"
+    },
+    {
+      "const": 0.5
+    },
+    {
+      "bool": true
+    }
+  ],
+  "numeric_ops": [
+    {
+      "op": "add",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable_1>"
+        },
+        {
+          "var": "<allowed_numeric_variable_2>"
+        }
+      ]
+    },
+    {
+      "op": "sub",
+      "left": {
+        "const": 1.0
+      },
+      "right": {
+        "var": "<allowed_numeric_variable>"
+      }
+    },
+    {
+      "op": "mul",
+      "args": [
+        {
+          "const": 0.5
+        },
+        {
+          "op": "abs",
+          "arg": {
+            "var": "<allowed_numeric_variable>"
+          }
+        }
+      ]
+    },
+    {
+      "op": "div",
+      "left": {
+        "var": "<allowed_numeric_variable>"
+      },
+      "right": {
+        "const": 2.0
+      }
+    },
+    {
+      "op": "neg",
+      "arg": {
+        "var": "<allowed_action_variable>"
+      }
+    },
+    {
+      "op": "abs",
+      "arg": {
+        "var": "<allowed_numeric_variable>"
+      }
+    },
+    {
+      "op": "min",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable>"
+        },
+        {
+          "const": 1.0
+        }
+      ]
+    },
+    {
+      "op": "max",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable>"
+        },
+        {
+          "const": 0.0
+        }
+      ]
+    },
+    {
+      "op": "clip",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable>"
+        },
+        {
+          "const": -1.0
+        },
+        {
+          "const": 1.0
+        }
+      ]
+    }
+  ],
+  "boolean_ops": [
+    {
+      "op": "and",
+      "args": [
+        {
+          "var": "<allowed_boolean_variable_1>"
+        },
+        {
+          "var": "<allowed_boolean_variable_2>"
+        }
+      ]
+    },
+    {
+      "op": "or",
+      "args": [
+        {
+          "var": "<allowed_boolean_variable_1>"
+        },
+        {
+          "var": "<allowed_boolean_variable_2>"
+        }
+      ]
+    },
+    {
+      "op": "not",
+      "arg": {
+        "var": "<allowed_boolean_variable>"
+      }
+    },
+    {
+      "op": "lt",
+      "left": {
+        "op": "abs",
+        "arg": {
+          "var": "<allowed_numeric_variable>"
+        }
+      },
+      "right": {
+        "const": 0.4
+      }
+    },
+    {
+      "op": "gt",
+      "left": {
+        "op": "abs",
+        "arg": {
+          "var": "<allowed_numeric_variable>"
+        }
+      },
+      "right": {
+        "const": 0.6
+      }
+    }
+  ]
+}
+
+Hard constraints:
+1. Every formula_component must contain formula_ast and params.formula_ast.
+2. Every conditional_formula_component must contain formula_ast, condition_ast, params.formula_ast, params.condition_ast.
+3. Every event_predicate must contain condition.expr_ast.
+4. Do not use fields named formula, expression, or string condition.
+5. All AST variables must come from Allowed variables.
+6. Placeholder names in examples are invalid and must not appear in the final JSON.
+7. Use compact schemas: 3-7 components and 0-3 event rules.
+8. Use semantic_role for every component/event.
+9. Action cost must be a formula_component with semantic_role="control_cost" and reward-signed negative formula_ast when action/control variables are available.
+10. Output JSON only.
+
+Required output shape:
+{
+  "reward_blueprint": {
+    "task_objective": "one-sentence objective inferred from task text",
+    "primitive_variable_roles": {
+      "progress_variables": [
+        "names selected only from allowed variables"
+      ],
+      "safety_variables": [
+        "names selected only from allowed variables"
+      ],
+      "terminal_evidence_variables": [
+        "names selected only from allowed variables"
+      ],
+      "control_variables": [
+        "names selected only from allowed action/control variables"
+      ]
+    },
+    "phase_structure": [],
+    "component_blueprint": [],
+    "anti_exploit_principles": []
+  },
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap_ast",
+      "formula_ir": "ast",
+      "input_boundary": "primitive_interface_conditioned"
+    },
+    "components": [
+      {
+        "name": "r_task_progress_example",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "<replace_with_allowed_numeric_variable>"
+                }
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "<replace_with_allowed_numeric_variable>"
+                  }
+                },
+                {
+                  "const": 1.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      }
+    ],
+    "event_rules": []
+  },
+  "diagnostics": {
+    "expected_failure_modes": [],
+    "risk_notes": []
+  },
+  "bootstrap_report": {
+    "design_rationale": "...",
+    "assumptions": [],
+    "risk_notes": [],
+    "identity_hidden_from_llm": false,
+    "raw_env_code_input": false
+  }
+}

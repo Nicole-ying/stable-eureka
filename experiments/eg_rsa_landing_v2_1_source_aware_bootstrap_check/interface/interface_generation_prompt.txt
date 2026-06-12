@@ -1,0 +1,125 @@
+You are the EG-RSA Env-Interface Agent.
+
+Your input is an anonymized task description plus anonymized environment source/source-summary information.
+Your job is to infer a candidate primitive_interface only.
+
+Do not generate reward_blueprint.
+Do not generate initial_schema.
+Do not generate formula_ast.
+Do not output Python code.
+
+Critical constraints:
+1. The benchmark/environment name is intentionally hidden. Do not guess or mention it.
+2. Use only the task description and anonymized source/source-summary information below.
+3. Variable names must be short snake_case and must not include benchmark names.
+4. observation_mapping maps each observation variable name to its numeric observation index.
+5. If actions are discrete and action meanings are provided, use action_mapping.type="discrete_lookup".
+6. If actions are continuous, use action_mapping.type="continuous_indices".
+7. For discrete action ids, do not expose a raw variable named "action" unless the raw integer id itself has meaningful numeric ordering.
+8. Prefer semantic action variables produced by action_mapping, e.g. main_engine, side_engine, brake, torque.
+9. allowed_formula_variables must contain only observation variables plus action_mapping output variables.
+10. Output JSON only.
+
+Anonymized task/source input:
+{
+  "task_description": "Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.",
+  "environment_source": {
+    "source_kind": "anonymized_step_source_summary",
+    "observation_space_description": "The observation is an 8-dimensional vector. Index 0 is horizontal position relative to the target center. Index 1 is vertical position. Index 2 is horizontal velocity. Index 3 is vertical velocity. Index 4 is body tilt angle. Index 5 is angular velocity. Index 6 is whether the left support leg is touching the ground. Index 7 is whether the right support leg is touching the ground.",
+    "action_space_description": "The action is a discrete scalar control command. Action 0 applies no thrust. Action 1 applies side thrust in one direction. Action 2 applies the main upward thrust. Action 3 applies side thrust in the opposite direction.",
+    "step_semantics_summary": "The step function advances rigid-body dynamics, returns the next observation vector, an environment reward, termination flags, and auxiliary info. The environment reward must not be used as feedback for reward editing. It may be recorded only for posthoc reporting.",
+    "termination_summary": "Episodes may terminate after unsafe impact, out-of-bounds behavior, or successful stable contact, depending on the simulator state. The reward generator should prefer task-state evidence rather than relying on hidden simulator reward values."
+  },
+  "interface_generation_policy": {
+    "hide_environment_identity_from_llm": true,
+    "derive_observation_variables_from_source_summary": true,
+    "derive_action_variables_from_source_summary": true,
+    "derive_action_mapping_from_source_summary": true,
+    "identity_redaction_terms": [
+      "<REDACTED_ENV_IDENTITY>",
+      "<REDACTED_ENV_IDENTITY>-v3",
+      "<REDACTED_ENV_IDENTITY>",
+      "<REDACTED_ENV_IDENTITY>-v3",
+      "<REDACTED_ENV_IDENTITY>"
+    ]
+  }
+}
+
+Required output shape:
+{
+  "source_understanding": {
+    "task_objective": "objective inferred from task/source text",
+    "observation_semantics": [
+      {
+        "index": 0,
+        "name": "short_snake_case",
+        "meaning": "state meaning",
+        "type": "float_or_bool"
+      }
+    ],
+    "action_semantics": [
+      {
+        "raw_action": 0,
+        "meaning": "control meaning"
+      }
+    ],
+    "uncertainties": []
+  },
+  "primitive_interface": {
+    "version": 1,
+    "input_boundary": "anonymous_source_to_primitive_interface",
+    "identity_hidden_from_llm": true,
+    "task_description": "copy task objective without environment name",
+    "observation_variables": [
+      {
+        "name": "short_snake_case_obs",
+        "description": "meaning",
+        "type": "float_or_bool"
+      }
+    ],
+    "action_variables": [
+      {
+        "name": "short_snake_case_action",
+        "description": "meaning",
+        "type": "float"
+      }
+    ],
+    "observation_mapping": {
+      "short_snake_case_obs": 0
+    },
+    "action_mapping": {
+      "type": "discrete_lookup_or_continuous_indices",
+      "variables": {
+        "semantic_action_variable": {
+          "0": 0.0,
+          "1": 1.0,
+          "default": 0.0
+        }
+      }
+    },
+    "allowed_formula_variables": [
+      "all observation variable names plus action_mapping output variable names only"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ],
+    "semantic_roles": [
+      "dense_guidance",
+      "stability_quality",
+      "terminal_success",
+      "safety_constraint",
+      "control_cost"
+    ]
+  },
+  "interface_report": {
+    "design_rationale": "...",
+    "assumptions": [],
+    "uncertainties": []
+  }
+}

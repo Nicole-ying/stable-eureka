@@ -1,0 +1,202 @@
+{
+  "source_understanding": {
+    "task_objective": "Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.",
+    "observation_semantics": [
+      {
+        "index": 0,
+        "name": "x_pos",
+        "meaning": "horizontal position relative to target center",
+        "type": "float"
+      },
+      {
+        "index": 1,
+        "name": "y_pos",
+        "meaning": "vertical position",
+        "type": "float"
+      },
+      {
+        "index": 2,
+        "name": "x_vel",
+        "meaning": "horizontal velocity",
+        "type": "float"
+      },
+      {
+        "index": 3,
+        "name": "y_vel",
+        "meaning": "vertical velocity",
+        "type": "float"
+      },
+      {
+        "index": 4,
+        "name": "angle",
+        "meaning": "body tilt angle",
+        "type": "float"
+      },
+      {
+        "index": 5,
+        "name": "ang_vel",
+        "meaning": "angular velocity",
+        "type": "float"
+      },
+      {
+        "index": 6,
+        "name": "left_leg",
+        "meaning": "left leg ground contact (0/1)",
+        "type": "float"
+      },
+      {
+        "index": 7,
+        "name": "right_leg",
+        "meaning": "right leg ground contact (0/1)",
+        "type": "float"
+      }
+    ],
+    "action_semantics": [
+      {
+        "raw_action": 0,
+        "meaning": "no thrust"
+      },
+      {
+        "raw_action": 1,
+        "meaning": "side thrust (one direction)"
+      },
+      {
+        "raw_action": 2,
+        "meaning": "main upward thrust"
+      },
+      {
+        "raw_action": 3,
+        "meaning": "side thrust (opposite direction)"
+      }
+    ],
+    "uncertainties": []
+  },
+  "primitive_interface": {
+    "version": 1,
+    "input_boundary": "anonymous_source_to_primitive_interface",
+    "identity_hidden_from_llm": true,
+    "task_description": "Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.",
+    "observation_variables": [
+      {
+        "name": "x_pos",
+        "description": "horizontal position relative to target center",
+        "type": "float"
+      },
+      {
+        "name": "y_pos",
+        "description": "vertical position",
+        "type": "float"
+      },
+      {
+        "name": "x_vel",
+        "description": "horizontal velocity",
+        "type": "float"
+      },
+      {
+        "name": "y_vel",
+        "description": "vertical velocity",
+        "type": "float"
+      },
+      {
+        "name": "angle",
+        "description": "body tilt angle",
+        "type": "float"
+      },
+      {
+        "name": "ang_vel",
+        "description": "angular velocity",
+        "type": "float"
+      },
+      {
+        "name": "left_leg",
+        "description": "left leg ground contact (0/1)",
+        "type": "float"
+      },
+      {
+        "name": "right_leg",
+        "description": "right leg ground contact (0/1)",
+        "type": "float"
+      }
+    ],
+    "action_variables": [
+      {
+        "name": "main_engine",
+        "description": "main upward thrust (0 or 1)",
+        "type": "float"
+      },
+      {
+        "name": "side_engine",
+        "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+        "type": "float"
+      }
+    ],
+    "observation_mapping": {
+      "x_pos": 0,
+      "y_pos": 1,
+      "x_vel": 2,
+      "y_vel": 3,
+      "angle": 4,
+      "ang_vel": 5,
+      "left_leg": 6,
+      "right_leg": 7
+    },
+    "action_mapping": {
+      "type": "discrete_lookup",
+      "variables": {
+        "main_engine": {
+          "0": 0.0,
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0,
+          "default": 0.0
+        },
+        "side_engine": {
+          "0": 0.0,
+          "1": 1.0,
+          "2": 0.0,
+          "3": -1.0,
+          "default": 0.0
+        }
+      }
+    },
+    "allowed_formula_variables": [
+      "x_pos",
+      "y_pos",
+      "x_vel",
+      "y_vel",
+      "angle",
+      "ang_vel",
+      "left_leg",
+      "right_leg",
+      "main_engine",
+      "side_engine"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ],
+    "semantic_roles": [
+      "dense_guidance",
+      "stability_quality",
+      "terminal_success",
+      "safety_constraint",
+      "control_cost"
+    ]
+  },
+  "interface_report": {
+    "design_rationale": "Observation variables directly capture pose, velocity, orientation, and ground contact. The discrete actions are translated into two continuous semantic variables: main_engine (0/1) and side_engine (-1/0/1). This avoids raw action ids and allows reward designers to penalize thrust magnitude, encourage lateral stabilization, and express control costs naturally.",
+    "assumptions": [
+      "Side engine direction convention is chosen arbitrarily (1 for action 1, -1 for action 3); physical left/right is not exposed.",
+      "Leg contact signals are expected to be 0.0/1.0 floats."
+    ],
+    "uncertainties": [
+      "The exact sign convention of side_engine may differ between environment versions, but using absolute value can mitigate this in reward formulas.",
+      "The environment may provide additional internal termination signals not directly observable; reward should rely only on the listed observation variables."
+    ]
+  }
+}

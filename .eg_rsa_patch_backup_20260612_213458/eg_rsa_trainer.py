@@ -34,8 +34,6 @@ class EGRSATrainer:
         reward_schema: RewardSchema,
         init_model_path: Optional[Path] = None,
     ) -> List[Dict[str, Any]]:
-        self._smoke_test_schema_reward(reward_schema)
-
         n_envs = int(self.config["rl"]["training"].get("n_envs", 1))
         train_env = self._make_training_vec_env(reward_schema, n_envs)
         model = self._make_model(train_env, init_model_path=init_model_path)
@@ -80,28 +78,6 @@ class EGRSATrainer:
             },
         )
         return trajectories
-
-    def _smoke_test_schema_reward(self, reward_schema: RewardSchema) -> None:
-        """Run one real env.step before PPO training.
-
-        This catches schema/runtime contract errors early, e.g. formula_ast uses
-        a variable that SchemaRewardWrapper._primitive_vars() cannot provide.
-        """
-        env = self._make_env(reward_schema)
-
-        try:
-            seed = self.config["rl"]["training"].get("seed", None)
-            env.reset(seed=seed)
-            action = env.action_space.sample()
-            env.step(action)
-        except Exception as exc:
-            raise RuntimeError(
-                "Schema reward runtime smoke test failed before PPO training. "
-                "The initial_schema likely uses variables that are not available "
-                "in the verified primitive_interface/runtime variable table."
-            ) from exc
-        finally:
-            env.close()
 
     def _make_env(self, reward_schema: RewardSchema):
         env_id = self.config["environment"].get("gym_id")

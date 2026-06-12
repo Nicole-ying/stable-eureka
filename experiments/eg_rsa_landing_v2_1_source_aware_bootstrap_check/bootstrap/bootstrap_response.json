@@ -1,0 +1,819 @@
+{
+  "reward_blueprint": {
+    "task_objective": "Land the vehicle safely on the target zone by approaching the center, descending gently, staying upright, using minimal control effort, and making stable ground contact without bouncing or crashing.",
+    "primitive_variable_roles": {
+      "progress_variables": [
+        "x_pos",
+        "y_pos",
+        "y_vel"
+      ],
+      "safety_variables": [
+        "angle",
+        "ang_vel"
+      ],
+      "terminal_evidence_variables": [
+        "left_leg",
+        "right_leg"
+      ],
+      "control_variables": [
+        "main_engine",
+        "side_engine"
+      ]
+    },
+    "phase_structure": [],
+    "component_blueprint": [
+      {
+        "role": "dense_guidance",
+        "description": "Reward for horizontal proximity to target center",
+        "variables_used": [
+          "x_pos"
+        ]
+      },
+      {
+        "role": "dense_guidance",
+        "description": "Reward for low altitude above ground",
+        "variables_used": [
+          "y_pos"
+        ]
+      },
+      {
+        "role": "dense_guidance",
+        "description": "Reward for near‑optimal descent velocity around -0.5 m/s",
+        "variables_used": [
+          "y_vel"
+        ]
+      },
+      {
+        "role": "stability_quality",
+        "description": "Penalize body tilt and angular velocity to keep upright",
+        "variables_used": [
+          "angle",
+          "ang_vel"
+        ]
+      },
+      {
+        "role": "control_cost",
+        "description": "Penalty for using main and side engines",
+        "variables_used": [
+          "main_engine",
+          "side_engine"
+        ]
+      }
+    ],
+    "anti_exploit_principles": [
+      "All dense rewards are clipped to prevent unbounded exploitation.",
+      "Descent velocity reward follows a smooth Gaussian shape to avoid oscillation incentives.",
+      "Terminal bonus requires both legs to contact, preventing early termination cheating.",
+      "Control cost is signed negative to discourage unnecessary actuation."
+    ]
+  },
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap_ast",
+      "formula_ir": "ast",
+      "input_boundary": "primitive_interface_conditioned",
+      "reward_blueprint_present": true,
+      "raw_env_code_input": false,
+      "identity_hidden_from_llm": true,
+      "action_mapping": {
+        "type": "discrete_lookup",
+        "variables": {
+          "main_engine": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 1.0,
+            "3": 0.0,
+            "default": 0.0
+          },
+          "side_engine": {
+            "0": 0.0,
+            "1": 1.0,
+            "2": 0.0,
+            "3": -1.0,
+            "default": 0.0
+          }
+        }
+      },
+      "action_variables": [
+        {
+          "name": "main_engine",
+          "description": "main upward thrust (0 or 1)",
+          "type": "float"
+        },
+        {
+          "name": "side_engine",
+          "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+          "type": "float"
+        }
+      ],
+      "allowed_formula_variables": [
+        "x_pos",
+        "y_pos",
+        "x_vel",
+        "y_vel",
+        "angle",
+        "ang_vel",
+        "left_leg",
+        "right_leg",
+        "main_engine",
+        "side_engine"
+      ],
+      "allowed_formula_functions": [
+        "abs",
+        "min",
+        "max",
+        "clip",
+        "sqrt",
+        "exp",
+        "tanh"
+      ],
+      "canonicalization_notes": [
+        "Event rule landing_bonus: inferred semantic_role from one_time sign.",
+        "Component control_cost: replaced invalid clip None with role-based default [-1.0, 0.0]."
+      ]
+    },
+    "components": [
+      {
+        "name": "horizontal_approach",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "x_pos"
+                }
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "x_pos"
+                  }
+                },
+                {
+                  "const": 1.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "vertical_approach",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "var": "y_pos"
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "var": "y_pos"
+                },
+                {
+                  "const": 1.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "descent_rate",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "exp",
+          "arg": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -25.0
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "var": "y_vel"
+                  },
+                  {
+                    "const": 0.5
+                  }
+                ]
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "var": "y_vel"
+                  },
+                  {
+                    "const": 0.5
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "exp",
+            "arg": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -25.0
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "var": "y_vel"
+                    },
+                    {
+                      "const": 0.5
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "var": "y_vel"
+                    },
+                    {
+                      "const": 0.5
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "attitude_stability",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "exp",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": -10.0
+                  },
+                  {
+                    "var": "angle"
+                  },
+                  {
+                    "var": "angle"
+                  }
+                ]
+              },
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": -10.0
+                  },
+                  {
+                    "var": "ang_vel"
+                  },
+                  {
+                    "var": "ang_vel"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "exp",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "mul",
+                  "args": [
+                    {
+                      "const": -10.0
+                    },
+                    {
+                      "var": "angle"
+                    },
+                    {
+                      "var": "angle"
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "args": [
+                    {
+                      "const": -10.0
+                    },
+                    {
+                      "var": "ang_vel"
+                    },
+                    {
+                      "var": "ang_vel"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "safety",
+        "inputs": []
+      },
+      {
+        "name": "control_cost",
+        "type": "formula_component",
+        "weight": 0.1,
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "var": "main_engine"
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "side_engine"
+                }
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "var": "main_engine"
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "side_engine"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "control_cost",
+        "reward_timing": "dense",
+        "behavior_channel": "efficiency",
+        "inputs": []
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "landing_bonus",
+        "condition": {
+          "expr_ast": {
+            "op": "and",
+            "args": [
+              {
+                "op": "gt",
+                "left": {
+                  "var": "left_leg"
+                },
+                "right": {
+                  "const": 0.5
+                }
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "right_leg"
+                },
+                "right": {
+                  "const": 0.5
+                }
+              }
+            ]
+          },
+          "duration_steps": 1
+        },
+        "effect": {
+          "reward": 100.0
+        },
+        "description": "Terminal success reward when both legs make ground contact.",
+        "enabled": true,
+        "one_time": true,
+        "type": "event_predicate",
+        "weight": 1.0,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "completion"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [
+      "Agent may hover indefinitely to collect dense position rewards without completing landing.",
+      "Over‑reliance on vertical position reward could cause fast descent near ground, compensated by descent rate term.",
+      "Stability component may be overpowered, making the agent risk‑averse to necessary tilting for translation."
+    ],
+    "risk_notes": [
+      "Assumes y_pos ≥ 0 (altitude above ground) for vertical approach formula; if negative, clip to 0 still works.",
+      "Descent rate target of -0.5 m/s is arbitrary and may not match physical limits; tuning needed.",
+      "Terminal bonus lacks a timeout override; agent might learn to prematurely trigger legs contact."
+    ]
+  },
+  "bootstrap_report": {
+    "design_rationale": "The schema combines multiple dense guidance terms that individually capture horizontal centering, altitude, and safe descent speed. Stability is encouraged via Gaussian penalties on tilt and angular velocity. Control effort is minimized with a negative cost component. A terminal event detects dual leg contact and provides a large success reward, aligning with the objective of stable ground contact.",
+    "assumptions": [
+      "y_pos is the altitude above the landing surface and is non‑negative.",
+      "x_pos is the signed horizontal distance from the target center.",
+      "angle is measured in radians and should be near zero when upright.",
+      "The Gaussian shapes (exp) implicitly normalise rewards to [0,1].",
+      "Leg contact variables are reliable 0/1 signals."
+    ],
+    "risk_notes": [
+      "Reward weights and constants (0.5, 10, 25) were chosen heuristically; they may require tuning for the specific dynamics.",
+      "Heavy action cost could discourage necessary engine use; the 0.1 weight is a starting point.",
+      "Event rule uses a hard threshold on legs; noisy contact signals may trigger false bonuses.",
+      "No explicit safety cut‑off exists for extreme velocities; the descent rate term partially mitigates."
+    ],
+    "identity_hidden_from_llm": true,
+    "raw_env_code_input": false,
+    "primitive_interface_only": true,
+    "source_aware_bootstrap": true,
+    "primitive_interface_generated": true,
+    "two_stage_bootstrap": true,
+    "interface_contract_verified": true,
+    "interface_contract_report": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "notes": [],
+      "canonical_allowed_formula_variables": [
+        "x_pos",
+        "y_pos",
+        "x_vel",
+        "y_vel",
+        "angle",
+        "ang_vel",
+        "left_leg",
+        "right_leg",
+        "main_engine",
+        "side_engine"
+      ],
+      "observation_mapping": {
+        "x_pos": 0,
+        "y_pos": 1,
+        "x_vel": 2,
+        "y_vel": 3,
+        "angle": 4,
+        "ang_vel": 5,
+        "left_leg": 6,
+        "right_leg": 7
+      },
+      "action_mapping": {
+        "type": "discrete_lookup",
+        "variables": {
+          "main_engine": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 1.0,
+            "3": 0.0,
+            "default": 0.0
+          },
+          "side_engine": {
+            "0": 0.0,
+            "1": 1.0,
+            "2": 0.0,
+            "3": -1.0,
+            "default": 0.0
+          }
+        }
+      },
+      "runtime_action_variables": [
+        "main_engine",
+        "side_engine"
+      ]
+    },
+    "canonicalization_notes": [
+      "Event rule landing_bonus: inferred semantic_role from one_time sign.",
+      "Component control_cost: replaced invalid clip None with role-based default [-1.0, 0.0]."
+    ]
+  },
+  "primitive_interface": {
+    "version": 1,
+    "purpose": "Generated primitive task interface inferred inside BootstrapAgent from anonymized task/source input.",
+    "input_boundary": "anonymous_source_to_primitive_interface",
+    "identity_hidden_from_llm": true,
+    "raw_env_code_input": false,
+    "env_code_parser": "source_aware_bootstrap_agent",
+    "task_description": "Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.",
+    "observation_variables": [
+      {
+        "name": "x_pos",
+        "description": "horizontal position relative to target center",
+        "type": "float"
+      },
+      {
+        "name": "y_pos",
+        "description": "vertical position",
+        "type": "float"
+      },
+      {
+        "name": "x_vel",
+        "description": "horizontal velocity",
+        "type": "float"
+      },
+      {
+        "name": "y_vel",
+        "description": "vertical velocity",
+        "type": "float"
+      },
+      {
+        "name": "angle",
+        "description": "body tilt angle",
+        "type": "float"
+      },
+      {
+        "name": "ang_vel",
+        "description": "angular velocity",
+        "type": "float"
+      },
+      {
+        "name": "left_leg",
+        "description": "left leg ground contact (0/1)",
+        "type": "float"
+      },
+      {
+        "name": "right_leg",
+        "description": "right leg ground contact (0/1)",
+        "type": "float"
+      }
+    ],
+    "action_variables": [
+      {
+        "name": "main_engine",
+        "description": "main upward thrust (0 or 1)",
+        "type": "float"
+      },
+      {
+        "name": "side_engine",
+        "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+        "type": "float"
+      }
+    ],
+    "allowed_formula_variables": [
+      "x_pos",
+      "y_pos",
+      "x_vel",
+      "y_vel",
+      "angle",
+      "ang_vel",
+      "left_leg",
+      "right_leg",
+      "main_engine",
+      "side_engine"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ],
+    "allowed_component_types_v2": [
+      "formula_component",
+      "conditional_formula_component",
+      "event_predicate"
+    ],
+    "bootstrap_requirements": {
+      "must_generate_initial_schema": true,
+      "must_generate_diagnostic_predicates": true,
+      "must_assign_semantic_roles": true,
+      "must_include_hacking_risk_notes": true,
+      "official_environment_reward_forbidden_as_feedback": true,
+      "posthoc_oracle_evaluation_allowed": true,
+      "no_v1_schema_exposure": true,
+      "no_v1_diagnostic_metric_exposure": true,
+      "no_v1_task_description_file_exposure": true,
+      "formula_must_use_only_primitive_variables": true
+    },
+    "semantic_roles": [
+      "dense_guidance",
+      "stability_quality",
+      "terminal_success",
+      "safety_constraint",
+      "control_cost"
+    ],
+    "observation_mapping": {
+      "x_pos": 0,
+      "y_pos": 1,
+      "x_vel": 2,
+      "y_vel": 3,
+      "angle": 4,
+      "ang_vel": 5,
+      "left_leg": 6,
+      "right_leg": 7
+    },
+    "bootstrap_interface_policy": {
+      "principle": "Reward bootstrap receives a derived interface, not a runtime environment name.",
+      "formula_boundary": "formula_ast may use only canonical allowed_formula_variables",
+      "not_exposed_to_llm": [
+        "runtime environment name",
+        "gym_id",
+        "benchmark name",
+        "previous reward schema"
+      ],
+      "contract_verified_by_system": true,
+      "allowed_variables_source": "system_canonical_runtime_contract",
+      "raw_action_variable_policy": "Raw discrete action id is not automatically exposed. Use action_mapping output variables such as main_engine/side_engine."
+    },
+    "action_mapping": {
+      "type": "discrete_lookup",
+      "variables": {
+        "main_engine": {
+          "0": 0.0,
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0,
+          "default": 0.0
+        },
+        "side_engine": {
+          "0": 0.0,
+          "1": 1.0,
+          "2": 0.0,
+          "3": -1.0,
+          "default": 0.0
+        }
+      }
+    }
+  },
+  "source_understanding": {
+    "task_objective": "Guide a small controlled vehicle to make a safe landing at the target zone. A good policy should approach the target center, descend gently, remain upright, use limited control effort, and finish with stable ground contact instead of bouncing or crashing.",
+    "observation_semantics": [
+      {
+        "index": 0,
+        "name": "x_pos",
+        "meaning": "horizontal position relative to target center",
+        "type": "float"
+      },
+      {
+        "index": 1,
+        "name": "y_pos",
+        "meaning": "vertical position",
+        "type": "float"
+      },
+      {
+        "index": 2,
+        "name": "x_vel",
+        "meaning": "horizontal velocity",
+        "type": "float"
+      },
+      {
+        "index": 3,
+        "name": "y_vel",
+        "meaning": "vertical velocity",
+        "type": "float"
+      },
+      {
+        "index": 4,
+        "name": "angle",
+        "meaning": "body tilt angle",
+        "type": "float"
+      },
+      {
+        "index": 5,
+        "name": "ang_vel",
+        "meaning": "angular velocity",
+        "type": "float"
+      },
+      {
+        "index": 6,
+        "name": "left_leg",
+        "meaning": "left leg ground contact (0/1)",
+        "type": "float"
+      },
+      {
+        "index": 7,
+        "name": "right_leg",
+        "meaning": "right leg ground contact (0/1)",
+        "type": "float"
+      }
+    ],
+    "action_semantics": [
+      {
+        "raw_action": 0,
+        "meaning": "no thrust"
+      },
+      {
+        "raw_action": 1,
+        "meaning": "side thrust (one direction)"
+      },
+      {
+        "raw_action": 2,
+        "meaning": "main upward thrust"
+      },
+      {
+        "raw_action": 3,
+        "meaning": "side thrust (opposite direction)"
+      }
+    ],
+    "uncertainties": []
+  }
+}

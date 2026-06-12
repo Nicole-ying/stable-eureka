@@ -15,7 +15,6 @@ from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.reward.source_aware_scaffold import SourceAwareSafeScaffold
 from eg_rsa.schema_sources.base import SchemaSource
 from eg_rsa.schema_sources.eureka_like_interface import EurekaLikeInterfaceBuilder
-from eg_rsa.schema_sources.interface_verifier import InterfaceContractVerifier
 
 
 class LLMBootstrapSchemaSource(SchemaSource):
@@ -82,20 +81,6 @@ class LLMBootstrapSchemaSource(SchemaSource):
                 raise ValueError("Source-aware bootstrap result missing primitive_interface")
         else:
             primitive_interface = self._load_or_generate_primitive_interface(cfg)
-
-        primitive_interface, interface_contract_report = InterfaceContractVerifier.verify_and_canonicalize(
-            primitive_interface
-        )
-        self._write_json(bootstrap_dir / "interface_contract_report.json", interface_contract_report)
-
-        if bootstrap_result is not None:
-            bootstrap_result["primitive_interface"] = primitive_interface
-
-        if interface_contract_report.get("errors"):
-            raise ValueError(
-                "Primitive interface failed executable contract verification: "
-                + json.dumps(interface_contract_report.get("errors", []), ensure_ascii=False)
-            )
 
         runtime_spec = self._build_runtime_spec_from_primitive_interface(primitive_interface)
         runtime_spec_path.write_text(
@@ -355,94 +340,35 @@ This is repair attempt {attempt} of {max_attempts}.
         return canonical_fallback, fallback_report, fallback_validation
 
     def _run_source_aware_bootstrap(self, cfg: Dict[str, Any], bootstrap_dir: Path) -> Dict[str, Any]:
-        """Two-stage source-aware bootstrap.
-
-        Stage 1:
-            LLM Env-Interface Agent proposes candidate primitive_interface from
-            anonymous task/source input.
-
-        Stage 2:
-            System verifies/canonicalizes the interface contract, then LLM Reward
-            Bootstrap Agent generates reward_blueprint + initial_schema under the
-            fixed executable interface.
-        """
         task_path = cfg.get("eureka_like_task_path") or cfg.get("task_file_path") or cfg.get("source_task_path")
-
         if not task_path:
             raise ValueError("source-aware bootstrap requires eureka_like_task_path, task_file_path, or source_task_path")
-
         task_spec = self._load_task_file(Path(str(task_path)))
+        result = self.bootstrap_agent.generate_bootstrap_from_source(task_spec)
+        primitive_interface = result.get("primitive_interface")
+        if not isinstance(primitive_interface, dict):
+            raise ValueError("source-aware bootstrap returned no primitive_interface")
         interface_dir = self.output_dir / cfg.get("interface_output_subdir", "interface")
-
-        interface_result = self.bootstrap_agent.generate_primitive_interface_from_source(task_spec)
-        interface_prompt = self.bootstrap_agent.last_prompt
-        interface_response = self.bootstrap_agent.last_response_text
-
-        candidate_interface = interface_result.get("primitive_interface")
-        if not isinstance(candidate_interface, dict):
-            raise ValueError("Env-Interface Agent returned no primitive_interface")
-
-        primitive_interface, interface_contract_report = InterfaceContractVerifier.verify_and_canonicalize(
-            candidate_interface
-        )
-
         self._write_json(interface_dir / "anonymous_source_input.json", task_spec)
-        self._write_text(interface_dir / "interface_generation_prompt.txt", interface_prompt)
-        self._write_text(interface_dir / "interface_generation_response.txt", interface_response)
-        self._write_json(interface_dir / "interface_generation_response.json", interface_result)
-        self._write_json(interface_dir / "candidate_primitive_interface.json", candidate_interface)
         self._write_json(interface_dir / "generated_primitive_interface.json", primitive_interface)
-        self._write_json(interface_dir / "interface_contract_report.json", interface_contract_report)
-
-        if interface_contract_report.get("errors"):
-            raise ValueError(
-                "Candidate primitive_interface failed executable contract verification: "
-                + json.dumps(interface_contract_report.get("errors", []), ensure_ascii=False)
-            )
-
         self._write_json(
             interface_dir / "interface_generation_report.json",
             {
-                "source": "two_stage_source_aware_env_interface_agent",
+                "source": "source_aware_bootstrap_agent",
                 "source_path": str(task_path),
-                "candidate_output_path": str(interface_dir / "candidate_primitive_interface.json"),
-                "canonical_output_path": str(interface_dir / "generated_primitive_interface.json"),
-                "contract_report_path": str(interface_dir / "interface_contract_report.json"),
+                "output_path": str(interface_dir / "generated_primitive_interface.json"),
                 "identity_hidden_from_llm": True,
                 "raw_env_code_input": bool(primitive_interface.get("raw_env_code_input", False)),
                 "notes": [
-                    "Stage 1 LLM inferred a candidate primitive interface from anonymized source/task input.",
-                    "System InterfaceContractVerifier canonicalized allowed_formula_variables from runtime-executable variables.",
-                    "Stage 2 LLM generated initial_schema only under this verified primitive interface.",
+                    "BootstrapAgent inferred the primitive interface and initial schema in one LLM call.",
                     "The runtime environment name is not included in the bootstrap prompt.",
+                    "The primitive interface is an internal audit artifact, not the user-facing entry point.",
                 ],
             },
         )
-
         self.config.setdefault("eg_rsa", {}).setdefault("schema_source", {})[
             "generated_primitive_interface_path"
         ] = str(interface_dir / "generated_primitive_interface.json")
-
-        task_description = primitive_interface.get("task_description", "") or task_spec.get("task_description", "")
-
-        result = self.bootstrap_agent.generate_bootstrap(
-            primitive_interface=primitive_interface,
-            task_description=task_description,
-        )
-
-        result["primitive_interface"] = primitive_interface
-        result["source_understanding"] = interface_result.get("source_understanding", {})
-        result.setdefault("bootstrap_report", {})
-        result["bootstrap_report"].update(
-            {
-                "source_aware_bootstrap": True,
-                "primitive_interface_generated": True,
-                "two_stage_bootstrap": True,
-                "interface_contract_verified": True,
-                "interface_contract_report": interface_contract_report,
-            }
-        )
-
         return result
 
     @staticmethod
