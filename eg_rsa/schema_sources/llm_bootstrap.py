@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Optional
 import yaml
 
 from eg_rsa.llm.bootstrap_agent import BootstrapAgent
+from eg_rsa.llm.json_parser import extract_json_object
 from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
 from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 from eg_rsa.reward.schema import RewardSchema
@@ -26,10 +27,9 @@ class LLMBootstrapSchemaSource(SchemaSource):
        eureka_like_task_file -> generated primitive_interface -> BootstrapAgent.
     3. direct primitive_interface path, kept for old controlled experiments.
 
-    Source-aware mode is intentionally robust: the LLM may infer a useful
-    primitive_interface but still produce a malformed executable schema. In that
-    case we preserve the failed schema for audit and fall back to a deterministic
-    source-aware scaffold generated from the inferred interface and blueprint.
+    Source-aware mode treats LLM schema validity as a first-class requirement:
+    invalid schemas are repaired by the LLM with validator feedback before any
+    optional engineering fallback is considered.
     """
 
     def __init__(
@@ -140,17 +140,29 @@ class LLMBootstrapSchemaSource(SchemaSource):
             raise ValueError("Bootstrap result must contain dict field initial_schema")
 
         validation = BootstrapSchemaValidator.validate_bootstrap_result(result, primitive_interface)
-        if not validation.ok and source_aware and bool(cfg.get("fallback_on_invalid_schema", True)):
+        if not validation.ok and source_aware:
             self._write_json(bootstrap_dir / "llm_source_aware_invalid_result.json", result)
             self._write_json(bootstrap_dir / "llm_source_aware_invalid_validation.json", validation.to_dict())
             self._write_json(bootstrap_dir / "llm_source_aware_invalid_canonicalization_report.json", canonical_report)
-            result, canonical_report, validation = self._fallback_to_safe_scaffold(
-                primitive_interface=primitive_interface,
-                bootstrap_dir=bootstrap_dir,
-                validation_errors=validation.errors,
-                reward_blueprint=result.get("reward_blueprint", {}) or {},
-            )
-            schema_dict = result.get("initial_schema")
+
+            if bool(cfg.get("repair_on_invalid_schema", True)):
+                result, canonical_report, validation = self._repair_invalid_bootstrap_schema(
+                    invalid_result=result,
+                    primitive_interface=primitive_interface,
+                    bootstrap_dir=bootstrap_dir,
+                    validation_errors=validation.errors,
+                    max_attempts=int(cfg.get("repair_attempts", 2) or 2),
+                )
+                schema_dict = result.get("initial_schema")
+
+            if not validation.ok and bool(cfg.get("fallback_on_invalid_schema", False)):
+                result, canonical_report, validation = self._fallback_to_safe_scaffold(
+                    primitive_interface=primitive_interface,
+                    bootstrap_dir=bootstrap_dir,
+                    validation_errors=validation.errors,
+                    reward_blueprint=result.get("reward_blueprint", {}) or {},
+                )
+                schema_dict = result.get("initial_schema")
 
         self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
         self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
@@ -172,6 +184,131 @@ class LLMBootstrapSchemaSource(SchemaSource):
         mode = str(cfg.get("input_mode", "")).lower()
         return bool(cfg.get("source_aware", False)) or mode in {"source", "source_aware", "anonymous_source"}
 
+    def _repair_invalid_bootstrap_schema(
+        self,
+        invalid_result: Dict[str, Any],
+        primitive_interface: Dict[str, Any],
+        bootstrap_dir: Path,
+        validation_errors: Any,
+        max_attempts: int = 2,
+    ):
+        """Ask the LLM to repair invalid executable schema using validator errors.
+
+        This is the preferred source-aware recovery path. It preserves the inferred
+        primitive_interface and requires the LLM to produce a valid AST schema
+        instead of silently replacing it with a deterministic scaffold.
+        """
+        current_result = dict(invalid_result or {})
+        errors = list(validation_errors or [])
+        repair_trace = []
+
+        for attempt in range(1, max(0, max_attempts) + 1):
+            prompt = self._build_schema_repair_prompt(
+                primitive_interface=primitive_interface,
+                invalid_result=current_result,
+                validation_errors=errors,
+                attempt=attempt,
+                max_attempts=max_attempts,
+            )
+            self.bootstrap_agent.last_prompt = prompt
+            response_text = self.llm_client.generate(prompt) if self.llm_client is not None else ""
+            self.bootstrap_agent.last_response_text = response_text
+            self._write_text(bootstrap_dir / f"schema_repair_attempt_{attempt}_prompt.txt", prompt)
+            self._write_text(bootstrap_dir / f"schema_repair_attempt_{attempt}_response.txt", response_text)
+
+            try:
+                parsed = extract_json_object(response_text)
+                if "primitive_interface" not in parsed:
+                    parsed["primitive_interface"] = primitive_interface
+                else:
+                    parsed["primitive_interface"] = primitive_interface
+                canonical, report = SchemaCanonicalizer.canonicalize_bootstrap_result(
+                    parsed,
+                    primitive_interface,
+                )
+                validation = BootstrapSchemaValidator.validate_bootstrap_result(
+                    canonical,
+                    primitive_interface,
+                )
+                repair_trace.append(
+                    {
+                        "attempt": attempt,
+                        "ok": validation.ok,
+                        "errors": validation.errors,
+                        "warnings": validation.warnings,
+                    }
+                )
+                self._write_json(bootstrap_dir / f"schema_repair_attempt_{attempt}_validation.json", validation.to_dict())
+                if validation.ok:
+                    canonical.setdefault("bootstrap_report", {})
+                    canonical["bootstrap_report"].update(
+                        {
+                            "schema_repaired_by_llm": True,
+                            "schema_repair_attempts": attempt,
+                            "source_aware_bootstrap": True,
+                            "primitive_interface_generated": True,
+                        }
+                    )
+                    self._write_json(bootstrap_dir / "schema_repair_trace.json", repair_trace)
+                    return canonical, report, validation
+                current_result = canonical
+                errors = validation.errors
+            except Exception as exc:
+                repair_trace.append(
+                    {
+                        "attempt": attempt,
+                        "ok": False,
+                        "errors": [f"repair_parse_or_validation_exception: {type(exc).__name__}: {exc}"],
+                    }
+                )
+                errors = repair_trace[-1]["errors"]
+
+        self._write_json(bootstrap_dir / "schema_repair_trace.json", repair_trace)
+        canonical, report = SchemaCanonicalizer.canonicalize_bootstrap_result(
+            current_result,
+            primitive_interface,
+        )
+        validation = BootstrapSchemaValidator.validate_bootstrap_result(canonical, primitive_interface)
+        return canonical, report, validation
+
+    @staticmethod
+    def _build_schema_repair_prompt(
+        primitive_interface: Dict[str, Any],
+        invalid_result: Dict[str, Any],
+        validation_errors: Any,
+        attempt: int,
+        max_attempts: int,
+    ) -> str:
+        return f"""
+You are repairing an EG-RSA source-aware bootstrap result.
+
+The primitive_interface below is fixed. Do not rename variables. Do not change observation_mapping or action_mapping.
+Repair only the reward_blueprint, initial_schema, diagnostics, and bootstrap_report so that the schema validates.
+
+Validation errors from the previous attempt:
+{json.dumps(list(validation_errors or []), indent=2, ensure_ascii=False)}
+
+Fixed primitive_interface:
+{json.dumps(primitive_interface, indent=2, ensure_ascii=False)}
+
+Invalid previous bootstrap result:
+{json.dumps(invalid_result, indent=2, ensure_ascii=False)}
+
+Repair constraints:
+1. Output JSON only.
+2. Include primitive_interface exactly as provided.
+3. initial_schema must use AST only; no string formulas or string conditions.
+4. Every formula_component must contain formula_ast and params.formula_ast.
+5. Every conditional_formula_component must contain formula_ast, condition_ast, params.formula_ast, and params.condition_ast.
+6. Every event_predicate must contain condition.expr_ast; otherwise remove that event_rule.
+7. All AST variables must come from primitive_interface.allowed_formula_variables.
+8. Do not use empty operator argument lists. add/min/max/and/or must have non-empty args.
+9. Use compact schemas: 3-7 components and 0-3 event_rules.
+10. If unsure about a terminal event, set event_rules to [].
+
+This is repair attempt {attempt} of {max_attempts}.
+""".strip()
+
     def _fallback_to_safe_scaffold(
         self,
         primitive_interface: Dict[str, Any],
@@ -181,9 +318,9 @@ class LLMBootstrapSchemaSource(SchemaSource):
     ):
         """Replace invalid source-aware LLM schema with deterministic source-aware scaffold.
 
-        This keeps the source-aware input boundary intact: the primitive interface is
-        still inferred from the anonymous source prompt. Only the executable schema
-        is replaced when the LLM-produced AST is structurally invalid.
+        This is an optional engineering fallback, not the formal source-aware path.
+        Formal experiments should keep fallback_on_invalid_schema=false and rely on
+        validation-driven LLM repair.
         """
         fallback = SourceAwareSafeScaffold.build(
             primitive_interface=primitive_interface,
