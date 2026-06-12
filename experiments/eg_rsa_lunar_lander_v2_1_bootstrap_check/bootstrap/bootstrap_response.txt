@@ -1,0 +1,317 @@
+{
+  "reward_blueprint": {
+    "task_objective": "Land the lunar module safely between the flags with a centered, slow, upright touchdown while minimizing fuel use.",
+    "primitive_variable_roles": {
+      "progress_variables": ["x", "vx", "vy"],
+      "safety_variables": ["angle", "angular_velocity"],
+      "terminal_evidence_variables": ["left_contact", "right_contact"],
+      "control_variables": ["main_engine", "side_engine"]
+    },
+    "phase_structure": [],
+    "component_blueprint": [
+      "r_dense_guidance: Encourage small horizontal offset, low velocities, and upright orientation.",
+      "r_stability: Reward low angular velocity once both legs are on the ground to prevent bouncing.",
+      "r_control_cost: Penalize engine use to promote fuel efficiency.",
+      "r_tilt_penalty: Penalize unsafe tilt angles beyond 0.5 rad to enforce safety.",
+      "r_landing_success: Large one-time reward for meeting all landing conditions simultaneously."
+    ],
+    "anti_exploit_principles": [
+      "No reward for high speed descent regardless of orientation.",
+      "No reward for landing only one leg.",
+      "No reward for oscillating near the pad without landing.",
+      "No reward for engine use; always penalized."
+    ]
+  },
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap_ast",
+      "formula_ir": "ast",
+      "input_boundary": "primitive_interface_conditioned"
+    },
+    "components": [
+      {
+        "name": "r_dense_guidance",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "sub",
+          "left": { "const": 1.0 },
+          "right": {
+            "op": "min",
+            "args": [
+              { "const": 1.0 },
+              {
+                "op": "add",
+                "args": [
+                  { "op": "mul", "args": [{ "const": 0.1 }, { "op": "abs", "arg": { "var": "x" } }] },
+                  { "op": "mul", "args": [{ "const": 0.3 }, { "op": "abs", "arg": { "var": "vx" } }] },
+                  { "op": "mul", "args": [{ "const": 0.3 }, { "op": "abs", "arg": { "var": "vy" } }] },
+                  { "op": "mul", "args": [{ "const": 0.3 }, { "op": "abs", "arg": { "var": "angle" } }] }
+                ]
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": { "const": 1.0 },
+            "right": {
+              "op": "min",
+              "args": [
+                { "const": 1.0 },
+                {
+                  "op": "add",
+                  "args": [
+                    { "op": "mul", "args": [{ "const": 0.1 }, { "op": "abs", "arg": { "var": "x" } }] },
+                    { "op": "mul", "args": [{ "const": 0.3 }, { "op": "abs", "arg": { "var": "vx" } }] },
+                    { "op": "mul", "args": [{ "const": 0.3 }, { "op": "abs", "arg": { "var": "vy" } }] },
+                    { "op": "mul", "args": [{ "const": 0.3 }, { "op": "abs", "arg": { "var": "angle" } }] }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "clip": [0.0, 1.0],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      },
+      {
+        "name": "r_stability",
+        "type": "conditional_formula_component",
+        "weight": 1.0,
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            { "var": "left_contact" },
+            { "var": "right_contact" }
+          ]
+        },
+        "formula_ast": {
+          "op": "sub",
+          "left": { "const": 1.0 },
+          "right": {
+            "op": "min",
+            "args": [
+              { "const": 1.0 },
+              {
+                "op": "mul",
+                "args": [
+                  { "const": 0.2 },
+                  { "op": "abs", "arg": { "var": "angular_velocity" } }
+                ]
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": { "const": 1.0 },
+            "right": {
+              "op": "min",
+              "args": [
+                { "const": 1.0 },
+                {
+                  "op": "mul",
+                  "args": [
+                    { "const": 0.2 },
+                    { "op": "abs", "arg": { "var": "angular_velocity" } }
+                  ]
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              { "var": "left_contact" },
+              { "var": "right_contact" }
+            ]
+          }
+        },
+        "clip": [0.0, 1.0],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "stability"
+      },
+      {
+        "name": "r_control_cost",
+        "type": "formula_component",
+        "weight": 0.2,
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              { "op": "abs", "arg": { "var": "main_engine" } },
+              { "op": "abs", "arg": { "var": "side_engine" } }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                { "op": "abs", "arg": { "var": "main_engine" } },
+                { "op": "abs", "arg": { "var": "side_engine" } }
+              ]
+            }
+          }
+        },
+        "clip": [-1.0, 0.0],
+        "enabled": true,
+        "semantic_role": "control_cost",
+        "reward_timing": "dense",
+        "behavior_channel": "control_cost"
+      },
+      {
+        "name": "r_tilt_penalty",
+        "type": "conditional_formula_component",
+        "weight": 1.0,
+        "condition_ast": {
+          "op": "gt",
+          "left": { "op": "abs", "arg": { "var": "angle" } },
+          "right": { "const": 0.5 }
+        },
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "mul",
+            "args": [
+              { "const": 0.5 },
+              {
+                "op": "sub",
+                "left": { "op": "abs", "arg": { "var": "angle" } },
+                "right": { "const": 0.5 }
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "mul",
+              "args": [
+                { "const": 0.5 },
+                {
+                  "op": "sub",
+                  "left": { "op": "abs", "arg": { "var": "angle" } },
+                  "right": { "const": 0.5 }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "gt",
+            "left": { "op": "abs", "arg": { "var": "angle" } },
+            "right": { "const": 0.5 }
+          }
+        },
+        "clip": [-1.0, 0.0],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "r_landing_success",
+        "type": "event_predicate",
+        "weight": 50.0,
+        "condition": {
+          "expr_ast": {
+            "op": "and",
+            "args": [
+              {
+                "op": "and",
+                "args": [
+                  { "var": "left_contact" },
+                  { "var": "right_contact" }
+                ]
+              },
+              {
+                "op": "and",
+                "args": [
+                  {
+                    "op": "lt",
+                    "left": { "op": "abs", "arg": { "var": "vx" } },
+                    "right": { "const": 0.2 }
+                  },
+                  {
+                    "op": "and",
+                    "args": [
+                      {
+                        "op": "lt",
+                        "left": { "op": "abs", "arg": { "var": "vy" } },
+                        "right": { "const": 0.2 }
+                      },
+                      {
+                        "op": "and",
+                        "args": [
+                          {
+                            "op": "lt",
+                            "left": { "op": "abs", "arg": { "var": "angle" } },
+                            "right": { "const": 0.2 }
+                          },
+                          {
+                            "op": "lt",
+                            "left": { "op": "abs", "arg": { "var": "x" } },
+                            "right": { "const": 0.2 }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "completion"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [
+      "Premature tilting penalty causes agent to avoid any tilt, maybe hindering learned control.",
+      "Landing success event too strict may cause rare reward and slow learning.",
+      "Stability reward may encourage soft landing but could be gamed by bouncing on one leg."
+    ],
+    "risk_notes": [
+      "Weight balancing is critical; too high control cost may prevent exploration.",
+      "Dense guidance could conflict with stability reward during contact phase.",
+      "Event condition thresholds may need tuning based on actual system dynamics."
+    ]
+  },
+  "bootstrap_report": {
+    "design_rationale": "We decompose the landing task into a dense shaping component that guides the lander toward center with low velocity and upright orientation, a conditional stability reward after ground contact, a safety penalty for excessive tilt, a control cost to discourage wasteful fuel usage, and a terminal success event to reinforce the final achievement. This aligns with the semantic roles.",
+    "assumptions": [
+      "The lander has no fuel limit other than efficiency preference.",
+      "Left and right contact sensors reliably indicate ground contact.",
+      "Angle is in radians and velocity in m/s, roughly normalized."
+    ],
+    "risk_notes": [
+      "Weight balancing is critical; too high control cost may prevent exploration.",
+      "Dense guidance could conflict with stability reward during contact phase.",
+      "Event condition thresholds may need tuning based on actual system dynamics."
+    ],
+    "primitive_interface_only": true,
+    "raw_env_code_input": false,
+    "eureka_like_input_status": "not_yet_implemented"
+  }
+}

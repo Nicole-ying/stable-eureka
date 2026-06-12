@@ -1,0 +1,78 @@
+source: primitive_interface_generated_runtime_spec
+input_boundary: primitive_interface_conditioned
+raw_env_code_input: false
+eureka_like_input_status: planned_not_current
+observation_mapping:
+  x: 0
+  y: 1
+  vx: 2
+  vy: 3
+  angle: 4
+  angular_velocity: 5
+  left_contact: 6
+  right_contact: 7
+action_variables:
+- name: main_engine
+  description: Main engine action or throttle.
+  type: float
+- name: side_engine
+  description: Side engine action or throttle.
+  type: float
+action_mapping:
+  type: discrete_lookup
+  variables:
+    main_engine:
+      '2': 1.0
+      default: 0.0
+    side_engine:
+      '1': -1.0
+      '3': 1.0
+      default: 0.0
+events:
+  left_contact:
+    type: threshold_gt
+    var: left_contact
+    threshold: 0.5
+  right_contact:
+    type: threshold_gt
+    var: right_contact
+    threshold: 0.5
+  any_contact_evidence:
+    type: any
+    events:
+    - left_contact
+    - right_contact
+  all_contact_evidence:
+    type: all
+    events:
+    - left_contact
+    - right_contact
+  action_nonzero:
+    type: action_nonzero
+task_metrics:
+  position_centering:
+    type: raw_abs_inverse
+    inputs:
+    - x
+  velocity_smoothness:
+    type: raw_abs_inverse
+    inputs:
+    - vx
+    - vy
+  attitude_smoothness:
+    type: raw_abs_inverse
+    inputs:
+    - angle
+    - angular_velocity
+  energy_cost:
+    type: action_cost
+  contact_evidence:
+    type: event_score
+    event: all_contact_evidence
+  progress:
+    type: metric_mean
+    metrics:
+    - position_centering
+    - velocity_smoothness
+    - attitude_smoothness
+    - contact_evidence

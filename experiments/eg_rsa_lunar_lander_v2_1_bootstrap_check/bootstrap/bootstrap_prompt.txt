@@ -1,0 +1,479 @@
+You are the EG-RSA-V2 AST bootstrap agent.
+
+You receive a primitive-only RL task interface. You must output AST-first RewardSchema JSON.
+Do not output Python code. Do not output string formulas. Do not output condition strings.
+
+Important input-boundary note:
+- The current system is primitive-interface-conditioned.
+- You are NOT reading raw env.py or step() code in this bootstrap stage.
+- Do not assume task-specific variable names unless they appear in the Primitive interface.
+- The AST grammar and Required output shape below contain placeholders only.
+- Every placeholder must be replaced with variables from Allowed variables.
+- Do not copy placeholder names such as <allowed_numeric_variable> into the final JSON.
+
+Task description:
+Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.
+
+Primitive interface:
+{
+  "version": 1,
+  "env": "LunarLander-v3",
+  "purpose": "Primitive-only task interface for EG-RSA-V2. This file exposes primitive observation/action variables, allowed formula variables, allowed formula functions, semantic roles, and task text. It does not expose any previous reward schema or previous diagnostic/event definitions.",
+  "task_description": "Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.",
+  "observation_variables": [
+    {
+      "name": "x",
+      "description": "Horizontal position relative to landing pad center.",
+      "type": "float"
+    },
+    {
+      "name": "y",
+      "description": "Vertical position.",
+      "type": "float"
+    },
+    {
+      "name": "vx",
+      "description": "Horizontal velocity.",
+      "type": "float"
+    },
+    {
+      "name": "vy",
+      "description": "Vertical velocity.",
+      "type": "float"
+    },
+    {
+      "name": "angle",
+      "description": "Lander tilt angle.",
+      "type": "float"
+    },
+    {
+      "name": "angular_velocity",
+      "description": "Angular velocity.",
+      "type": "float"
+    },
+    {
+      "name": "left_contact",
+      "description": "Whether the left leg contacts ground.",
+      "type": "bool"
+    },
+    {
+      "name": "right_contact",
+      "description": "Whether the right leg contacts ground.",
+      "type": "bool"
+    }
+  ],
+  "action_variables": [
+    {
+      "name": "main_engine",
+      "description": "Main engine action or throttle.",
+      "type": "float"
+    },
+    {
+      "name": "side_engine",
+      "description": "Side engine action or throttle.",
+      "type": "float"
+    }
+  ],
+  "allowed_formula_variables": [
+    "x",
+    "y",
+    "vx",
+    "vy",
+    "angle",
+    "angular_velocity",
+    "left_contact",
+    "right_contact",
+    "main_engine",
+    "side_engine"
+  ],
+  "allowed_formula_functions": [
+    "abs",
+    "min",
+    "max",
+    "clip",
+    "sqrt",
+    "exp",
+    "tanh"
+  ],
+  "allowed_component_types_v2": [
+    "formula_component",
+    "conditional_formula_component",
+    "event_predicate"
+  ],
+  "bootstrap_requirements": {
+    "must_generate_initial_schema": true,
+    "must_generate_diagnostic_predicates": true,
+    "must_assign_semantic_roles": true,
+    "must_include_hacking_risk_notes": true,
+    "official_environment_reward_forbidden_as_feedback": true,
+    "posthoc_oracle_evaluation_allowed": true,
+    "no_v1_schema_exposure": true,
+    "no_v1_diagnostic_metric_exposure": true,
+    "no_v1_task_description_file_exposure": true,
+    "formula_must_use_only_primitive_variables": true
+  },
+  "semantic_roles": [
+    "dense_guidance",
+    "stability_quality",
+    "terminal_success",
+    "safety_constraint",
+    "control_cost"
+  ],
+  "observation_mapping": {
+    "x": 0,
+    "y": 1,
+    "vx": 2,
+    "vy": 3,
+    "angle": 4,
+    "angular_velocity": 5,
+    "left_contact": 6,
+    "right_contact": 7
+  },
+  "bootstrap_interface_policy": {
+    "principle": "V2 avoids previous-schema leakage by interface isolation. The bootstrap agent only receives primitive observation/action variables, safe formula functions, task text, and output format constraints.",
+    "formula_boundary": "Generated formulas must use only allowed_formula_variables and allowed_formula_functions.",
+    "not_exposed_to_llm": [
+      "previous initial reward schema content",
+      "previous diagnostic metric definitions",
+      "previous event predicate definitions",
+      "previous task-specific reward-design files"
+    ]
+  },
+  "action_cost_policy_v2": {
+    "custom_action_cost": "Use formula_component with semantic_role='control_cost'.",
+    "legacy_action_penalty": "Do not use for LLM-generated custom formulas; runtime action_penalty is built-in -sum(action^2)."
+  },
+  "action_mapping": {
+    "type": "discrete_lookup",
+    "variables": {
+      "main_engine": {
+        "2": 1.0,
+        "default": 0.0
+      },
+      "side_engine": {
+        "1": -1.0,
+        "3": 1.0,
+        "default": 0.0
+      }
+    }
+  }
+}
+
+Allowed variables:
+["x", "y", "vx", "vy", "angle", "angular_velocity", "left_contact", "right_contact", "main_engine", "side_engine"]
+
+Allowed semantic roles:
+["dense_guidance", "stability_quality", "terminal_success", "safety_constraint", "control_cost"]
+
+AST grammar:
+{
+  "leaf_nodes": [
+    {
+      "var": "<allowed_numeric_variable>"
+    },
+    {
+      "var": "<allowed_boolean_variable>"
+    },
+    {
+      "const": 0.5
+    },
+    {
+      "bool": true
+    }
+  ],
+  "numeric_ops": [
+    {
+      "op": "add",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable_1>"
+        },
+        {
+          "var": "<allowed_numeric_variable_2>"
+        }
+      ]
+    },
+    {
+      "op": "sub",
+      "left": {
+        "const": 1.0
+      },
+      "right": {
+        "var": "<allowed_numeric_variable>"
+      }
+    },
+    {
+      "op": "mul",
+      "args": [
+        {
+          "const": 0.5
+        },
+        {
+          "op": "abs",
+          "arg": {
+            "var": "<allowed_numeric_variable>"
+          }
+        }
+      ]
+    },
+    {
+      "op": "div",
+      "left": {
+        "var": "<allowed_numeric_variable>"
+      },
+      "right": {
+        "const": 2.0
+      }
+    },
+    {
+      "op": "neg",
+      "arg": {
+        "var": "<allowed_action_variable>"
+      }
+    },
+    {
+      "op": "abs",
+      "arg": {
+        "var": "<allowed_numeric_variable>"
+      }
+    },
+    {
+      "op": "min",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable>"
+        },
+        {
+          "const": 1.0
+        }
+      ]
+    },
+    {
+      "op": "max",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable>"
+        },
+        {
+          "const": 0.0
+        }
+      ]
+    },
+    {
+      "op": "clip",
+      "args": [
+        {
+          "var": "<allowed_numeric_variable>"
+        },
+        {
+          "const": -1.0
+        },
+        {
+          "const": 1.0
+        }
+      ]
+    }
+  ],
+  "boolean_ops": [
+    {
+      "op": "and",
+      "args": [
+        {
+          "var": "<allowed_boolean_variable_1>"
+        },
+        {
+          "var": "<allowed_boolean_variable_2>"
+        }
+      ]
+    },
+    {
+      "op": "or",
+      "args": [
+        {
+          "var": "<allowed_boolean_variable_1>"
+        },
+        {
+          "var": "<allowed_boolean_variable_2>"
+        }
+      ]
+    },
+    {
+      "op": "not",
+      "arg": {
+        "var": "<allowed_boolean_variable>"
+      }
+    },
+    {
+      "op": "lt",
+      "left": {
+        "op": "abs",
+        "arg": {
+          "var": "<allowed_numeric_variable>"
+        }
+      },
+      "right": {
+        "const": 0.4
+      }
+    },
+    {
+      "op": "gt",
+      "left": {
+        "op": "abs",
+        "arg": {
+          "var": "<allowed_numeric_variable>"
+        }
+      },
+      "right": {
+        "const": 0.6
+      }
+    }
+  ]
+}
+
+Hard constraints:
+1. Every formula_component must contain formula_ast and params.formula_ast.
+2. Every conditional_formula_component must contain formula_ast, condition_ast, params.formula_ast, params.condition_ast.
+3. Every event_predicate must contain condition.expr_ast.
+4. Do not use fields named formula, expression, or string condition.
+5. All AST variables must come from Allowed variables.
+6. Placeholder names in examples are invalid and must not appear in the final JSON.
+7. Use compact schemas: 3-7 components and 1-3 event rules.
+8. Use semantic_role for every component/event.
+9. Action cost must be a formula_component with semantic_role="control_cost" and reward-signed negative formula_ast when action/control variables are available.
+10. Output JSON only.
+
+Required output shape:
+{
+  "reward_blueprint": {
+    "task_objective": "one-sentence objective inferred from task text",
+    "primitive_variable_roles": {
+      "progress_variables": [
+        "names selected only from allowed variables"
+      ],
+      "safety_variables": [
+        "names selected only from allowed variables"
+      ],
+      "terminal_evidence_variables": [
+        "names selected only from allowed variables"
+      ],
+      "control_variables": [
+        "names selected only from allowed action/control variables"
+      ]
+    },
+    "phase_structure": [],
+    "component_blueprint": [],
+    "anti_exploit_principles": []
+  },
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap_ast",
+      "formula_ir": "ast",
+      "input_boundary": "primitive_interface_conditioned"
+    },
+    "components": [
+      {
+        "name": "r_task_progress_example",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "<replace_with_allowed_numeric_variable>"
+                }
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "<replace_with_allowed_numeric_variable>"
+                  }
+                },
+                {
+                  "const": 1.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "r_task_completion_example",
+        "type": "event_predicate",
+        "weight": 50.0,
+        "condition": {
+          "expr_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "<replace_with_allowed_boolean_or_threshold_predicate>"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "<replace_with_allowed_numeric_variable>"
+                  }
+                },
+                "right": {
+                  "const": 0.5
+                }
+              }
+            ]
+          },
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "completion"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [],
+    "risk_notes": []
+  },
+  "bootstrap_report": {
+    "design_rationale": "...",
+    "assumptions": [],
+    "risk_notes": [],
+    "primitive_interface_only": true,
+    "raw_env_code_input": false,
+    "eureka_like_input_status": "not_yet_implemented"
+  }
+}

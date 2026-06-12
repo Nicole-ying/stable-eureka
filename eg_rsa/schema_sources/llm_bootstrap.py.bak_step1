@@ -124,135 +124,83 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
         return RewardSchema.from_dict(schema_dict)
 
-
     @staticmethod
     def _build_runtime_spec_from_primitive_interface(primitive_interface: Dict[str, Any]) -> Dict[str, Any]:
-        """Build a lightweight runtime diagnostic spec from primitive_interface.
-
-        This method is intentionally generic. It must not assume LunarLander-specific
-        variables such as x, vx, vy, angle, left_contact, or right_contact. If such
-        variables are present, they can be used; otherwise the generated diagnostics
-        remain valid but conservative.
-        """
         observation_mapping = primitive_interface.get("observation_mapping")
         if not isinstance(observation_mapping, dict) or not observation_mapping:
             observation_mapping = {}
-            for idx, item in enumerate(primitive_interface.get("observation_variables", []) or []):
+            for idx, item in enumerate(primitive_interface.get("observation_variables", [])):
                 if isinstance(item, dict) and item.get("name"):
                     observation_mapping[item["name"]] = idx
 
-        observation_variables = primitive_interface.get("observation_variables", []) or []
-        action_variables = primitive_interface.get("action_variables", []) or []
-
-        bool_vars = []
-        numeric_vars = []
-        for item in observation_variables:
-            if not isinstance(item, dict) or not item.get("name"):
-                continue
-            name = str(item["name"])
-            typ = str(item.get("type", "")).lower()
-            if typ in {"bool", "boolean"}:
-                bool_vars.append(name)
-            else:
-                numeric_vars.append(name)
-
-        action_names = [
-            str(item["name"])
-            for item in action_variables
-            if isinstance(item, dict) and item.get("name")
-        ]
-
         events: Dict[str, Dict[str, Any]] = {}
 
-        # Generic boolean observation events.
-        for name in bool_vars:
-            events[name] = {
+        if "left_contact" in observation_mapping:
+            events["left_contact"] = {
                 "type": "threshold_gt",
-                "var": name,
+                "var": "left_contact",
                 "threshold": 0.5,
             }
 
-        # Generic grouped contact event if the primitive interface exposes contact-like booleans.
-        contact_like = [
-            name for name in bool_vars
-            if "contact" in name.lower() or "touch" in name.lower() or "ground" in name.lower()
-        ]
-        if contact_like:
-            events["any_contact_evidence"] = {
+        if "right_contact" in observation_mapping:
+            events["right_contact"] = {
+                "type": "threshold_gt",
+                "var": "right_contact",
+                "threshold": 0.5,
+            }
+
+        if "left_contact" in events or "right_contact" in events:
+            events["contact"] = {
                 "type": "any",
-                "events": contact_like,
+                "events": [x for x in ["left_contact", "right_contact"] if x in events],
             }
-        if len(contact_like) >= 2:
-            events["all_contact_evidence"] = {
+
+        if "left_contact" in events and "right_contact" in events:
+            events["both_contact"] = {
                 "type": "all",
-                "events": contact_like[:4],
+                "events": ["left_contact", "right_contact"],
             }
 
-        # Generic action event when actions are available.
-        if action_names:
-            events["action_nonzero"] = {
-                "type": "action_nonzero",
-            }
+        events["engine_on"] = {
+            "type": "action_nonzero",
+        }
 
-        task_metrics: Dict[str, Dict[str, Any]] = {}
-
-        def add_raw_abs_inverse_metric(metric_name: str, inputs: list[str]) -> None:
-            valid = [x for x in inputs if x in observation_mapping]
-            if valid:
-                task_metrics[metric_name] = {
-                    "type": "raw_abs_inverse",
-                    "inputs": valid,
-                }
-
-        # Prefer common control-task names when present, but do not require them.
-        add_raw_abs_inverse_metric("position_centering", [x for x in ["x", "position", "pos"] if x in observation_mapping])
-        add_raw_abs_inverse_metric("velocity_smoothness", [x for x in ["vx", "vy", "velocity", "horizontal_speed", "vertical_speed"] if x in observation_mapping])
-        add_raw_abs_inverse_metric("attitude_smoothness", [x for x in ["angle", "angular_velocity", "hull_angle", "hull_angular_velocity"] if x in observation_mapping])
-
-        # If none of the common names exist, create one generic state-smoothness metric
-        # from the first few numeric observation variables.
-        if not task_metrics and numeric_vars:
-            add_raw_abs_inverse_metric("state_smoothness", numeric_vars[:4])
-
-        if action_names:
-            task_metrics["energy_cost"] = {
+        task_metrics = {
+            "horizontal_centering": {
+                "type": "raw_abs_inverse",
+                "inputs": ["x"],
+            },
+            "velocity_smoothness": {
+                "type": "raw_abs_inverse",
+                "inputs": ["vx", "vy"],
+            },
+            "attitude_smoothness": {
+                "type": "raw_abs_inverse",
+                "inputs": ["angle", "angular_velocity"],
+            },
+            "energy_cost": {
                 "type": "action_cost",
-            }
-
-        if "all_contact_evidence" in events:
-            task_metrics["contact_evidence"] = {
-                "type": "event_score",
-                "event": "all_contact_evidence",
-            }
-        elif "any_contact_evidence" in events:
-            task_metrics["contact_evidence"] = {
-                "type": "event_score",
-                "event": "any_contact_evidence",
-            }
-
-        progress_metrics = [
-            name for name in [
-                "position_centering",
-                "velocity_smoothness",
-                "attitude_smoothness",
-                "state_smoothness",
-                "contact_evidence",
-            ]
-            if name in task_metrics
-        ]
-        if progress_metrics:
-            task_metrics["progress"] = {
+            },
+            "progress": {
                 "type": "metric_mean",
-                "metrics": progress_metrics,
+                "metrics": [
+                    "horizontal_centering",
+                    "velocity_smoothness",
+                    "attitude_smoothness",
+                ],
+            },
+        }
+
+        if "both_contact" in events:
+            task_metrics["two_leg_contact_evidence"] = {
+                "type": "event_score",
+                "event": "both_contact",
             }
 
         return {
             "source": "primitive_interface_generated_runtime_spec",
-            "input_boundary": "primitive_interface_conditioned",
-            "raw_env_code_input": False,
-            "eureka_like_input_status": "planned_not_current",
             "observation_mapping": observation_mapping,
-            "action_variables": action_variables,
+            "action_variables": primitive_interface.get("action_variables", []),
             "action_mapping": primitive_interface.get("action_mapping", {}),
             "events": events,
             "task_metrics": task_metrics,
