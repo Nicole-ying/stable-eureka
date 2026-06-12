@@ -11,6 +11,7 @@ from eg_rsa.llm.bootstrap_agent import BootstrapAgent
 from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
 from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 from eg_rsa.reward.schema import RewardSchema
+from eg_rsa.reward.source_aware_scaffold import SourceAwareSafeScaffold
 from eg_rsa.schema_sources.base import SchemaSource
 from eg_rsa.schema_sources.eureka_like_interface import EurekaLikeInterfaceBuilder
 
@@ -28,7 +29,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
     Source-aware mode is intentionally robust: the LLM may infer a useful
     primitive_interface but still produce a malformed executable schema. In that
     case we preserve the failed schema for audit and fall back to a deterministic
-    safe scaffold generated from the inferred interface.
+    source-aware scaffold generated from the inferred interface and blueprint.
     """
 
     def __init__(
@@ -147,6 +148,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
                 primitive_interface=primitive_interface,
                 bootstrap_dir=bootstrap_dir,
                 validation_errors=validation.errors,
+                reward_blueprint=result.get("reward_blueprint", {}) or {},
             )
             schema_dict = result.get("initial_schema")
 
@@ -175,38 +177,23 @@ class LLMBootstrapSchemaSource(SchemaSource):
         primitive_interface: Dict[str, Any],
         bootstrap_dir: Path,
         validation_errors: Any,
+        reward_blueprint: Optional[Dict[str, Any]] = None,
     ):
-        """Replace invalid source-aware LLM schema with deterministic safe scaffold.
+        """Replace invalid source-aware LLM schema with deterministic source-aware scaffold.
 
         This keeps the source-aware input boundary intact: the primitive interface is
         still inferred from the anonymous source prompt. Only the executable schema
         is replaced when the LLM-produced AST is structurally invalid.
         """
-        fallback = BootstrapAgent._fallback_bootstrap(
-            primitive_interface,
-            primitive_interface.get("task_description", ""),
-        )
-        fallback["primitive_interface"] = primitive_interface
-        fallback.setdefault("bootstrap_report", {})
-        fallback["bootstrap_report"].update(
-            {
-                "source_aware_bootstrap": True,
-                "primitive_interface_generated": True,
-                "schema_source": "deterministic_safe_scaffold_after_invalid_llm_schema",
-                "llm_schema_replaced": True,
-                "llm_validation_errors": list(validation_errors or []),
-            }
-        )
-        fallback.setdefault("diagnostics", {})
-        fallback["diagnostics"].setdefault("risk_notes", [])
-        fallback["diagnostics"]["risk_notes"].append(
-            "The LLM-produced source-aware schema failed validation and was replaced by a deterministic safe scaffold."
+        fallback = SourceAwareSafeScaffold.build(
+            primitive_interface=primitive_interface,
+            reward_blueprint=reward_blueprint or {},
+            validation_errors=list(validation_errors or []),
         )
         canonical_fallback, fallback_report = SchemaCanonicalizer.canonicalize_bootstrap_result(
             fallback,
             primitive_interface,
         )
-        fallback_schema = canonical_fallback.get("initial_schema")
         fallback_validation = BootstrapSchemaValidator.validate_bootstrap_result(
             canonical_fallback,
             primitive_interface,
