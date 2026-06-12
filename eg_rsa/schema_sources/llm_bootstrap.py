@@ -11,10 +11,18 @@ from eg_rsa.reward.bootstrap_schema_validator import BootstrapSchemaValidator
 from eg_rsa.reward.schema_canonicalizer import SchemaCanonicalizer
 from eg_rsa.reward.schema import RewardSchema
 from eg_rsa.schema_sources.base import SchemaSource
+from eg_rsa.schema_sources.eureka_like_interface import EurekaLikeInterfaceBuilder
 
 
 class LLMBootstrapSchemaSource(SchemaSource):
-    """Create initial schema and runtime diagnostic spec from primitive interface."""
+    """Create initial schema and runtime diagnostic spec from generated primitive interface.
+
+    Preferred V2.1 input boundary:
+        Eureka-like environment task file -> generated primitive interface -> AST bootstrap.
+
+    Backward compatibility:
+        Existing configs may still pass primitive_interface_path directly.
+    """
 
     def __init__(
         self,
@@ -48,11 +56,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
         blueprint_path = bootstrap_dir / "reward_blueprint.json"
         reuse_if_exists = bool(cfg.get("reuse_if_exists", True))
 
-        primitive_path = Path(cfg.get("primitive_interface_path", ""))
-        if not primitive_path.exists():
-            raise FileNotFoundError(f"primitive_interface_path not found: {primitive_path}")
-
-        primitive_interface = json.loads(primitive_path.read_text(encoding="utf-8"))
+        primitive_interface = self._load_or_generate_primitive_interface(cfg)
 
         runtime_spec = self._build_runtime_spec_from_primitive_interface(primitive_interface)
         runtime_spec_path.write_text(
@@ -124,6 +128,75 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
         return RewardSchema.from_dict(schema_dict)
 
+    def _load_or_generate_primitive_interface(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
+        """Load primitive interface or generate it from a Eureka-like task file.
+
+        New preferred config:
+            schema_source:
+              type: llm_bootstrap
+              eureka_like_task_path: configs/.../task.json
+              primitive_interface_path: auto
+
+        Backward compatible config:
+            schema_source:
+              type: llm_bootstrap
+              primitive_interface_path: configs/.../primitive_interface.json
+        """
+        interface_subdir = cfg.get("interface_output_subdir", "interface")
+        interface_dir = self.output_dir / interface_subdir
+
+        eureka_like_task_path = cfg.get("eureka_like_task_path") or cfg.get("task_file_path")
+        primitive_path_value = cfg.get("primitive_interface_path", "")
+        primitive_path_is_auto = str(primitive_path_value).lower() in {"", "auto", "generated"}
+
+        if eureka_like_task_path and primitive_path_is_auto:
+            primitive_interface = EurekaLikeInterfaceBuilder.build_from_file(
+                task_file_path=eureka_like_task_path,
+                output_dir=interface_dir,
+            )
+            self.config.setdefault("eg_rsa", {}).setdefault("schema_source", {})[
+                "generated_primitive_interface_path"
+            ] = str(interface_dir / "generated_primitive_interface.json")
+            return primitive_interface
+
+        if eureka_like_task_path and not primitive_path_is_auto:
+            # Generate and archive the interface for auditability, but preserve explicit
+            # primitive_interface_path for backward-compatible controlled experiments.
+            EurekaLikeInterfaceBuilder.build_from_file(
+                task_file_path=eureka_like_task_path,
+                output_dir=interface_dir,
+            )
+
+        primitive_path = Path(str(primitive_path_value))
+        if not primitive_path.exists():
+            if eureka_like_task_path:
+                raise FileNotFoundError(
+                    "primitive_interface_path was not found, and primitive_interface_path is not set to auto. "
+                    f"Set primitive_interface_path: auto to use generated interface from {eureka_like_task_path}. "
+                    f"Missing path: {primitive_path}"
+                )
+            raise FileNotFoundError(f"primitive_interface_path not found: {primitive_path}")
+
+        primitive_interface = json.loads(primitive_path.read_text(encoding="utf-8"))
+        self._write_json(
+            interface_dir / "loaded_primitive_interface.json",
+            primitive_interface,
+        )
+        self._write_json(
+            interface_dir / "interface_generation_report.json",
+            {
+                "source": "existing_primitive_interface_path",
+                "primitive_interface_path": str(primitive_path),
+                "output_path": str(interface_dir / "loaded_primitive_interface.json"),
+                "raw_env_code_input": False,
+                "env_code_parser": "planned_not_current",
+                "notes": [
+                    "Backward-compatible path: primitive_interface_path was provided directly.",
+                    "For the Eureka-like entry path, set eureka_like_task_path and primitive_interface_path: auto.",
+                ],
+            },
+        )
+        return primitive_interface
 
     @staticmethod
     def _build_runtime_spec_from_primitive_interface(primitive_interface: Dict[str, Any]) -> Dict[str, Any]:
@@ -248,9 +321,15 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
         return {
             "source": "primitive_interface_generated_runtime_spec",
-            "input_boundary": "primitive_interface_conditioned",
-            "raw_env_code_input": False,
-            "eureka_like_input_status": "planned_not_current",
+            "input_boundary": primitive_interface.get(
+                "input_boundary",
+                "primitive_interface_conditioned",
+            ),
+            "raw_env_code_input": bool(primitive_interface.get("raw_env_code_input", False)),
+            "eureka_like_input_status": primitive_interface.get(
+                "env_code_parser",
+                "planned_not_current",
+            ),
             "observation_mapping": observation_mapping,
             "action_variables": action_variables,
             "action_mapping": primitive_interface.get("action_mapping", {}),
