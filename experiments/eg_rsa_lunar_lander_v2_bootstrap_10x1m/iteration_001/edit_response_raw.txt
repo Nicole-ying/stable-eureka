@@ -1,0 +1,192 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "All 6 episodes triggered r_landing_success (terminal reward paid rate 1.0) but success episode rate is 0.0 because landings are not stable/safe",
+      "High contact toggling: mean 106.8, max 140, indicating bouncing or intermittent ground contact",
+      "r_center_guidance mean 0.13, max 0.498 – lateral positioning is suboptimal",
+      "r_descent_guidance mean 0.305 (1 - y), implying average y ≈ 0.695 – descent is not aggressive",
+      "r_stability mean -0.074 – moderate tilt/angular velocity",
+      "r_fuel_penalty mean -0.03 – fuel cost is moderate",
+      "No crashes detected",
+      "Hack score 0.2 with shaping_goal_mismatch flag true, no reward hacking"
+    ],
+    "likely_true_failures": [
+      "Insufficient incentive for soft, slow touchdown – r_vertical_safety only activates when y < 0.1 and penalises |vy|, but does not encourage gentle descent overall",
+      "Weak lateral centering – r_center_guidance weight too low to adequately pull the lander to x=0",
+      "Descent speed is not penalised – agent can descend quickly and bounce, as there is no cost for high vx or vy away from ground",
+      "Fuel efficiency could be improved by slightly increasing fuel penalty"
+    ],
+    "likely_false_positives": [
+      "The terminal_success_dominance flag (component ratio 0.512) is benign – landing is the ultimate goal, and dense shaping is still present",
+      "Unstable contact toggling is not reward hacking; it is a task performance issue"
+    ],
+    "root_cause_hypotheses": [
+      "The dense reward components are not sufficiently aligned with the desired soft-landing behaviour: centering is too weak, descent incentive exists but does not penalise speed, and vertical safety only operates very close to ground",
+      "The r_vertical_safety condition is too restrictive (only y < 0.1) and the penalty is only on vy; a broader speed penalty or continuous vertical control feedback could stabilise touchdown",
+      "Fuel cost is mild and could be increased to discourage inefficient hovering/thrust"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "memory_id": "iter_000_to_001",
+        "reusable": true,
+        "reason": "Previous edit successfully reduced center dominance and added descent guidance, proving that coupled rebalancing can improve task outcomes without hacking."
+      }
+    ],
+    "reusable_lessons": [
+      "Decrease dominant component weight and introduce missing dense progress shaping",
+      "Coupled edits (weight adjustments + new shaping) are more reliable than single changes"
+    ],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [
+      "Removing or severely weakening centering guidance",
+      "Making terminal success the sole strong reward without intermediate dense shaping",
+      "Drastically increasing any single component weight to dominance (>0.8 ratio)"
+    ],
+    "recommended_actions": [
+      "Increase weight of r_center_guidance and r_descent_guidance moderately",
+      "Add a continuous speed penalty (vx and vy) to dampen bouncing",
+      "Keep all safety constraints intact"
+    ],
+    "memory_confidence": 0.9
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "To improve landing quality, strengthen centering and descent incentives, and add a continuous speed penalty to reduce bouncing, while keeping safety constraints intact. Previous memory supports this coupled approach.",
+    "expected_effect": "Agent should land more centered, descend faster, and with lower speeds; contact toggling should decrease; success rate may remain high but landing stability should improve.",
+    "risk_analysis": "If centering or descent weights are too high, they could overshadow other objectives; speed penalty might discourage necessary descent velocity; but moderate increases (1.5×) and a mild penalty weight (0.3) limit this risk. Monitoring after training will detect any new dominance or crash increase.",
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_center_guidance",
+        "factor": 1.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 1.5
+      },
+      {
+        "operator": "add_formula_component",
+        "component": {
+          "name": "r_speed_penalty",
+          "type": "formula_component",
+          "weight": 0.3,
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {"const": -0.5},
+              {"op": "add",
+               "args": [
+                 {"op": "abs", "arg": {"var": "vx"}},
+                 {"op": "abs", "arg": {"var": "vy"}}
+               ]}
+            ]
+          },
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {"const": -0.5},
+                {"op": "add",
+                 "args": [
+                   {"op": "abs", "arg": {"var": "vx"}},
+                   {"op": "abs", "arg": {"var": "vy"}}
+                 ]}
+              ]
+            }
+          },
+          "clip": [-1.0, 0.0],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Moderate weight increases on centering and descent components",
+      "Adding a continuous speed penalty with clip [-1,0]"
+    ],
+    "what_failed": [],
+    "avoid_next": [
+      "Overweighting any single dense component to dominance",
+      "Neglecting speed/velocity control near ground"
+    ],
+    "recommend_next": [
+      "Monitor contact toggles and adjust speed penalty scaling if needed",
+      "Consider further incremental weight tuning if landing remains unstable"
+    ],
+    "applicability_notes": [
+      "Applicable when terminal reward is achieved but landing quality is poor (bouncing, weak centering, slow descent)."
+    ]
+  },
+  "diagnosis": "Poor landing quality due to weak centering, slow descent, and no speed penalty leads to bouncing and off-center landings. Edits strengthen these aspects while preserving safety.",
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "r_center_guidance",
+      "factor": 1.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 1.5
+    },
+    {
+      "operator": "add_formula_component",
+      "component": {
+        "name": "r_speed_penalty",
+        "type": "formula_component",
+        "weight": 0.3,
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {"const": -0.5},
+            {"op": "add",
+             "args": [
+               {"op": "abs", "arg": {"var": "vx"}},
+               {"op": "abs", "arg": {"var": "vy"}}
+             ]}
+          ]
+        },
+        "params": {
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {"const": -0.5},
+              {"op": "add",
+               "args": [
+                 {"op": "abs", "arg": {"var": "vx"}},
+                 {"op": "abs", "arg": {"var": "vy"}}
+               ]}
+            ]
+          }
+        },
+        "clip": [-1.0, 0.0],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

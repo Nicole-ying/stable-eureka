@@ -1,0 +1,70 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_center_guidance",
+      "factor": 0.4
+    },
+    {
+      "operator": "replace_formula",
+      "target": "r_descent_guidance",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 2.0
+        },
+        "right": {
+          "var": "y"
+        }
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_descent_guidance: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Low step evidence for target r_descent_guidance: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing center guidance alone could cause the agent to drift without descending, while strengthening descent without reining in center dominance may not break the hovering optimum. The two changes must be applied together to redirect behavior toward landing.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Reduce r_center_guidance weight from 0.5 to 0.2, lowering its dominance ratio below ~0.3",
+        "Replace r_descent_guidance formula with a version that activates early (e.g., 2.0 − y or 3.0 − y, clipped to [0,1]) so that descending from any altitude yields a positive signal",
+        "Increase r_descent_guidance weight to around 0.5–0.7 to provide a usable gradient without creating new dominance (ratio should stay below ~0.6)",
+        "Do not add any new components, especially not contact‑conditional speed penalties or contact‑stability rewards with low weight",
+        "Do not change any event rules (r_landing_success, r_crash) or other components (r_stability, r_fuel_penalty, r_velocity_penalty, r_vertical_safety)",
+        "Ensure no single component becomes dominant (ratio >0.8) after the edit"
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as safety backstop",
+        "stability component (r_stability) to prevent excessive tilt",
+        "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+        "terminal landing success event (r_landing_success) as the ultimate goal signal",
+        "existing action mapping and variable set",
+        "r_velocity_penalty as a mild smoothness incentive (it is not harmful in the current state)"
+      ],
+      "must_avoid": [
+        "complete removal of horizontal guidance (some centering is necessary)",
+        "introduction of contact‑conditional speed penalties or near‑ground penalties not already present",
+        "tightening the terminal success condition with velocity/angular thresholds",
+        "overweighting the new descent component to dominance (ratio >0.8)",
+        "using a descent formula that still has a dead zone at initial altitude (e.g., 1−y)"
+      ],
+      "expected_effect": "The agent will receive a descent gradient from the start of each episode, encouraging it to lower its altitude while still being pulled toward x=0. Center guidance remains but is no longer dominant. The policy should start descending, attempt to land, and likely achieve stable contact; success rate should rise from 0 %, episode lengths drop, and hack risk remains low.",
+      "risk_analysis": "If center weight is reduced too much, the agent may fail to reach the landing area, but the tolerance is moderate. If descent incentive is too strong, the agent might descend aggressively, but the existing crash penalty, stability component, and vertical safety (once activated near the ground) should prevent crashes. The new descent component must not become dominant; keeping its weight ≤0.7 and verifying via attribution after training is crucial."
+    }
+  }
+}

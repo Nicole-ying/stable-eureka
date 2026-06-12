@@ -1,0 +1,118 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_ground_speed_penalty",
+        "type": "conditional_formula_component",
+        "weight": 0.5,
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.2
+          }
+        },
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety",
+        "inputs": []
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "single_edit",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "The package of reverting terminal condition to simple, adding near-ground speed penalty, and adjusting weights must be applied together to avoid new misalignment",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Restore r_landing_success condition to simple AND of left_contact and right_contact with duration_steps=20 (one_time true)",
+        "Add or modify a dense component that penalizes high total speed (|vx|+|vy|) when altitude y < 0.2, scaled appropriately (e.g., weight 0.5, formula -k*(|vx|+|vy|) with k ~0.5, clip [-1,0]); this should encourage gentle descent near ground",
+        "If needed, slightly increase r_descent_guidance weight or r_center_guidance weight to maintain progress, but not beyond dominance ratio >0.4 each",
+        "Preserve all existing safety constraints (r_crash, r_stability, r_fuel_penalty) unchanged",
+        "Do not introduce any new event rules or change reward timing"
+      ],
+      "must_preserve": [
+        "Simple terminal landing condition (both contacts only)",
+        "Crash penalty as safety backstop",
+        "Stability component to prevent excessive tilt",
+        "Fuel penalty as efficiency constraint",
+        "Existing action mapping and allowed variables"
+      ],
+      "must_avoid": [
+        "Tightening terminal success condition beyond both contacts",
+        "Making any component dominance ratio >0.5",
+        "Adding components that penalize speed only when both contacts are true (previous failure)",
+        "Over-reliance on sparse reward without dense guidance",
+        "Large weight changes that could destabilize learning"
+      ],
+      "expected_effect": "Agent should resume triggering terminal landings (success rate > 0) and learn to execute soft touchdowns; contact toggling should decrease; dense guidance will still encourage descent and centering but new near-ground speed penalty will reduce bouncing; progress score should remain high; overall task score should improve",
+      "risk_analysis": "If near-ground speed penalty is too strong, the agent might hesitate to descend or abort landing, causing longer episodes. If descent incentive is weakened, hovering could recur. Need to monitor crash rate and contact toggles after edit; if bouncing persists, may need additional incentive for sustained ground contact."
+    }
+  }
+}

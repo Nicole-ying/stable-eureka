@@ -1,0 +1,69 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_center_guidance",
+      "factor": 0.4
+    },
+    {
+      "operator": "replace_formula",
+      "target": "r_descent_guidance",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 3.0
+        },
+        "right": {
+          "var": "y"
+        }
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 2.0
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Low step evidence for target r_descent_guidance: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Low step evidence for target r_descent_guidance: ratio=0.0000, trigger_rate=0.0000; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing center guidance and strengthening descent incentive must occur together; weakening centering alone could lead to aimless drifting, and stronger descent without adjusting centering may not break the hovering optimum.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Reduce r_center_guidance weight further (e.g., from 0.5 to 0.2) to lower its dominance ratio below 0.3.",
+        "Modify r_descent_guidance formula to reward any descent from initial altitude; for example, use (2.0 − y) clipped to [0,1] so that reward starts as soon as y < 2.0.",
+        "Increase r_descent_guidance weight to a level that creates a strong gradient (e.g., 1.0).",
+        "Preserve r_stability, r_fuel_penalty, r_crash, r_landing_success exactly as is.",
+        "Do not change r_vertical_safety condition or any event rules.",
+        "Do not add new components that penalize speed conditional on ground contact."
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as safety backstop",
+        "stability component (r_stability) to prevent excessive tilt",
+        "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+        "terminal landing success event (r_landing_success) as the ultimate goal signal",
+        "existing action mapping and variable set"
+      ],
+      "must_avoid": [
+        "complete removal of horizontal guidance (some centering is necessary)",
+        "introduction of contact‑conditional speed penalties",
+        "tightening terminal condition with velocity/angular thresholds",
+        "reliance on purely sparse reward without dense descent shaping",
+        "drastic weight increases that would make any single component dominant (ratio >0.8)"
+      ],
+      "expected_effect": "Agent should begin descending from the start, following a descent gradient that activates early. Center guidance will still pull toward x=0 but will not dominate. Landings should become possible, with episode lengths decreasing sharply.",
+      "risk_analysis": "If descent incentive becomes too aggressive, the agent might descend at high speed; however, crash penalty, stability component, and existing vertical safety near ground should mitigate crashes. If center guidance is weakened too much, the lander may miss the landing area, but the flags are tolerant enough that moderate lateral deviation is acceptable. The coupled edit should not create new dominance if descent weight is kept ≤1.0 and center weight ≥0.2."
+    }
+  }
+}

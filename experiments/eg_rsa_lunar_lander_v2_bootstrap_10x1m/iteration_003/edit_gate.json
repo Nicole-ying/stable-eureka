@@ -1,0 +1,178 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "replace_condition",
+      "target": "r_landing_success",
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "var": "left_contact"
+          },
+          {
+            "var": "right_contact"
+          },
+          {
+            "op": "lt",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "var": "vx"
+              }
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "var": "vy"
+              }
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "var": "angular_velocity"
+              }
+            },
+            "right": {
+              "const": 0.1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_ground_speed_penalty",
+        "type": "conditional_formula_component",
+        "weight": 0.5,
+        "inputs": [],
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.2
+          }
+        },
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 1.5
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Terminal target r_landing_success has low step evidence but episode semantic evidence is present; warning only.",
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Tightening the landing success condition without adding a complementary near‑ground speed incentive could make the terminal reward unreachable; conversely, adding a speed penalty without a stricter success condition would still allow high‑speed landings to be rewarded. Both changes must be applied together to align the terminal goal with dense shaping.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Modify the condition of r_landing_success to additionally require |vx| < 0.2, |vy| < 0.2, and |angular_velocity| < 0.1 for the same 20‑step duration, so that the terminal reward is only paid for soft, upright landings",
+        "Introduce a new dense component (e.g., r_ground_speed_penalty) that penalises |vx| + |vy| when y < 0.2 (independent of contact state) with weight 0.5 and clip [‑1, 0], to encourage slow approach and prevent post‑landing sliding",
+        "Optionally increase r_descent_guidance weight from 0.5 to 0.75 to maintain a strong descent incentive so that the speed penalty near ground does not stall the approach",
+        "Preserve r_crash, r_stability, r_fuel_penalty, r_center_guidance, and the existing variable set without weakening",
+        "Avoid creating any new component that activates conditionally on contacts (to prevent escape incentives)",
+        "Ensure no single component achieves a dominance ratio >0.5"
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as a safety backstop",
+        "stability component (r_stability) to prevent excessive tilt",
+        "fuel penalty (r_fuel_penalty) as an efficiency constraint",
+        "terminal landing success event (r_landing_success) as the ultimate goal signal",
+        "existing action mapping and variable set"
+      ],
+      "must_avoid": [
+        "adding any penalty or reward that is conditional solely on both contacts (creates escape motivation)",
+        "significantly weakening or removing centering or descent guidance",
+        "making any component dominant (ratio >0.5)",
+        "relying only on sparse terminal reward without dense landing‑quality shaping",
+        "introducing infinite reward loops or non‑observable variables"
+      ],
+      "expected_effect": "Agent should learn to approach the ground slowly and achieve a soft touchdown, satisfying the stricter landing success condition. Contact toggling should decrease, stable landing rate should rise, and centering should improve as the terminal reward is tied to a gentle, centred landing. Hack risk remains low.",
+      "risk_analysis": "If the landing success condition is too strict, the agent may fail to achieve it at all, causing a drop in success rate and possible increase in crashes. If the ground speed penalty is too harsh, it may cause the agent to hover indefinitely. The coupled package must be calibrated carefully. Monitoring after training is essential; if success rate drops sharply, the condition can be relaxed slightly in a later iteration."
+    }
+  }
+}

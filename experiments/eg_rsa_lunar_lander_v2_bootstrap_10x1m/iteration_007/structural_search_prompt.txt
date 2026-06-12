@@ -1,0 +1,4102 @@
+You are the Structural Search sub-agent of EG-RSA-V2 AST-IR.
+
+Return one JSON object only.
+
+Primitive-only constraints:
+1. Do NOT use environment oracle reward or official reward values.
+2. Do NOT write Python code.
+3. Do NOT output string formulas or string conditions.
+4. Use formula_ast / condition_ast / condition.expr_ast only.
+5. Formula AST variables may use only: ["x", "y", "vx", "vy", "angle", "angular_velocity", "left_contact", "right_contact", "main_engine", "side_engine"]
+6. If no safe structural edit exists, return edit_decision="no_edit" and next_action="continue_training".
+
+AST grammar:
+{
+  "leaf": [
+    {
+      "var": "x"
+    },
+    {
+      "const": 0.5
+    },
+    {
+      "bool": true
+    }
+  ],
+  "numeric_ops": [
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "neg",
+    "abs",
+    "min",
+    "max",
+    "clip"
+  ],
+  "boolean_ops": [
+    "and",
+    "or",
+    "not",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "eq",
+    "ne"
+  ]
+}
+
+Preferred structural edits:
+1. add_formula_component
+2. add_conditional_formula_component
+3. add_action_penalty
+4. add_event_predicate
+
+Required add_formula_component schema:
+{
+  "operator": "add_formula_component",
+  "component": {
+    "name": "r_unique_formula_component",
+    "type": "formula_component",
+    "weight": 1.0,
+    "formula_ast": {"op": "sub", "left": {"const": 1.0}, "right": {"op": "min", "args": [{"op": "abs", "arg": {"var": "x"}}, {"const": 1.0}]}},
+    "params": {
+      "formula_ast": {"op": "sub", "left": {"const": 1.0}, "right": {"op": "min", "args": [{"op": "abs", "arg": {"var": "x"}}, {"const": 1.0}]}}
+    },
+    "clip": [0.0, 1.0],
+    "enabled": true,
+    "semantic_role": "dense_guidance",
+    "reward_timing": "dense",
+    "behavior_channel": "progress"
+  }
+}
+
+Required add_event_predicate schema:
+{
+  "operator": "add_event_predicate",
+  "event_rule": {
+    "name": "r_unique_event_predicate",
+    "type": "event_predicate",
+    "weight": 20.0,
+    "condition": {
+      "expr_ast": {"op": "and", "args": [{"var": "left_contact"}, {"var": "right_contact"}]},
+      "duration_steps": 1
+    },
+    "one_time": true,
+    "enabled": true,
+    "semantic_role": "terminal_success",
+    "reward_timing": "sparse_event",
+    "behavior_channel": "completion"
+  }
+}
+
+Task description:
+Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.
+
+Current reward schema:
+{
+  "version": 3,
+  "components": [
+    {
+      "name": "r_center_guidance",
+      "type": "formula_component",
+      "weight": 0.5,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "const": 1.0
+              },
+              {
+                "op": "div",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "x"
+                  }
+                },
+                "right": {
+                  "const": 0.2
+                }
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 1.0
+        },
+        "right": {
+          "op": "min",
+          "args": [
+            {
+              "const": 1.0
+            },
+            {
+              "op": "div",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "x"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "r_stability",
+      "type": "formula_component",
+      "weight": 0.5,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 0.0
+          },
+          "right": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "angle"
+                }
+              },
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": 0.5
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angular_velocity"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "stability_quality",
+      "reward_timing": "dense",
+      "behavior_channel": "safety",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 0.0
+        },
+        "right": {
+          "op": "add",
+          "args": [
+            {
+              "op": "abs",
+              "arg": {
+                "var": "angle"
+              }
+            },
+            {
+              "op": "mul",
+              "args": [
+                {
+                  "const": 0.5
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angular_velocity"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "r_vertical_safety",
+      "type": "conditional_formula_component",
+      "weight": 0.5,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "abs",
+            "arg": {
+              "var": "vy"
+            }
+          }
+        },
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.1
+          }
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "safety_constraint",
+      "reward_timing": "dense",
+      "behavior_channel": "safety",
+      "formula_ast": {
+        "op": "neg",
+        "arg": {
+          "op": "abs",
+          "arg": {
+            "var": "vy"
+          }
+        }
+      },
+      "condition_ast": {
+        "op": "lt",
+        "left": {
+          "var": "y"
+        },
+        "right": {
+          "const": 0.1
+        }
+      }
+    },
+    {
+      "name": "r_fuel_penalty",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.05
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "var": "main_engine"
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "side_engine"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "control_cost",
+      "reward_timing": "dense",
+      "behavior_channel": "control",
+      "formula_ast": {
+        "op": "mul",
+        "args": [
+          {
+            "const": -0.05
+          },
+          {
+            "op": "add",
+            "args": [
+              {
+                "var": "main_engine"
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "side_engine"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "r_descent_guidance",
+      "type": "formula_component",
+      "weight": 0.5,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 1.0
+        },
+        "right": {
+          "var": "y"
+        }
+      }
+    }
+  ],
+  "event_rules": [
+    {
+      "name": "r_landing_success",
+      "type": "event_predicate",
+      "weight": 200.0,
+      "condition": {
+        "expr_ast": {
+          "op": "and",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            }
+          ]
+        },
+        "duration_steps": 20
+      },
+      "one_time": true,
+      "enabled": true,
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "var": "left_contact"
+          },
+          {
+            "var": "right_contact"
+          }
+        ]
+      },
+      "semantic_role": "terminal_success",
+      "reward_timing": "sparse_event",
+      "behavior_channel": "completion"
+    },
+    {
+      "name": "r_crash",
+      "type": "event_predicate",
+      "weight": -100.0,
+      "condition": {
+        "expr_ast": {
+          "op": "and",
+          "args": [
+            {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.0
+              }
+            },
+            {
+              "op": "not",
+              "arg": {
+                "op": "or",
+                "args": [
+                  {
+                    "var": "left_contact"
+                  },
+                  {
+                    "var": "right_contact"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "duration_steps": 1
+      },
+      "one_time": true,
+      "enabled": true,
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.0
+            }
+          },
+          {
+            "op": "not",
+            "arg": {
+              "op": "or",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "semantic_role": "safety_constraint",
+      "reward_timing": "sparse_event",
+      "behavior_channel": "safety"
+    }
+  ],
+  "metadata": {
+    "source": "llm_bootstrap_ast",
+    "formula_ir": "ast",
+    "reward_blueprint_present": true,
+    "action_mapping": {
+      "type": "discrete_lookup",
+      "variables": {
+        "main_engine": {
+          "2": 1.0,
+          "default": 0.0
+        },
+        "side_engine": {
+          "1": -1.0,
+          "3": 1.0,
+          "default": 0.0
+        }
+      }
+    },
+    "action_variables": [
+      {
+        "name": "main_engine",
+        "description": "Main engine action or throttle.",
+        "type": "float"
+      },
+      {
+        "name": "side_engine",
+        "description": "Side engine action or throttle.",
+        "type": "float"
+      }
+    ],
+    "allowed_formula_variables": [
+      "x",
+      "y",
+      "vx",
+      "vy",
+      "angle",
+      "angular_velocity",
+      "left_contact",
+      "right_contact",
+      "main_engine",
+      "side_engine"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ]
+  }
+}
+
+Diagnostic report:
+{
+  "attribution": {
+    "episode_reward_mean": 480.8731637041276,
+    "episode_reward_std": 206.65219825684184,
+    "component_stats": {
+      "r_center_guidance": {
+        "sum": 675.3871035399613,
+        "abs_sum": 675.3871035399613,
+        "mean": 0.13284561438630238,
+        "std": 0.0577097106771705,
+        "min": 0.0,
+        "max": 0.1999603271498927,
+        "ratio": 0.19417652611978048,
+        "trigger_rate": 0.9321400472069237
+      },
+      "r_stability": {
+        "sum": -128.94532908658942,
+        "abs_sum": 128.94532908658942,
+        "mean": -0.02536296795566275,
+        "std": 0.03030604856753253,
+        "min": -0.5,
+        "max": -9.526731082587503e-05,
+        "ratio": 0.0370723040611396,
+        "trigger_rate": 1.0
+      },
+      "r_vertical_safety": {
+        "sum": -9.041129001489026,
+        "abs_sum": 9.041129001489026,
+        "mean": -0.0017783495282236478,
+        "std": 0.016342097337419197,
+        "min": -0.32720068097114563,
+        "max": 0.0,
+        "ratio": 0.0025993611848794573,
+        "trigger_rate": 0.04956726986624705
+      },
+      "r_fuel_penalty": {
+        "sum": -158.5,
+        "abs_sum": 158.5,
+        "mean": -0.031176239181746657,
+        "std": 0.02422507109524877,
+        "min": -0.05,
+        "max": -0.0,
+        "ratio": 0.04556939158102268,
+        "trigger_rate": 0.6235247836349331
+      },
+      "r_descent_guidance": {
+        "sum": 2506.2683367729187,
+        "abs_sum": 2506.2683367729187,
+        "mean": 0.4929717420875135,
+        "std": 0.03520446312869774,
+        "min": 0.24942421913146973,
+        "max": 0.5,
+        "ratio": 0.7205622917698647,
+        "trigger_rate": 1.0
+      },
+      "r_contact_stability": {
+        "sum": 0.07,
+        "abs_sum": 0.07,
+        "mean": 1.3768686073957515e-05,
+        "std": 0.00037080626211456036,
+        "min": 0.0,
+        "max": 0.010000000000000002,
+        "ratio": 2.012528334808573e-05,
+        "trigger_rate": 0.0013768686073957514
+      },
+      "r_landing_success": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_crash": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      }
+    },
+    "dominant_component": "r_descent_guidance",
+    "dominant_component_ratio": 0.7205622917698647
+  },
+  "diagnostics": {
+    "hack_flags": {
+      "high_reward_low_progress": false,
+      "component_dominance": true,
+      "repeated_event_exploitation": false,
+      "shaping_goal_mismatch": true,
+      "terminal_success_dominance": false,
+      "unstable_contact_behavior": true,
+      "reward_repetition_risk": false
+    },
+    "failure_modes": [
+      "single_component_dominance",
+      "shaping_goal_mismatch"
+    ],
+    "hack_score": 0.4,
+    "suspected_components": [
+      "r_descent_guidance"
+    ],
+    "dominant_component": "r_descent_guidance",
+    "dominant_component_ratio": 0.7205622917698647,
+    "raw_component_dominance": true,
+    "benign_terminal_dominance": false,
+    "repeated_event_details": {
+      "flag": false,
+      "event_toggle_counts": {
+        "left_contact": 3,
+        "contact": 3,
+        "right_contact": 2,
+        "both_contact": 2
+      },
+      "max_event": "left_contact",
+      "max_toggle_count": 3
+    },
+    "semantic_notes": [
+      "contact_or_landing_toggles_observed_but_not_repeated_reward_exploitation"
+    ]
+  },
+  "semantic_outcome": {
+    "episode_count": 6,
+    "semantic_score": 0.8098052034732685,
+    "success_episode_rate": 0.0,
+    "terminal_reward_paid_episode_rate": 0.0,
+    "terminal_reward_payment_count_mean": 0.0,
+    "terminal_reward_payment_count_max": 0,
+    "safe_contact_episode_rate": 0.0,
+    "stable_landing_episode_rate": 0.0,
+    "progress_score_mean": 0.8945385368066018,
+    "progress_score_std": 0.13907574295114397,
+    "episode_length_mean": 847.3333333333334,
+    "episode_length_std": 341.3730445649679,
+    "contact_toggle_mean": 479.0,
+    "contact_toggle_max": 586.0,
+    "reward_repetition_risk": false,
+    "one_time_repeat_violations": [],
+    "terminal_goal_evidence": false,
+    "unstable_contact_behavior": true,
+    "event_rule_payment_stats": {
+      "r_landing_success": {
+        "episode_payment_counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "episode_paid_rate": 0.0,
+        "payment_count_mean": 0.0,
+        "payment_count_max": 0,
+        "one_time": true
+      }
+    },
+    "terminal_rule_names": [
+      "r_landing_success"
+    ],
+    "one_time_rule_names": [
+      "r_crash",
+      "r_landing_success"
+    ],
+    "semantic_risks": [
+      "unstable_contact_behavior"
+    ]
+  },
+  "experiment_mode": {
+    "use_memory": true,
+    "use_attribution": true,
+    "use_hack_detector": true,
+    "use_llm_edit": true,
+    "use_operator_constraints": true,
+    "free_rewrite": false,
+    "one_shot": false
+  }
+}
+
+Retrieved lesson cards:
+[
+  {
+    "lesson_id": "lesson_iter_000_to_001",
+    "source_memory_id": "iter_000_to_001",
+    "lesson_type": "effective_edit",
+    "quality": {
+      "lesson_type": "effective_edit",
+      "lesson_quality": "strong_positive",
+      "evidence_strength": 1.0,
+      "reuse_confidence": 0.85,
+      "task_delta": 0.08924819411972962,
+      "hack_delta": -0.2,
+      "semantic_delta": 1.0892481941197296,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "interpretation": "Reusable when applicability matches; supported by task or semantic improvement."
+    },
+    "applicability": {
+      "failure_modes": [
+        "single_component_dominance",
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_center_guidance",
+      "dominant_component_ratio": 0.9157740126333179,
+      "terminal_goal_evidence": true,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_center_guidance",
+        "factor": 0.5
+      },
+      {
+        "operator": "replace_condition",
+        "target": "r_vertical_safety",
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.1
+          }
+        }
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_descent_guidance",
+          "type": "formula_component",
+          "weight": 0.5,
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "var": "y"
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "sub",
+              "left": {
+                "const": 1.0
+              },
+              "right": {
+                "var": "y"
+              }
+            }
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress",
+          "inputs": []
+        }
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.8322735084660993,
+        "semantic_score": 0.8322735084660993,
+        "selection_score": 1.2645470169321986,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.9215217025858289,
+        "semantic_score": 1.9215217025858289,
+        "selection_score": 2.6430434051716576,
+        "hack_score": 0.2,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": true,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": 0.08924819411972962,
+        "semantic_score": 1.0892481941197296,
+        "selection_score": 1.378496388239459,
+        "hack_score": -0.2,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [],
+      "what_failed": [],
+      "avoid_next": [
+        "single‑component dominance",
+        "sparse terminal reward without intermediate shaping"
+      ],
+      "recommend_next": [
+        "balance dense progress and shape toward terminal goal",
+        "activate vertical safety near ground only"
+      ],
+      "applicability_notes": [
+        "Center guidance must remain but at lower relative weight; descent incentive must be moderate to avoid new dominance."
+      ]
+    },
+    "recommendation": {
+      "what_worked": [],
+      "what_failed": [],
+      "avoid_next": [
+        "single‑component dominance",
+        "sparse terminal reward without intermediate shaping"
+      ],
+      "recommend_next": [
+        "balance dense progress and shape toward terminal goal",
+        "activate vertical safety near ground only"
+      ],
+      "applicability_notes": [
+        "Center guidance must remain but at lower relative weight; descent incentive must be moderate to avoid new dominance."
+      ]
+    },
+    "summary": "r_center_guidance dominance prevents descent and landing; no dense vertical progress shaping leads to hovering and zero landings."
+  },
+  {
+    "lesson_id": "lesson_iter_006_to_007",
+    "source_memory_id": "iter_006_to_007",
+    "lesson_type": "failed_or_weak_edit",
+    "quality": {
+      "lesson_type": "failed_or_weak_edit",
+      "lesson_quality": "failed",
+      "evidence_strength": 0.6714361509289045,
+      "reuse_confidence": 0.0,
+      "task_delta": -0.03571807546445227,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.03571807546445227,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "interpretation": "Do not repeat as a recommendation; use as cautionary evidence."
+    },
+    "applicability": {
+      "failure_modes": [
+        "single_component_dominance",
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_descent_guidance",
+      "dominant_component_ratio": 0.8289501711352789,
+      "terminal_goal_evidence": false,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "replace_formula",
+        "target": "r_descent_guidance",
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 2.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_descent_guidance",
+        "factor": 0.5
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_contact_stability",
+          "type": "conditional_formula_component",
+          "weight": 0.1,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "const": 0.1
+            },
+            "condition_ast": {
+              "op": "and",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                }
+              ]
+            }
+          },
+          "formula_ast": {
+            "const": 0.1
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              }
+            ]
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress"
+        }
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.8455232789377207,
+        "semantic_score": 0.8455232789377207,
+        "selection_score": 1.2910465578754415,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.8098052034732685,
+        "semantic_score": 0.8098052034732685,
+        "selection_score": 1.2196104069465368,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": -0.03571807546445227,
+        "semantic_score": -0.03571807546445227,
+        "selection_score": -0.07143615092890476,
+        "hack_score": 0.0,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [
+        "Coupled rebalancing (reduce dominant component, add missing shaping)",
+        "Early activation descent guidance",
+        "Contact stability reward for sustained ground contact"
+      ],
+      "what_failed": [
+        "Contact-conditional speed penalties",
+        "Tightening terminal success condition",
+        "Weight-only adjustments without formula change"
+      ],
+      "avoid_next": [
+        "Speed penalties near ground",
+        "Tightening terminal condition",
+        "Overweighting a single component"
+      ],
+      "recommend_next": [
+        "Use descent formula with gradient e.g., 2-y",
+        "Add per-step contact reward with small weight",
+        "Keep safety and terminal rules unchanged"
+      ],
+      "applicability_notes": [
+        "When a dense shaping component dominates with constant max reward, replace formula with gradient and reduce weight; add missing shaping for stable contact."
+      ]
+    },
+    "recommendation": {
+      "what_worked": [
+        "Coupled rebalancing (reduce dominant component, add missing shaping)",
+        "Early activation descent guidance",
+        "Contact stability reward for sustained ground contact"
+      ],
+      "what_failed": [
+        "Contact-conditional speed penalties",
+        "Tightening terminal success condition",
+        "Weight-only adjustments without formula change"
+      ],
+      "avoid_next": [
+        "Speed penalties near ground",
+        "Tightening terminal condition",
+        "Overweighting a single component"
+      ],
+      "recommend_next": [
+        "Use descent formula with gradient e.g., 2-y",
+        "Add per-step contact reward with small weight",
+        "Keep safety and terminal rules unchanged"
+      ],
+      "applicability_notes": [
+        "When a dense shaping component dominates with constant max reward, replace formula with gradient and reduce weight; add missing shaping for stable contact."
+      ]
+    },
+    "summary": "r_descent_guidance gives constant max reward (3-y clipped to 1 at all altitudes), causing dominance and no descent gradient; agent bounces without landing. Fix: change formula to 2-y, reduce weight, and add contact stability reward."
+  },
+  {
+    "lesson_id": "lesson_iter_005_to_006",
+    "source_memory_id": "iter_005_to_006",
+    "lesson_type": "weak_edit",
+    "quality": {
+      "lesson_type": "weak_edit",
+      "lesson_quality": "weak_positive",
+      "evidence_strength": 0.4135995295128151,
+      "reuse_confidence": 0.25,
+      "task_delta": 0.031799764756407556,
+      "hack_delta": 0.0,
+      "semantic_delta": 0.031799764756407556,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "interpretation": "Weak evidence; treat as hypothesis, not a recommendation."
+    },
+    "applicability": {
+      "failure_modes": [
+        "single_component_dominance",
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_center_guidance",
+      "dominant_component_ratio": 0.8745610717745044,
+      "terminal_goal_evidence": false,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_center_guidance",
+        "factor": 0.4
+      },
+      {
+        "operator": "replace_formula",
+        "target": "r_descent_guidance",
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 3.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 2.0
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.8137235141813132,
+        "semantic_score": 0.8137235141813132,
+        "selection_score": 1.2274470283626262,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.8455232789377207,
+        "semantic_score": 0.8455232789377207,
+        "selection_score": 1.2910465578754415,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": 0.031799764756407556,
+        "semantic_score": 0.031799764756407556,
+        "selection_score": 0.06359952951281533,
+        "hack_score": 0.0,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [
+        "Coupled rebalancing (reduce dominant component, strengthen missing shaping)",
+        "Simple terminal success condition supported by dense progress shaping"
+      ],
+      "what_failed": [
+        "Mere weight increases alone without new shaping",
+        "Contact-conditional speed penalties",
+        "Tightening terminal condition"
+      ],
+      "avoid_next": [
+        "introducing contact‑conditional or ground‑only speed penalties",
+        "tightening the landing‑success condition",
+        "merely increasing existing weights without making descent activation earlier"
+      ],
+      "recommend_next": [
+        "Use early‑activating descent formula (e.g., 3.0 - y clipped [0,1])",
+        "Reduce center guidance weight significantly when it dominates",
+        "Keep all safety and cost components intact"
+      ],
+      "applicability_notes": [
+        "When center guidance dominates and descent shaping has a dead zone at high altitude"
+      ]
+    },
+    "recommendation": {
+      "what_worked": [
+        "Coupled rebalancing (reduce dominant component, strengthen missing shaping)",
+        "Simple terminal success condition supported by dense progress shaping"
+      ],
+      "what_failed": [
+        "Mere weight increases alone without new shaping",
+        "Contact-conditional speed penalties",
+        "Tightening terminal condition"
+      ],
+      "avoid_next": [
+        "introducing contact‑conditional or ground‑only speed penalties",
+        "tightening the landing‑success condition",
+        "merely increasing existing weights without making descent activation earlier"
+      ],
+      "recommend_next": [
+        "Use early‑activating descent formula (e.g., 3.0 - y clipped [0,1])",
+        "Reduce center guidance weight significantly when it dominates",
+        "Keep all safety and cost components intact"
+      ],
+      "applicability_notes": [
+        "When center guidance dominates and descent shaping has a dead zone at high altitude"
+      ]
+    },
+    "summary": "Current hovering policy caused by descent guidance dead zone (y>1) and excessive center guidance weight (0.5). Fix: early descent reward (3-y) and lower center weight to 0.2."
+  },
+  {
+    "lesson_id": "lesson_iter_003_to_004",
+    "source_memory_id": "iter_003_to_004",
+    "lesson_type": "harmful_edit",
+    "quality": {
+      "lesson_type": "harmful_edit",
+      "lesson_quality": "harmful",
+      "evidence_strength": 1.0,
+      "reuse_confidence": 0.0,
+      "task_delta": -0.05404833428466205,
+      "hack_delta": 0.2,
+      "semantic_delta": -1.054048334284662,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "interpretation": "Avoid repeating unless a later auditor provides strong counter-evidence."
+    },
+    "applicability": {
+      "failure_modes": [
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_landing_success",
+      "dominant_component_ratio": 0.4319690251338761,
+      "terminal_goal_evidence": false,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "replace_condition",
+        "target": "r_landing_success",
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "angular_velocity"
+                }
+              },
+              "right": {
+                "const": 0.1
+              }
+            }
+          ]
+        }
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_ground_speed_penalty",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 1.5
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.9151073590824766,
+        "semantic_score": 1.9151073590824768,
+        "selection_score": 2.6302147181649533,
+        "hack_score": 0.2,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": true,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.8610590247978146,
+        "semantic_score": 0.8610590247978146,
+        "selection_score": 1.322118049595629,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": -0.05404833428466205,
+        "semantic_score": -1.054048334284662,
+        "selection_score": -1.3080966685693243,
+        "hack_score": 0.2,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": -1.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [
+        "Coupled rebalancing with tightened terminal condition and near-ground speed penalty",
+        "Introducing dense speed penalty independent of contacts"
+      ],
+      "what_failed": [
+        "Adding penalty conditional on both contacts (r_grounded_stability) caused regression"
+      ],
+      "avoid_next": [
+        "Adding any component that penalises speed only when in contact",
+        "Mere weight increases without new shaping"
+      ],
+      "recommend_next": [
+        "Tighten success condition with velocity/angular thresholds",
+        "Add near‑ground speed penalty regardless of contact",
+        "Keep all safety constraints intact"
+      ],
+      "applicability_notes": [
+        "When terminal landing is achieved but quality is poor (bouncing, high contact toggling)"
+      ]
+    },
+    "recommendation": {
+      "what_worked": [
+        "Coupled rebalancing with tightened terminal condition and near-ground speed penalty",
+        "Introducing dense speed penalty independent of contacts"
+      ],
+      "what_failed": [
+        "Adding penalty conditional on both contacts (r_grounded_stability) caused regression"
+      ],
+      "avoid_next": [
+        "Adding any component that penalises speed only when in contact",
+        "Mere weight increases without new shaping"
+      ],
+      "recommend_next": [
+        "Tighten success condition with velocity/angular thresholds",
+        "Add near‑ground speed penalty regardless of contact",
+        "Keep all safety constraints intact"
+      ],
+      "applicability_notes": [
+        "When terminal landing is achieved but quality is poor (bouncing, high contact toggling)"
+      ]
+    },
+    "summary": "Landing success event triggers too easily, allowing high-speed, unstable touchdowns. The reward lacks near-ground speed penalty and terminal condition alignment. Solution: tighten success condition to require low velocity and angular velocity, add dense speed penalty when y < 0.2, and increase descent weight to maintain progress."
+  },
+  {
+    "lesson_id": "lesson_iter_004_to_005",
+    "source_memory_id": "iter_004_to_005",
+    "lesson_type": "failed_or_weak_edit",
+    "quality": {
+      "lesson_type": "failed_or_weak_edit",
+      "lesson_quality": "failed",
+      "evidence_strength": 0.6946710212330028,
+      "reuse_confidence": 0.0,
+      "task_delta": -0.04733551061650143,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.04733551061650143,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "interpretation": "Do not repeat as a recommendation; use as cautionary evidence."
+    },
+    "applicability": {
+      "failure_modes": [
+        "repeated_event_exploitation",
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_descent_guidance",
+      "dominant_component_ratio": 0.540908046812429,
+      "terminal_goal_evidence": false,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_ground_speed_penalty",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": []
+        }
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.8610590247978146,
+        "semantic_score": 0.8610590247978146,
+        "selection_score": 1.322118049595629,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.8137235141813132,
+        "semantic_score": 0.8137235141813132,
+        "selection_score": 1.2274470283626262,
+        "hack_score": 0.4,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": false,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": -0.04733551061650143,
+        "semantic_score": -0.04733551061650143,
+        "selection_score": -0.09467102123300286,
+        "hack_score": 0.0,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [
+        "Coupled rebalancing with targeted speed penalty near ground",
+        "Simple terminal success condition (both contacts) supported by dense shaping"
+      ],
+      "what_failed": [
+        "Tightening terminal condition with velocity thresholds",
+        "Speed penalty conditional on both contacts",
+        "Weight-only adjustments without new shaping"
+      ],
+      "avoid_next": [
+        "Any further tightening of terminal condition",
+        "Contact-conditional speed penalties",
+        "Over-reliance on dense guidance without soft-landing incentives"
+      ],
+      "recommend_next": [
+        "Near-ground speed penalty independent of contacts",
+        "Monitor contact toggles and adjust penalty strength if needed",
+        "Maintain all safety and efficiency constraints"
+      ],
+      "applicability_notes": [
+        "Apply when agent achieves high reward but fails to land softly due to bouncing; ensure terminal success condition remains simple."
+      ]
+    },
+    "recommendation": {
+      "what_worked": [
+        "Coupled rebalancing with targeted speed penalty near ground",
+        "Simple terminal success condition (both contacts) supported by dense shaping"
+      ],
+      "what_failed": [
+        "Tightening terminal condition with velocity thresholds",
+        "Speed penalty conditional on both contacts",
+        "Weight-only adjustments without new shaping"
+      ],
+      "avoid_next": [
+        "Any further tightening of terminal condition",
+        "Contact-conditional speed penalties",
+        "Over-reliance on dense guidance without soft-landing incentives"
+      ],
+      "recommend_next": [
+        "Near-ground speed penalty independent of contacts",
+        "Monitor contact toggles and adjust penalty strength if needed",
+        "Maintain all safety and efficiency constraints"
+      ],
+      "applicability_notes": [
+        "Apply when agent achieves high reward but fails to land softly due to bouncing; ensure terminal success condition remains simple."
+      ]
+    },
+    "summary": "Lander bounces due to missing near-ground velocity penalty, preventing stable contact required for terminal success. Adding an unconditional speed penalty below y=0.2 should encourage softer touchdowns without harming progress."
+  },
+  {
+    "lesson_id": "lesson_iter_002_to_003",
+    "source_memory_id": "iter_002_to_003",
+    "lesson_type": "failed_or_weak_edit",
+    "quality": {
+      "lesson_type": "failed_or_weak_edit",
+      "lesson_quality": "failed",
+      "evidence_strength": 0.6499804845831356,
+      "reuse_confidence": 0.0,
+      "task_delta": -0.024990242291567877,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.024990242291567766,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "interpretation": "Do not repeat as a recommendation; use as cautionary evidence."
+    },
+    "applicability": {
+      "failure_modes": [
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_descent_guidance",
+      "dominant_component_ratio": 0.3264307589205916,
+      "terminal_goal_evidence": true,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_grounded_stability",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "y"
+                },
+                "right": {
+                  "const": 0.1
+                }
+              }
+            ]
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "and",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                },
+                {
+                  "op": "lt",
+                  "left": {
+                    "var": "y"
+                  },
+                  "right": {
+                    "const": 0.1
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.9400976013740445,
+        "semantic_score": 1.9400976013740445,
+        "selection_score": 2.680195202748089,
+        "hack_score": 0.2,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": true,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.9151073590824766,
+        "semantic_score": 1.9151073590824768,
+        "selection_score": 2.6302147181649533,
+        "hack_score": 0.2,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": true,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": -0.024990242291567877,
+        "semantic_score": -0.024990242291567766,
+        "selection_score": -0.04998048458313553,
+        "hack_score": 0.0,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [
+        "Coupled rebalancing with a dedicated contact‑stability bonus and near‑ground velocity penalty",
+        "Broadening vertical safety to include lateral velocity"
+      ],
+      "what_failed": [
+        "Weight‑only increases on centering/descent without new shape do not fix bouncing"
+      ],
+      "avoid_next": [
+        "Merely increasing existing dense guidance weights or repeating the last weak edit without a contact‑stability component"
+      ],
+      "recommend_next": [
+        "Introduce a contact‑stability reward per step when both legs are on ground",
+        "Strengthen speed penalties specifically near the surface (y < 0.2)",
+        "Expand vertical safety to penalise lateral velocity",
+        "Monitor contact toggles and crash rates after training"
+      ],
+      "applicability_notes": [
+        "Applies when terminal landing reward is achieved but landing quality is poor (bouncing, high contact toggling)"
+      ]
+    },
+    "recommendation": {
+      "what_worked": [
+        "Coupled rebalancing with a dedicated contact‑stability bonus and near‑ground velocity penalty",
+        "Broadening vertical safety to include lateral velocity"
+      ],
+      "what_failed": [
+        "Weight‑only increases on centering/descent without new shape do not fix bouncing"
+      ],
+      "avoid_next": [
+        "Merely increasing existing dense guidance weights or repeating the last weak edit without a contact‑stability component"
+      ],
+      "recommend_next": [
+        "Introduce a contact‑stability reward per step when both legs are on ground",
+        "Strengthen speed penalties specifically near the surface (y < 0.2)",
+        "Expand vertical safety to penalise lateral velocity",
+        "Monitor contact toggles and crash rates after training"
+      ],
+      "applicability_notes": [
+        "Applies when terminal landing reward is achieved but landing quality is poor (bouncing, high contact toggling)"
+      ]
+    },
+    "summary": "Terminal landing achieved but unstable contact (bouncing) due to weak near‑ground speed control and no incentive for sustained contact. Package adds a per‑step contact‑stability bonus, a near‑ground velocity penalty, and lateral velocity awareness in vertical safety."
+  },
+  {
+    "lesson_id": "lesson_iter_001_to_002",
+    "source_memory_id": "iter_001_to_002",
+    "lesson_type": "weak_edit",
+    "quality": {
+      "lesson_type": "weak_edit",
+      "lesson_quality": "weak_positive",
+      "evidence_strength": 0.38715179757643126,
+      "reuse_confidence": 0.25,
+      "task_delta": 0.01857589878821564,
+      "hack_delta": 0.0,
+      "semantic_delta": 0.01857589878821564,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "interpretation": "Weak evidence; treat as hypothesis, not a recommendation."
+    },
+    "applicability": {
+      "failure_modes": [
+        "shaping_goal_mismatch"
+      ],
+      "dominant_component": "r_landing_success",
+      "dominant_component_ratio": 0.5117880056802759,
+      "terminal_goal_evidence": true,
+      "true_hack_risk": true
+    },
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_center_guidance",
+        "factor": 1.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 1.5
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_speed_penalty",
+          "type": "formula_component",
+          "weight": 0.3,
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.5
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -0.5
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vx"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": []
+        }
+      }
+    ],
+    "evidence": {
+      "outcome_status": "measured",
+      "before": {
+        "task_score": 0.9215217025858289,
+        "semantic_score": 1.9215217025858289,
+        "selection_score": 2.6430434051716576,
+        "hack_score": 0.2,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": true,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "after": {
+        "task_score": 0.9400976013740445,
+        "semantic_score": 1.9400976013740445,
+        "selection_score": 2.680195202748089,
+        "hack_score": 0.2,
+        "true_hack_risk": true,
+        "terminal_goal_evidence": true,
+        "reward_repetition_risk": false,
+        "high_reward_low_progress": false,
+        "shaping_goal_mismatch": true,
+        "unstable_contact_behavior": true,
+        "benign_terminal_dominance": false,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 1.0,
+        "safe_contact_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0
+      },
+      "outcome_delta": {
+        "task_score": 0.01857589878821564,
+        "semantic_score": 0.01857589878821564,
+        "selection_score": 0.03715179757643128,
+        "hack_score": 0.0,
+        "success_episode_rate": 0.0,
+        "terminal_reward_paid_episode_rate": 0.0,
+        "stable_landing_episode_rate": 0.0,
+        "safe_contact_episode_rate": 0.0
+      }
+    },
+    "agent_lessons": {
+      "what_worked": [
+        "Moderate weight increases on centering and descent components",
+        "Adding a continuous speed penalty with clip [-1,0]"
+      ],
+      "what_failed": [],
+      "avoid_next": [
+        "Overweighting any single dense component to dominance",
+        "Neglecting speed/velocity control near ground"
+      ],
+      "recommend_next": [
+        "Monitor contact toggles and adjust speed penalty scaling if needed",
+        "Consider further incremental weight tuning if landing remains unstable"
+      ],
+      "applicability_notes": [
+        "Applicable when terminal reward is achieved but landing quality is poor (bouncing, weak centering, slow descent)."
+      ]
+    },
+    "recommendation": {
+      "what_worked": [
+        "Moderate weight increases on centering and descent components",
+        "Adding a continuous speed penalty with clip [-1,0]"
+      ],
+      "what_failed": [],
+      "avoid_next": [
+        "Overweighting any single dense component to dominance",
+        "Neglecting speed/velocity control near ground"
+      ],
+      "recommend_next": [
+        "Monitor contact toggles and adjust speed penalty scaling if needed",
+        "Consider further incremental weight tuning if landing remains unstable"
+      ],
+      "applicability_notes": [
+        "Applicable when terminal reward is achieved but landing quality is poor (bouncing, weak centering, slow descent)."
+      ]
+    },
+    "summary": "Poor landing quality due to weak centering, slow descent, and no speed penalty leads to bouncing and off-center landings. Edits strengthen these aspects while preserving safety."
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "effective_edit_lesson",
+    "quality": {
+      "reuse_confidence": 0.8,
+      "evidence_strength": 0.8
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_center_guidance",
+        "factor": 0.5
+      },
+      {
+        "operator": "replace_condition",
+        "target": "r_vertical_safety",
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.1
+          }
+        }
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_descent_guidance",
+          "type": "formula_component",
+          "weight": 0.5,
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "var": "y"
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "sub",
+              "left": {
+                "const": 1.0
+              },
+              "right": {
+                "var": "y"
+              }
+            }
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress",
+          "inputs": []
+        }
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [
+          "r_descent_guidance"
+        ],
+        "removed": [],
+        "changed": [
+          {
+            "name": "r_center_guidance",
+            "changed_fields": [
+              {
+                "field": "weight",
+                "before": 1.0,
+                "after": 0.5
+              }
+            ]
+          },
+          {
+            "name": "r_vertical_safety",
+            "changed_fields": [
+              {
+                "field": "condition_ast",
+                "before": {
+                  "op": "lt",
+                  "left": {
+                    "var": "y"
+                  },
+                  "right": {
+                    "const": 0.5
+                  }
+                },
+                "after": {
+                  "op": "lt",
+                  "left": {
+                    "var": "y"
+                  },
+                  "right": {
+                    "const": 0.1
+                  }
+                }
+              },
+              {
+                "field": "params",
+                "before": {
+                  "formula_ast": {
+                    "op": "neg",
+                    "arg": {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  },
+                  "condition_ast": {
+                    "op": "lt",
+                    "left": {
+                      "var": "y"
+                    },
+                    "right": {
+                      "const": 0.5
+                    }
+                  }
+                },
+                "after": {
+                  "formula_ast": {
+                    "op": "neg",
+                    "arg": {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  },
+                  "condition_ast": {
+                    "op": "lt",
+                    "left": {
+                      "var": "y"
+                    },
+                    "right": {
+                      "const": 0.1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "summary": {
+        "num_component_changes": 3,
+        "num_event_rule_changes": 0
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.8322735084660993,
+      "semantic_score": 0.8322735084660993,
+      "selection_score": 1.2645470169321986,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.9215217025858289,
+      "semantic_score": 1.9215217025858289,
+      "selection_score": 2.6430434051716576,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": 0.08924819411972962,
+      "semantic_score": 1.0892481941197296,
+      "selection_score": 1.378496388239459,
+      "hack_score": -0.2,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "accept",
+      "continuation": "continue_current_schema",
+      "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+      "task_delta": 0.08924819411972962,
+      "hack_delta": -0.2,
+      "semantic_delta": 1.0892481941197296,
+      "accepted_for_best": true,
+      "rollback_recommended": false
+    },
+    "mechanism_summary": "Edit improved internal task or semantic evidence and can be reused when applicability matches.",
+    "future_guidance": [
+      "Reuse when failure modes and component attribution match.",
+      "Keep atomic edit package coherence."
+    ],
+    "applicability": {
+      "dominant_component": "r_landing_success",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "semantic_roles_touched": [
+        "dense_guidance",
+        "safety_constraint"
+      ]
+    },
+    "source": "outcome_lesson"
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "regression_lesson",
+    "quality": {
+      "reuse_confidence": 0.75,
+      "evidence_strength": 0.85
+    },
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "r_center_guidance",
+        "factor": 1.5
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 1.5
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_speed_penalty",
+          "type": "formula_component",
+          "weight": 0.3,
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.5
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -0.5
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vx"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": []
+        }
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [
+          "r_speed_penalty"
+        ],
+        "removed": [],
+        "changed": [
+          {
+            "name": "r_center_guidance",
+            "changed_fields": [
+              {
+                "field": "weight",
+                "before": 0.5,
+                "after": 0.75
+              }
+            ]
+          },
+          {
+            "name": "r_descent_guidance",
+            "changed_fields": [
+              {
+                "field": "weight",
+                "before": 0.5,
+                "after": 0.75
+              }
+            ]
+          }
+        ]
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "summary": {
+        "num_component_changes": 3,
+        "num_event_rule_changes": 0
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.9215217025858289,
+      "semantic_score": 1.9215217025858289,
+      "selection_score": 2.6430434051716576,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.9400976013740445,
+      "semantic_score": 1.9400976013740445,
+      "selection_score": 2.680195202748089,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": 0.01857589878821564,
+      "semantic_score": 0.01857589878821564,
+      "selection_score": 0.03715179757643128,
+      "hack_score": 0.0,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "uncertain",
+      "continuation": "rollback_to_best_schema",
+      "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+      "task_delta": 0.01857589878821564,
+      "hack_delta": 0.0,
+      "semantic_delta": 0.01857589878821564,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+    "future_guidance": [
+      "Retrieve this lesson before similar edit operators.",
+      "Prefer conservative local refinement or continue_training."
+    ],
+    "applicability": {
+      "dominant_component": "r_descent_guidance",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "semantic_roles_touched": [
+        "dense_guidance",
+        "safety_constraint"
+      ]
+    },
+    "source": "outcome_lesson"
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "regression_lesson",
+    "quality": {
+      "reuse_confidence": 0.75,
+      "evidence_strength": 0.85
+    },
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_grounded_stability",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "y"
+                },
+                "right": {
+                  "const": 0.1
+                }
+              }
+            ]
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "and",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                },
+                {
+                  "op": "lt",
+                  "left": {
+                    "var": "y"
+                  },
+                  "right": {
+                    "const": 0.1
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [
+          "r_grounded_stability"
+        ],
+        "removed": [],
+        "changed": []
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "summary": {
+        "num_component_changes": 1,
+        "num_event_rule_changes": 0
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.9400976013740445,
+      "semantic_score": 1.9400976013740445,
+      "selection_score": 2.680195202748089,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.9151073590824766,
+      "semantic_score": 1.9151073590824768,
+      "selection_score": 2.6302147181649533,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": -0.024990242291567877,
+      "semantic_score": -0.024990242291567766,
+      "selection_score": -0.04998048458313553,
+      "hack_score": 0.0,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "uncertain",
+      "continuation": "rollback_to_best_schema",
+      "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+      "task_delta": -0.024990242291567877,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.024990242291567766,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+    "future_guidance": [
+      "Retrieve this lesson before similar edit operators.",
+      "Prefer conservative local refinement or continue_training."
+    ],
+    "applicability": {
+      "dominant_component": "r_landing_success",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "semantic_roles_touched": [
+        "safety_constraint"
+      ]
+    },
+    "source": "outcome_lesson"
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "regression_lesson",
+    "quality": {
+      "reuse_confidence": 0.75,
+      "evidence_strength": 0.85
+    },
+    "edit_plan": [
+      {
+        "operator": "replace_condition",
+        "target": "r_landing_success",
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "angular_velocity"
+                }
+              },
+              "right": {
+                "const": 0.1
+              }
+            }
+          ]
+        }
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_ground_speed_penalty",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 1.5
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [
+          "r_ground_speed_penalty"
+        ],
+        "removed": [],
+        "changed": [
+          {
+            "name": "r_descent_guidance",
+            "changed_fields": [
+              {
+                "field": "weight",
+                "before": 0.5,
+                "after": 0.75
+              }
+            ]
+          }
+        ]
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": [
+          {
+            "name": "r_landing_success",
+            "changed_fields": [
+              {
+                "field": "condition",
+                "before": {
+                  "expr_ast": {
+                    "op": "and",
+                    "args": [
+                      {
+                        "var": "left_contact"
+                      },
+                      {
+                        "var": "right_contact"
+                      }
+                    ]
+                  },
+                  "duration_steps": 20
+                },
+                "after": {
+                  "expr_ast": {
+                    "op": "and",
+                    "args": [
+                      {
+                        "var": "left_contact"
+                      },
+                      {
+                        "var": "right_contact"
+                      },
+                      {
+                        "op": "lt",
+                        "left": {
+                          "op": "abs",
+                          "arg": {
+                            "var": "vx"
+                          }
+                        },
+                        "right": {
+                          "const": 0.2
+                        }
+                      },
+                      {
+                        "op": "lt",
+                        "left": {
+                          "op": "abs",
+                          "arg": {
+                            "var": "vy"
+                          }
+                        },
+                        "right": {
+                          "const": 0.2
+                        }
+                      },
+                      {
+                        "op": "lt",
+                        "left": {
+                          "op": "abs",
+                          "arg": {
+                            "var": "angular_velocity"
+                          }
+                        },
+                        "right": {
+                          "const": 0.1
+                        }
+                      }
+                    ]
+                  },
+                  "duration_steps": 20
+                }
+              },
+              {
+                "field": "condition_ast",
+                "before": {
+                  "op": "and",
+                  "args": [
+                    {
+                      "var": "left_contact"
+                    },
+                    {
+                      "var": "right_contact"
+                    }
+                  ]
+                },
+                "after": {
+                  "op": "and",
+                  "args": [
+                    {
+                      "var": "left_contact"
+                    },
+                    {
+                      "var": "right_contact"
+                    },
+                    {
+                      "op": "lt",
+                      "left": {
+                        "op": "abs",
+                        "arg": {
+                          "var": "vx"
+                        }
+                      },
+                      "right": {
+                        "const": 0.2
+                      }
+                    },
+                    {
+                      "op": "lt",
+                      "left": {
+                        "op": "abs",
+                        "arg": {
+                          "var": "vy"
+                        }
+                      },
+                      "right": {
+                        "const": 0.2
+                      }
+                    },
+                    {
+                      "op": "lt",
+                      "left": {
+                        "op": "abs",
+                        "arg": {
+                          "var": "angular_velocity"
+                        }
+                      },
+                      "right": {
+                        "const": 0.1
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "summary": {
+        "num_component_changes": 2,
+        "num_event_rule_changes": 1
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.9151073590824766,
+      "semantic_score": 1.9151073590824768,
+      "selection_score": 2.6302147181649533,
+      "hack_score": 0.2,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": true,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.8610590247978146,
+      "semantic_score": 0.8610590247978146,
+      "selection_score": 1.322118049595629,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": -0.05404833428466205,
+      "semantic_score": -1.054048334284662,
+      "selection_score": -1.3080966685693243,
+      "hack_score": 0.2,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": -1.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "reject",
+      "continuation": "rollback_to_best_schema",
+      "reason": "True semantic hack risk increased: repeated reward payment, high-reward/low-progress, or shaping-goal mismatch.",
+      "task_delta": -0.05404833428466205,
+      "hack_delta": 0.2,
+      "semantic_delta": -1.054048334284662,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+    "future_guidance": [
+      "Retrieve this lesson before similar edit operators.",
+      "Prefer conservative local refinement or continue_training."
+    ],
+    "applicability": {
+      "dominant_component": "r_descent_guidance",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "semantic_roles_touched": [
+        "dense_guidance",
+        "safety_constraint",
+        "terminal_success"
+      ]
+    },
+    "source": "outcome_lesson"
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "dominance_regression_lesson",
+    "quality": {
+      "reuse_confidence": 0.75,
+      "evidence_strength": 0.85
+    },
+    "edit_plan": [
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_ground_speed_penalty",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": []
+        }
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [
+          "r_ground_speed_penalty"
+        ],
+        "removed": [],
+        "changed": []
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "summary": {
+        "num_component_changes": 1,
+        "num_event_rule_changes": 0
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.8610590247978146,
+      "semantic_score": 0.8610590247978146,
+      "selection_score": 1.322118049595629,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.8137235141813132,
+      "semantic_score": 0.8137235141813132,
+      "selection_score": 1.2274470283626262,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": -0.04733551061650143,
+      "semantic_score": -0.04733551061650143,
+      "selection_score": -0.09467102123300286,
+      "hack_score": 0.0,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "uncertain",
+      "continuation": "rollback_to_best_schema",
+      "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+      "task_delta": -0.04733551061650143,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.04733551061650143,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "mechanism_summary": "Outcome regressed while component r_center_guidance dominated reward attribution with ratio=0.8745610717745044.",
+    "future_guidance": [
+      "Run scale audit before adding or increasing dense components.",
+      "Start new penalties with small weights and candidate sweep.",
+      "Do not let a new dense term dominate terminal incentives."
+    ],
+    "applicability": {
+      "dominant_component": "r_center_guidance",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "semantic_roles_touched": [
+        "safety_constraint"
+      ]
+    },
+    "source": "outcome_lesson"
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "small_positive_lesson",
+    "quality": {
+      "reuse_confidence": 0.4,
+      "evidence_strength": 0.5
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_center_guidance",
+        "factor": 0.4
+      },
+      {
+        "operator": "replace_formula",
+        "target": "r_descent_guidance",
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 3.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 2.0
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [],
+        "removed": [],
+        "changed": [
+          {
+            "name": "r_center_guidance",
+            "changed_fields": [
+              {
+                "field": "weight",
+                "before": 0.5,
+                "after": 0.2
+              }
+            ]
+          },
+          {
+            "name": "r_descent_guidance",
+            "changed_fields": [
+              {
+                "field": "formula_ast",
+                "before": {
+                  "op": "sub",
+                  "left": {
+                    "const": 1.0
+                  },
+                  "right": {
+                    "var": "y"
+                  }
+                },
+                "after": {
+                  "op": "sub",
+                  "left": {
+                    "const": 3.0
+                  },
+                  "right": {
+                    "var": "y"
+                  }
+                }
+              },
+              {
+                "field": "params",
+                "before": {
+                  "formula_ast": {
+                    "op": "sub",
+                    "left": {
+                      "const": 1.0
+                    },
+                    "right": {
+                      "var": "y"
+                    }
+                  }
+                },
+                "after": {
+                  "formula_ast": {
+                    "op": "sub",
+                    "left": {
+                      "const": 3.0
+                    },
+                    "right": {
+                      "var": "y"
+                    }
+                  }
+                }
+              },
+              {
+                "field": "weight",
+                "before": 0.5,
+                "after": 1.0
+              }
+            ]
+          }
+        ]
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "summary": {
+        "num_component_changes": 2,
+        "num_event_rule_changes": 0
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.8137235141813132,
+      "semantic_score": 0.8137235141813132,
+      "selection_score": 1.2274470283626262,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.8455232789377207,
+      "semantic_score": 0.8455232789377207,
+      "selection_score": 1.2910465578754415,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": 0.031799764756407556,
+      "semantic_score": 0.031799764756407556,
+      "selection_score": 0.06359952951281533,
+      "hack_score": 0.0,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "accept",
+      "continuation": "continue_current_schema",
+      "reason": "Internal task/semantic evidence improved enough to become the current best candidate without true semantic hack risk.",
+      "task_delta": 0.031799764756407556,
+      "hack_delta": 0.0,
+      "semantic_delta": 0.031799764756407556,
+      "accepted_for_best": true,
+      "rollback_recommended": false
+    },
+    "mechanism_summary": "Edit produced small positive evidence; continue candidate rather than immediate rollback when no true hack risk exists.",
+    "future_guidance": [
+      "Gather more evidence before strong policy update."
+    ],
+    "applicability": {
+      "dominant_component": "r_descent_guidance",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "semantic_roles_touched": [
+        "dense_guidance"
+      ]
+    },
+    "source": "outcome_lesson"
+  },
+  {
+    "tool": "outcome_lesson_builder",
+    "lesson_type": "dominance_regression_lesson",
+    "quality": {
+      "reuse_confidence": 0.75,
+      "evidence_strength": 0.85
+    },
+    "edit_plan": [
+      {
+        "operator": "replace_formula",
+        "target": "r_descent_guidance",
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 2.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "r_descent_guidance",
+        "factor": 0.5
+      },
+      {
+        "operator": "add_component",
+        "component": {
+          "name": "r_contact_stability",
+          "type": "conditional_formula_component",
+          "weight": 0.1,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "const": 0.1
+            },
+            "condition_ast": {
+              "op": "and",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                }
+              ]
+            }
+          },
+          "formula_ast": {
+            "const": 0.1
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              }
+            ]
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress"
+        }
+      }
+    ],
+    "schema_diff": {
+      "components": {
+        "added": [
+          "r_contact_stability"
+        ],
+        "removed": [],
+        "changed": [
+          {
+            "name": "r_descent_guidance",
+            "changed_fields": [
+              {
+                "field": "formula_ast",
+                "before": {
+                  "op": "sub",
+                  "left": {
+                    "const": 3.0
+                  },
+                  "right": {
+                    "var": "y"
+                  }
+                },
+                "after": {
+                  "op": "sub",
+                  "left": {
+                    "const": 2.0
+                  },
+                  "right": {
+                    "var": "y"
+                  }
+                }
+              },
+              {
+                "field": "params",
+                "before": {
+                  "formula_ast": {
+                    "op": "sub",
+                    "left": {
+                      "const": 3.0
+                    },
+                    "right": {
+                      "var": "y"
+                    }
+                  }
+                },
+                "after": {
+                  "formula_ast": {
+                    "op": "sub",
+                    "left": {
+                      "const": 2.0
+                    },
+                    "right": {
+                      "var": "y"
+                    }
+                  }
+                }
+              },
+              {
+                "field": "weight",
+                "before": 1.0,
+                "after": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      "event_rules": {
+        "added": [],
+        "removed": [],
+        "changed": []
+      },
+      "summary": {
+        "num_component_changes": 2,
+        "num_event_rule_changes": 0
+      }
+    },
+    "metrics_before": {
+      "task_score": 0.8455232789377207,
+      "semantic_score": 0.8455232789377207,
+      "selection_score": 1.2910465578754415,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metrics_after": {
+      "task_score": 0.8098052034732685,
+      "semantic_score": 0.8098052034732685,
+      "selection_score": 1.2196104069465368,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "metric_delta": {
+      "task_score": -0.03571807546445227,
+      "semantic_score": -0.03571807546445227,
+      "selection_score": -0.07143615092890476,
+      "hack_score": 0.0,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0
+    },
+    "outcome_decision": {
+      "decision": "uncertain",
+      "continuation": "rollback_to_best_schema",
+      "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+      "task_delta": -0.03571807546445227,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.03571807546445227,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "mechanism_summary": "Outcome regressed while component r_descent_guidance dominated reward attribution with ratio=0.7205622917698647.",
+    "future_guidance": [
+      "Run scale audit before adding or increasing dense components.",
+      "Start new penalties with small weights and candidate sweep.",
+      "Do not let a new dense term dominate terminal incentives."
+    ],
+    "applicability": {
+      "dominant_component": "r_descent_guidance",
+      "failure_modes": [],
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "semantic_roles_touched": [
+        "dense_guidance"
+      ]
+    },
+    "source": "outcome_lesson"
+  }
+]
+
+Structural context:
+{
+  "available_events": [
+    "both_contact",
+    "contact",
+    "engine_on",
+    "left_contact",
+    "right_contact"
+  ],
+  "event_specs": {
+    "left_contact": {
+      "type": "threshold_gt",
+      "var": "left_contact",
+      "threshold": 0.5
+    },
+    "right_contact": {
+      "type": "threshold_gt",
+      "var": "right_contact",
+      "threshold": 0.5
+    },
+    "contact": {
+      "type": "any",
+      "events": [
+        "left_contact",
+        "right_contact"
+      ]
+    },
+    "both_contact": {
+      "type": "all",
+      "events": [
+        "left_contact",
+        "right_contact"
+      ]
+    },
+    "engine_on": {
+      "type": "action_nonzero"
+    }
+  },
+  "available_task_metrics": [
+    "attitude_smoothness",
+    "energy_cost",
+    "horizontal_centering",
+    "progress",
+    "two_leg_contact_evidence",
+    "velocity_smoothness"
+  ],
+  "task_metric_specs": {
+    "horizontal_centering": {
+      "type": "raw_abs_inverse",
+      "inputs": [
+        "x"
+      ]
+    },
+    "velocity_smoothness": {
+      "type": "raw_abs_inverse",
+      "inputs": [
+        "vx",
+        "vy"
+      ]
+    },
+    "attitude_smoothness": {
+      "type": "raw_abs_inverse",
+      "inputs": [
+        "angle",
+        "angular_velocity"
+      ]
+    },
+    "energy_cost": {
+      "type": "action_cost"
+    },
+    "progress": {
+      "type": "metric_mean",
+      "metrics": [
+        "horizontal_centering",
+        "velocity_smoothness",
+        "attitude_smoothness"
+      ]
+    },
+    "two_leg_contact_evidence": {
+      "type": "event_score",
+      "event": "both_contact"
+    }
+  },
+  "preferred_success_events": [],
+  "allowed_formula_variables": [
+    "x",
+    "y",
+    "vx",
+    "vy",
+    "angle",
+    "angular_velocity",
+    "left_contact",
+    "right_contact",
+    "main_engine",
+    "side_engine"
+  ],
+  "allowed_formula_functions": [
+    "abs",
+    "min",
+    "max",
+    "clip",
+    "sqrt",
+    "exp",
+    "tanh"
+  ],
+  "semantic_roles": [
+    "dense_guidance",
+    "stability_quality",
+    "terminal_success",
+    "safety_constraint",
+    "control_cost"
+  ],
+  "action_variables": [
+    {
+      "name": "main_engine",
+      "description": "Main engine action or throttle.",
+      "type": "float"
+    },
+    {
+      "name": "side_engine",
+      "description": "Side engine action or throttle.",
+      "type": "float"
+    }
+  ],
+  "action_mapping": {
+    "type": "discrete_lookup",
+    "variables": {
+      "main_engine": {
+        "2": 1.0,
+        "default": 0.0
+      },
+      "side_engine": {
+        "1": -1.0,
+        "3": 1.0,
+        "default": 0.0
+      }
+    }
+  },
+  "primitive_interface": {
+    "version": 1,
+    "env": "LunarLander-v3",
+    "purpose": "Primitive-only task interface for EG-RSA-V2. This file exposes primitive observation/action variables, allowed formula variables, allowed formula functions, semantic roles, and task text. It does not expose any previous reward schema or previous diagnostic/event definitions.",
+    "task_description": "Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.",
+    "observation_variables": [
+      {
+        "name": "x",
+        "description": "Horizontal position relative to landing pad center.",
+        "type": "float"
+      },
+      {
+        "name": "y",
+        "description": "Vertical position.",
+        "type": "float"
+      },
+      {
+        "name": "vx",
+        "description": "Horizontal velocity.",
+        "type": "float"
+      },
+      {
+        "name": "vy",
+        "description": "Vertical velocity.",
+        "type": "float"
+      },
+      {
+        "name": "angle",
+        "description": "Lander tilt angle.",
+        "type": "float"
+      },
+      {
+        "name": "angular_velocity",
+        "description": "Angular velocity.",
+        "type": "float"
+      },
+      {
+        "name": "left_contact",
+        "description": "Whether the left leg contacts ground.",
+        "type": "bool"
+      },
+      {
+        "name": "right_contact",
+        "description": "Whether the right leg contacts ground.",
+        "type": "bool"
+      }
+    ],
+    "action_variables": [
+      {
+        "name": "main_engine",
+        "description": "Main engine action or throttle.",
+        "type": "float"
+      },
+      {
+        "name": "side_engine",
+        "description": "Side engine action or throttle.",
+        "type": "float"
+      }
+    ],
+    "allowed_formula_variables": [
+      "x",
+      "y",
+      "vx",
+      "vy",
+      "angle",
+      "angular_velocity",
+      "left_contact",
+      "right_contact",
+      "main_engine",
+      "side_engine"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ],
+    "allowed_component_types_v2": [
+      "formula_component",
+      "conditional_formula_component",
+      "event_predicate"
+    ],
+    "bootstrap_requirements": {
+      "must_generate_initial_schema": true,
+      "must_generate_diagnostic_predicates": true,
+      "must_assign_semantic_roles": true,
+      "must_include_hacking_risk_notes": true,
+      "official_environment_reward_forbidden_as_feedback": true,
+      "posthoc_oracle_evaluation_allowed": true,
+      "no_v1_schema_exposure": true,
+      "no_v1_diagnostic_metric_exposure": true,
+      "no_v1_task_description_file_exposure": true,
+      "formula_must_use_only_primitive_variables": true
+    },
+    "semantic_roles": [
+      "dense_guidance",
+      "stability_quality",
+      "terminal_success",
+      "safety_constraint",
+      "control_cost"
+    ],
+    "observation_mapping": {
+      "x": 0,
+      "y": 1,
+      "vx": 2,
+      "vy": 3,
+      "angle": 4,
+      "angular_velocity": 5,
+      "left_contact": 6,
+      "right_contact": 7
+    },
+    "bootstrap_interface_policy": {
+      "principle": "V2 avoids previous-schema leakage by interface isolation. The bootstrap agent only receives primitive observation/action variables, safe formula functions, task text, and output format constraints.",
+      "formula_boundary": "Generated formulas must use only allowed_formula_variables and allowed_formula_functions.",
+      "not_exposed_to_llm": [
+        "previous initial reward schema content",
+        "previous diagnostic metric definitions",
+        "previous event predicate definitions",
+        "previous task-specific reward-design files"
+      ]
+    },
+    "action_cost_policy_v2": {
+      "custom_action_cost": "Use formula_component with semantic_role='control_cost'.",
+      "legacy_action_penalty": "Do not use for LLM-generated custom formulas; runtime action_penalty is built-in -sum(action^2)."
+    },
+    "action_mapping": {
+      "type": "discrete_lookup",
+      "variables": {
+        "main_engine": {
+          "2": 1.0,
+          "default": 0.0
+        },
+        "side_engine": {
+          "1": -1.0,
+          "3": 1.0,
+          "default": 0.0
+        }
+      }
+    }
+  },
+  "primitive_interface_path": "configs/eg_rsa_examples/lunar_lander_primitive_interface.json"
+}
+
+Allowed edit operators:
+[
+  {
+    "operator": "increase_weight",
+    "required": [
+      "target",
+      "factor"
+    ],
+    "description": "Multiply existing reward item weight by factor > 1."
+  },
+  {
+    "operator": "decrease_weight",
+    "required": [
+      "target",
+      "factor"
+    ],
+    "description": "Multiply existing reward item weight by 0 < factor < 1."
+  },
+  {
+    "operator": "clip_component",
+    "required": [
+      "target",
+      "clip"
+    ],
+    "description": "Set existing component clip range [min, max]."
+  },
+  {
+    "operator": "disable_component",
+    "required": [
+      "target"
+    ],
+    "description": "Disable harmful/redundant component or event rule."
+  },
+  {
+    "operator": "replace_formula",
+    "required": [
+      "target",
+      "formula_ast"
+    ],
+    "description": "Replace params.formula_ast of an existing AST formula component."
+  },
+  {
+    "operator": "replace_condition",
+    "required": [
+      "target",
+      "condition_ast"
+    ],
+    "description": "Replace params.condition_ast or event condition.expr_ast."
+  },
+  {
+    "operator": "add_formula_component",
+    "required": [
+      "component.formula_ast"
+    ],
+    "description": "Add formula_component using AST IR."
+  },
+  {
+    "operator": "add_conditional_formula_component",
+    "required": [
+      "component.condition_ast",
+      "component.formula_ast"
+    ],
+    "description": "Add conditional_formula_component using AST IR."
+  },
+  {
+    "operator": "add_action_penalty",
+    "required": [
+      "component.formula_ast"
+    ],
+    "description": "Alias for AST formula_component with semantic_role=control_cost."
+  },
+  {
+    "operator": "add_event_predicate",
+    "required": [
+      "event_rule.condition.expr_ast"
+    ],
+    "description": "Add event_predicate using AST boolean predicate."
+  },
+  {
+    "operator": "add_component",
+    "required": [
+      "component"
+    ],
+    "description": "Backward-compatible structural add; AST fields are still required for formula types."
+  },
+  {
+    "operator": "add_event_rule",
+    "required": [
+      "event_rule"
+    ],
+    "description": "Backward-compatible event add; event_predicate requires condition.expr_ast."
+  },
+  {
+    "operator": "convert_to_one_time_event",
+    "required": [
+      "target"
+    ],
+    "description": "Convert event rule or event_bonus component into one-time event."
+  },
+  {
+    "operator": "add_duration_condition",
+    "required": [
+      "target",
+      "duration_steps"
+    ],
+    "description": "Set event rule duration requirement."
+  }
+]
+
+Return exactly this JSON format:
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "what primitive-variable reward signal appears missing",
+    "why_local_edit_is_insufficient": "why existing local operators are insufficient",
+    "memory_constraints": [],
+    "safety_constraints": []
+  },
+  "reward_editor": {
+    "edit_decision": "edit | no_edit",
+    "next_action": "apply_edit | continue_training | early_stop",
+    "rationale": "why this structural edit is safe and useful",
+    "edit_plan": []
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit | continue_training | early_stop | reject_edit"
+  },
+  "diagnosis": "short structural-search diagnosis",
+  "edit_plan": []
+}

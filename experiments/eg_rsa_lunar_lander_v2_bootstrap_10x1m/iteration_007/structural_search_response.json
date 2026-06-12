@@ -1,0 +1,172 @@
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "Vertical speed control throughout descent is insufficient, causing excessive velocity near ground and contact bouncing; this prevents the agent from maintaining stable ground contact long enough to trigger the terminal success reward.",
+    "why_local_edit_is_insufficient": "Existing local operators (weight changes, condition replacements) cannot introduce a new dense velocity penalty. The current schema only penalises velocity in a narrow near‑ground window (r_vertical_safety), which is too late to shape the entire descent.",
+    "memory_constraints": [],
+    "safety_constraints": [
+      "Keep penalty magnitude moderate to avoid discouraging necessary horizontal corrections and main‑engine burns.",
+      "Do not tighten terminal success condition (velocity thresholds) because that historically breaks terminal reward payment."
+    ]
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "rationale": "Reduce the dominance of r_descent_guidance (0.72 ratio) and add a universal speed penalty that encourages slower, controlled descent all the way to the ground. This balances the shaping landscape and counteracts the bouncing behaviour observed in diagnostics, without the regressions caused by contact‑conditional penalties or tightened terminal conditions.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_descent_guidance",
+        "factor": 0.6
+      },
+      {
+        "operator": "add_formula_component",
+        "component": {
+          "name": "r_velocity_penalty",
+          "type": "formula_component",
+          "weight": 0.2,
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.2
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -0.2
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vx"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "diagnosis": "r_descent_guidance dominates reward (72%) with a constant 1‑y signal, leaving insufficient incentive to slow down. A small, fully‑spanning velocity penalty replaces the missing smoothness signal without creating a new dominant component.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_descent_guidance",
+      "factor": 0.6
+    },
+    {
+      "operator": "add_formula_component",
+      "component": {
+        "name": "r_velocity_penalty",
+        "type": "formula_component",
+        "weight": 0.2,
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.2
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "params": {
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.2
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
+      }
+    }
+  ]
+}

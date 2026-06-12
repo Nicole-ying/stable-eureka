@@ -1,0 +1,118 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_descent_guidance",
+      "factor": 0.6
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_velocity_penalty",
+        "type": "formula_component",
+        "weight": 0.2,
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.2
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "params": {
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.2
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety",
+        "inputs": []
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 2 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing descent guidance dominance and strengthening contact incentive must be applied together. If descent is reduced without strengthening contact, the agent may stop descending. If contact reward is increased without lowering descent dominance, the descent gradient may still overpower contact incentive. The two changes are complementary and must be part of a single rebalancing package.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Reduce r_descent_guidance weight (currently 0.5) by a factor of at least 0.6, so that its contribution ratio drops below ~0.4; suggested new weight 0.2‑0.3.",
+        "Increase r_contact_stability weight (currently 0.1) to at least 0.5, ensuring the per-step reward for both contacts is strong enough to be discovered and trained.",
+        "Optionally relax r_vertical_safety condition from y<0.1 to y<0.2 (and adjust formula if needed) to provide earlier vertical speed guidance, as long as it does not resemble a harmful near‑ground speed penalty.",
+        "Do not add any new components, especially no speed penalties (conditional or unconditional).",
+        "Do not change any event rules (r_landing_success, r_crash) or other safety/cost components.",
+        "Ensure no single component becomes dominant (ratio >0.8) after the edit."
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as safety backstop",
+        "stability component (r_stability) to prevent excessive tilt",
+        "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+        "terminal landing success event (r_landing_success) as the ultimate goal signal",
+        "existing action mapping and variable set"
+      ],
+      "must_avoid": [
+        "introducing contact‑conditional speed penalties",
+        "tightening terminal condition with velocity/angular thresholds",
+        "adding any negative reward for speed near ground",
+        "making a single component dominant (ratio >0.8)",
+        "reverting to hovering behaviour (i.e., descent incentive must remain at least moderate)"
+      ],
+      "expected_effect": "Agent will still have a descent gradient (now less dominant) and a strong incentive to keep both legs on the ground. Stable contact should become more frequent, enabling training of the contact reward and eventually triggering the terminal landing success. Episode length should stabilise near success, task score improve, hack risk stay low.",
+      "risk_analysis": "If descent weight is reduced too much, the agent might stop descending or ascend; if contact reward is too high, it might slam down quickly to get contacts, but the existing stability and vertical safety components should mitigate fast impacts. The vertical safety condition relaxation may need to be conservative to avoid regression. Monitoring after training is essential to catch any new instability."
+    }
+  }
+}

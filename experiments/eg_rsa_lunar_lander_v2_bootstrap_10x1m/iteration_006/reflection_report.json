@@ -1,0 +1,136 @@
+{
+  "reflection_summary": "r_descent_guidance dominates with constant 1.0 per step (ratio 0.829), providing no gradient for descent or stable landing. The agent bounces near ground (contact toggles 646.5) without achieving terminal success. This is a shaping-goal mismatch, not a reward hack. Memory shows that reducing dominant component and adding missing shaping (contact stability) is the path to landings.",
+  "failure_assessment": {
+    "observed_facts": [
+      "r_descent_guidance dominates episodes (ratio 0.829, mean 1.0, min 1.0, max 1.0 – constant)",
+      "Zero successful landings; terminal reward never paid",
+      "All episodes reach max 1000 steps",
+      "High contact toggling (mean 646.5, max 660) indicates bouncing",
+      "r_vertical_safety never triggers (mean 0, trigger_rate 0)",
+      "No crashes",
+      "r_center_guidance mean 0.153, ratio 0.127",
+      "Hack score 0.4 with shaping_goal_mismatch flag true",
+      "Unstable contact behavior flagged"
+    ],
+    "likely_true_failures": [
+      "shaping-goal mismatch: dense descent reward does not incentivize stable ground contact or terminal success",
+      "Constant max reward from descent guidance eliminates useful gradient; agent can hover/bounce without progressing to landing",
+      "Terminal success event is never sampled because no dense component rewards sustained contact",
+      "r_vertical_safety condition (y<0.1) is too strict to activate and guide vertical control"
+    ],
+    "likely_false_positives": [
+      "component_dominance flag reflects poor shaping, not malicious hacking",
+      "High contact toggling is a task performance issue, not reward repetition exploitation"
+    ],
+    "root_cause_hypotheses": [
+      "r_descent_guidance formula (3-y) clipped [0,1] yields exactly 1.0 for all relevant altitudes (y≤2), making it a non-informative shaping signal",
+      "No reward for sustained ground contact prevents agent from learning stable touchdown behavior",
+      "Weak centering (weight 0.2) may contribute to off-center bouncing but is not the primary cause"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "iter_000_to_001: reducing dominant component (center guidance) and adding missing descent shaping successfully introduced landings; principle of rebalancing dominance is reusable",
+      "iter_005_to_006 (outcome lesson): early descent activation (3-y) improved task score, showing that earlier activation is beneficial; but constant max reward now needs correction",
+      "Lesson fragments: coupled rebalancing (reduce dominant, add missing shaping) is effective"
+    ],
+    "failed_or_weak_lessons": [
+      "iter_001_to_002: increasing center/descent weights and adding unconditional speed penalty had minimal effect; weak evidence",
+      "iter_002_to_003: adding contact-conditional stability penalty (r_grounded_stability) caused regression",
+      "iter_003_to_004: tightening terminal condition + near-ground speed penalty caused severe regression (hack score increased, task dropped)",
+      "iter_004_to_005: standalone near-ground speed penalty also caused regression",
+      "All experiments with speed penalties or contact-conditional penalties or terminal tightening were harmful"
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "introducing contact-conditional speed penalties (any component that penalizes velocity only when contacts are true or y is low)",
+      "tightening terminal success condition with velocity/angular thresholds",
+      "adding any negative reward for speed near the ground",
+      "merely increasing descent weight without overcoming the constant reward issue",
+      "relying on sparse terminal reward without dense shaping"
+    ],
+    "recommended_actions": [
+      "modify r_descent_guidance formula to create a gradient (e.g., (2.0 - y) clipped [0,1]) and adjust weight so it no longer dominates",
+      "add a dense component that rewards per-step both ground contacts true (e.g., r_contact_stability with small positive weight)",
+      "optionally slightly increase r_center_guidance weight (e.g., to 0.3) to improve lateral accuracy",
+      "optionally lower r_vertical_safety condition threshold to y<0.2 to activate earlier and guide vertical control",
+      "keep all safety constraints (crash, stability, fuel) unchanged"
+    ],
+    "memory_confidence": 0.85
+  },
+  "memory_use_policy": {
+    "use_raw_memory_cards": true,
+    "use_distilled_lesson_cards": true,
+    "use_outcome_lessons": true,
+    "raw_memory_reason": "Raw traces from iter_000_to_001 and iter_005_to_006 provide concrete before/after evidence of successful dominance reduction and early descent activation; later harmful traces warn against penalties and terminal tightening.",
+    "lesson_memory_reason": "Distilled lessons capture reusable principles (reduce dominant component, add missing shaping) and clear warnings against dangerous patterns (contact-conditional penalties, tightening terminal conditions).",
+    "outcome_lesson_reason": "Outcome lessons quantify improvements and regressions; the small positive lesson from iter_005_to_006 confirms the current direction needs further refinement; regression lessons strongly advise against repeating certain operators.",
+    "selected_memory_ids": [
+      "iter_000_to_001",
+      "iter_005_to_006"
+    ],
+    "ignored_memory_ids": [
+      "iter_001_to_002",
+      "iter_002_to_003",
+      "iter_003_to_004",
+      "iter_004_to_005"
+    ],
+    "conflict_resolution": "No conflicting memories exist; the two effective steps form a consistent refinement path (reduce dominance then adjust shaping), while the ignored ones consistently show harm from speed penalties and terminal tightening.",
+    "memory_confidence": 0.85
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Reducing descent guidance dominance and adding contact stability must be applied together; reducing descent alone could remove all descent incentive and revert to hovering; adding contact reward without rebalancing may not overcome the flat descent shaping.",
+    "max_reasonable_edits": 3,
+    "editor_constraints": [
+      "Modify r_descent_guidance formula to create a gradient, e.g., (2.0 - y) clipped [0,1] or similar, and consider lowering its weight if it remains dominant (current weight 1.0, ratio 0.829).",
+      "Add a dense component (e.g., r_contact_stability) that gives a small per-step reward (0.05–0.1) when both legs are in contact, clipped [0, 1], to incentivize sustained ground contact.",
+      "Optionally increase r_center_guidance weight slightly (e.g., from 0.2 to 0.3) to improve lateral accuracy without approaching dominance.",
+      "Optionally lower r_vertical_safety condition threshold to y < 0.2 to provide earlier vertical speed guidance.",
+      "Do not change any event rules, stability, fuel, or crash components.",
+      "Ensure no new component becomes dominant (ratio >0.8)."
+    ],
+    "must_preserve": [
+      "crash penalty (r_crash) as safety backstop",
+      "stability component (r_stability) to prevent excessive tilt",
+      "fuel penalty (r_fuel_penalty) as soft efficiency constraint",
+      "terminal landing success event (r_landing_success) as ultimate goal",
+      "existing action mapping and variable set"
+    ],
+    "must_avoid": [
+      "contact-conditional speed penalties",
+      "tightening terminal condition with velocity/angular thresholds",
+      "adding negative rewards for speed near ground",
+      "letting r_descent_guidance remain as constant 1.0",
+      "making a single component dominant (~>0.8 ratio)"
+    ],
+    "expected_effect": "Agent will experience a descent gradient, encouraging lower altitude, and a contact reward promoting stable touchdown. Landings should become possible, episode lengths decrease, task score improve, hack risk not increase.",
+    "risk_analysis": "If descent gradient is too weak, hovering may return. If contact reward is too strong, agent might slam down to get contact quickly; stability and vertical safety should mitigate. Maintaining moderate weights and monitoring after training is essential."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "r_descent_guidance still yields constant max reward",
+      "no contact stability component added",
+      "a new component becomes dominant (ratio >0.8)",
+      "safety constraints (crash, stability) weakened or removed",
+      "terminal condition tightened or contact-conditional penalties introduced"
+    ],
+    "package_should_be_accepted_if": [
+      "r_descent_guidance formula changed to provide a gradient (e.g., 2-y or similar with clip) and weight adjusted to avoid dominance (ratio <0.5 if possible)",
+      "a dense per-step reward for both contacts is added with modest weight (≤0.2)",
+      "all safety and terminal rules preserved",
+      "center guidance weight modestly adjusted but not beyond 0.5",
+      "vertical safety condition slightly relaxed but not beyond y<0.2"
+    ],
+    "safety_notes": [
+      "Monitor crash rate after training; contact reward must not encourage high-speed impacts.",
+      "Ensure the new descent formula does not cause dominance; run scale audit if available.",
+      "Keep vertical safety as a soft constraint to slow descent near ground.",
+      "If bouncing persists, consider very small contact reward and slightly more weight on stability."
+    ]
+  }
+}

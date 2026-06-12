@@ -1,0 +1,109 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "replace_formula",
+      "target": "r_descent_guidance",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 2.0
+        },
+        "right": {
+          "var": "y"
+        }
+      }
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "r_descent_guidance",
+      "factor": 0.5
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_contact_stability",
+        "type": "conditional_formula_component",
+        "weight": 0.1,
+        "inputs": [],
+        "params": {
+          "formula_ast": {
+            "const": 0.1
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              }
+            ]
+          }
+        },
+        "formula_ast": {
+          "const": 0.1
+        },
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            }
+          ]
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Reducing descent guidance dominance and adding contact stability must be applied together; reducing descent alone could remove all descent incentive and revert to hovering; adding contact reward without rebalancing may not overcome the flat descent shaping.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Modify r_descent_guidance formula to create a gradient, e.g., (2.0 - y) clipped [0,1] or similar, and consider lowering its weight if it remains dominant (current weight 1.0, ratio 0.829).",
+        "Add a dense component (e.g., r_contact_stability) that gives a small per-step reward (0.05–0.1) when both legs are in contact, clipped [0, 1], to incentivize sustained ground contact.",
+        "Optionally increase r_center_guidance weight slightly (e.g., from 0.2 to 0.3) to improve lateral accuracy without approaching dominance.",
+        "Optionally lower r_vertical_safety condition threshold to y < 0.2 to provide earlier vertical speed guidance.",
+        "Do not change any event rules, stability, fuel, or crash components.",
+        "Ensure no new component becomes dominant (ratio >0.8)."
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as safety backstop",
+        "stability component (r_stability) to prevent excessive tilt",
+        "fuel penalty (r_fuel_penalty) as soft efficiency constraint",
+        "terminal landing success event (r_landing_success) as ultimate goal",
+        "existing action mapping and variable set"
+      ],
+      "must_avoid": [
+        "contact-conditional speed penalties",
+        "tightening terminal condition with velocity/angular thresholds",
+        "adding negative rewards for speed near ground",
+        "letting r_descent_guidance remain as constant 1.0",
+        "making a single component dominant (~>0.8 ratio)"
+      ],
+      "expected_effect": "Agent will experience a descent gradient, encouraging lower altitude, and a contact reward promoting stable touchdown. Landings should become possible, episode lengths decrease, task score improve, hack risk not increase.",
+      "risk_analysis": "If descent gradient is too weak, hovering may return. If contact reward is too strong, agent might slam down to get contact quickly; stability and vertical safety should mitigate. Maintaining moderate weights and monitoring after training is essential."
+    }
+  }
+}

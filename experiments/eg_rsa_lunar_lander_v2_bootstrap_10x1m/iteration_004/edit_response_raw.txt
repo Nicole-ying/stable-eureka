@@ -1,0 +1,264 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "Terminal landing success never triggered (paid rate 0.0, success rate 0.0)",
+      "Very high contact toggling (mean 572, max 622), indicating bouncing",
+      "Episodes run full 1000 steps, no stable landings",
+      "Dense components (r_descent_guidance, r_center_guidance) dominate reward attribution, high mean episode reward (936)",
+      "Crash events rare (trigger rate 0.0003)",
+      "Hack flags raised for repeated_event_exploitation and shaping_goal_mismatch"
+    ],
+    "likely_true_failures": [
+      "Terminal success condition overly strict (requires low velocity and angular velocity) preventing any landing from being recognized",
+      "Dense components encourage descent and centering but not soft landing, leading to oscillating behavior",
+      "Lack of sufficient penalty/reward for stable contact near ground leads to persistent bouncing"
+    ],
+    "likely_false_positives": [
+      "Repeated_event_exploitation flag may be due to high contact toggling rather than reward hacking; agent is not exploiting event rule, just bouncing",
+      "High reward with no progress is a sign of poor reward alignment, not necessarily a hack"
+    ],
+    "root_cause_hypotheses": [
+      "Tightening terminal landing condition made success reward too sparse to be sampled, causing the policy to ignore it entirely and optimize dense objectives, leading to a hover-bounce regime",
+      "Harmful edit insufficiently penalized high-speed near-ground behavior, failing to guide smooth touchdown"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.95
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "memory_id": "iter_000_to_001",
+        "reusable": true,
+        "reason": "Previous edit successfully reduced center dominance and added descent guidance, proving that coupled rebalancing can improve task outcomes without hacking."
+      },
+      {
+        "memory_id": "iter_003_to_004",
+        "reusable": false,
+        "reason": "Tightening terminal success condition caused total regression; do not repeat."
+      }
+    ],
+    "reusable_lessons": [
+      "Decrease dominant component weight and introduce missing dense progress shaping",
+      "Coupled edits (weight adjustments + new shaping) are more reliable than single changes",
+      "Simple terminal landing condition (both contacts only) is necessary for reachability"
+    ],
+    "failed_or_weak_lessons": [
+      "Increasing centering/descent weights alone is insufficient to stop bouncing",
+      "Adding speed penalty only when both contacts held caused slight regression",
+      "Tightening terminal success condition with velocity thresholds is harmful"
+    ],
+    "avoid_actions": [
+      "Tightening the terminal landing condition further",
+      "Adding velocity penalties that activate only when both contacts hold",
+      "Relying solely on weight adjustments without introducing new shaping for landing softness"
+    ],
+    "recommended_actions": [
+      "Revert terminal landing condition to simple both-contact + duration (already done in current schema)",
+      "Introduce a dense near-ground speed penalty (y < 0.2) independent of contacts",
+      "Consider small weight adjustments to balance"
+    ],
+    "memory_confidence": 0.9
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "single_edit",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 1,
+    "rationale": "To discourage high-speed touchdowns and reduce bouncing, add a dense near-ground speed penalty that activates when altitude is below 0.2, penalizing total velocity (|vx|+|vy|) regardless of contact state. This addresses the core failure of soft landing while avoiding the regressions associated with contact‑conditional penalties or terminal condition tightening. Memory supports this targeted addition.",
+    "expected_effect": "Agent will learn to slow down when near the ground, leading to softer landings, lower contact toggling, and eventually enabling the simple terminal success condition to trigger. Progress scores should remain high, and crash rate should stay low.",
+    "risk_analysis": "If the penalty is too strong, agent may become hesitant to descend or abort landing, causing longer episodes or failed descents. Weight of 0.5 and activation only at y < 0.2 limits this. Monitor crash rate and contact toggles after training. If bouncing persists, further contact‑stability incentives may be needed.",
+    "edit_plan": [
+      {
+        "operator": "add_conditional_formula_component",
+        "component": {
+          "name": "r_ground_speed_penalty",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            },
+            "condition_ast": {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "inputs": []
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing with targeted speed penalty near ground",
+      "Simple terminal success condition (both contacts) supported by dense shaping"
+    ],
+    "what_failed": [
+      "Tightening terminal condition with velocity thresholds",
+      "Speed penalty conditional on both contacts",
+      "Weight-only adjustments without new shaping"
+    ],
+    "avoid_next": [
+      "Any further tightening of terminal condition",
+      "Contact-conditional speed penalties",
+      "Over-reliance on dense guidance without soft-landing incentives"
+    ],
+    "recommend_next": [
+      "Near-ground speed penalty independent of contacts",
+      "Monitor contact toggles and adjust penalty strength if needed",
+      "Maintain all safety and efficiency constraints"
+    ],
+    "applicability_notes": [
+      "Apply when agent achieves high reward but fails to land softly due to bouncing; ensure terminal success condition remains simple."
+    ]
+  },
+  "diagnosis": "Lander bounces due to missing near-ground velocity penalty, preventing stable contact required for terminal success. Adding an unconditional speed penalty below y=0.2 should encourage softer touchdowns without harming progress.",
+  "edit_plan": [
+    {
+      "operator": "add_conditional_formula_component",
+      "component": {
+        "name": "r_ground_speed_penalty",
+        "type": "conditional_formula_component",
+        "weight": 0.5,
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.2
+          }
+        },
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.2
+            }
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety",
+        "inputs": []
+      }
+    }
+  ],
+  "plan_type": "single_edit",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 1
+}

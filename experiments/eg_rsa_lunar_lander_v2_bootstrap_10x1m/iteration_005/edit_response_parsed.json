@@ -1,0 +1,149 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "r_center_guidance dominates episodes (ratio 0.875, mean 0.445)",
+      "r_descent_guidance never triggers (mean 0, trigger_rate 0)",
+      "r_vertical_safety never triggers",
+      "zero successful landings; all episodes reach max 1000 steps",
+      "no crashes",
+      "contact toggling observed but no stable contact"
+    ],
+    "likely_true_failures": [
+      "insufficient descent incentive – descent guidance only activates when y<1, giving no reward for initial descent from higher y",
+      "center guidance still too strong relative to the descent component, creating a flat local optimum at high altitude"
+    ],
+    "likely_false_positives": [
+      "component_dominance flag reflects poor shaping, not malicious exploitation",
+      "high contact toggling without landings is a progress issue, not reward repetition"
+    ],
+    "root_cause_hypotheses": [
+      "r_descent_guidance formula (1−y) yields zero reward for y>1; initial altitude likely >1, so exploration receives no descent signal",
+      "r_center_guidance weight (0.5) and its near‑maximum reward for centered hovering create a stronger gradient toward the hovering optimum than any descent exploration"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "assessment": "strong_positive – successfully reduced center dominance and added descent guidance, but the descent formula 1-y was too weak; needs earlier activation",
+        "reusable": true
+      }
+    ],
+    "reusable_lessons": [
+      "Coupled rebalancing (reduce dominant component, strengthen missing shaping) is effective",
+      "Simple terminal success condition supported by dense progress shaping"
+    ],
+    "failed_or_weak_lessons": [
+      "Mere weight increases alone without new shaping do not fix hovering / bouncing",
+      "Contact-conditional speed penalties cause regression",
+      "Tightening terminal condition harms progress"
+    ],
+    "avoid_actions": [
+      "introducing contact‑conditional or ground‑only speed penalties",
+      "tightening the landing‑success condition",
+      "merely increasing existing weights without making descent activation earlier"
+    ],
+    "recommended_actions": [
+      "significantly strengthen descent incentive so that it activates from initial altitude (e.g., formula 3.0 - y)",
+      "further reduce center guidance weight to break its dominance (e.g., from 0.5 to 0.2)",
+      "keep all safety and cost components unchanged"
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "Current hovering is caused by descent guidance dead zone (1-y) when y>1 and center guidance weight too high (0.5). Memory and reflection recommend reducing center weight significantly and making descent reward activate from early altitude. A coupled edit is necessary: lower center weight to 0.2, replace descent formula with (3.0 - y) clipped to [0,1], and increase descent weight to 1.0 to create a strong gradient. All safety and terminal components remain untouched.",
+    "expected_effect": "Agent should begin descending immediately, with a strong descent gradient. Center guidance still pulls toward x=0 but with reduced dominance. Landings should become possible, episode lengths will decrease sharply. No new dominance expected.",
+    "risk_analysis": "If descent incentive is too aggressive, the agent might descend at high speed; however, crash penalty, stability component, and vertical safety near ground should prevent crashes. No contact‑conditional penalties are added. Monitoring after training will catch any instability.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_center_guidance",
+        "factor": 0.4
+      },
+      {
+        "operator": "replace_formula",
+        "target": "r_descent_guidance",
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 3.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 2.0
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing (reduce dominant component, strengthen missing shaping)",
+      "Simple terminal success condition supported by dense progress shaping"
+    ],
+    "what_failed": [
+      "Mere weight increases alone without new shaping",
+      "Contact-conditional speed penalties",
+      "Tightening terminal condition"
+    ],
+    "avoid_next": [
+      "introducing contact‑conditional or ground‑only speed penalties",
+      "tightening the landing‑success condition",
+      "merely increasing existing weights without making descent activation earlier"
+    ],
+    "recommend_next": [
+      "Use early‑activating descent formula (e.g., 3.0 - y clipped [0,1])",
+      "Reduce center guidance weight significantly when it dominates",
+      "Keep all safety and cost components intact"
+    ],
+    "applicability_notes": [
+      "When center guidance dominates and descent shaping has a dead zone at high altitude"
+    ]
+  },
+  "diagnosis": "Current hovering policy caused by descent guidance dead zone (y>1) and excessive center guidance weight (0.5). Fix: early descent reward (3-y) and lower center weight to 0.2.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_center_guidance",
+      "factor": 0.4
+    },
+    {
+      "operator": "replace_formula",
+      "target": "r_descent_guidance",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 3.0
+        },
+        "right": {
+          "var": "y"
+        }
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 2.0
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

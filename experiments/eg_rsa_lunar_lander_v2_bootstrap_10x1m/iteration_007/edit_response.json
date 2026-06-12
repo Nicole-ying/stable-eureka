@@ -1,0 +1,330 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "r_descent_guidance dominant (ratio 0.72, mean 0.493)",
+      "r_contact_stability nearly inactive (trigger rate 0.0014, mean 2e-5)",
+      "No successful landings (r_landing_success never triggered)",
+      "High contact toggling (mean 479, max 586) indicating bouncing",
+      "r_vertical_safety triggers rarely (trigger rate 0.05) and contributes little",
+      "No crashes, episode length mean 847",
+      "Hack score 0.4 with shaping_goal_mismatch and unstable_contact_behavior flags"
+    ],
+    "likely_true_failures": [
+      "Insufficient contact stability reward: agent not incentivised to maintain both contacts, leading to bouncing after descent",
+      "r_descent_guidance still too strong relative to contact reward, driving descent but not stable ground contact",
+      "Terminal landing success condition (both contacts for 20 steps) never met because stable contact not achieved"
+    ],
+    "likely_false_positives": [
+      "Component dominance flag reflects poor shaping, not malicious exploitation",
+      "High contact toggling is a task performance issue, not reward repetition"
+    ],
+    "root_cause_hypotheses": [
+      "r_descent_guidance provides strong descent gradient but no gradient to stay on ground; contact reward (weight 0.1) too weak to overcome descent incentive",
+      "Current balance causes bouncing without learning to sustain ground contact long enough for terminal success"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "assessment": "strong_positive – coupled rebalancing (reduce dominant, add missing shaping) effective",
+        "reusable": true
+      },
+      {
+        "lesson_id": "lesson_iter_006_to_007",
+        "assessment": "failed – weak contact reward and descent dominance not fully fixed; need stronger contact incentive and further descent reduction",
+        "reusable": false
+      }
+    ],
+    "reusable_lessons": [
+      "Coupled rebalancing: reduce dominant component and add missing shaping is effective",
+      "Descent guidance must provide gradient and not dominate",
+      "Contact stability reward needed to incentivize sustained ground contact"
+    ],
+    "failed_or_weak_lessons": [
+      "Weak contact reward (weight 0.1) insufficient to overcome descent dominance",
+      "Constant max descent reward eliminates gradient"
+    ],
+    "avoid_actions": [
+      "Adding contact-conditional speed penalties",
+      "Tightening terminal success condition",
+      "Overweighting a single component"
+    ],
+    "recommended_actions": [
+      "Further reduce r_descent_guidance weight to ≤0.3",
+      "Increase r_contact_stability weight significantly to ≥0.5",
+      "Optionally relax r_vertical_safety condition to y<0.2 for earlier vertical guidance",
+      "Preserve all safety and terminal rules"
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "r_descent_guidance dominates (ratio 0.72) with constant reward, providing no gradient and overpowering weak contact incentive. Reducing descent weight, boosting contact stability weight, and relaxing vertical safety condition will rebalance shaping toward stable landings. All three changes must be applied together to avoid reverting to hovering or bouncing without progress.",
+    "expected_effect": "Descent gradient remains but less dominant; strong contact incentive promotes sustained ground contact; earlier vertical safety guidance softens touchdown. Stable contact should become frequent, enabling terminal landing success. Task score should improve, hack risk low.",
+    "risk_analysis": "Excessive contact reward might encourage high‑speed slamming; existing stability and vertical safety components mitigate. Descent gradient must not be weakened too much to avoid hovering. Monitor post‑training for crashes or bouncing.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_descent_guidance",
+        "factor": 0.4
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_contact_stability",
+        "factor": 5.0
+      },
+      {
+        "operator": "replace_condition",
+        "target": "r_vertical_safety",
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.2
+          }
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing (reduce dominant, strengthen missing shaping)",
+      "Early‑activation descent formula with gradient",
+      "Adding dense per‑step contact reward"
+    ],
+    "what_failed": [
+      "Contact‑conditional speed penalties",
+      "Tightening terminal success condition",
+      "Mere weight increases without gradient fix"
+    ],
+    "avoid_next": [
+      "Speed penalties near ground",
+      "Tightening terminal condition",
+      "Overweighting a single component"
+    ],
+    "recommend_next": [
+      "Use descent formula with gradient and modest weight",
+      "Add per‑step contact reward with strong weight",
+      "Preserve safety and terminal rules unchanged"
+    ],
+    "applicability_notes": [
+      "When a dense shaping component dominates with constant reward, replace formula with gradient and reduce weight; add missing contact stability shaping"
+    ]
+  },
+  "diagnosis": "Shaping‑goal mismatch: r_descent_guidance dominates with constant reward, preventing stable contact. Coupled rebalancing needed – reduce descent weight, boost contact reward, relax vertical safety condition.",
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_descent_guidance",
+      "factor": 0.4
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_contact_stability",
+      "factor": 5.0
+    },
+    {
+      "operator": "replace_condition",
+      "target": "r_vertical_safety",
+      "condition_ast": {
+        "op": "lt",
+        "left": {
+          "var": "y"
+        },
+        "right": {
+          "const": 0.2
+        }
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3,
+  "structural_search_response": {
+    "structural_analysis": {
+      "missing_signal_hypothesis": "Vertical speed control throughout descent is insufficient, causing excessive velocity near ground and contact bouncing; this prevents the agent from maintaining stable ground contact long enough to trigger the terminal success reward.",
+      "why_local_edit_is_insufficient": "Existing local operators (weight changes, condition replacements) cannot introduce a new dense velocity penalty. The current schema only penalises velocity in a narrow near‑ground window (r_vertical_safety), which is too late to shape the entire descent.",
+      "memory_constraints": [],
+      "safety_constraints": [
+        "Keep penalty magnitude moderate to avoid discouraging necessary horizontal corrections and main‑engine burns.",
+        "Do not tighten terminal success condition (velocity thresholds) because that historically breaks terminal reward payment."
+      ]
+    },
+    "reward_editor": {
+      "edit_decision": "edit",
+      "next_action": "apply_edit",
+      "rationale": "Reduce the dominance of r_descent_guidance (0.72 ratio) and add a universal speed penalty that encourages slower, controlled descent all the way to the ground. This balances the shaping landscape and counteracts the bouncing behaviour observed in diagnostics, without the regressions caused by contact‑conditional penalties or tightened terminal conditions.",
+      "edit_plan": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_descent_guidance",
+          "factor": 0.6
+        },
+        {
+          "operator": "add_formula_component",
+          "component": {
+            "name": "r_velocity_penalty",
+            "type": "formula_component",
+            "weight": 0.2,
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -0.2
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vx"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "params": {
+              "formula_ast": {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": -0.2
+                  },
+                  {
+                    "op": "add",
+                    "args": [
+                      {
+                        "op": "abs",
+                        "arg": {
+                          "var": "vx"
+                        }
+                      },
+                      {
+                        "op": "abs",
+                        "arg": {
+                          "var": "vy"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "clip": [
+              -1.0,
+              0.0
+            ],
+            "enabled": true,
+            "semantic_role": "safety_constraint",
+            "reward_timing": "dense",
+            "behavior_channel": "safety"
+          }
+        }
+      ]
+    },
+    "auditor_check": {
+      "approved": true,
+      "issues": [],
+      "final_action": "apply_edit"
+    },
+    "diagnosis": "r_descent_guidance dominates reward (72%) with a constant 1‑y signal, leaving insufficient incentive to slow down. A small, fully‑spanning velocity penalty replaces the missing smoothness signal without creating a new dominant component.",
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_descent_guidance",
+        "factor": 0.6
+      },
+      {
+        "operator": "add_formula_component",
+        "component": {
+          "name": "r_velocity_penalty",
+          "type": "formula_component",
+          "weight": 0.2,
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.2
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -0.2
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vx"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      }
+    ]
+  }
+}

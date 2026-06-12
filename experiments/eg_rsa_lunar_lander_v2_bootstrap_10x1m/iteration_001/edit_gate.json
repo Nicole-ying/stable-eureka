@@ -1,0 +1,121 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "increase_weight",
+      "target": "r_center_guidance",
+      "factor": 1.5
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 1.5
+    },
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_speed_penalty",
+        "type": "formula_component",
+        "weight": 0.3,
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.5
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "params": {
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.5
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety",
+        "inputs": []
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 3 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Improving soft landing requires simultaneously strengthening centering, increasing descent incentive, and adding a continuous speed penalty. Changing one without the others risks drift: e.g., stronger descent without lateral control could lead to off-centre touchdowns; a speed penalty without centering might not suffice. The package must be applied together to maintain balanced behaviour.",
+      "max_reasonable_edits": 4,
+      "editor_constraints": [
+        "Increase r_center_guidance weight modestly (e.g., from 0.5 to 0.7–0.9) to improve lateral accuracy without re-creating dominance (current ratio 0.106)",
+        "Increase r_descent_guidance weight or modify its formula to also reward faster descent (e.g., 1 - y) but ensure it does not overwhelm other signals; current weight 0.5, could be raised to 0.8–1.0",
+        "Introduce a new dense component or modify existing one to penalise high speed (vx and vy) throughout the episode, with a clip [–1,0], to encourage gentle descent and discourage bouncing",
+        "Optionally slightly increase r_fuel_penalty weight (currently 1.0) to improve fuel efficiency",
+        "Keep all safety constraints and terminal success event unchanged",
+        "Avoid making terminal success the sole strong reward; maintain dense progress shaping"
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as safety backstop",
+        "stability component (r_stability) to prevent excessive tilt",
+        "terminal landing success event (r_landing_success) as goal signal",
+        "existing action mapping and variable set"
+      ],
+      "must_avoid": [
+        "increasing any component weight to a dominant ratio (>0.8)",
+        "removing centering guidance entirely",
+        "relying solely on sparse terminal reward",
+        "introducing non-observable variables or infinite reward loops"
+      ],
+      "expected_effect": "Agent should learn to descend more quickly and softly, reduce bouncing (contact toggles should drop), and centre more accurately. Centering reward should increase towards 0.4–0.5, descent guidance mean should rise, and landing events should become more stable. Task score and semantic score should improve further.",
+      "risk_analysis": "If centering weight is increased too much, it may dominate again and discourage descent. If speed penalty is too strong, it may cause overly cautious, slow approach. If descent incentive is boosted too aggressively, the agent might crash. The package needs careful scaling. Monitor crash rate and contact toggles after training."
+    }
+  }
+}

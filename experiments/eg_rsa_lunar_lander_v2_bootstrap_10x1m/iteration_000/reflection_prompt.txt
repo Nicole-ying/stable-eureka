@@ -1,0 +1,664 @@
+You are the ReflectionAgent of EG-RSA.
+Your job is NOT to edit the reward. Your job is to analyze the current training evidence,
+judge memory quality, and decide the next reward-search strategy for the editor.
+Return one JSON object only.
+
+Mission:
+- Preserve the LLM's strategic reasoning as an explicit reflection report.
+- Distinguish true reward hacking from task failure, detector false positives, and training insufficiency.
+- Use memory as evidence, not as decoration.
+- Explicitly judge the three memory layers:
+  1. raw memory cards: exact past edit/outcome traces;
+  2. distilled lesson cards: compressed reusable lessons;
+  3. outcome lessons: before/after causal lessons from committed edits.
+- Decide which memory layers should be used, ignored, or treated as conflicting evidence.
+- Decide whether the next edit should be a single edit, an atomic coupled rebalancing package,
+  structural search, continue training, or early stop.
+
+Hard constraints:
+1. Do NOT use official/oracle reward for decisions.
+2. Do NOT write Python code.
+3. Do NOT invent metrics, events, variables, or operators.
+4. Do NOT propose a final edit_plan here. Only provide strategy and constraints for the EditAgent.
+5. If a failed lesson says an edit failed only because it was applied alone, preserve that nuance.
+
+Task description:
+Land the lunar module safely between the flags. A good landing should be centered, slow, upright, fuel-efficient, and should end with stable ground contact rather than bouncing or crashing.
+
+Current reward schema:
+{
+  "version": 2,
+  "components": [
+    {
+      "name": "r_center_guidance",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "const": 1.0
+              },
+              {
+                "op": "div",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "x"
+                  }
+                },
+                "right": {
+                  "const": 0.2
+                }
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 1.0
+        },
+        "right": {
+          "op": "min",
+          "args": [
+            {
+              "const": 1.0
+            },
+            {
+              "op": "div",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "x"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "r_stability",
+      "type": "formula_component",
+      "weight": 0.5,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 0.0
+          },
+          "right": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "angle"
+                }
+              },
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": 0.5
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angular_velocity"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "stability_quality",
+      "reward_timing": "dense",
+      "behavior_channel": "safety",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 0.0
+        },
+        "right": {
+          "op": "add",
+          "args": [
+            {
+              "op": "abs",
+              "arg": {
+                "var": "angle"
+              }
+            },
+            {
+              "op": "mul",
+              "args": [
+                {
+                  "const": 0.5
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angular_velocity"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "r_vertical_safety",
+      "type": "conditional_formula_component",
+      "weight": 0.5,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "abs",
+            "arg": {
+              "var": "vy"
+            }
+          }
+        },
+        "condition_ast": {
+          "op": "lt",
+          "left": {
+            "var": "y"
+          },
+          "right": {
+            "const": 0.5
+          }
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "safety_constraint",
+      "reward_timing": "dense",
+      "behavior_channel": "safety",
+      "formula_ast": {
+        "op": "neg",
+        "arg": {
+          "op": "abs",
+          "arg": {
+            "var": "vy"
+          }
+        }
+      },
+      "condition_ast": {
+        "op": "lt",
+        "left": {
+          "var": "y"
+        },
+        "right": {
+          "const": 0.5
+        }
+      }
+    },
+    {
+      "name": "r_fuel_penalty",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.05
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "var": "main_engine"
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "side_engine"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "control_cost",
+      "reward_timing": "dense",
+      "behavior_channel": "control",
+      "formula_ast": {
+        "op": "mul",
+        "args": [
+          {
+            "const": -0.05
+          },
+          {
+            "op": "add",
+            "args": [
+              {
+                "var": "main_engine"
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "side_engine"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "event_rules": [
+    {
+      "name": "r_landing_success",
+      "type": "event_predicate",
+      "weight": 200.0,
+      "condition": {
+        "expr_ast": {
+          "op": "and",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            }
+          ]
+        },
+        "duration_steps": 20
+      },
+      "one_time": true,
+      "enabled": true,
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "var": "left_contact"
+          },
+          {
+            "var": "right_contact"
+          }
+        ]
+      },
+      "semantic_role": "terminal_success",
+      "reward_timing": "sparse_event",
+      "behavior_channel": "completion"
+    },
+    {
+      "name": "r_crash",
+      "type": "event_predicate",
+      "weight": -100.0,
+      "condition": {
+        "expr_ast": {
+          "op": "and",
+          "args": [
+            {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.0
+              }
+            },
+            {
+              "op": "not",
+              "arg": {
+                "op": "or",
+                "args": [
+                  {
+                    "var": "left_contact"
+                  },
+                  {
+                    "var": "right_contact"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "duration_steps": 1
+      },
+      "one_time": true,
+      "enabled": true,
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.0
+            }
+          },
+          {
+            "op": "not",
+            "arg": {
+              "op": "or",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "semantic_role": "safety_constraint",
+      "reward_timing": "sparse_event",
+      "behavior_channel": "safety"
+    }
+  ],
+  "metadata": {
+    "source": "llm_bootstrap_ast",
+    "formula_ir": "ast",
+    "reward_blueprint_present": true,
+    "action_mapping": {
+      "type": "discrete_lookup",
+      "variables": {
+        "main_engine": {
+          "2": 1.0,
+          "default": 0.0
+        },
+        "side_engine": {
+          "1": -1.0,
+          "3": 1.0,
+          "default": 0.0
+        }
+      }
+    },
+    "action_variables": [
+      {
+        "name": "main_engine",
+        "description": "Main engine action or throttle.",
+        "type": "float"
+      },
+      {
+        "name": "side_engine",
+        "description": "Side engine action or throttle.",
+        "type": "float"
+      }
+    ],
+    "allowed_formula_variables": [
+      "x",
+      "y",
+      "vx",
+      "vy",
+      "angle",
+      "angular_velocity",
+      "left_contact",
+      "right_contact",
+      "main_engine",
+      "side_engine"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ]
+  }
+}
+
+Diagnostic report:
+{
+  "attribution": {
+    "episode_reward_mean": 775.4791947246975,
+    "episode_reward_std": 39.7249516299345,
+    "component_stats": {
+      "r_center_guidance": {
+        "sum": 5124.156433217684,
+        "abs_sum": 5124.156433217684,
+        "mean": 0.8540260722029474,
+        "std": 0.1480641317654321,
+        "min": 0.0,
+        "max": 0.9999599456805299,
+        "ratio": 0.9157740126333179,
+        "trigger_rate": 0.998
+      },
+      "r_stability": {
+        "sum": -285.2312648695306,
+        "abs_sum": 285.2312648695306,
+        "mean": -0.047538544144921764,
+        "std": 0.03684964848513804,
+        "min": -0.2551419734954834,
+        "max": -0.0009121970069827512,
+        "ratio": 0.05097568416622736,
+        "trigger_rate": 1.0
+      },
+      "r_vertical_safety": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_fuel_penalty": {
+        "sum": -186.05,
+        "abs_sum": 186.05,
+        "mean": -0.031008333333333336,
+        "std": 0.024267260466636024,
+        "min": -0.05,
+        "max": -0.0,
+        "ratio": 0.033250303200333765,
+        "trigger_rate": 0.6201666666666666
+      },
+      "r_landing_success": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_crash": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      }
+    },
+    "dominant_component": "r_center_guidance",
+    "dominant_component_ratio": 0.9157740126333179
+  },
+  "diagnostics": {
+    "hack_flags": {
+      "high_reward_low_progress": false,
+      "component_dominance": true,
+      "repeated_event_exploitation": false,
+      "shaping_goal_mismatch": true,
+      "terminal_success_dominance": false,
+      "unstable_contact_behavior": true,
+      "reward_repetition_risk": false
+    },
+    "failure_modes": [
+      "single_component_dominance",
+      "shaping_goal_mismatch"
+    ],
+    "hack_score": 0.4,
+    "suspected_components": [
+      "r_center_guidance"
+    ],
+    "dominant_component": "r_center_guidance",
+    "dominant_component_ratio": 0.9157740126333179,
+    "raw_component_dominance": true,
+    "benign_terminal_dominance": false,
+    "repeated_event_details": {
+      "flag": false,
+      "event_toggle_counts": {},
+      "max_event": null,
+      "max_toggle_count": 0
+    },
+    "semantic_notes": [
+      "contact_or_landing_toggles_observed_but_not_repeated_reward_exploitation"
+    ]
+  },
+  "semantic_outcome": {
+    "episode_count": 6,
+    "semantic_score": 0.8322735084660993,
+    "success_episode_rate": 0.0,
+    "terminal_reward_paid_episode_rate": 0.0,
+    "terminal_reward_payment_count_mean": 0.0,
+    "terminal_reward_payment_count_max": 0,
+    "safe_contact_episode_rate": 0.0,
+    "stable_landing_episode_rate": 0.0,
+    "progress_score_mean": 0.9322735084660992,
+    "progress_score_std": 0.034605802336407705,
+    "episode_length_mean": 1000.0,
+    "episode_length_std": 0.0,
+    "contact_toggle_mean": 555.3333333333334,
+    "contact_toggle_max": 592.0,
+    "reward_repetition_risk": false,
+    "one_time_repeat_violations": [],
+    "terminal_goal_evidence": false,
+    "unstable_contact_behavior": true,
+    "event_rule_payment_stats": {
+      "r_landing_success": {
+        "episode_payment_counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "episode_paid_rate": 0.0,
+        "payment_count_mean": 0.0,
+        "payment_count_max": 0,
+        "one_time": true
+      }
+    },
+    "terminal_rule_names": [
+      "r_landing_success"
+    ],
+    "one_time_rule_names": [
+      "r_crash",
+      "r_landing_success"
+    ],
+    "semantic_risks": [
+      "unstable_contact_behavior"
+    ]
+  },
+  "experiment_mode": {
+    "use_memory": true,
+    "use_attribution": true,
+    "use_hack_detector": true,
+    "use_llm_edit": true,
+    "use_operator_constraints": true,
+    "free_rewrite": false,
+    "one_shot": false
+  }
+}
+
+Raw memory cards:
+[]
+
+Distilled lesson cards:
+[]
+
+Return exactly this JSON format:
+{
+  "reflection_summary": "short summary of what is happening",
+  "failure_assessment": {
+    "observed_facts": [],
+    "likely_true_failures": [],
+    "likely_false_positives": [],
+    "root_cause_hypotheses": [],
+    "failure_kind": "reward_hack | task_failure | detector_false_positive | mixed | unclear",
+    "confidence": 0.0
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "conflicting_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "memory_use_policy": {
+    "use_raw_memory_cards": true,
+    "use_distilled_lesson_cards": true,
+    "use_outcome_lessons": true,
+    "raw_memory_reason": "why raw edit/outcome traces are useful or ignored",
+    "lesson_memory_reason": "why distilled lessons are useful or ignored",
+    "outcome_lesson_reason": "why outcome lessons are useful or ignored",
+    "selected_memory_ids": [],
+    "ignored_memory_ids": [],
+    "conflict_resolution": "how to resolve contradictory memories",
+    "memory_confidence": 0.0
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit | structural_search | continue_training | early_stop",
+    "plan_type": "single_edit | coupled_rebalancing | structural_search | continue_training | early_stop",
+    "atomicity": "atomic | separable",
+    "why_atomic_or_separable": "If a decrease/increase rebalancing package must not be split, say so explicitly.",
+    "max_reasonable_edits": 1,
+    "editor_constraints": [],
+    "must_preserve": [],
+    "must_avoid": [],
+    "expected_effect": "expected direction of task proxies and hack risk",
+    "risk_analysis": "what could go wrong"
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [],
+    "package_should_be_accepted_if": [],
+    "safety_notes": []
+  }
+}

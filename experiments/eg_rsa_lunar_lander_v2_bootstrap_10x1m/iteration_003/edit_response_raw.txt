@@ -1,0 +1,178 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "r_landing_success pays out in every episode (terminal_reward_paid_rate 1.0) but success_episode_rate and stable_landing_rate remain 0.0",
+      "High contact toggling (mean 184.5, max 597) and high unstable_contact_behavior flag",
+      "r_grounded_stability addition caused a task‑score regression and was rolled back",
+      "r_center_guidance mean 0.113, r_descent_guidance mean 0.372 – centering and descent suboptimal",
+      "Episode length mean 402, large variance",
+      "Hack score 0.2, shaping_goal_mismatch flag true, no reward hacking"
+    ],
+    "likely_true_failures": [
+      "Landing success event condition too easy – triggers after 20 steps of contact without speed/velocity checks, rewarding unstable landings",
+      "Adding a penalty activated only while in contact (r_grounded_stability) created escape incentive, worsening bouncing",
+      "No dense penalty on speed near ground independent of contact state, leading to high-speed touchdowns and sliding"
+    ],
+    "likely_false_positives": [
+      "Terminal_success_dominance flag (ratio 0.432) is benign; dense components still have substantial influence",
+      "Shaping_goal_mismatch flag correctly identifies misalignment but there is no malicious exploitation"
+    ],
+    "root_cause_hypotheses": [
+      "Landing success event triggers too easily without speed/velocity checks",
+      "Lack of a strong near-ground speed penalty that activates regardless of contact",
+      "Insufficient dense shaping aligned with soft, stable touchdown"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      "iter_000_to_001 strong positive: reducing dominant component and adding descent guidance enabled landing",
+      "iter_001_to_002 weak positive: weight increases and mild speed penalty gave only marginal improvement",
+      "iter_002_to_003 regression: adding penalty conditional on contacts backfired"
+    ],
+    "reusable_lessons": [
+      "Coupled rebalancing (reduce weight, add missing dense guidance, tighten safety condition) is effective",
+      "Dense progress shaping must accompany terminal rewards"
+    ],
+    "failed_or_weak_lessons": [
+      "Mere weight increases without new shaping do not fix bouncing",
+      "Penalising speed only when in contact creates escape incentive and worsens stability"
+    ],
+    "avoid_actions": [
+      "Adding any component that penalises speed only when both contacts are true",
+      "Merely increasing existing dense guidance weights without structural change",
+      "Making terminal success condition too lenient"
+    ],
+    "recommended_actions": [
+      "Tighten landing success condition with speed and angular velocity thresholds",
+      "Introduce dense speed penalty near ground (y < 0.2) independent of contacts",
+      "Optionally increase descent guidance weight to maintain progress",
+      "Preserve all safety constraints"
+    ],
+    "memory_confidence": 0.9
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "Current landing success triggers on weak contact, leading to unstable touchdowns. Tightening its condition to require low speeds and angular velocity, adding a near‑ground speed penalty (independent of contacts), and moderately increasing descent guidance will align the terminal goal with soft‑landing shaping, reduce bouncing, and improve landing quality. Memory evidence warns against contact‑only penalties, so the speed penalty is conditioned solely on altitude.",
+    "expected_effect": "Agent will learn to approach the ground slowly and achieve soft, centered touchdown. Stable landings should increase, contact toggling decrease, and centering improve. Hack risk remains low.",
+    "risk_analysis": "If the success condition becomes too strict, success rate might drop; the speed penalty could stall descent if too harsh. Monitoring after training is essential. The descent weight increase balances the speed penalty to avoid stalling.",
+    "edit_plan": [
+      {
+        "operator": "replace_condition",
+        "target": "r_landing_success",
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            { "var": "left_contact" },
+            { "var": "right_contact" },
+            { "op": "lt", "left": { "op": "abs", "arg": { "var": "vx" } }, "right": { "const": 0.2 } },
+            { "op": "lt", "left": { "op": "abs", "arg": { "var": "vy" } }, "right": { "const": 0.2 } },
+            { "op": "lt", "left": { "op": "abs", "arg": { "var": "angular_velocity" } }, "right": { "const": 0.1 } }
+          ]
+        }
+      },
+      {
+        "operator": "add_conditional_formula_component",
+        "component": {
+          "name": "r_ground_speed_penalty",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "condition_ast": { "op": "lt", "left": { "var": "y" }, "right": { "const": 0.2 } },
+          "formula_ast": { "op": "neg", "arg": { "op": "add", "args": [ { "op": "abs", "arg": { "var": "vx" } }, { "op": "abs", "arg": { "var": "vy" } } ] } },
+          "params": {
+            "formula_ast": { "op": "neg", "arg": { "op": "add", "args": [ { "op": "abs", "arg": { "var": "vx" } }, { "op": "abs", "arg": { "var": "vy" } } ] } },
+            "condition_ast": { "op": "lt", "left": { "var": "y" }, "right": { "const": 0.2 } }
+          },
+          "clip": [ -1.0, 0.0 ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 1.5
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing with tightened terminal condition and near-ground speed penalty",
+      "Introducing dense speed penalty independent of contacts"
+    ],
+    "what_failed": [
+      "Adding penalty conditional on both contacts (r_grounded_stability) caused regression"
+    ],
+    "avoid_next": [
+      "Adding any component that penalises speed only when in contact",
+      "Mere weight increases without new shaping"
+    ],
+    "recommend_next": [
+      "Tighten success condition with velocity/angular thresholds",
+      "Add near‑ground speed penalty regardless of contact",
+      "Keep all safety constraints intact"
+    ],
+    "applicability_notes": [
+      "When terminal landing is achieved but quality is poor (bouncing, high contact toggling)"
+    ]
+  },
+  "diagnosis": "Landing success event triggers too easily, allowing high-speed, unstable touchdowns. The reward lacks near-ground speed penalty and terminal condition alignment. Solution: tighten success condition to require low velocity and angular velocity, add dense speed penalty when y < 0.2, and increase descent weight to maintain progress.",
+  "edit_plan": [
+    {
+      "operator": "replace_condition",
+      "target": "r_landing_success",
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          { "var": "left_contact" },
+          { "var": "right_contact" },
+          { "op": "lt", "left": { "op": "abs", "arg": { "var": "vx" } }, "right": { "const": 0.2 } },
+          { "op": "lt", "left": { "op": "abs", "arg": { "var": "vy" } }, "right": { "const": 0.2 } },
+          { "op": "lt", "left": { "op": "abs", "arg": { "var": "angular_velocity" } }, "right": { "const": 0.1 } }
+        ]
+      }
+    },
+    {
+      "operator": "add_conditional_formula_component",
+      "component": {
+        "name": "r_ground_speed_penalty",
+        "type": "conditional_formula_component",
+        "weight": 0.5,
+        "inputs": [],
+        "condition_ast": { "op": "lt", "left": { "var": "y" }, "right": { "const": 0.2 } },
+        "formula_ast": { "op": "neg", "arg": { "op": "add", "args": [ { "op": "abs", "arg": { "var": "vx" } }, { "op": "abs", "arg": { "var": "vy" } } ] } },
+        "params": {
+          "formula_ast": { "op": "neg", "arg": { "op": "add", "args": [ { "op": "abs", "arg": { "var": "vx" } }, { "op": "abs", "arg": { "var": "vy" } } ] } },
+          "condition_ast": { "op": "lt", "left": { "var": "y" }, "right": { "const": 0.2 } }
+        },
+        "clip": [ -1.0, 0.0 ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 1.5
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

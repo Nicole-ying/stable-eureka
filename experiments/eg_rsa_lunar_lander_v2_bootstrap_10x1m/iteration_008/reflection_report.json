@@ -1,0 +1,129 @@
+{
+  "reflection_summary": "The current policy hovers near the center at high altitude (y>1) because r_center_guidance dominates (ratio 0.856) and r_descent_guidance (1−y, weight 0.3) never activates. No landings occur. This is a shaping–goal mismatch, not a reward hack. Memory shows that reducing center dominance and introducing an early‑activating descent gradient (e.g. 2−y or 3−y) with moderate weight resolved similar hovering in past iterations, while weak contact rewards and speed penalties were insufficient or harmful.",
+  "failure_assessment": {
+    "observed_facts": [
+      "r_center_guidance dominates (ratio 0.856, mean 0.423)",
+      "r_descent_guidance never triggers (mean 0, trigger_rate 0)",
+      "r_vertical_safety never triggers",
+      "zero successful landings; all episodes run the full 1000 steps",
+      "no crashes",
+      "high contact toggling (mean 652, max 690) but no stable contact or terminal success"
+    ],
+    "likely_true_failures": [
+      "descent guidance dead zone: formula 1−y gives zero reward when y>1, providing no gradient to descend from initial altitude",
+      "center guidance weight (0.5) is still too strong, making centered hovering the dominant policy",
+      "overall shaping–goal mismatch prevents any progress toward the terminal landing objective"
+    ],
+    "likely_false_positives": [
+      "component_dominance flag reflects poor shaping, not malicious exploitation",
+      "unstable_contact_behavior is a task performance issue, not reward repetition"
+    ],
+    "root_cause_hypotheses": [
+      "r_descent_guidance only activates for y<1; agent never reaches y<1 because it has no incentive to leave the high‑altitude centered optimum",
+      "r_center_guidance, even at weight 0.5, still provides enough reward to dominate the policy when other components are inactive"
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [
+      "iter_000_to_001: reducing center guidance weight and adding a (then) early‑activating descent component successfully broke initial hovering and introduced landings (principle of reducing dominance + adding missing shaping)",
+      "iter_005_to_006: lowering center weight and modifying descent formula to activate earlier (3−y) caused the policy to start descending, confirming that early activation is essential",
+      "outcome lesson (effective): coupled rebalancing (reduce dominant, add missing shaping) is effective when the new component has appropriate early activation"
+    ],
+    "failed_or_weak_lessons": [
+      "iter_006_to_007: adding a weak contact‑stability reward (weight 0.1) while descent still dominated did not improve stable contact and regressed progress",
+      "iter_007_to_008: simply reducing descent weight and adding a universal speed penalty without fixing the dead zone led back to center‑dominance hovering (the current state)",
+      "several regression lessons warn against contact‑conditional speed penalties, tightening the terminal condition, or letting a dense component dominate"
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "adding or strengthening contact‑conditional speed penalties",
+      "tightening the landing‑success condition with velocity/angular thresholds",
+      "relying on sparse terminal reward without early dense descent shaping",
+      "leaving r_descent_guidance as a dead‑zone formula (1−y) when altitude can be >1"
+    ],
+    "recommended_actions": [
+      "further reduce r_center_guidance weight (e.g., 0.5 → 0.2) to break its dominance",
+      "modify r_descent_guidance formula to activate early (e.g., 2.0−y or 3.0−y, clipped [0,1]) so that descending from any altitude is rewarded",
+      "increase r_descent_guidance weight to a moderate level (e.g., 0.5–0.7) to provide a usable gradient, but avoid making it a new dominant component",
+      "keep all safety constraints (r_crash, r_stability, r_fuel_penalty, r_landing_success) and the r_velocity_penalty unchanged for now"
+    ],
+    "memory_confidence": 0.85
+  },
+  "memory_use_policy": {
+    "use_raw_memory_cards": true,
+    "use_distilled_lesson_cards": true,
+    "use_outcome_lessons": true,
+    "raw_memory_reason": "Iter_000_to_001 and iter_005_to_006 provide clear before/after evidence that reducing center dominance and introducing early‑activation descent works; iter_007_to_008 explains why the current schema failed.",
+    "lesson_memory_reason": "Distilled lessons extract reusable principles (reduce dominant, add early shaping) and warnings against regression‑prone edits (contact penalties, terminal tightening, weak contact rewards).",
+    "outcome_lesson_reason": "Outcome lessons quantify the positive effect of early‑activation descent and the danger of dominant dense components, directly informing the balance required now.",
+    "selected_memory_ids": [
+      "iter_000_to_001",
+      "iter_005_to_006"
+    ],
+    "ignored_memory_ids": [
+      "iter_001_to_002",
+      "iter_002_to_003",
+      "iter_003_to_004",
+      "iter_004_to_005",
+      "iter_006_to_007",
+      "iter_007_to_008"
+    ],
+    "conflict_resolution": "No conflicting memories; the successful edits form a consistent pattern (reduce center, add early descent), while the ignored ones show that weak contact rewards, speed penalties without early descent, or descent dominance are harmful.",
+    "memory_confidence": 0.85
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "why_atomic_or_separable": "Reducing center guidance alone could cause the agent to drift without descending, while strengthening descent without reining in center dominance may not break the hovering optimum. The two changes must be applied together to redirect behavior toward landing.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Reduce r_center_guidance weight from 0.5 to 0.2, lowering its dominance ratio below ~0.3",
+      "Replace r_descent_guidance formula with a version that activates early (e.g., 2.0 − y or 3.0 − y, clipped to [0,1]) so that descending from any altitude yields a positive signal",
+      "Increase r_descent_guidance weight to around 0.5–0.7 to provide a usable gradient without creating new dominance (ratio should stay below ~0.6)",
+      "Do not add any new components, especially not contact‑conditional speed penalties or contact‑stability rewards with low weight",
+      "Do not change any event rules (r_landing_success, r_crash) or other components (r_stability, r_fuel_penalty, r_velocity_penalty, r_vertical_safety)",
+      "Ensure no single component becomes dominant (ratio >0.8) after the edit"
+    ],
+    "must_preserve": [
+      "crash penalty (r_crash) as safety backstop",
+      "stability component (r_stability) to prevent excessive tilt",
+      "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+      "terminal landing success event (r_landing_success) as the ultimate goal signal",
+      "existing action mapping and variable set",
+      "r_velocity_penalty as a mild smoothness incentive (it is not harmful in the current state)"
+    ],
+    "must_avoid": [
+      "complete removal of horizontal guidance (some centering is necessary)",
+      "introduction of contact‑conditional speed penalties or near‑ground penalties not already present",
+      "tightening the terminal success condition with velocity/angular thresholds",
+      "overweighting the new descent component to dominance (ratio >0.8)",
+      "using a descent formula that still has a dead zone at initial altitude (e.g., 1−y)"
+    ],
+    "expected_effect": "The agent will receive a descent gradient from the start of each episode, encouraging it to lower its altitude while still being pulled toward x=0. Center guidance remains but is no longer dominant. The policy should start descending, attempt to land, and likely achieve stable contact; success rate should rise from 0 %, episode lengths drop, and hack risk remains low.",
+    "risk_analysis": "If center weight is reduced too much, the agent may fail to reach the landing area, but the tolerance is moderate. If descent incentive is too strong, the agent might descend aggressively, but the existing crash penalty, stability component, and vertical safety (once activated near the ground) should prevent crashes. The new descent component must not become dominant; keeping its weight ≤0.7 and verifying via attribution after training is crucial."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "r_center_guidance weight is unchanged or increased",
+      "r_descent_guidance formula is not changed or still yields zero reward at high altitude (e.g., remains 1−y)",
+      "a new component becomes dominant (ratio >0.8)",
+      "safety constraints (crash, stability, fuel) or terminal success condition are weakened or removed",
+      "only the terminal landing success weight is increased without dense descent shaping"
+    ],
+    "package_should_be_accepted_if": [
+      "r_center_guidance weight is reduced to ≤0.3 (ideally 0.2)",
+      "r_descent_guidance is modified to an early‑activating formula (e.g., 2.0−y or 3.0−y, clipped [0,1])",
+      "r_descent_guidance weight is set between 0.5 and 0.7",
+      "all safety and terminal rules are preserved",
+      "no new dominance emerges (descent ratio expected <0.6)"
+    ],
+    "safety_notes": [
+      "Monitor crash rate after training; if crashes appear, slightly increase r_vertical_safety weight or relax its condition to y<0.2 to provide earlier speed guidance.",
+      "Keep r_velocity_penalty as is; it provides gentle overall smoothness pressure and is not harmful in the hovering state.",
+      "If the agent still bounces without triggering the terminal success, a very small per‑step contact‑stability reward (e.g., weight 0.05 and not a penalty) could be considered later, but not in this package."
+    ]
+  }
+}

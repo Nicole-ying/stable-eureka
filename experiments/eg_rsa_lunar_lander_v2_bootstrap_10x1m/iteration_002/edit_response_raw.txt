@@ -1,0 +1,345 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "All 6 episodes triggered r_landing_success (terminal reward 200), but safe_contact_rate=0, stable_landing_rate=0",
+      "High contact toggling mean 119.33, max 427",
+      "Progress score 0.977, episode length mean 372",
+      "r_center_guidance mean 0.381, r_descent_guidance mean 0.545",
+      "r_speed_penalty mean -0.0415, r_vertical_safety mean -0.0071 (trigger only near ground)",
+      "No crashes",
+      "Hack score 0.2, shaping_goal_mismatch and unstable_contact_behavior flags true"
+    ],
+    "likely_true_failures": [
+      "Insufficient penalty or guidance for soft, stable ground contact",
+      "Mild speed penalty fails to dampen bouncing",
+      "Vertical safety activates too close to ground and only penalises vy",
+      "No component directly rewards or enforces stable ground contact without toggling"
+    ],
+    "likely_false_positives": [
+      "Shaping_goal_mismatch flag may be overly broad; terminal success is achieved and dense shaping exists"
+    ],
+    "root_cause_hypotheses": [
+      "Dense components do not adequately penalise high‑speed contact or contact interruptions; landing success event only requires 20‑step contact, allowing brief bounces before stabilising"
+    ],
+    "failure_kind": "task_failure",
+    "edit_need": "must_edit",
+    "confidence": 0.9
+  },
+  "memory_reflection": {
+    "lesson_assessments": [
+      {
+        "lesson_id": "lesson_iter_000_to_001",
+        "assessment": "strong_positive – successfully reduced center dominance and added descent guidance, providing a template for coupled rebalancing",
+        "reusable": true
+      },
+      {
+        "lesson_id": "lesson_iter_001_to_002",
+        "assessment": "weak_positive – weight increases and a mild global speed penalty improved scores only marginally; lesson warns that weight‑only tweaks are insufficient for bouncing problem",
+        "reusable": false
+      }
+    ],
+    "reusable_lessons": [
+      "Decrease dominant component weight and introduce missing dense progress shaping",
+      "Coupled edits are more reliable than single changes"
+    ],
+    "failed_or_weak_lessons": [
+      "Merely increasing existing dense guidance weights or adding a mild global speed penalty does not resolve bouncing; a contact‑stability component is needed"
+    ],
+    "avoid_actions": [
+      "Merely increasing existing dense guidance weights or repeating the last weak edit without a new contact‑stability component"
+    ],
+    "recommended_actions": [
+      "Introduce a component that penalises contact toggling or rewards sustained stable contact",
+      "Strengthen speed penalties near ground (e.g., harsher near touchdown)",
+      "Consider adjusting vertical safety to include lateral velocity when near ground",
+      "Keep terminal success event, fuel penalty, and safety constraints preserved"
+    ],
+    "memory_confidence": 0.85
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "rationale": "To address unstable contact (bouncing) and insufficient soft‑landing shaping, introduce a dense contact‑stability bonus, replace global speed penalty with a near‑ground velocity penalty, and broaden vertical safety to include lateral velocity. Memory shows weight‑only edits are ineffective; this package adds new shaping while preserving all safety constraints.",
+    "expected_effect": "Contact toggling should decrease significantly, stable landing rate should rise, speed near ground should lower, progress score should remain high. The new contact bonus (~0.05 weight) will encourage continuous ground contact, the near‑ground speed penalty will dampen high velocities at touchdown, and the expanded vertical safety will reduce lateral drift.",
+    "risk_analysis": "If contact stability bonus is too strong, agent may never release contact and abort descent; careful scaling (weight 0.05) mitigates this. If speed penalty becomes too harsh near ground, descent may stall. Monitor contact toggles and crashes after training.",
+    "edit_plan": [
+      {
+        "operator": "add_formula_component",
+        "component": {
+          "name": "r_contact_stability_bonus",
+          "type": "formula_component",
+          "weight": 0.05,
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              }
+            ]
+          },
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                }
+              ]
+            }
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "safety"
+        }
+      },
+      {
+        "operator": "replace_formula",
+        "target": "r_speed_penalty",
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.5
+            },
+            {
+              "op": "mul",
+              "args": [
+                {
+                  "op": "max",
+                  "args": [
+                    {
+                      "const": 0.0
+                    },
+                    {
+                      "op": "sub",
+                      "left": {
+                        "const": 1.0
+                      },
+                      "right": {
+                        "op": "div",
+                        "left": {
+                          "var": "y"
+                        },
+                        "right": {
+                          "const": 0.2
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vx"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "vy"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "operator": "replace_formula",
+        "target": "r_vertical_safety",
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [
+      "Coupled rebalancing with a dedicated contact‑stability bonus and near‑ground velocity penalty",
+      "Broadening vertical safety to include lateral velocity"
+    ],
+    "what_failed": [
+      "Weight‑only increases on centering/descent without new shape do not fix bouncing"
+    ],
+    "avoid_next": [
+      "Merely increasing existing dense guidance weights or repeating the last weak edit without a contact‑stability component"
+    ],
+    "recommend_next": [
+      "Introduce a contact‑stability reward per step when both legs are on ground",
+      "Strengthen speed penalties specifically near the surface (y < 0.2)",
+      "Expand vertical safety to penalise lateral velocity",
+      "Monitor contact toggles and crash rates after training"
+    ],
+    "applicability_notes": [
+      "Applies when terminal landing reward is achieved but landing quality is poor (bouncing, high contact toggling)"
+    ]
+  },
+  "diagnosis": "Terminal landing achieved but unstable contact (bouncing) due to weak near‑ground speed control and no incentive for sustained contact. Package adds a per‑step contact‑stability bonus, a near‑ground velocity penalty, and lateral velocity awareness in vertical safety.",
+  "edit_plan": [
+    {
+      "operator": "add_formula_component",
+      "component": {
+        "name": "r_contact_stability_bonus",
+        "type": "formula_component",
+        "weight": 0.05,
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            }
+          ]
+        },
+        "params": {
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              }
+            ]
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
+      }
+    },
+    {
+      "operator": "replace_formula",
+      "target": "r_speed_penalty",
+      "formula_ast": {
+        "op": "mul",
+        "args": [
+          {
+            "const": -0.5
+          },
+          {
+            "op": "mul",
+            "args": [
+              {
+                "op": "max",
+                "args": [
+                  {
+                    "const": 0.0
+                  },
+                  {
+                    "op": "sub",
+                    "left": {
+                      "const": 1.0
+                    },
+                    "right": {
+                      "op": "div",
+                      "left": {
+                        "var": "y"
+                      },
+                      "right": {
+                        "const": 0.2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vx"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "vy"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "operator": "replace_formula",
+      "target": "r_vertical_safety",
+      "formula_ast": {
+        "op": "neg",
+        "arg": {
+          "op": "add",
+          "args": [
+            {
+              "op": "abs",
+              "arg": {
+                "var": "vx"
+              }
+            },
+            {
+              "op": "abs",
+              "arg": {
+                "var": "vy"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 3
+}

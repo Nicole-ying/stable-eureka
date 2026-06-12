@@ -1,0 +1,1384 @@
+{
+  "memory_id": "iter_005_to_006",
+  "env_family": "landing_control",
+  "failure_modes": [
+    "single_component_dominance",
+    "shaping_goal_mismatch"
+  ],
+  "reward_attribution": {
+    "episode_reward_mean": 381.47194818045085,
+    "episode_reward_std": 24.889801571515466,
+    "component_stats": {
+      "r_center_guidance": {
+        "sum": 2672.0917441203646,
+        "abs_sum": 2672.0917441203646,
+        "mean": 0.44534862402006076,
+        "std": 0.06995486242151144,
+        "min": 0.0,
+        "max": 0.4999811649320236,
+        "ratio": 0.8745610717745044,
+        "trigger_rate": 0.9963333333333333
+      },
+      "r_stability": {
+        "sum": -200.11005503763658,
+        "abs_sum": 200.11005503763658,
+        "mean": -0.0333516758396061,
+        "std": 0.03114514324265293,
+        "min": -0.24112623184919357,
+        "max": -0.00021535853011300787,
+        "ratio": 0.06549493092505405,
+        "trigger_rate": 1.0
+      },
+      "r_vertical_safety": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_fuel_penalty": {
+        "sum": -183.14999999999998,
+        "abs_sum": 183.14999999999998,
+        "mean": -0.030524999999999997,
+        "std": 0.024381845192683844,
+        "min": -0.05,
+        "max": -0.0,
+        "ratio": 0.05994399730022343,
+        "trigger_rate": 0.6105
+      },
+      "r_descent_guidance": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_ground_speed_penalty": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_landing_success": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      },
+      "r_crash": {
+        "sum": 0.0,
+        "abs_sum": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "ratio": 0.0,
+        "trigger_rate": 0.0
+      }
+    },
+    "dominant_component": "r_center_guidance",
+    "dominant_component_ratio": 0.8745610717745044
+  },
+  "edit_plan": [
+    {
+      "operator": "decrease_weight",
+      "target": "r_center_guidance",
+      "factor": 0.4
+    },
+    {
+      "operator": "replace_formula",
+      "target": "r_descent_guidance",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 3.0
+        },
+        "right": {
+          "var": "y"
+        }
+      }
+    },
+    {
+      "operator": "increase_weight",
+      "target": "r_descent_guidance",
+      "factor": 2.0
+    }
+  ],
+  "outcome": {
+    "status": "pending",
+    "before": {
+      "task_score": 0.8137235141813132,
+      "semantic_score": 0.8137235141813132,
+      "selection_score": 1.2274470283626262,
+      "hack_score": 0.4,
+      "true_hack_risk": true,
+      "terminal_goal_evidence": false,
+      "reward_repetition_risk": false,
+      "high_reward_low_progress": false,
+      "shaping_goal_mismatch": true,
+      "unstable_contact_behavior": true,
+      "benign_terminal_dominance": false,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0
+    },
+    "after": {},
+    "delta": {},
+    "note": "Pending until the committed schema transition is trained in the next iteration."
+  },
+  "lesson": "Current hovering policy caused by descent guidance dead zone (y>1) and excessive center guidance weight (0.5). Fix: early descent reward (3-y) and lower center weight to 0.2.",
+  "metadata": {
+    "config_path": "configs/eg_rsa_deepseek_v2_bootstrap_10x1m.yml",
+    "iteration": 5,
+    "schema_snapshot": {
+      "version": 3,
+      "components": [
+        {
+          "name": "r_center_guidance",
+          "type": "formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "sub",
+              "left": {
+                "const": 1.0
+              },
+              "right": {
+                "op": "min",
+                "args": [
+                  {
+                    "const": 1.0
+                  },
+                  {
+                    "op": "div",
+                    "left": {
+                      "op": "abs",
+                      "arg": {
+                        "var": "x"
+                      }
+                    },
+                    "right": {
+                      "const": 0.2
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress",
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "const": 1.0
+                },
+                {
+                  "op": "div",
+                  "left": {
+                    "op": "abs",
+                    "arg": {
+                      "var": "x"
+                    }
+                  },
+                  "right": {
+                    "const": 0.2
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "r_stability",
+          "type": "formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "sub",
+              "left": {
+                "const": 0.0
+              },
+              "right": {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angle"
+                    }
+                  },
+                  {
+                    "op": "mul",
+                    "args": [
+                      {
+                        "const": 0.5
+                      },
+                      {
+                        "op": "abs",
+                        "arg": {
+                          "var": "angular_velocity"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "stability_quality",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 0.0
+            },
+            "right": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angle"
+                  }
+                },
+                {
+                  "op": "mul",
+                  "args": [
+                    {
+                      "const": 0.5
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "angular_velocity"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "r_vertical_safety",
+          "type": "conditional_formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "neg",
+              "arg": {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              }
+            },
+            "condition_ast": {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.1
+              }
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "safety_constraint",
+          "reward_timing": "dense",
+          "behavior_channel": "safety",
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "abs",
+              "arg": {
+                "var": "vy"
+              }
+            }
+          },
+          "condition_ast": {
+            "op": "lt",
+            "left": {
+              "var": "y"
+            },
+            "right": {
+              "const": 0.1
+            }
+          }
+        },
+        {
+          "name": "r_fuel_penalty",
+          "type": "formula_component",
+          "weight": 1.0,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -0.05
+                },
+                {
+                  "op": "add",
+                  "args": [
+                    {
+                      "var": "main_engine"
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "side_engine"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "clip": [
+            -1.0,
+            0.0
+          ],
+          "enabled": true,
+          "semantic_role": "control_cost",
+          "reward_timing": "dense",
+          "behavior_channel": "control",
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.05
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "var": "main_engine"
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "side_engine"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "r_descent_guidance",
+          "type": "formula_component",
+          "weight": 0.5,
+          "inputs": [],
+          "params": {
+            "formula_ast": {
+              "op": "sub",
+              "left": {
+                "const": 1.0
+              },
+              "right": {
+                "var": "y"
+              }
+            }
+          },
+          "clip": [
+            0.0,
+            1.0
+          ],
+          "enabled": true,
+          "semantic_role": "dense_guidance",
+          "reward_timing": "dense",
+          "behavior_channel": "progress",
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "var": "y"
+            }
+          }
+        }
+      ],
+      "event_rules": [
+        {
+          "name": "r_landing_success",
+          "type": "event_predicate",
+          "weight": 200.0,
+          "condition": {
+            "expr_ast": {
+              "op": "and",
+              "args": [
+                {
+                  "var": "left_contact"
+                },
+                {
+                  "var": "right_contact"
+                }
+              ]
+            },
+            "duration_steps": 20
+          },
+          "one_time": true,
+          "enabled": true,
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              }
+            ]
+          },
+          "semantic_role": "terminal_success",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "completion"
+        },
+        {
+          "name": "r_crash",
+          "type": "event_predicate",
+          "weight": -100.0,
+          "condition": {
+            "expr_ast": {
+              "op": "and",
+              "args": [
+                {
+                  "op": "lt",
+                  "left": {
+                    "var": "y"
+                  },
+                  "right": {
+                    "const": 0.0
+                  }
+                },
+                {
+                  "op": "not",
+                  "arg": {
+                    "op": "or",
+                    "args": [
+                      {
+                        "var": "left_contact"
+                      },
+                      {
+                        "var": "right_contact"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "duration_steps": 1
+          },
+          "one_time": true,
+          "enabled": true,
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "op": "lt",
+                "left": {
+                  "var": "y"
+                },
+                "right": {
+                  "const": 0.0
+                }
+              },
+              {
+                "op": "not",
+                "arg": {
+                  "op": "or",
+                  "args": [
+                    {
+                      "var": "left_contact"
+                    },
+                    {
+                      "var": "right_contact"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "semantic_role": "safety_constraint",
+          "reward_timing": "sparse_event",
+          "behavior_channel": "safety"
+        }
+      ],
+      "metadata": {
+        "source": "llm_bootstrap_ast",
+        "formula_ir": "ast",
+        "reward_blueprint_present": true,
+        "action_mapping": {
+          "type": "discrete_lookup",
+          "variables": {
+            "main_engine": {
+              "2": 1.0,
+              "default": 0.0
+            },
+            "side_engine": {
+              "1": -1.0,
+              "3": 1.0,
+              "default": 0.0
+            }
+          }
+        },
+        "action_variables": [
+          {
+            "name": "main_engine",
+            "description": "Main engine action or throttle.",
+            "type": "float"
+          },
+          {
+            "name": "side_engine",
+            "description": "Side engine action or throttle.",
+            "type": "float"
+          }
+        ],
+        "allowed_formula_variables": [
+          "x",
+          "y",
+          "vx",
+          "vy",
+          "angle",
+          "angular_velocity",
+          "left_contact",
+          "right_contact",
+          "main_engine",
+          "side_engine"
+        ],
+        "allowed_formula_functions": [
+          "abs",
+          "min",
+          "max",
+          "clip",
+          "sqrt",
+          "exp",
+          "tanh"
+        ]
+      }
+    },
+    "validation_errors": [],
+    "validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_center_guidance",
+          "factor": 0.4
+        },
+        {
+          "operator": "replace_formula",
+          "target": "r_descent_guidance",
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 3.0
+            },
+            "right": {
+              "var": "y"
+            }
+          }
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_descent_guidance",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "gate_result": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_center_guidance",
+          "factor": 0.4
+        },
+        {
+          "operator": "replace_formula",
+          "target": "r_descent_guidance",
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 3.0
+            },
+            "right": {
+              "var": "y"
+            }
+          }
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_descent_guidance",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Low step evidence for target r_descent_guidance: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Low step evidence for target r_descent_guidance: ratio=0.0000, trigger_rate=0.0000; warning only.",
+        "Accepted atomic package with 3 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Reducing center guidance and strengthening descent incentive must occur together; weakening centering alone could lead to aimless drifting, and stronger descent without adjusting centering may not break the hovering optimum.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Reduce r_center_guidance weight further (e.g., from 0.5 to 0.2) to lower its dominance ratio below 0.3.",
+            "Modify r_descent_guidance formula to reward any descent from initial altitude; for example, use (2.0 − y) clipped to [0,1] so that reward starts as soon as y < 2.0.",
+            "Increase r_descent_guidance weight to a level that creates a strong gradient (e.g., 1.0).",
+            "Preserve r_stability, r_fuel_penalty, r_crash, r_landing_success exactly as is.",
+            "Do not change r_vertical_safety condition or any event rules.",
+            "Do not add new components that penalize speed conditional on ground contact."
+          ],
+          "must_preserve": [
+            "crash penalty (r_crash) as safety backstop",
+            "stability component (r_stability) to prevent excessive tilt",
+            "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+            "terminal landing success event (r_landing_success) as the ultimate goal signal",
+            "existing action mapping and variable set"
+          ],
+          "must_avoid": [
+            "complete removal of horizontal guidance (some centering is necessary)",
+            "introduction of contact‑conditional speed penalties",
+            "tightening terminal condition with velocity/angular thresholds",
+            "reliance on purely sparse reward without dense descent shaping",
+            "drastic weight increases that would make any single component dominant (ratio >0.8)"
+          ],
+          "expected_effect": "Agent should begin descending from the start, following a descent gradient that activates early. Center guidance will still pull toward x=0 but will not dominate. Landings should become possible, with episode lengths decreasing sharply.",
+          "risk_analysis": "If descent incentive becomes too aggressive, the agent might descend at high speed; however, crash penalty, stability component, and existing vertical safety near ground should mitigate crashes. If center guidance is weakened too much, the lander may miss the landing area, but the flags are tolerant enough that moderate lateral deviation is acceptable. The coupled edit should not create new dominance if descent weight is kept ≤1.0 and center weight ≥0.2."
+        }
+      }
+    },
+    "reflection_report": {
+      "reflection_summary": "The current training run with reward schema v3 (previously successful) has reverted to a hovering policy dominated by r_center_guidance, with zero descent or landings. The descent guidance component (1−y) never activates because y stays >1, providing no gradient to leave the high‑altitude center hovering optimum. This is a task‑failure, not a reward hack.",
+      "failure_assessment": {
+        "observed_facts": [
+          "r_center_guidance dominates episodes (ratio 0.875, mean 0.445)",
+          "r_descent_guidance never triggers (mean 0, trigger_rate 0)",
+          "r_vertical_safety never triggers",
+          "zero successful landings; all episodes reach max 1000 steps",
+          "no crashes",
+          "contact toggling observed but no stable contact"
+        ],
+        "likely_true_failures": [
+          "insufficient descent incentive – descent guidance only activates when y<1, giving no reward for initial descent from higher y",
+          "center guidance still too strong relative to the descent component, creating a flat local optimum at high altitude"
+        ],
+        "likely_false_positives": [
+          "component_dominance flag reflects poor shaping, not malicious exploitation",
+          "high contact toggling without landings is a progress issue, not reward repetition"
+        ],
+        "root_cause_hypotheses": [
+          "r_descent_guidance formula (1−y) yields zero reward for y>1; initial altitude likely >1, so exploration receives no descent signal",
+          "r_center_guidance weight (0.5) and its near‑maximum reward for centered hovering create a stronger gradient toward the hovering optimum than any descent exploration"
+        ],
+        "failure_kind": "task_failure",
+        "confidence": 0.9
+      },
+      "memory_assessment": {
+        "reusable_lessons": [
+          "iter_000_to_001: reducing dominant component and adding missing descent guidance was effective in a previous training run; the general rebalancing principle is reusable",
+          "outcome lessons confirm that dense progress shaping is necessary and that contact‑conditional penalties regress"
+        ],
+        "failed_or_weak_lessons": [
+          "iter_001_to_002: modest weight increases alone did not significantly improve landing quality",
+          "iter_002_to_003 onward: contact‑conditional penalties (r_grounded_stability) and tightening terminal success condition caused regression"
+        ],
+        "conflicting_lessons": [],
+        "avoid_actions": [
+          "introducing contact‑conditional or ground‑only speed penalties",
+          "tightening the landing‐success condition",
+          "merely increasing existing weights without making descent activation earlier"
+        ],
+        "recommended_actions": [
+          "significantly strengthen descent incentive so that it activates from initial altitude (e.g., formula 2−y or −y with offset)",
+          "further reduce center guidance weight to break its dominance",
+          "keep all safety and cost components unchanged"
+        ],
+        "memory_confidence": 0.85
+      },
+      "memory_use_policy": {
+        "use_raw_memory_cards": true,
+        "use_distilled_lesson_cards": true,
+        "use_outcome_lessons": true,
+        "raw_memory_reason": "The raw trace from iter_000_to_001 provides a concrete before/after example of successful rebalancing; later traces validate the dangers of contact‑conditional penalties.",
+        "lesson_memory_reason": "Distilled lessons capture reusable principles (reduce dominance, add missing shaping) and clear warnings against regression‑prone edits.",
+        "outcome_lesson_reason": "Outcome lessons quantify deltas and confirm that the original edit was beneficial while later edits were harmful, guiding safe boundaries.",
+        "selected_memory_ids": [
+          "iter_000_to_001"
+        ],
+        "ignored_memory_ids": [
+          "iter_001_to_002",
+          "iter_002_to_003"
+        ],
+        "conflict_resolution": "No conflicting memories – the effective lesson from iter_000 takes priority, and regression lessons are excluded from recommendations.",
+        "memory_confidence": 0.85
+      },
+      "strategy": {
+        "recommended_next_action": "apply_edit",
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "why_atomic_or_separable": "Reducing center guidance and strengthening descent incentive must occur together; weakening centering alone could lead to aimless drifting, and stronger descent without adjusting centering may not break the hovering optimum.",
+        "max_reasonable_edits": 3,
+        "editor_constraints": [
+          "Reduce r_center_guidance weight further (e.g., from 0.5 to 0.2) to lower its dominance ratio below 0.3.",
+          "Modify r_descent_guidance formula to reward any descent from initial altitude; for example, use (2.0 − y) clipped to [0,1] so that reward starts as soon as y < 2.0.",
+          "Increase r_descent_guidance weight to a level that creates a strong gradient (e.g., 1.0).",
+          "Preserve r_stability, r_fuel_penalty, r_crash, r_landing_success exactly as is.",
+          "Do not change r_vertical_safety condition or any event rules.",
+          "Do not add new components that penalize speed conditional on ground contact."
+        ],
+        "must_preserve": [
+          "crash penalty (r_crash) as safety backstop",
+          "stability component (r_stability) to prevent excessive tilt",
+          "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+          "terminal landing success event (r_landing_success) as the ultimate goal signal",
+          "existing action mapping and variable set"
+        ],
+        "must_avoid": [
+          "complete removal of horizontal guidance (some centering is necessary)",
+          "introduction of contact‑conditional speed penalties",
+          "tightening terminal condition with velocity/angular thresholds",
+          "reliance on purely sparse reward without dense descent shaping",
+          "drastic weight increases that would make any single component dominant (ratio >0.8)"
+        ],
+        "expected_effect": "Agent should begin descending from the start, following a descent gradient that activates early. Center guidance will still pull toward x=0 but will not dominate. Landings should become possible, with episode lengths decreasing sharply.",
+        "risk_analysis": "If descent incentive becomes too aggressive, the agent might descend at high speed; however, crash penalty, stability component, and existing vertical safety near ground should mitigate crashes. If center guidance is weakened too much, the lander may miss the landing area, but the flags are tolerant enough that moderate lateral deviation is acceptable. The coupled edit should not create new dominance if descent weight is kept ≤1.0 and center weight ≥0.2."
+      },
+      "auditor_hints": {
+        "package_should_be_rejected_if": [
+          "r_center_guidance weight is not reduced (or is increased)",
+          "no change to r_descent_guidance that provides reward above y=1",
+          "a new component becomes dominant with ratio >0.8",
+          "safety constraints (crash, stability) or fuel penalty are removed or weakened"
+        ],
+        "package_should_be_accepted_if": [
+          "r_center_guidance weight is reduced by at least a factor of 2",
+          "r_descent_guidance is modified to a formula like (2.0 − y) clipped [0,1] so that reward starts as soon as y < 2.0",
+          "r_descent_guidance weight is increased to at least 1.0",
+          "all safety, fuel, and terminal success rules are preserved"
+        ],
+        "safety_notes": [
+          "Monitor crash rate after training; if crashes appear, consider a softer descent shaping (e.g., a bounded reward for small negative vy).",
+          "Ensure the new descent formula does not cause dominance; run scale audit to verify.",
+          "Keep the existing crash penalty and stability component intact as ultimate safeguards."
+        ]
+      }
+    },
+    "semantic_outcome": {
+      "episode_count": 6,
+      "semantic_score": 0.8137235141813132,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 0.0,
+      "terminal_reward_payment_count_mean": 0.0,
+      "terminal_reward_payment_count_max": 0,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.9137235141813131,
+      "progress_score_std": 0.03116996295649288,
+      "episode_length_mean": 1000.0,
+      "episode_length_std": 0.0,
+      "contact_toggle_mean": 225.0,
+      "contact_toggle_max": 245.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": false,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "r_landing_success": {
+          "episode_payment_counts": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "episode_paid_rate": 0.0,
+          "payment_count_mean": 0.0,
+          "payment_count_max": 0,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "r_landing_success"
+      ],
+      "one_time_rule_names": [
+        "r_crash",
+        "r_landing_success"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior"
+      ]
+    },
+    "structural_response": {},
+    "outcome_decision": {
+      "decision": "uncertain",
+      "continuation": "rollback_to_best_schema",
+      "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+      "task_delta": -0.04733551061650143,
+      "hack_delta": 0.0,
+      "semantic_delta": -0.04733551061650143,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "rollback_applied": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    },
+    "edit_generated": true,
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "schema_transition": {
+      "decision": "commit",
+      "next_action": "apply_edit",
+      "requested_next_action": "apply_edit",
+      "schema_changed": true,
+      "committed_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "r_center_guidance",
+          "factor": 0.4
+        },
+        {
+          "operator": "replace_formula",
+          "target": "r_descent_guidance",
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 3.0
+            },
+            "right": {
+              "var": "y"
+            }
+          }
+        },
+        {
+          "operator": "increase_weight",
+          "target": "r_descent_guidance",
+          "factor": 2.0
+        }
+      ],
+      "rejected_edits": [],
+      "blocked_candidate_edits": [],
+      "blocked_gate_edits": [],
+      "reason": "Final edit plan committed to next schema.",
+      "trace": {
+        "validation_errors": [],
+        "validation_warnings": [],
+        "candidate_accepted_count": 3,
+        "candidate_rejected_count": 0,
+        "gate_accepted_count": 3,
+        "gate_rejected_count": 0,
+        "final_edit_plan_count": 3,
+        "operator_constraints_enabled": true,
+        "source_of_truth": "committed_edits",
+        "notes": [],
+        "schema_canonicalization_report": {
+          "ok": true,
+          "notes": [],
+          "errors": [],
+          "component_count": 5,
+          "event_rule_count": 2,
+          "formula_ir": "ast"
+        }
+      },
+      "next_schema_version": 4
+    },
+    "committed_edits": [
+      {
+        "operator": "decrease_weight",
+        "target": "r_center_guidance",
+        "factor": 0.4
+      },
+      {
+        "operator": "replace_formula",
+        "target": "r_descent_guidance",
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 3.0
+          },
+          "right": {
+            "var": "y"
+          }
+        }
+      },
+      {
+        "operator": "increase_weight",
+        "target": "r_descent_guidance",
+        "factor": 2.0
+      }
+    ],
+    "agent_analysis": {
+      "reflection_report": {
+        "reflection_summary": "The current training run with reward schema v3 (previously successful) has reverted to a hovering policy dominated by r_center_guidance, with zero descent or landings. The descent guidance component (1−y) never activates because y stays >1, providing no gradient to leave the high‑altitude center hovering optimum. This is a task‑failure, not a reward hack.",
+        "failure_assessment": {
+          "observed_facts": [
+            "r_center_guidance dominates episodes (ratio 0.875, mean 0.445)",
+            "r_descent_guidance never triggers (mean 0, trigger_rate 0)",
+            "r_vertical_safety never triggers",
+            "zero successful landings; all episodes reach max 1000 steps",
+            "no crashes",
+            "contact toggling observed but no stable contact"
+          ],
+          "likely_true_failures": [
+            "insufficient descent incentive – descent guidance only activates when y<1, giving no reward for initial descent from higher y",
+            "center guidance still too strong relative to the descent component, creating a flat local optimum at high altitude"
+          ],
+          "likely_false_positives": [
+            "component_dominance flag reflects poor shaping, not malicious exploitation",
+            "high contact toggling without landings is a progress issue, not reward repetition"
+          ],
+          "root_cause_hypotheses": [
+            "r_descent_guidance formula (1−y) yields zero reward for y>1; initial altitude likely >1, so exploration receives no descent signal",
+            "r_center_guidance weight (0.5) and its near‑maximum reward for centered hovering create a stronger gradient toward the hovering optimum than any descent exploration"
+          ],
+          "failure_kind": "task_failure",
+          "confidence": 0.9
+        },
+        "memory_assessment": {
+          "reusable_lessons": [
+            "iter_000_to_001: reducing dominant component and adding missing descent guidance was effective in a previous training run; the general rebalancing principle is reusable",
+            "outcome lessons confirm that dense progress shaping is necessary and that contact‑conditional penalties regress"
+          ],
+          "failed_or_weak_lessons": [
+            "iter_001_to_002: modest weight increases alone did not significantly improve landing quality",
+            "iter_002_to_003 onward: contact‑conditional penalties (r_grounded_stability) and tightening terminal success condition caused regression"
+          ],
+          "conflicting_lessons": [],
+          "avoid_actions": [
+            "introducing contact‑conditional or ground‑only speed penalties",
+            "tightening the landing‐success condition",
+            "merely increasing existing weights without making descent activation earlier"
+          ],
+          "recommended_actions": [
+            "significantly strengthen descent incentive so that it activates from initial altitude (e.g., formula 2−y or −y with offset)",
+            "further reduce center guidance weight to break its dominance",
+            "keep all safety and cost components unchanged"
+          ],
+          "memory_confidence": 0.85
+        },
+        "memory_use_policy": {
+          "use_raw_memory_cards": true,
+          "use_distilled_lesson_cards": true,
+          "use_outcome_lessons": true,
+          "raw_memory_reason": "The raw trace from iter_000_to_001 provides a concrete before/after example of successful rebalancing; later traces validate the dangers of contact‑conditional penalties.",
+          "lesson_memory_reason": "Distilled lessons capture reusable principles (reduce dominance, add missing shaping) and clear warnings against regression‑prone edits.",
+          "outcome_lesson_reason": "Outcome lessons quantify deltas and confirm that the original edit was beneficial while later edits were harmful, guiding safe boundaries.",
+          "selected_memory_ids": [
+            "iter_000_to_001"
+          ],
+          "ignored_memory_ids": [
+            "iter_001_to_002",
+            "iter_002_to_003"
+          ],
+          "conflict_resolution": "No conflicting memories – the effective lesson from iter_000 takes priority, and regression lessons are excluded from recommendations.",
+          "memory_confidence": 0.85
+        },
+        "strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Reducing center guidance and strengthening descent incentive must occur together; weakening centering alone could lead to aimless drifting, and stronger descent without adjusting centering may not break the hovering optimum.",
+          "max_reasonable_edits": 3,
+          "editor_constraints": [
+            "Reduce r_center_guidance weight further (e.g., from 0.5 to 0.2) to lower its dominance ratio below 0.3.",
+            "Modify r_descent_guidance formula to reward any descent from initial altitude; for example, use (2.0 − y) clipped to [0,1] so that reward starts as soon as y < 2.0.",
+            "Increase r_descent_guidance weight to a level that creates a strong gradient (e.g., 1.0).",
+            "Preserve r_stability, r_fuel_penalty, r_crash, r_landing_success exactly as is.",
+            "Do not change r_vertical_safety condition or any event rules.",
+            "Do not add new components that penalize speed conditional on ground contact."
+          ],
+          "must_preserve": [
+            "crash penalty (r_crash) as safety backstop",
+            "stability component (r_stability) to prevent excessive tilt",
+            "fuel penalty (r_fuel_penalty) as a soft efficiency constraint",
+            "terminal landing success event (r_landing_success) as the ultimate goal signal",
+            "existing action mapping and variable set"
+          ],
+          "must_avoid": [
+            "complete removal of horizontal guidance (some centering is necessary)",
+            "introduction of contact‑conditional speed penalties",
+            "tightening terminal condition with velocity/angular thresholds",
+            "reliance on purely sparse reward without dense descent shaping",
+            "drastic weight increases that would make any single component dominant (ratio >0.8)"
+          ],
+          "expected_effect": "Agent should begin descending from the start, following a descent gradient that activates early. Center guidance will still pull toward x=0 but will not dominate. Landings should become possible, with episode lengths decreasing sharply.",
+          "risk_analysis": "If descent incentive becomes too aggressive, the agent might descend at high speed; however, crash penalty, stability component, and existing vertical safety near ground should mitigate crashes. If center guidance is weakened too much, the lander may miss the landing area, but the flags are tolerant enough that moderate lateral deviation is acceptable. The coupled edit should not create new dominance if descent weight is kept ≤1.0 and center weight ≥0.2."
+        },
+        "auditor_hints": {
+          "package_should_be_rejected_if": [
+            "r_center_guidance weight is not reduced (or is increased)",
+            "no change to r_descent_guidance that provides reward above y=1",
+            "a new component becomes dominant with ratio >0.8",
+            "safety constraints (crash, stability) or fuel penalty are removed or weakened"
+          ],
+          "package_should_be_accepted_if": [
+            "r_center_guidance weight is reduced by at least a factor of 2",
+            "r_descent_guidance is modified to a formula like (2.0 − y) clipped [0,1] so that reward starts as soon as y < 2.0",
+            "r_descent_guidance weight is increased to at least 1.0",
+            "all safety, fuel, and terminal success rules are preserved"
+          ],
+          "safety_notes": [
+            "Monitor crash rate after training; if crashes appear, consider a softer descent shaping (e.g., a bounded reward for small negative vy).",
+            "Ensure the new descent formula does not cause dominance; run scale audit to verify.",
+            "Keep the existing crash penalty and stability component intact as ultimate safeguards."
+          ]
+        }
+      },
+      "diagnostic_analysis": {
+        "observed_facts": [
+          "r_center_guidance dominates episodes (ratio 0.875, mean 0.445)",
+          "r_descent_guidance never triggers (mean 0, trigger_rate 0)",
+          "r_vertical_safety never triggers",
+          "zero successful landings; all episodes reach max 1000 steps",
+          "no crashes",
+          "contact toggling observed but no stable contact"
+        ],
+        "likely_true_failures": [
+          "insufficient descent incentive – descent guidance only activates when y<1, giving no reward for initial descent from higher y",
+          "center guidance still too strong relative to the descent component, creating a flat local optimum at high altitude"
+        ],
+        "likely_false_positives": [
+          "component_dominance flag reflects poor shaping, not malicious exploitation",
+          "high contact toggling without landings is a progress issue, not reward repetition"
+        ],
+        "root_cause_hypotheses": [
+          "r_descent_guidance formula (1−y) yields zero reward for y>1; initial altitude likely >1, so exploration receives no descent signal",
+          "r_center_guidance weight (0.5) and its near‑maximum reward for centered hovering create a stronger gradient toward the hovering optimum than any descent exploration"
+        ],
+        "failure_kind": "task_failure",
+        "edit_need": "must_edit",
+        "confidence": 0.9
+      },
+      "memory_reflection": {
+        "lesson_assessments": [
+          {
+            "lesson_id": "lesson_iter_000_to_001",
+            "assessment": "strong_positive – successfully reduced center dominance and added descent guidance, but the descent formula 1-y was too weak; needs earlier activation",
+            "reusable": true
+          }
+        ],
+        "reusable_lessons": [
+          "Coupled rebalancing (reduce dominant component, strengthen missing shaping) is effective",
+          "Simple terminal success condition supported by dense progress shaping"
+        ],
+        "failed_or_weak_lessons": [
+          "Mere weight increases alone without new shaping do not fix hovering / bouncing",
+          "Contact-conditional speed penalties cause regression",
+          "Tightening terminal condition harms progress"
+        ],
+        "avoid_actions": [
+          "introducing contact‑conditional or ground‑only speed penalties",
+          "tightening the landing‑success condition",
+          "merely increasing existing weights without making descent activation earlier"
+        ],
+        "recommended_actions": [
+          "significantly strengthen descent incentive so that it activates from initial altitude (e.g., formula 3.0 - y)",
+          "further reduce center guidance weight to break its dominance (e.g., from 0.5 to 0.2)",
+          "keep all safety and cost components unchanged"
+        ],
+        "memory_confidence": 0.85
+      },
+      "reward_editor": {
+        "edit_decision": "edit",
+        "next_action": "apply_edit",
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 3,
+        "rationale": "Current hovering is caused by descent guidance dead zone (1-y) when y>1 and center guidance weight too high (0.5). Memory and reflection recommend reducing center weight significantly and making descent reward activate from early altitude. A coupled edit is necessary: lower center weight to 0.2, replace descent formula with (3.0 - y) clipped to [0,1], and increase descent weight to 1.0 to create a strong gradient. All safety and terminal components remain untouched.",
+        "expected_effect": "Agent should begin descending immediately, with a strong descent gradient. Center guidance still pulls toward x=0 but with reduced dominance. Landings should become possible, episode lengths will decrease sharply. No new dominance expected.",
+        "risk_analysis": "If descent incentive is too aggressive, the agent might descend at high speed; however, crash penalty, stability component, and vertical safety near ground should prevent crashes. No contact‑conditional penalties are added. Monitoring after training will catch any instability.",
+        "edit_plan": [
+          {
+            "operator": "decrease_weight",
+            "target": "r_center_guidance",
+            "factor": 0.4
+          },
+          {
+            "operator": "replace_formula",
+            "target": "r_descent_guidance",
+            "formula_ast": {
+              "op": "sub",
+              "left": {
+                "const": 3.0
+              },
+              "right": {
+                "var": "y"
+              }
+            }
+          },
+          {
+            "operator": "increase_weight",
+            "target": "r_descent_guidance",
+            "factor": 2.0
+          }
+        ]
+      },
+      "auditor_check": {
+        "approved": true,
+        "issues": [],
+        "final_action": "apply_edit",
+        "scale_audit_advisory": {
+          "tool": "scale_audit",
+          "audit_pass": true,
+          "terminal_scale": 200.0,
+          "horizon": 1000,
+          "reports": [
+            {
+              "operator": "decrease_weight",
+              "target": "r_center_guidance",
+              "risk_level": "low",
+              "warnings": [],
+              "estimated_episode_contribution": null,
+              "terminal_scale": 200.0,
+              "old_weight": 0.5,
+              "new_weight": 0.2
+            },
+            {
+              "operator": "replace_formula",
+              "target": "r_descent_guidance",
+              "risk_level": "low",
+              "warnings": [],
+              "estimated_episode_contribution": null,
+              "terminal_scale": 200.0
+            },
+            {
+              "operator": "increase_weight",
+              "target": "r_descent_guidance",
+              "risk_level": "low",
+              "warnings": [],
+              "estimated_episode_contribution": null,
+              "terminal_scale": 200.0,
+              "old_weight": 0.5,
+              "new_weight": 1.0
+            }
+          ]
+        },
+        "behavior_risk_audit_advisory": {
+          "tool": "behavior_risk_audit",
+          "audit_pass": false,
+          "risk_basis": "semantic_role_attribution",
+          "max_severity": "high",
+          "risk_counts": {
+            "high": 1,
+            "medium": 2,
+            "low": 0
+          },
+          "role_delta": {
+            "terminal_success": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "dense_guidance": {
+              "touched": true,
+              "max_increase_factor": 2.0,
+              "min_decrease_factor": 0.4,
+              "added_dense_weight": 0.0,
+              "targets": [
+                "r_center_guidance",
+                "r_descent_guidance",
+                "r_descent_guidance"
+              ],
+              "operators": [
+                "decrease_weight",
+                "replace_formula",
+                "increase_weight"
+              ]
+            },
+            "stability_quality": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "control_cost": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            },
+            "safety_constraint": {
+              "touched": false,
+              "max_increase_factor": 1.0,
+              "min_decrease_factor": 1.0,
+              "added_dense_weight": 0.0,
+              "targets": [],
+              "operators": []
+            }
+          },
+          "behavior_evidence": {
+            "success_evidence": 0.0,
+            "stability_evidence": 0.0,
+            "progress_evidence": 0.9137235141813131,
+            "instability_signal": 225.0,
+            "hack_score": 0.4,
+            "reward_repetition_risk": false,
+            "high_reward_low_progress": false,
+            "shaping_goal_mismatch": true
+          },
+          "attribution_evidence": {
+            "dominant_component": "r_center_guidance",
+            "dominant_component_ratio": 0.8745610717745044,
+            "dominant_role": "dense_guidance",
+            "role_ratio": {
+              "dense_guidance": 0.8745610717745044,
+              "stability_quality": 0.06549493092505405,
+              "safety_constraint": 0.0,
+              "control_cost": 0.05994399730022343,
+              "terminal_success": 0.0
+            }
+          },
+          "thresholds": {
+            "weak_success_evidence": 0.5,
+            "weak_stability_evidence": 0.5,
+            "large_role_increase_factor": 2.5,
+            "moderate_role_increase_factor": 1.5,
+            "large_guidance_drop_factor": 0.25,
+            "moderate_guidance_drop_factor": 0.5,
+            "large_stability_drop_factor": 0.5,
+            "dominance_ratio_threshold": 0.65,
+            "high_instability_signal": 50.0
+          },
+          "audit_policy": {
+            "block_medium": false,
+            "medium_risk_budget_when_weak_success": 2,
+            "block_medium_under_weak_success": false
+          },
+          "risks": [
+            {
+              "risk_type": "dense_role_dominance_amplification",
+              "severity": "high",
+              "reason": "A dense semantic role already dominates reward attribution and the edit strengthens the same role.",
+              "role_level_evidence": {
+                "role": "dense_guidance",
+                "dominant_component": "r_center_guidance",
+                "dominant_component_ratio": 0.8745610717745044,
+                "role_increase_factor": 2.0
+              },
+              "repair_instruction": "Do not strengthen a dense role that already dominates while success is weak; reduce or diversify reward pressure."
+            },
+            {
+              "risk_type": "similar_role_pattern_to_regression_lesson",
+              "severity": "medium",
+              "reason": "The proposed edit touches semantic roles associated with a retrieved regression lesson.",
+              "role_level_evidence": {
+                "overlap_roles": [
+                  "dense_guidance"
+                ],
+                "lesson_type": "regression_lesson"
+              },
+              "repair_instruction": "RepairAgent should explain why this role-level pattern will not repeat the prior regression."
+            },
+            {
+              "risk_type": "similar_role_pattern_to_regression_lesson",
+              "severity": "medium",
+              "reason": "The proposed edit touches semantic roles associated with a retrieved regression lesson.",
+              "role_level_evidence": {
+                "overlap_roles": [
+                  "dense_guidance"
+                ],
+                "lesson_type": "regression_lesson"
+              },
+              "repair_instruction": "RepairAgent should explain why this role-level pattern will not repeat the prior regression."
+            }
+          ],
+          "repair_summary": "High role-level attribution risk detected; ask RepairAgent to reduce aggressive dense/terminal role changes."
+        },
+        "scale_hard_block": false,
+        "behavior_hard_block": false
+      },
+      "distilled_lessons": {
+        "what_worked": [
+          "Coupled rebalancing (reduce dominant component, strengthen missing shaping)",
+          "Simple terminal success condition supported by dense progress shaping"
+        ],
+        "what_failed": [
+          "Mere weight increases alone without new shaping",
+          "Contact-conditional speed penalties",
+          "Tightening terminal condition"
+        ],
+        "avoid_next": [
+          "introducing contact‑conditional or ground‑only speed penalties",
+          "tightening the landing‑success condition",
+          "merely increasing existing weights without making descent activation earlier"
+        ],
+        "recommend_next": [
+          "Use early‑activating descent formula (e.g., 3.0 - y clipped [0,1])",
+          "Reduce center guidance weight significantly when it dominates",
+          "Keep all safety and cost components intact"
+        ],
+        "applicability_notes": [
+          "When center guidance dominates and descent shaping has a dead zone at high altitude"
+        ]
+      }
+    }
+  }
+}

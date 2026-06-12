@@ -1,0 +1,141 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "add_component",
+      "component": {
+        "name": "r_grounded_stability",
+        "type": "conditional_formula_component",
+        "weight": 0.5,
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              }
+            ]
+          }
+        },
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            {
+              "var": "left_contact"
+            },
+            {
+              "var": "right_contact"
+            },
+            {
+              "op": "lt",
+              "left": {
+                "var": "y"
+              },
+              "right": {
+                "const": 0.1
+              }
+            }
+          ]
+        },
+        "clip": [
+          -1.0,
+          0.0
+        ],
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety",
+        "inputs": [],
+        "params": {
+          "formula_ast": {
+            "op": "neg",
+            "arg": {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                }
+              ]
+            }
+          },
+          "condition_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "y"
+                },
+                "right": {
+                  "const": 0.1
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [
+    "Accepted atomic package with 1 edits."
+  ],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 3,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Improving landing stability requires simultaneously strengthening speed penalties near ground and introducing a contact consistency incentive. Changing one without the other could lead to aggressive descent without softness, or overly cautious approach.",
+      "max_reasonable_edits": 3,
+      "editor_constraints": [
+        "Introduce a new dense component that rewards consecutive ground contact steps (both contacts true without interruption) with appropriate scaling (e.g., bonus of 0.05 per step after 20 continuous steps, clipped).",
+        "Increase the weight of r_speed_penalty or replace it with a harsher near‑ground velocity penalty (e.g., penalty proportional to speed * (1 - clip(y,0,0.2)/0.2)) so that high speed near touchdown is strongly discouraged.",
+        "Optionally adjust r_vertical_safety to also penalise |vx| when y<0.2 to reduce lateral drift at touchdown.",
+        "Preserve terminal events, fuel penalty, stability component unchanged.",
+        "Avoid making any new component dominance ratio >0.5."
+      ],
+      "must_preserve": [
+        "crash penalty (r_crash) as safety backstop",
+        "stability component (r_stability)",
+        "fuel penalty (r_fuel_penalty) as efficiency constraint",
+        "terminal landing success event (r_landing_success)",
+        "existing action mapping and variable set"
+      ],
+      "must_avoid": [
+        "relying solely on sparse terminal reward without dense landing‑quality shaping",
+        "increasing any single component to dominance ratio >0.5",
+        "removing centering or descent guidance entirely",
+        "introducing infinite reward loops or non‑observable variables"
+      ],
+      "expected_effect": "Contact toggling should decrease significantly, stable landing rate should rise, speed near ground should lower, progress score should remain high.",
+      "risk_analysis": "If contact consistency bonus is too strong, agent may never release contact and abort descent; careful scaling needed. If speed penalty becomes too harsh near ground, descent may stall. Monitor contact toggles and crashes after training."
+    }
+  }
+}
