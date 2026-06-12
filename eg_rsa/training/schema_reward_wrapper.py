@@ -324,72 +324,70 @@ class SchemaRewardWrapper(gym.Wrapper):
         events: Dict[str, bool],
         task_metrics: Dict[str, float],
     ) -> Dict[str, Any]:
+        """Build the variable namespace used by AST reward formulas.
+
+        This must be environment-agnostic. Earlier versions hard-coded names such
+        as x/vx/angle, which broke source-aware bootstrap when the LLM inferred
+        valid but different names such as horiz_pos. The canonical source of
+        truth is now the generated primitive interface -> observation_mapping ->
+        BoxObsAdapter -> obs_map. Therefore every obs_map key must be exposed to
+        FormulaAST.eval exactly as-is.
+        """
+        variables: Dict[str, Any] = {}
+
+        # 1. Observation primitive variables from generated observation_mapping.
+        for key, value in (obs_map or {}).items():
+            variables[str(key)] = float(value)
+
+        # 2. Diagnostic task metrics are available for metric-based schemas but
+        # must not overwrite primitive observation variables with the same name.
+        for key, value in (task_metrics or {}).items():
+            variables.setdefault(str(key), float(value))
+
+        # 3. Event booleans are also exposed by name for event_predicate ASTs.
+        for key, value in (events or {}).items():
+            variables.setdefault(str(key), bool(value))
+
+        # 4. Action primitive variables from generated action_mapping.
+        action_vars = self.action_mapper.map(action)
+        for key, value in action_vars.items():
+            variables[str(key)] = float(value)
+
+        # 5. Backward-compatible aliases for older LunarLander-style schemas.
+        # These aliases are added only when absent; they should not constrain new
+        # source-aware variable names.
         def get_float(name: str, default: float = 0.0) -> float:
-            if name in obs_map:
-                return float(obs_map.get(name, default))
-            if name in task_metrics:
-                return float(task_metrics.get(name, default))
+            if name in variables:
+                return float(variables.get(name, default))
             return float(default)
 
-        def get_bool(event_name: str, obs_name: str, default: bool = False) -> bool:
-            if event_name in events:
-                return bool(events[event_name])
-            if event_name in obs_map:
-                return bool(float(obs_map[event_name]) > 0.5)
-            if obs_name in obs_map:
-                return bool(float(obs_map[obs_name]) > 0.5)
+        def get_bool(name: str, default: bool = False) -> bool:
+            if name in variables:
+                try:
+                    return bool(float(variables[name]) > 0.5)
+                except Exception:
+                    return bool(variables[name])
             return bool(default)
 
-        action_vars = self.action_mapper.map(action)
-
-        variables = {
+        legacy_defaults = {
             "x": get_float("x"),
             "y": get_float("y"),
             "vx": get_float("vx"),
             "vy": get_float("vy"),
             "angle": get_float("angle"),
             "angular_velocity": get_float("angular_velocity"),
-            "left_contact": get_bool("left_contact", "left_leg_contact"),
-            "right_contact": get_bool("right_contact", "right_leg_contact"),
-            "contact": bool(events.get("contact", False)),
-            "both_contact": bool(events.get("both_contact", False)),
+            "left_contact": get_bool("left_contact") or get_bool("left_leg_contact"),
+            "right_contact": get_bool("right_contact") or get_bool("right_leg_contact"),
+            "contact": get_bool("contact"),
+            "both_contact": get_bool("both_contact"),
         }
-        variables.update({str(k): float(v) for k, v in action_vars.items()})
+        for key, value in legacy_defaults.items():
+            variables.setdefault(key, value)
+
         return variables
 
     @staticmethod
-    def _action_to_engine_vars(action: Optional[Any]) -> Tuple[float, float]:
-        """LEGACY fallback only. Active runtime uses ActionPrimitiveMapper.
-
-        Map LunarLander actions to primitive engine variables.
-
-        Discrete LunarLander:
-            0 = do nothing
-            1 = fire left orientation engine
-            2 = fire main engine
-            3 = fire right orientation engine
-
-        Continuous LunarLander:
-            action[0] = main engine signal
-            action[1] = side engine signal
-        """
-
-        if action is None:
-            return 0.0, 0.0
-
-        arr = np.asarray(action, dtype=float).reshape(-1)
-        if arr.size == 0:
-            return 0.0, 0.0
-
-        if arr.size == 1:
-            a = int(round(float(arr[0])))
-            main_engine = 1.0 if a == 2 else 0.0
-            if a == 1:
-                side_engine = -1.0
-            elif a == 3:
-                side_engine = 1.0
-            else:
-                side_engine = 0.0
-            return main_engine, side_engine
-
-        return float(arr[0]), float(arr[1])
+    def _write_json(path: str, data: Any) -> None:
+        import json
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
