@@ -120,9 +120,6 @@ class LLMBootstrapSchemaSource(SchemaSource):
             raise ValueError("Bootstrap result must contain dict field initial_schema")
 
         validation = BootstrapSchemaValidator.validate_bootstrap_result(result, primitive_interface)
-
-        self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
-        self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
         self._write_json(bootstrap_dir / "bootstrap_response.json", result)
         self._write_json(bootstrap_dir / "schema_canonicalization_report.json", canonical_report)
         self._write_json(bootstrap_dir / "canonical_initial_schema.json", schema_dict)

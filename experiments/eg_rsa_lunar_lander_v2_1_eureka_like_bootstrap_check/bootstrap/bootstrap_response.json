@@ -1,0 +1,610 @@
+{
+  "reward_blueprint": {
+    "task_objective": "Land the lunar module between the flags with centered position, low speed, upright orientation, minimal fuel use, and stable ground contact.",
+    "primitive_variable_roles": {
+      "progress_variables": [
+        "x",
+        "y",
+        "vx",
+        "vy"
+      ],
+      "safety_variables": [
+        "left_contact",
+        "right_contact",
+        "angle"
+      ],
+      "terminal_evidence_variables": [
+        "left_contact",
+        "right_contact",
+        "x",
+        "vx",
+        "vy",
+        "angle"
+      ],
+      "control_variables": [
+        "main_engine",
+        "side_engine"
+      ]
+    },
+    "phase_structure": [],
+    "component_blueprint": [
+      {
+        "name": "r_center",
+        "purpose": "reward being horizontally close to pad center",
+        "semantic_role": "dense_guidance",
+        "type": "formula_component"
+      },
+      {
+        "name": "r_slow_vx",
+        "purpose": "reward low horizontal speed",
+        "semantic_role": "dense_guidance",
+        "type": "formula_component"
+      },
+      {
+        "name": "r_slow_vy",
+        "purpose": "reward low vertical speed",
+        "semantic_role": "dense_guidance",
+        "type": "formula_component"
+      },
+      {
+        "name": "r_upright",
+        "purpose": "reward small tilt angle",
+        "semantic_role": "dense_guidance",
+        "type": "formula_component"
+      },
+      {
+        "name": "r_stable_angvel",
+        "purpose": "reward low angular velocity",
+        "semantic_role": "stability_quality",
+        "type": "formula_component"
+      },
+      {
+        "name": "r_control_cost",
+        "purpose": "penalize engine thrust",
+        "semantic_role": "control_cost",
+        "type": "formula_component"
+      },
+      {
+        "name": "r_landing_success",
+        "purpose": "large sparse reward for safe upright landing with both legs on ground",
+        "semantic_role": "terminal_success",
+        "type": "event_predicate"
+      }
+    ],
+    "anti_exploit_principles": [
+      "dense guidance is capped and always less than the terminal success bonus to avoid hover-and-collect",
+      "both legs must be in contact to trigger terminal success, preventing one-legged exploits",
+      "control cost directly opposes unnecessary engine usage"
+    ]
+  },
+  "initial_schema": {
+    "version": 2,
+    "metadata": {
+      "source": "llm_bootstrap_ast",
+      "formula_ir": "ast",
+      "input_boundary": "primitive_interface_conditioned",
+      "reward_blueprint_present": true,
+      "raw_env_code_input": false,
+      "eureka_like_input_status": "planned_not_current",
+      "action_mapping": {
+        "type": "discrete_lookup",
+        "variables": {
+          "main_engine": {
+            "2": 1.0,
+            "default": 0.0
+          },
+          "side_engine": {
+            "1": -1.0,
+            "3": 1.0,
+            "default": 0.0
+          }
+        }
+      },
+      "action_variables": [
+        {
+          "name": "main_engine",
+          "description": "Main engine action indicator or throttle proxy.",
+          "type": "float"
+        },
+        {
+          "name": "side_engine",
+          "description": "Side engine action indicator or signed side-thrust proxy.",
+          "type": "float"
+        }
+      ],
+      "allowed_formula_variables": [
+        "x",
+        "y",
+        "vx",
+        "vy",
+        "angle",
+        "angular_velocity",
+        "left_contact",
+        "right_contact",
+        "main_engine",
+        "side_engine"
+      ],
+      "allowed_formula_functions": [
+        "abs",
+        "min",
+        "max",
+        "clip",
+        "sqrt",
+        "exp",
+        "tanh"
+      ]
+    },
+    "components": [
+      {
+        "name": "r_center",
+        "type": "formula_component",
+        "weight": 0.5,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "x"
+                }
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "x"
+                  }
+                },
+                {
+                  "const": 1.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "r_slow_vx",
+        "type": "formula_component",
+        "weight": 0.3,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vx"
+                }
+              },
+              {
+                "const": 2.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                {
+                  "const": 2.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "r_slow_vy",
+        "type": "formula_component",
+        "weight": 0.3,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "vy"
+                }
+              },
+              {
+                "const": 2.0
+              }
+            ]
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                },
+                {
+                  "const": 2.0
+                }
+              ]
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "r_upright",
+        "type": "formula_component",
+        "weight": 0.4,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "div",
+            "left": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angle"
+                  }
+                },
+                {
+                  "const": 0.5
+                }
+              ]
+            },
+            "right": {
+              "const": 0.5
+            }
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "div",
+              "left": {
+                "op": "min",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angle"
+                    }
+                  },
+                  {
+                    "const": 0.5
+                  }
+                ]
+              },
+              "right": {
+                "const": 0.5
+              }
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress",
+        "inputs": []
+      },
+      {
+        "name": "r_stable_angvel",
+        "type": "formula_component",
+        "weight": 0.2,
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "div",
+            "left": {
+              "op": "min",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angular_velocity"
+                  }
+                },
+                {
+                  "const": 0.5
+                }
+              ]
+            },
+            "right": {
+              "const": 0.5
+            }
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "sub",
+            "left": {
+              "const": 1.0
+            },
+            "right": {
+              "op": "div",
+              "left": {
+                "op": "min",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angular_velocity"
+                    }
+                  },
+                  {
+                    "const": 0.5
+                  }
+                ]
+              },
+              "right": {
+                "const": 0.5
+              }
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "stability_quality",
+        "reward_timing": "dense",
+        "behavior_channel": "stability",
+        "inputs": []
+      },
+      {
+        "name": "r_control_cost",
+        "type": "formula_component",
+        "weight": 1.0,
+        "formula_ast": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -0.1
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "main_engine"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "side_engine"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "params": {
+          "formula_ast": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -0.1
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "main_engine"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "side_engine"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "clip": null,
+        "enabled": true,
+        "semantic_role": "control_cost",
+        "reward_timing": "dense",
+        "behavior_channel": "efficiency",
+        "inputs": []
+      }
+    ],
+    "event_rules": [
+      {
+        "name": "r_landing_success",
+        "type": "event_predicate",
+        "weight": 50.0,
+        "condition": {
+          "expr_ast": {
+            "op": "and",
+            "args": [
+              {
+                "var": "left_contact"
+              },
+              {
+                "var": "right_contact"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "x"
+                  }
+                },
+                "right": {
+                  "const": 0.2
+                }
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vx"
+                  }
+                },
+                "right": {
+                  "const": 0.5
+                }
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "vy"
+                  }
+                },
+                "right": {
+                  "const": 0.5
+                }
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angle"
+                  }
+                },
+                "right": {
+                  "const": 0.2
+                }
+              }
+            ]
+          },
+          "duration_steps": 1
+        },
+        "one_time": true,
+        "enabled": true,
+        "semantic_role": "terminal_success",
+        "reward_timing": "sparse_event",
+        "behavior_channel": "completion"
+      }
+    ]
+  },
+  "diagnostics": {
+    "expected_failure_modes": [
+      "Hovering indefinitely to collect dense rewards without landing.",
+      "Crashing aggressively to end episode early and avoid negative control cost.",
+      "Landing on one leg while fulfilling most dense criteria, bypassing terminal success."
+    ],
+    "risk_notes": [
+      "Dense rewards may dominate if terminal success is too infrequent; weight tuning needed.",
+      "Lack of explicit crash penalty may encourage unsafe descents; future safety constraints could mitigate.",
+      "All formulas use only primitive variables, avoiding hidden state leakage."
+    ]
+  },
+  "bootstrap_report": {
+    "design_rationale": "The schema combines continuous guidance for approach (center, speed, orientation) with a large sparse bonus for a successful soft landing on both legs. Control penalties discourage wasteful thrust. No crash penalty is included at this stage to keep the initial schema simple and avoid reliance on unobserved terminal states.",
+    "assumptions": [
+      "The landing pad center corresponds to x=0.",
+      "Both leg contacts imply stable ground contact and termination.",
+      "The environment terminates shortly after both legs contact, so a one-time event is sufficient."
+    ],
+    "risk_notes": [
+      "Dense rewards may incentivize hovering; weight scaling ensures terminal bonus outweighs accumulated dense rewards over a typical episode.",
+      "Crash states are not explicitly penalized; adding a safety component later may be required."
+    ],
+    "primitive_interface_only": true,
+    "raw_env_code_input": false,
+    "eureka_like_input_status": "not_yet_implemented",
+    "primitive_env": "LunarLander-v3",
+    "canonicalization_notes": []
+  }
+}
