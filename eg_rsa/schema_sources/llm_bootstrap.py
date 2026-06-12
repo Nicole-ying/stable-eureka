@@ -24,6 +24,11 @@ class LLMBootstrapSchemaSource(SchemaSource):
     2. task-file-to-interface path, kept for compatibility:
        eureka_like_task_file -> generated primitive_interface -> BootstrapAgent.
     3. direct primitive_interface path, kept for old controlled experiments.
+
+    Source-aware mode is intentionally robust: the LLM may infer a useful
+    primitive_interface but still produce a malformed executable schema. In that
+    case we preserve the failed schema for audit and fall back to a deterministic
+    safe scaffold generated from the inferred interface.
     """
 
     def __init__(
@@ -134,6 +139,17 @@ class LLMBootstrapSchemaSource(SchemaSource):
             raise ValueError("Bootstrap result must contain dict field initial_schema")
 
         validation = BootstrapSchemaValidator.validate_bootstrap_result(result, primitive_interface)
+        if not validation.ok and source_aware and bool(cfg.get("fallback_on_invalid_schema", True)):
+            self._write_json(bootstrap_dir / "llm_source_aware_invalid_result.json", result)
+            self._write_json(bootstrap_dir / "llm_source_aware_invalid_validation.json", validation.to_dict())
+            self._write_json(bootstrap_dir / "llm_source_aware_invalid_canonicalization_report.json", canonical_report)
+            result, canonical_report, validation = self._fallback_to_safe_scaffold(
+                primitive_interface=primitive_interface,
+                bootstrap_dir=bootstrap_dir,
+                validation_errors=validation.errors,
+            )
+            schema_dict = result.get("initial_schema")
+
         self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
         self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
         self._write_json(bootstrap_dir / "bootstrap_response.json", result)
@@ -153,6 +169,51 @@ class LLMBootstrapSchemaSource(SchemaSource):
     def _is_source_aware(cfg: Dict[str, Any]) -> bool:
         mode = str(cfg.get("input_mode", "")).lower()
         return bool(cfg.get("source_aware", False)) or mode in {"source", "source_aware", "anonymous_source"}
+
+    def _fallback_to_safe_scaffold(
+        self,
+        primitive_interface: Dict[str, Any],
+        bootstrap_dir: Path,
+        validation_errors: Any,
+    ):
+        """Replace invalid source-aware LLM schema with deterministic safe scaffold.
+
+        This keeps the source-aware input boundary intact: the primitive interface is
+        still inferred from the anonymous source prompt. Only the executable schema
+        is replaced when the LLM-produced AST is structurally invalid.
+        """
+        fallback = BootstrapAgent._fallback_bootstrap(
+            primitive_interface,
+            primitive_interface.get("task_description", ""),
+        )
+        fallback["primitive_interface"] = primitive_interface
+        fallback.setdefault("bootstrap_report", {})
+        fallback["bootstrap_report"].update(
+            {
+                "source_aware_bootstrap": True,
+                "primitive_interface_generated": True,
+                "schema_source": "deterministic_safe_scaffold_after_invalid_llm_schema",
+                "llm_schema_replaced": True,
+                "llm_validation_errors": list(validation_errors or []),
+            }
+        )
+        fallback.setdefault("diagnostics", {})
+        fallback["diagnostics"].setdefault("risk_notes", [])
+        fallback["diagnostics"]["risk_notes"].append(
+            "The LLM-produced source-aware schema failed validation and was replaced by a deterministic safe scaffold."
+        )
+        canonical_fallback, fallback_report = SchemaCanonicalizer.canonicalize_bootstrap_result(
+            fallback,
+            primitive_interface,
+        )
+        fallback_schema = canonical_fallback.get("initial_schema")
+        fallback_validation = BootstrapSchemaValidator.validate_bootstrap_result(
+            canonical_fallback,
+            primitive_interface,
+        )
+        self._write_json(bootstrap_dir / "safe_scaffold_bootstrap_response.json", canonical_fallback)
+        self._write_json(bootstrap_dir / "safe_scaffold_validation.json", fallback_validation.to_dict())
+        return canonical_fallback, fallback_report, fallback_validation
 
     def _run_source_aware_bootstrap(self, cfg: Dict[str, Any], bootstrap_dir: Path) -> Dict[str, Any]:
         task_path = cfg.get("eureka_like_task_path") or cfg.get("task_file_path") or cfg.get("source_task_path")
