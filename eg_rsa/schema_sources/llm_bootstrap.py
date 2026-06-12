@@ -16,13 +16,14 @@ from eg_rsa.schema_sources.eureka_like_interface import EurekaLikeInterfaceBuild
 
 
 class LLMBootstrapSchemaSource(SchemaSource):
-    """Create initial schema and runtime diagnostic spec from generated primitive interface.
+    """Create initial schema and runtime diagnostic spec.
 
-    Preferred V2.1 input boundary:
-        Eureka-like environment task file -> generated primitive interface -> AST bootstrap.
-
-    Backward compatibility:
-        Existing configs may still pass primitive_interface_path directly.
+    Supported input boundaries:
+    1. source-aware bootstrap, preferred for V2.1:
+       anonymous task/source summary -> BootstrapAgent -> primitive_interface + AST schema.
+    2. task-file-to-interface path, kept for compatibility:
+       eureka_like_task_file -> generated primitive_interface -> BootstrapAgent.
+    3. direct primitive_interface path, kept for old controlled experiments.
     """
 
     def __init__(
@@ -57,7 +58,23 @@ class LLMBootstrapSchemaSource(SchemaSource):
         blueprint_path = bootstrap_dir / "reward_blueprint.json"
         reuse_if_exists = bool(cfg.get("reuse_if_exists", True))
 
-        primitive_interface = self._load_or_generate_primitive_interface(cfg)
+        source_aware = self._is_source_aware(cfg)
+        bootstrap_result: Optional[Dict[str, Any]] = None
+
+        if source_aware:
+            try:
+                bootstrap_result = self._run_source_aware_bootstrap(cfg, bootstrap_dir)
+            except Exception as exc:
+                self._persist_bootstrap_failure(bootstrap_dir, exc)
+                raise RuntimeError(
+                    "Source-aware LLM bootstrap failed before producing a valid result. "
+                    f"Raw prompt/response have been saved under: {bootstrap_dir}."
+                ) from exc
+            primitive_interface = bootstrap_result.get("primitive_interface")
+            if not isinstance(primitive_interface, dict):
+                raise ValueError("Source-aware bootstrap result missing primitive_interface")
+        else:
+            primitive_interface = self._load_or_generate_primitive_interface(cfg)
 
         runtime_spec = self._build_runtime_spec_from_primitive_interface(primitive_interface)
         runtime_spec_path.write_text(
@@ -69,7 +86,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
         eg_cfg["diagnostic_spec_path"] = str(runtime_spec_path)
         eg_cfg["task_description_inline"] = primitive_interface.get("task_description", "")
 
-        if reuse_if_exists and schema_path.exists():
+        if reuse_if_exists and schema_path.exists() and not source_aware:
             schema_dict = json.loads(schema_path.read_text(encoding="utf-8"))
             blueprint = {}
             if blueprint_path.exists():
@@ -80,46 +97,45 @@ class LLMBootstrapSchemaSource(SchemaSource):
                 primitive_interface=primitive_interface,
                 reward_blueprint=blueprint,
             )
-
             validation = BootstrapSchemaValidator.validate_schema(
                 schema_dict,
                 primitive_interface,
                 reward_blueprint=blueprint,
             )
-
             self._write_json(bootstrap_dir / "schema_canonicalization_report.json", canonical_report)
             self._write_json(bootstrap_dir / "canonical_initial_schema.json", schema_dict)
             self._write_json(bootstrap_dir / "bootstrap_validation.json", validation.to_dict())
             self._write_json(schema_path, schema_dict)
-
             if not validation.ok:
                 raise ValueError(f"Reused generated_initial_schema.json failed validation: {validation.errors}")
             return RewardSchema.from_dict(schema_dict)
 
-        task_description = primitive_interface.get("task_description", "") or self.task_description_loader()
-        try:
-            result = self.bootstrap_agent.generate_bootstrap(
-                primitive_interface=primitive_interface,
-                task_description=task_description,
-            )
-        except Exception as exc:
-            self._persist_bootstrap_failure(bootstrap_dir, exc)
-            raise RuntimeError(
-                "LLM bootstrap failed before producing a valid JSON object. "
-                f"Raw prompt/response have been saved under: {bootstrap_dir}. "
-                "Inspect bootstrap_response_malformed.txt and bootstrap_parse_error.json."
-            ) from exc
+        if bootstrap_result is None:
+            task_description = primitive_interface.get("task_description", "") or self.task_description_loader()
+            try:
+                bootstrap_result = self.bootstrap_agent.generate_bootstrap(
+                    primitive_interface=primitive_interface,
+                    task_description=task_description,
+                )
+            except Exception as exc:
+                self._persist_bootstrap_failure(bootstrap_dir, exc)
+                raise RuntimeError(
+                    "LLM bootstrap failed before producing a valid JSON object. "
+                    f"Raw prompt/response have been saved under: {bootstrap_dir}. "
+                    "Inspect bootstrap_response_malformed.txt and bootstrap_parse_error.json."
+                ) from exc
 
         result, canonical_report = SchemaCanonicalizer.canonicalize_bootstrap_result(
-            result,
+            bootstrap_result,
             primitive_interface,
         )
-
         schema_dict = result.get("initial_schema")
         if not isinstance(schema_dict, dict):
             raise ValueError("Bootstrap result must contain dict field initial_schema")
 
         validation = BootstrapSchemaValidator.validate_bootstrap_result(result, primitive_interface)
+        self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
+        self._write_text(bootstrap_dir / "bootstrap_response.txt", self.bootstrap_agent.last_response_text)
         self._write_json(bootstrap_dir / "bootstrap_response.json", result)
         self._write_json(bootstrap_dir / "schema_canonicalization_report.json", canonical_report)
         self._write_json(bootstrap_dir / "canonical_initial_schema.json", schema_dict)
@@ -131,17 +147,59 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
         if not validation.ok:
             raise ValueError(f"Bootstrap schema failed validation: {validation.errors}")
-
         return RewardSchema.from_dict(schema_dict)
 
-    def _persist_bootstrap_failure(self, bootstrap_dir: Path, exc: Exception) -> None:
-        """Persist prompt and raw LLM response when JSON parsing/validation fails early.
+    @staticmethod
+    def _is_source_aware(cfg: Dict[str, Any]) -> bool:
+        mode = str(cfg.get("input_mode", "")).lower()
+        return bool(cfg.get("source_aware", False)) or mode in {"source", "source_aware", "anonymous_source"}
 
-        The bootstrap agent stores the raw response in memory before parsing. Without
-        this guard, malformed LLM JSON causes the process to crash before
-        bootstrap_prompt.txt and bootstrap_response.txt are written, making the
-        failure hard to debug or reproduce.
-        """
+    def _run_source_aware_bootstrap(self, cfg: Dict[str, Any], bootstrap_dir: Path) -> Dict[str, Any]:
+        task_path = cfg.get("eureka_like_task_path") or cfg.get("task_file_path") or cfg.get("source_task_path")
+        if not task_path:
+            raise ValueError("source-aware bootstrap requires eureka_like_task_path, task_file_path, or source_task_path")
+        task_spec = self._load_task_file(Path(str(task_path)))
+        result = self.bootstrap_agent.generate_bootstrap_from_source(task_spec)
+        primitive_interface = result.get("primitive_interface")
+        if not isinstance(primitive_interface, dict):
+            raise ValueError("source-aware bootstrap returned no primitive_interface")
+        interface_dir = self.output_dir / cfg.get("interface_output_subdir", "interface")
+        self._write_json(interface_dir / "anonymous_source_input.json", task_spec)
+        self._write_json(interface_dir / "generated_primitive_interface.json", primitive_interface)
+        self._write_json(
+            interface_dir / "interface_generation_report.json",
+            {
+                "source": "source_aware_bootstrap_agent",
+                "source_path": str(task_path),
+                "output_path": str(interface_dir / "generated_primitive_interface.json"),
+                "identity_hidden_from_llm": True,
+                "raw_env_code_input": bool(primitive_interface.get("raw_env_code_input", False)),
+                "notes": [
+                    "BootstrapAgent inferred the primitive interface and initial schema in one LLM call.",
+                    "The runtime environment name is not included in the bootstrap prompt.",
+                    "The primitive interface is an internal audit artifact, not the user-facing entry point.",
+                ],
+            },
+        )
+        self.config.setdefault("eg_rsa", {}).setdefault("schema_source", {})[
+            "generated_primitive_interface_path"
+        ] = str(interface_dir / "generated_primitive_interface.json")
+        return result
+
+    @staticmethod
+    def _load_task_file(path: Path) -> Dict[str, Any]:
+        if not path.exists():
+            raise FileNotFoundError(f"task file not found: {path}")
+        text = path.read_text(encoding="utf-8")
+        if path.suffix.lower() in {".yml", ".yaml"}:
+            data = yaml.safe_load(text)
+        else:
+            data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError(f"task file must contain a JSON/YAML object: {path}")
+        return data
+
+    def _persist_bootstrap_failure(self, bootstrap_dir: Path, exc: Exception) -> None:
         bootstrap_dir.mkdir(parents=True, exist_ok=True)
         self._write_text(bootstrap_dir / "bootstrap_prompt.txt", self.bootstrap_agent.last_prompt)
         self._write_text(bootstrap_dir / "bootstrap_response_malformed.txt", self.bootstrap_agent.last_response_text)
@@ -155,7 +213,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
                 "prompt_length": len(self.bootstrap_agent.last_prompt or ""),
                 "traceback": traceback.format_exc(),
                 "notes": [
-                    "LLM returned text before a valid JSON object could be parsed.",
+                    "LLM returned text before a valid bootstrap result could be parsed.",
                     "The raw response is saved for debugging and possible manual repair.",
                     "No generated_initial_schema.json was written from this malformed response.",
                 ],
@@ -163,22 +221,8 @@ class LLMBootstrapSchemaSource(SchemaSource):
         )
 
     def _load_or_generate_primitive_interface(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
-        """Load primitive interface or generate it from a Eureka-like task file.
-
-        New preferred config:
-            schema_source:
-              type: llm_bootstrap
-              eureka_like_task_path: configs/.../task.json
-              primitive_interface_path: auto
-
-        Backward compatible config:
-            schema_source:
-              type: llm_bootstrap
-              primitive_interface_path: configs/.../primitive_interface.json
-        """
         interface_subdir = cfg.get("interface_output_subdir", "interface")
         interface_dir = self.output_dir / interface_subdir
-
         eureka_like_task_path = cfg.get("eureka_like_task_path") or cfg.get("task_file_path")
         primitive_path_value = cfg.get("primitive_interface_path", "")
         primitive_path_is_auto = str(primitive_path_value).lower() in {"", "auto", "generated"}
@@ -194,8 +238,6 @@ class LLMBootstrapSchemaSource(SchemaSource):
             return primitive_interface
 
         if eureka_like_task_path and not primitive_path_is_auto:
-            # Generate and archive the interface for auditability, but preserve explicit
-            # primitive_interface_path for backward-compatible controlled experiments.
             EurekaLikeInterfaceBuilder.build_from_file(
                 task_file_path=eureka_like_task_path,
                 output_dir=interface_dir,
@@ -210,12 +252,8 @@ class LLMBootstrapSchemaSource(SchemaSource):
                     f"Missing path: {primitive_path}"
                 )
             raise FileNotFoundError(f"primitive_interface_path not found: {primitive_path}")
-
         primitive_interface = json.loads(primitive_path.read_text(encoding="utf-8"))
-        self._write_json(
-            interface_dir / "loaded_primitive_interface.json",
-            primitive_interface,
-        )
+        self._write_json(interface_dir / "loaded_primitive_interface.json", primitive_interface)
         self._write_json(
             interface_dir / "interface_generation_report.json",
             {
@@ -226,7 +264,7 @@ class LLMBootstrapSchemaSource(SchemaSource):
                 "env_code_parser": "planned_not_current",
                 "notes": [
                     "Backward-compatible path: primitive_interface_path was provided directly.",
-                    "For the Eureka-like entry path, set eureka_like_task_path and primitive_interface_path: auto.",
+                    "For the source-aware path, set source_aware: true and provide an anonymous task/source file.",
                 ],
             },
         )
@@ -234,23 +272,14 @@ class LLMBootstrapSchemaSource(SchemaSource):
 
     @staticmethod
     def _build_runtime_spec_from_primitive_interface(primitive_interface: Dict[str, Any]) -> Dict[str, Any]:
-        """Build a lightweight runtime diagnostic spec from primitive_interface.
-
-        This method is intentionally generic. It must not assume LunarLander-specific
-        variables such as x, vx, vy, angle, left_contact, or right_contact. If such
-        variables are present, they can be used; otherwise the generated diagnostics
-        remain valid but conservative.
-        """
         observation_mapping = primitive_interface.get("observation_mapping")
         if not isinstance(observation_mapping, dict) or not observation_mapping:
             observation_mapping = {}
             for idx, item in enumerate(primitive_interface.get("observation_variables", []) or []):
                 if isinstance(item, dict) and item.get("name"):
                     observation_mapping[item["name"]] = idx
-
         observation_variables = primitive_interface.get("observation_variables", []) or []
         action_variables = primitive_interface.get("action_variables", []) or []
-
         bool_vars = []
         numeric_vars = []
         for item in observation_variables:
@@ -262,108 +291,44 @@ class LLMBootstrapSchemaSource(SchemaSource):
                 bool_vars.append(name)
             else:
                 numeric_vars.append(name)
-
-        action_names = [
-            str(item["name"])
-            for item in action_variables
-            if isinstance(item, dict) and item.get("name")
-        ]
-
+        action_names = [str(item["name"]) for item in action_variables if isinstance(item, dict) and item.get("name")]
         events: Dict[str, Dict[str, Any]] = {}
-
-        # Generic boolean observation events.
         for name in bool_vars:
-            events[name] = {
-                "type": "threshold_gt",
-                "var": name,
-                "threshold": 0.5,
-            }
-
-        # Generic grouped contact event if the primitive interface exposes contact-like booleans.
-        contact_like = [
-            name for name in bool_vars
-            if "contact" in name.lower() or "touch" in name.lower() or "ground" in name.lower()
-        ]
+            events[name] = {"type": "threshold_gt", "var": name, "threshold": 0.5}
+        contact_like = [name for name in bool_vars if "contact" in name.lower() or "touch" in name.lower() or "ground" in name.lower()]
         if contact_like:
-            events["any_contact_evidence"] = {
-                "type": "any",
-                "events": contact_like,
-            }
+            events["any_contact_evidence"] = {"type": "any", "events": contact_like}
         if len(contact_like) >= 2:
-            events["all_contact_evidence"] = {
-                "type": "all",
-                "events": contact_like[:4],
-            }
-
-        # Generic action event when actions are available.
+            events["all_contact_evidence"] = {"type": "all", "events": contact_like[:4]}
         if action_names:
-            events["action_nonzero"] = {
-                "type": "action_nonzero",
-            }
-
+            events["action_nonzero"] = {"type": "action_nonzero"}
         task_metrics: Dict[str, Dict[str, Any]] = {}
 
         def add_raw_abs_inverse_metric(metric_name: str, inputs: list[str]) -> None:
             valid = [x for x in inputs if x in observation_mapping]
             if valid:
-                task_metrics[metric_name] = {
-                    "type": "raw_abs_inverse",
-                    "inputs": valid,
-                }
+                task_metrics[metric_name] = {"type": "raw_abs_inverse", "inputs": valid}
 
-        # Prefer common control-task names when present, but do not require them.
-        add_raw_abs_inverse_metric("position_centering", [x for x in ["x", "position", "pos"] if x in observation_mapping])
+        add_raw_abs_inverse_metric("position_centering", [x for x in ["x", "position", "pos", "horizontal_position"] if x in observation_mapping])
         add_raw_abs_inverse_metric("velocity_smoothness", [x for x in ["vx", "vy", "velocity", "horizontal_speed", "vertical_speed"] if x in observation_mapping])
-        add_raw_abs_inverse_metric("attitude_smoothness", [x for x in ["angle", "angular_velocity", "hull_angle", "hull_angular_velocity"] if x in observation_mapping])
-
-        # If none of the common names exist, create one generic state-smoothness metric
-        # from the first few numeric observation variables.
+        add_raw_abs_inverse_metric("attitude_smoothness", [x for x in ["angle", "angular_velocity", "hull_angle", "hull_angular_velocity", "body_angle", "body_angular_velocity"] if x in observation_mapping])
         if not task_metrics and numeric_vars:
             add_raw_abs_inverse_metric("state_smoothness", numeric_vars[:4])
-
         if action_names:
-            task_metrics["energy_cost"] = {
-                "type": "action_cost",
-            }
-
+            task_metrics["energy_cost"] = {"type": "action_cost"}
         if "all_contact_evidence" in events:
-            task_metrics["contact_evidence"] = {
-                "type": "event_score",
-                "event": "all_contact_evidence",
-            }
+            task_metrics["contact_evidence"] = {"type": "event_score", "event": "all_contact_evidence"}
         elif "any_contact_evidence" in events:
-            task_metrics["contact_evidence"] = {
-                "type": "event_score",
-                "event": "any_contact_evidence",
-            }
-
-        progress_metrics = [
-            name for name in [
-                "position_centering",
-                "velocity_smoothness",
-                "attitude_smoothness",
-                "state_smoothness",
-                "contact_evidence",
-            ]
-            if name in task_metrics
-        ]
+            task_metrics["contact_evidence"] = {"type": "event_score", "event": "any_contact_evidence"}
+        progress_metrics = [name for name in ["position_centering", "velocity_smoothness", "attitude_smoothness", "state_smoothness", "contact_evidence"] if name in task_metrics]
         if progress_metrics:
-            task_metrics["progress"] = {
-                "type": "metric_mean",
-                "metrics": progress_metrics,
-            }
-
+            task_metrics["progress"] = {"type": "metric_mean", "metrics": progress_metrics}
         return {
             "source": "primitive_interface_generated_runtime_spec",
-            "input_boundary": primitive_interface.get(
-                "input_boundary",
-                "primitive_interface_conditioned",
-            ),
+            "input_boundary": primitive_interface.get("input_boundary", "primitive_interface_conditioned"),
+            "identity_hidden_from_llm": bool(primitive_interface.get("identity_hidden_from_llm", False)),
             "raw_env_code_input": bool(primitive_interface.get("raw_env_code_input", False)),
-            "eureka_like_input_status": primitive_interface.get(
-                "env_code_parser",
-                "planned_not_current",
-            ),
+            "eureka_like_input_status": primitive_interface.get("env_code_parser", "planned_not_current"),
             "observation_mapping": observation_mapping,
             "action_variables": action_variables,
             "action_mapping": primitive_interface.get("action_mapping", {}),
