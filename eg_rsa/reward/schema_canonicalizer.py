@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, List, Tuple
+import math
+from typing import Any, Dict, List, Optional, Tuple
 
 from eg_rsa.reward.formula_ast import FormulaAST
 
@@ -9,10 +10,15 @@ from eg_rsa.reward.formula_ast import FormulaAST
 class SchemaCanonicalizer:
     """Canonicalize reward schema into AST-first IR.
 
-    This is intentionally strict:
+    This is intentionally strict about executable formulas:
       - It preserves formula_ast / condition_ast.
       - It mirrors top-level AST fields into params.
       - It does NOT try to parse or repair LLM formula strings.
+
+    It is conservative about non-semantic formatting defects:
+      - Empty or malformed clip ranges are normalized to role-based defaults when
+        doing so is unambiguous, because SafeRewardCompiler requires clip to be
+        None or a valid [low, high] pair.
     """
 
     @classmethod
@@ -162,6 +168,8 @@ class SchemaCanonicalizer:
         if ctype == "conditional_formula_component" and "condition_ast" in params:
             comp["condition_ast"] = params["condition_ast"]
 
+        cls._canonicalize_clip(comp, notes)
+
         comp["params"] = params
         return comp
 
@@ -235,6 +243,63 @@ class SchemaCanonicalizer:
         out.pop("formula", None)
         out.pop("duration_steps", None)
         return out
+
+    @classmethod
+    def _canonicalize_clip(cls, comp: Dict[str, Any], notes: List[str]) -> None:
+        """Normalize LLM clip field into compiler-compatible form.
+
+        SafeRewardCompiler accepts clip=None or a two-value numeric range. LLMs
+        sometimes emit clip: [] when unsure. Empty clip does not carry reward
+        semantics, so we repair it using the component semantic role.
+        """
+        if "clip" not in comp:
+            return
+
+        name = str(comp.get("name", ""))
+        raw_clip = comp.get("clip")
+        normalized = cls._parse_clip(raw_clip)
+        if normalized is not None:
+            if normalized != raw_clip:
+                notes.append(f"Component {name}: normalized clip {raw_clip!r} -> {normalized!r}.")
+            comp["clip"] = normalized
+            return
+
+        default_clip = cls._default_clip_for_role(comp.get("semantic_role"), comp.get("name"))
+        if default_clip is not None:
+            comp["clip"] = default_clip
+            notes.append(
+                f"Component {name}: replaced invalid clip {raw_clip!r} with role-based default {default_clip!r}."
+            )
+        else:
+            comp.pop("clip", None)
+            notes.append(f"Component {name}: removed invalid clip {raw_clip!r}; compiler will treat it as unclipped.")
+
+    @staticmethod
+    def _parse_clip(raw_clip: Any) -> Optional[List[float]]:
+        if not isinstance(raw_clip, (list, tuple)) or len(raw_clip) != 2:
+            return None
+        try:
+            low = float(raw_clip[0])
+            high = float(raw_clip[1])
+        except Exception:
+            return None
+        if not math.isfinite(low) or not math.isfinite(high) or low > high:
+            return None
+        return [low, high]
+
+    @staticmethod
+    def _default_clip_for_role(role: Any, name: Any = "") -> Optional[List[float]]:
+        role = str(role or "").lower()
+        lname = str(name or "").lower()
+        if role in {"control_cost", "safety_constraint"}:
+            return [-1.0, 0.0]
+        if role in {"dense_guidance", "stability_quality", "terminal_success"}:
+            return [0.0, 1.0]
+        if any(token in lname for token in ["cost", "penalty", "unsafe", "crash", "fuel"]):
+            return [-1.0, 0.0]
+        if any(token in lname for token in ["safe", "stability", "stable", "progress", "guidance"]):
+            return [0.0, 1.0]
+        return None
 
     @staticmethod
     def _build_blueprint_role_hints(blueprint: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
