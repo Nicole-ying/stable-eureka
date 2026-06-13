@@ -142,6 +142,18 @@ def _validate_expression(expr: str, *, component_id: str) -> None:
             if node.id not in ALLOWED_NAMES:
                 raise RewardSpecError(f"component {component_id}: unsupported name {node.id}")
 
+        # Direct info[...] access is intentionally forbidden. The info dict is
+        # environment-dependent and often sparse; direct indexing can pass static
+        # checks but crash during smoke tests or training. RewardSpec may use
+        # info.get('public_key', default) only, and obs/action/next_obs/done are
+        # preferred for portable reward design.
+        if isinstance(node, ast.Subscript):
+            if isinstance(node.value, ast.Name) and node.value.id == "info":
+                raise RewardSpecError(
+                    f"component {component_id}: direct info[...] access is forbidden; "
+                    "use info.get('key', default) or avoid info"
+                )
+
         if isinstance(node, ast.Attribute):
             if isinstance(node.value, ast.Name) and node.value.id == "math":
                 if node.attr not in ALLOWED_MATH_ATTRS:
