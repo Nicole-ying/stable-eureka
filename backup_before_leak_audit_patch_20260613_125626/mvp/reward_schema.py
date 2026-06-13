@@ -63,7 +63,7 @@ def build_default_schema(public_task: dict[str, Any], clean_interface: dict[str,
         "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
         "return_contract": "return float(total_reward), components_dict",
         "allowed_inputs": REQUIRED_SIGNATURE,
-        "private_signal_policy": "Only public transition inputs are available to the reward function.",
+        "forbidden_names": sorted(FORBIDDEN_NAMES),
         "components": [
             {
                 "id": "progress",

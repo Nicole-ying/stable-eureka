@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import random
 from pathlib import Path
 
@@ -9,7 +8,6 @@ import numpy as np
 from .agents import BootstrapAgent, PlannerAgent, ReflectionAgent, RewardCoderAgent, VisionJudgeAgent
 from .config import MVPConfig
 from .env_sanitizer import infer_clean_env_interface
-from .leak_audit import LeakAuditError, audit_text_bundle, save_audit_report
 from .memory import CandidateRecord, JsonlMemory
 from .models import ModelGateway
 from .reward_schema import validate_reward_code
@@ -45,31 +43,8 @@ class RewardEvolutionOrchestrator:
         plan = self.planner.plan(public_task, clean_interface, reward_schema)
 
         self.cfg.workspace.mkdir(parents=True, exist_ok=True)
-
-        audit = audit_text_bundle(
-            {
-                "clean_interface": clean_interface,
-                "reward_schema": reward_schema,
-                "clean_plan": plan,
-            },
-            env_id=private_task.env_id,
-            extra_terms=public_task.forbidden_terms,
-        )
-        save_audit_report(audit, self.cfg.workspace / "leak_audit_pre_generation.json")
-        if not audit["ok"]:
-            raise LeakAuditError(
-                "Pre-generation leak audit failed. "
-                f"See {self.cfg.workspace / 'leak_audit_pre_generation.json'}"
-            )
-
-        (self.cfg.workspace / "clean_interface.txt").write_text(
-            json.dumps(clean_interface, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        (self.cfg.workspace / "reward_schema.txt").write_text(
-            json.dumps(reward_schema, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        (self.cfg.workspace / "clean_interface.txt").write_text(str(clean_interface), encoding="utf-8")
+        (self.cfg.workspace / "reward_schema.txt").write_text(str(reward_schema), encoding="utf-8")
         (self.cfg.workspace / "clean_plan.txt").write_text(plan, encoding="utf-8")
 
         best: dict | None = None
@@ -153,9 +128,9 @@ class RewardEvolutionOrchestrator:
                     judge_details = {"error": str(e)}
                     rationale = rationale or "pipeline failed"
 
-                private_eval_return = float(train_result.get("eval_hidden_return", -1e9))
+                hidden_eval_return = float(train_result.get("eval_hidden_return", -1e9))
                 generated_return = float(train_result.get("eval_generated_return", -1e9))
-                selection_score = private_eval_return if status == "ok" else -1e9
+                selection_score = hidden_eval_return if status == "ok" else -1e9
 
                 rec = CandidateRecord(
                     generation=g,
@@ -169,7 +144,7 @@ class RewardEvolutionOrchestrator:
                     reward_code=reward_code,
                     llm_rationale=rationale,
                     train_mean_return=generated_return,
-                    hidden_eval_return=private_eval_return,
+                    hidden_eval_return=hidden_eval_return,
                     selection_score=selection_score,
                     judge_score=float(judge_score),
                     judge_reason=judge_reason,
@@ -210,8 +185,8 @@ def format_report(best: dict, out_path: Path) -> None:
         f"schema_version: {best.get('schema_version', 'N/A')}",
         f"env_alias: {best.get('env_alias', 'N/A')}",
         f"status: {best.get('status', 'N/A')}",
-        f"selection_score_private_eval: {best.get('selection_score', 0)}",
-        f"private_eval_return: {best.get('hidden_eval_return', 0)}",
+        f"selection_score_hidden_eval: {best.get('selection_score', 0)}",
+        f"hidden_eval_return: {best.get('hidden_eval_return', 0)}",
         f"generated_reward_return: {best.get('train_mean_return', 0)}",
         f"judge_score: {best.get('judge_score', 0)}",
         f"judge_reason: {best.get('judge_reason', '')}",

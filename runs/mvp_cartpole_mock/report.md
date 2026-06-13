@@ -3,8 +3,8 @@ best_candidate: N/A
 schema_version: N/A
 env_alias: N/A
 status: N/A
-selection_score_hidden_eval: 0
-hidden_eval_return: 0
+selection_score_private_eval: 0
+private_eval_return: 0
 generated_reward_return: 0
 judge_score: 0
 judge_reason: 
