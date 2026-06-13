@@ -3,9 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .models import ModelGateway
-from .task_specs import TaskSpec
+from .reward_schema import build_default_schema
+from .task_specs import PublicTaskSpec
 
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -18,20 +20,51 @@ class RewardDraft:
     rationale: str
 
 
+class BootstrapAgent:
+    """
+    Bootstrap schema agent.
+
+    当前版本故意不读取原始 env.py，也不读取官方 reward。
+    只基于 PublicTaskSpec + CleanEnvInterface 生成通用 RewardSchema。
+    """
+
+    def build_schema(
+        self,
+        public_task: PublicTaskSpec,
+        clean_interface: dict[str, Any],
+    ) -> dict[str, Any]:
+        return build_default_schema(public_task.__dict__, clean_interface)
+
+
 class PlannerAgent:
+    """
+    只生成干净 plan，不暴露真实 env_id，不解释 obs/action 物理含义。
+    """
+
     def __init__(self):
         self.system_prompt = (PROMPT_DIR / "planner_system.txt").read_text(encoding="utf-8")
 
-    def plan(self, task: TaskSpec) -> str:
-        user = (
-            f"Environment: {task.env_id}\n"
-            f"Objective: {task.objective}\n"
-            f"Observation hints: {task.obs_hint}\n"
-            f"Action hints: {task.action_hint}\n"
-            f"Success patterns: {task.success_hint}\n"
-            f"Failure patterns: {task.failure_hint}\n"
+    def plan(
+        self,
+        public_task: PublicTaskSpec,
+        clean_interface: dict[str, Any],
+        reward_schema: dict[str, Any],
+    ) -> str:
+        return (
+            f"Environment alias: {clean_interface['env_alias']}\n"
+            f"Task goal: {public_task.task_goal}\n"
+            f"Task style: {public_task.task_style}\n\n"
+            "Clean interface:\n"
+            f"- observation_space: {clean_interface['observation_space']}\n"
+            f"- action_space: {clean_interface['action_space']}\n"
+            f"- reward_signature: {reward_schema['reward_signature']}\n"
+            f"- required_components: {[c['id'] for c in reward_schema['components'] if c.get('required')]}\n\n"
+            "Important boundary:\n"
+            "- Do not infer or mention the real environment name.\n"
+            "- Do not use any original environment reward.\n"
+            "- Do not use benchmark, official reward, or hidden fitness implementation.\n"
+            "- Design reward only from obs/action/next_obs/done/info and closed-loop feedback."
         )
-        return user
 
 
 class RewardCoderAgent:
@@ -43,24 +76,40 @@ class RewardCoderAgent:
         self,
         candidate_id: str,
         plan: str,
+        clean_interface: dict[str, Any],
+        reward_schema: dict[str, Any],
         reflection_context: str,
         parent_codes: list[str],
     ) -> RewardDraft:
         parent_block = "\n\n".join(
-            [f"Parent {i+1}:\n```python\n{c}\n```" for i, c in enumerate(parent_codes)]
-        ) or "No parent code yet."
+            [f"Parent {i + 1}:\n```python\n{c}\n```" for i, c in enumerate(parent_codes)]
+        ) or "No clean parent code yet."
+
+        schema_components = "\n".join(
+            [
+                f"- {c['id']}: {c['description']} | direction={c['direction']} | required={c['required']}"
+                for c in reward_schema["components"]
+            ]
+        )
+
         user = (
             f"Candidate ID: {candidate_id}\n\n"
             f"Plan:\n{plan}\n\n"
-            f"Reflection:\n{reflection_context}\n\n"
-            f"Parent reward codes:\n{parent_block}\n\n"
-            "Now generate a mutated reward function candidate."
+            f"Clean environment interface:\n{clean_interface}\n\n"
+            f"Reward schema version: {reward_schema['schema_version']}\n"
+            f"Reward signature: {reward_schema['reward_signature']}\n"
+            f"Required schema components:\n{schema_components}\n\n"
+            f"Forbidden names/tokens:\n{reward_schema['forbidden_names']}\n\n"
+            f"Reflection from previous clean candidates:\n{reflection_context}\n\n"
+            f"Parent reward codes from the same clean schema only:\n{parent_block}\n\n"
+            "Now generate one reward function candidate that strictly follows the schema."
         )
+
         text = self.model.chat(self.system_prompt, user)
         code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
         reward_code = code_match.group(1).strip() if code_match else text.strip()
         rationale_match = re.search(r"RATIONALE:(.*)", text, re.DOTALL)
-        rationale = rationale_match.group(1).strip() if rationale_match else "LLM-generated mutation"
+        rationale = rationale_match.group(1).strip() if rationale_match else "LLM-generated clean reward candidate"
         return RewardDraft(candidate_id=candidate_id, reward_code=reward_code, rationale=rationale)
 
 
@@ -69,21 +118,30 @@ class VisionJudgeAgent:
         self.model = model
         self.system_prompt = (PROMPT_DIR / "vision_judge_system.txt").read_text(encoding="utf-8")
 
-    def judge(self, task: TaskSpec, video_path, train_return: float) -> tuple[float, str, dict]:
+    def judge(
+        self,
+        clean_interface: dict[str, Any],
+        train_result: dict[str, float],
+        video_path,
+    ) -> tuple[float, str, dict]:
         rubric = (
-            f"Environment: {task.env_id}.\n"
-            f"Objective: {task.objective}\n"
-            f"Judge rubric: {task.judge_rubric}\n"
-            f"Success hints: {task.success_hint}\n"
-            f"Failure hints: {task.failure_hint}\n"
+            f"Environment alias: {clean_interface['env_alias']}.\n"
+            "Judge only visible behavior quality if visual evidence is available.\n"
+            "Do not infer or mention the true environment name.\n"
+            "Reward search selection is primarily based on hidden evaluator return, not generated reward return.\n"
+            f"Hidden evaluator return: {train_result.get('eval_hidden_return', 0.0):.6f}\n"
+            f"Generated reward return: {train_result.get('eval_generated_return', 0.0):.6f}\n"
         )
+
         out = self.model.judge_video(self.system_prompt, rubric, video_path)
         score = float(out.get("score", 0.0))
         reason = str(out.get("reason", ""))
+
+        # 不再使用 generated reward return 兜底打分，避免 reward hacking。
         if score <= 0:
-            score = max(0.0, min(100.0, 50 + train_return / 10.0))
-            reason = f"fallback_score_from_train_return={train_return:.2f}"
-        return score, reason, out
+            reason = reason or "no_visual_score_available"
+
+        return max(0.0, min(100.0, score)), reason, out
 
 
 class ReflectionAgent:
@@ -93,13 +151,27 @@ class ReflectionAgent:
 
     def summarize(self, top_records: list[dict]) -> str:
         if not top_records:
-            return "No prior attempts. Start with dense progress shaping + stability + terminal bonuses."
-        summary_lines = [
-            (
-                f"id={r['candidate_id']}, score={r['judge_score']:.1f}, "
-                f"return={r['train_mean_return']:.2f}, reason={r['judge_reason']}, visual={r.get('judge_details', {})}"
+            return (
+                "No prior clean candidates. Start with bounded progress, stability, effort, "
+                "and terminal components. Avoid environment-specific assumptions."
             )
-            for r in top_records
-        ]
-        user = "Past best candidates:\n" + "\n".join(summary_lines)
+
+        summary_lines = []
+        for r in top_records:
+            summary_lines.append(
+                (
+                    f"id={r.get('candidate_id')}, status={r.get('status')}, "
+                    f"selection_score={r.get('selection_score')}, "
+                    f"hidden_return={r.get('hidden_eval_return')}, "
+                    f"generated_return={r.get('train_mean_return')}, "
+                    f"reason={r.get('judge_reason')}, "
+                    f"validation_errors={r.get('validation_errors', [])}"
+                )
+            )
+
+        user = (
+            "Past clean candidates from the same schema only:\n"
+            + "\n".join(summary_lines)
+            + "\n\nDo not infer the true environment name. Propose schema-preserving mutation hypotheses."
+        )
         return self.model.chat(self.system_prompt, user)

@@ -41,36 +41,22 @@ class ModelGateway:
             )
             return response["message"]["content"]
 
+        # mock provider for local pipeline tests
         return (
             "```python\n"
-            "def compute_reward(obs, action, next_obs, done, info):\n"
-            "    obs_arr = np.asarray(obs, dtype=float).reshape(-1)\n"
-            "    next_arr = np.asarray(next_obs, dtype=float).reshape(-1)\n"
-            "    delta = next_arr - obs_arr\n"
-            "    progress = float(np.clip(np.linalg.norm(obs_arr) - np.linalg.norm(next_arr), -5.0, 5.0))\n"
-            "    stability = float(-0.05 * np.tanh(np.linalg.norm(delta)))\n"
-            "    try:\n"
-            "        act_arr = np.asarray(action, dtype=float).reshape(-1)\n"
-            "        effort = float(-0.01 * np.tanh(np.linalg.norm(act_arr)))\n"
-            "    except Exception:\n"
-            "        effort = float(-0.01 * abs(float(action))) if isinstance(action, (int, float)) else 0.0\n"
-            "    terminal = -1.0 if done else 0.0\n"
-            "    total = progress + stability + effort + terminal\n"
-            "    components = {\n"
-            "        'progress': progress,\n"
-            "        'stability': stability,\n"
-            "        'effort': effort,\n"
-            "        'terminal': terminal,\n"
-            "    }\n"
-            "    return float(total), components\n"
+            "def compute_reward(obs, action, next_obs, env_reward, done, info):\n"
+            "    reward = float(env_reward)\n"
+            "    if done:\n"
+            "        reward += 1.0\n"
+            "    return reward\n"
             "```\n"
-            "RATIONALE: clean bounded transition reward without using hidden environment reward."
+            "RATIONALE: keep environment reward and lightly shape terminal behavior."
         )
 
     def judge_video(self, system_prompt: str, rubric: str, video_path: Path) -> dict:
         if self.provider == "openai":
             b64 = base64.b64encode(video_path.read_bytes()).decode("utf-8")
-            data_url = f"data:image/gif;base64,{b64}"
+            data_url = f"data:video/mp4;base64,{b64}"
             response = self.openai_client.chat.completions.create(
                 model=self.config.vlm_model,
                 temperature=0.2,
@@ -100,6 +86,7 @@ class ModelGateway:
                 return {"score": 0.0, "reason": f"judge_parse_error: {content[:200]}"}
 
         if self.provider == "ollama":
+            # Many local models lack direct video understanding; use text-side judging fallback.
             response = self.ollama_client.chat(
                 model=self.config.vlm_model,
                 messages=[

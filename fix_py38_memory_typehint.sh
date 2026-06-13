@@ -1,3 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[fix] patch mvp/memory.py for Python 3.8/3.9 compatibility..."
+
+cp mvp/memory.py "mvp/memory.py.bak_py38_$(date +%Y%m%d_%H%M%S)"
+
+cat > mvp/memory.py <<'PY'
 from __future__ import annotations
 
 import json
@@ -69,3 +77,11 @@ class JsonlMemory:
         rows = [r for r in rows if r.get("status") == "ok"]
         rows.sort(key=lambda r: float(r.get("selection_score", -1e18)), reverse=True)
         return rows[:k]
+PY
+
+python -m py_compile mvp/memory.py
+
+echo "[fix] done."
+echo ""
+echo "Now retry:"
+echo "python run_mvp.py --config mvp/configs/cartpole_mock.yaml --provider mock --timesteps 2000"

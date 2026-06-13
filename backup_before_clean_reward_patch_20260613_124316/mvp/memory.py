@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -11,20 +9,10 @@ class CandidateRecord:
     generation: int
     candidate_id: str
     parent_ids: list[str]
-
-    schema_version: str
-    env_alias: str
-    status: str
-    validation_errors: list[str]
-
     reflection_summary: str
     reward_code: str
     llm_rationale: str
-
     train_mean_return: float
-    hidden_eval_return: float
-    selection_score: float
-
     judge_score: float
     judge_reason: str
     judge_details: dict[str, Any]
@@ -43,7 +31,6 @@ class JsonlMemory:
     def load_all(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
-
         out: list[dict[str, Any]] = []
         with self.path.open("r", encoding="utf-8") as f:
             for line in f:
@@ -52,20 +39,7 @@ class JsonlMemory:
                     out.append(json.loads(line))
         return out
 
-    def top_candidates(
-        self,
-        k: int,
-        schema_version: Optional[str] = None,
-        env_alias: Optional[str] = None,
-    ) -> list[dict[str, Any]]:
+    def top_candidates(self, k: int) -> list[dict[str, Any]]:
         rows = self.load_all()
-
-        # 关键：旧泄露 memory 没有 schema_version/env_alias/status 字段，自动被过滤。
-        if schema_version is not None:
-            rows = [r for r in rows if r.get("schema_version") == schema_version]
-        if env_alias is not None:
-            rows = [r for r in rows if r.get("env_alias") == env_alias]
-
-        rows = [r for r in rows if r.get("status") == "ok"]
-        rows.sort(key=lambda r: float(r.get("selection_score", -1e18)), reverse=True)
+        rows.sort(key=lambda r: r["judge_score"], reverse=True)
         return rows[:k]
