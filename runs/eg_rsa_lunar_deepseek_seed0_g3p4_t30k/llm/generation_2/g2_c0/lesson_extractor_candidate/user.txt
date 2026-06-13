@@ -1,0 +1,41 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 2
+Candidate ID: g2_c0
+
+Structured evidence:
+{
+  "generation": 2,
+  "candidate_id": "g2_c0",
+  "parent_ids": [
+    "g1_c2",
+    "g1_c1"
+  ],
+  "status": "ok",
+  "selection_score": -100.88905492214381,
+  "private_eval_return": -100.88905492214381,
+  "generated_return": -137.65416099302732,
+  "generated_minus_private": -36.765106070883505,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": -36.765106070883505,
+    "action_mean": 0.11377245508982035,
+    "action_std": 0.31753469661228395,
+    "episode_length_mean": 55.666666666666664,
+    "component_returns": {
+      "progress": -118.55204806623352,
+      "stability": -3.848779593460494,
+      "effort": -0.25333333333333335,
+      "terminal": -15.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    # Stronger linear distance penalty: -1.0 * dist for strong gradient at all distances\n    dist_penalty = -1.0 * dist\n    # Speed penalty: penalize total speed and vertical speed separately\n    speed_penalty = -0.5 * speed - 0.4 * abs(vy)\n    # Extra vertical speed penalty when close to ground (y < 0.3)\n    if y < 0.3:\n        speed_penalty -= 1.0 * abs(vy)\n    # Small positive reward for being close to pad with low speed (shaped landing bonus)\n    landing_shaping = 0.0\n    if dist < 0.2 and speed < 0.2:\n        landing_shaping = 0.5 * (1.0 - dist / 0.2) * (1.0 - speed / 0.2)\n    progress = dist_penalty + speed_penalty + landing_shaping\n    progress = max(-5.0, min(0.5, progress))\n\n    # --- Stability component: maintain upright orientation ---\n    angle_penalty = -0.8 * abs(angle)\n    ang_vel_penalty = -0.15 * abs(ang_vel)\n    # When near ground (y < 0.3) and tilted significantly, add extra penalty\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = angle_penalty + ang_vel_penalty\n    stability = max(-3.0, min(0.0, stability))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "This candidate builds on g1_c2's successful structure (linear distance penalty, moderate failure penalty, strong progress shaping) while incorporating several targeted improvements based on memory lessons and feedback analysis. Key changes: (1) Increased distance penalty from -0.8*dist to -1.0*dist for stronger gradient, addressing the lesson that linear penalties outperform exponential caps. (2) Added landing_shaping bonus near the pad to provide positive reinforcement for precise approach, potentially preventing the \"do nothing\" collapse. (3) Increased angle penalty from -0.6 to -0.8 and ground-proximity angle penalty from -0.5 to -0.6 to give stability more influence (reducing the 14:1 progress:stability imbalance). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to encourage more active engine use while still penalizing waste. (5) Maintained strong ground-proximity vertical speed penalty (-1.0*abs(vy)) to prevent crashes. The terminal component stays at -15.0 (moderate failure penalty) and +100.0 for success, which worked well in g1_c2. The landing_shaping bonus is designed to be small (max 0.5) so it doesn't dominate but provides a positive gradient toward successful landing conditions. This candidate aims to achieve negative generated_private_gap (conservative shaping) while providing strong, balanced guidance across all components."
+}
+
+Reflection report:
+This candidate builds on g1_c2's successful structure (linear distance penalty, moderate failure penalty, strong progress shaping) while incorporating several targeted improvements based on memory lessons and feedback analysis. Key changes: (1) Increased distance penalty from -0.8*dist to -1.0*dist for stronger gradient, addressing the lesson that linear penalties outperform exponential caps. (2) Added landing_shaping bonus near the pad to provide positive reinforcement for precise approach, potentially preventing the "do nothing" collapse. (3) Increased angle penalty from -0.6 to -0.8 and ground-proximity angle penalty from -0.5 to -0.6 to give stability more influence (reducing the 14:1 progress:stability imbalance). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to encourage more active engine use while still penalizing waste. (5) Maintained strong ground-proximity vertical speed penalty (-1.0*abs(vy)) to prevent crashes. The terminal component stays at -15.0 (moderate failure penalty) and +100.0 for success, which worked well in g1_c2. The landing_shaping bonus is designed to be small (max 0.5) so it doesn't dominate but provides a positive gradient toward successful landing conditions. This candidate aims to achieve negative generated_private_gap (conservative shaping) while providing strong, balanced guidance across all components.
+
+Return JSON array of lessons. Do not include code blocks.

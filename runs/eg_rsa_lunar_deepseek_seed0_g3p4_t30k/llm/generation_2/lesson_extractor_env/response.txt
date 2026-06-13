@@ -1,0 +1,74 @@
+[
+  {
+    "lesson_type": "general",
+    "condition": "When increasing distance penalty coefficient from -0.8 to -1.0",
+    "observation": "All g2 candidates used -1.0*dist and performed worse than g1_c2's -0.8*dist (-84.16). Best g2 candidate scored -100.89.",
+    "explanation": "Stronger progress gradient overwhelmed other components, making the progress:stability ratio worse (14.4:1 in g1_c2 vs 30.8:1 in g2_c0) and causing net regression.",
+    "recommendation": "Keep distance penalty coefficient near -0.8 rather than increasing it. There is a U-shaped relationship where -0.8 outperforms both -1.0 and -0.5.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When increasing angle penalty from -0.6 to -0.8",
+    "observation": "All g2 candidates increased angle penalty to -0.8, but progress:stability ratio worsened from 14.4:1 to 30.8:1, and performance regressed.",
+    "explanation": "Increasing angle penalty alone did not fix the ratio because progress scaling increased more, making progress relatively even more dominant. The ratio matters more than absolute component magnitudes.",
+    "recommendation": "Monitor the progress:stability ratio when adjusting coefficients. Target a ratio near 15:1 rather than independently increasing stability penalties.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When generated_private_gap magnitude decreases from -69.65 to -36.77",
+    "observation": "g1_c2 had gap=-69.65 and scored -84.16. g2_c0 had gap=-36.77 (smaller magnitude) but scored -100.89 (worse).",
+    "explanation": "The relationship between gap magnitude and performance is not monotonic. There is an optimal gap magnitude that is not zero, likely around -50 to -60 for this environment.",
+    "recommendation": "Target a generated_private_gap of -50 to -60 rather than trying to minimize the absolute gap. Use black-box selection feedback to maintain this range.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a landing_shaping bonus has activation condition dist < 0.2 AND speed < 0.2",
+    "observation": "g2_c0 added this bonus but it was almost never activated (episode length ~55, no successful landings). The bonus contributed nothing to performance.",
+    "explanation": "The shaping bonus window was too narrow for the agent's current skill level. The agent never reached the required proximity and low speed simultaneously, making the component dead code.",
+    "recommendation": "Either widen the activation conditions (e.g., dist < 0.5, speed < 0.5) or use a continuous altitude reward that activates earlier in the trajectory.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When adding a survival bonus of +0.05 per timestep alongside other changes",
+    "observation": "g2_c1 added a survival bonus but scored -423.67, the worst ever. The bonus did not prevent catastrophic performance from other poorly-scaled components.",
+    "explanation": "A small survival bonus cannot compensate for major imbalances in progress and stability penalties. The bonus was overwhelmed by other negative signals (-251 progress, -35 stability).",
+    "recommendation": "Isolate survival bonus as a single variable change. Test it with the proven g1_c2 baseline rather than combining it with multiple other adjustments.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When all candidates use the same terminal penalty of -15",
+    "observation": "Despite identical terminal penalties, candidate performance ranged from -100.89 to -423.67. Terminal component alone did not determine success.",
+    "explanation": "Moderate failure penalty (-10 to -30) is a necessary but not sufficient condition for good performance. Shaping components (progress, stability, effort) dominate the reward signal during flight.",
+    "recommendation": "Focus on shaping component coefficients rather than terminal penalty values. Keep terminal at -15 but tune progress and stability scaling independently.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When action_mean is near 1.45 and action_std is 1.09 (heavy main engine use)",
+    "observation": "g2_c1 had action_mean=1.45 (near main engine action=2) and scored -423.67. The agent fired the main engine excessively, causing rapid descent and crash.",
+    "explanation": "The 'always main engine' failure mode is distinct from 'do nothing' collapse. The effort penalty (-0.10 per main engine use) was too weak to discourage overuse, and progress penalties did not prevent crashing.",
+    "recommendation": "Increase main engine effort penalty (e.g., -0.20) and add a condition-based vertical speed penalty that activates when the main engine is fired at low altitude.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When progress:stability ratio is 30.8:1",
+    "observation": "g2_c0 had progress=-118.55 and stability=-3.85 (30.8:1 ratio) and scored -100.89. g1_c2 had 14.4:1 ratio and scored -84.16.",
+    "explanation": "A higher ratio means progress dominates the reward signal, causing the agent to focus on moving toward the pad at the expense of orientation control, leading to crashes.",
+    "recommendation": "Target a progress:stability ratio of approximately 15:1. This can be achieved by keeping distance penalty at -0.8 and angle penalty at -0.6, or by adjusting both coefficients proportionally.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  }
+]

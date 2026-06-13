@@ -1,0 +1,291 @@
+Structured evidence for this generation:
+{
+  "generation": 2,
+  "num_candidates": 4,
+  "num_ok": 4,
+  "top_candidates": [
+    {
+      "candidate_id": "g2_c0",
+      "parent_ids": [
+        "g1_c2",
+        "g1_c1"
+      ],
+      "status": "ok",
+      "selection_score": -100.88905492214381,
+      "private_eval_return": -100.88905492214381,
+      "generated_return": -137.65416099302732,
+      "generated_minus_private": -36.765106070883505,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": -36.765106070883505,
+        "action_mean": 0.11377245508982035,
+        "action_std": 0.31753469661228395,
+        "episode_length_mean": 55.666666666666664,
+        "component_returns": {
+          "progress": -118.55204806623352,
+          "stability": -3.848779593460494,
+          "effort": -0.25333333333333335,
+          "terminal": -15.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    # Stronger linear distance penalty: -1.0 * dist for strong gradient at all distances\n    dist_penalty = -1.0 * dist\n    # Speed penalty: penalize total speed and vertical speed separately\n    speed_penalty = -0.5 * speed - 0.4 * abs(vy)\n    # Extra vertical speed penalty when close to ground (y < 0.3)\n    if y < 0.3:\n        speed_penalty -= 1.0 * abs(vy)\n    # Small positive reward for being close to pad with low speed (shaped landing bonus)\n    landing_shaping = 0.0\n    if dist < 0.2 and speed < 0.2:\n        landing_shaping = 0.5 * (1.0 - dist / 0.2) * (1.0 - speed / 0.2)\n    progress = dist_penalty + speed_penalty + landing_shaping\n    progress = max(-5.0, min(0.5, progress))\n\n    # --- Stability component: maintain upright orientation ---\n    angle_penalty = -0.8 * abs(angle)\n    ang_vel_penalty = -0.15 * abs(ang_vel)\n    # When near ground (y < 0.3) and tilted significantly, add extra penalty\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = angle_penalty + ang_vel_penalty\n    stability = max(-3.0, min(0.0, stability))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_",
+      "llm_rationale": "This candidate builds on g1_c2's successful structure (linear distance penalty, moderate failure penalty, strong progress shaping) while incorporating several targeted improvements based on memory lessons and feedback analysis. Key changes: (1) Increased distance penalty from -0.8*dist to -1.0*dist for stronger gradient, addressing the lesson that linear penalties outperform exponential caps. (2) Added landing_shaping bonus near the pad to provide positive reinforcement for precise approach, potentially preventing the \"do nothing\" collapse. (3) Increased angle penalty from -0.6 to -0.8 and ground-proximity angle penalty from -0.5 to -0.6 to give stability more influence (reducing the 14:1 progress:stability imbalance). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to encourage more active engine use while still penalizing waste. (5) Maintained strong ground-proximity vertical speed penalty (-1.0*abs(vy)) to prevent crashes. The terminal component stays at -15.0 (modera"
+    },
+    {
+      "candidate_id": "g2_c3",
+      "parent_ids": [
+        "g1_c2",
+        "g1_c1"
+      ],
+      "status": "ok",
+      "selection_score": -195.78630440617198,
+      "private_eval_return": -195.78630440617198,
+      "generated_return": -150.1392788764225,
+      "generated_minus_private": 45.64702552974947,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 45.64702552974947,
+        "action_mean": 0.9428571428571428,
+        "action_std": 1.2860317068487883,
+        "episode_length_mean": 70.0,
+        "component_returns": {
+          "progress": -110.26819063456382,
+          "stability": -23.72442157519205,
+          "effort": -1.1466666666666672,
+          "terminal": -15.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: strong gradient toward pad, gentle speed penalty ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    \n    # Linear distance penalty for strong gradient at all distances (lesson: linear outperforms exponential)\n    dist_penalty = -1.0 * dist\n    # Speed penalty: moderate overall, but extra vertical penalty near ground\n    speed_penalty = -0.4 * speed\n    if y < 0.3:\n        speed_penalty -= 0.6 * abs(vy)  # extra vertical speed penalty near ground\n    progress = dist_penalty + speed_penalty\n    # Bound to prevent extreme negative values from dominating\n    progress = max(-4.0, min(0.0, progress))\n\n    # --- Stability component: upright orientation and low angular velocity ---\n    # Stronger angle penalty (lesson: increase stability scaling)\n    angle_penalty = -0.8 * abs(angle) - 0.15 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = max(-3.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        ",
+      "llm_rationale": "This candidate builds on g1_c2's successful structure with targeted improvements based on feedback. Key changes: (1) Increased linear distance penalty coefficient from -0.8 to -1.0 to provide stronger gradient (lesson: linear outperforms exponential, and stronger progress shaping helps). (2) Reduced overall speed penalty from -0.5 to -0.4 while keeping the ground-proximity vertical speed penalty, maintaining crash prevention focus. (3) Increased angle penalty from -0.6 to -0.8 to better balance the progress-stability ratio (currently ~14:1, targeting ~10:1). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to avoid discouraging engine use while still penalizing waste. The terminal component remains at +100/-15, consistent with the moderate failure penalty lesson. This design aims for negative generated_private_gap (conservative shaping) while providing stronger guidance signals to prevent action collapse."
+    },
+    {
+      "candidate_id": "g2_c2",
+      "parent_ids": [
+        "g1_c2",
+        "g1_c1"
+      ],
+      "status": "ok",
+      "selection_score": -244.63219765882215,
+      "private_eval_return": -244.63219765882215,
+      "generated_return": -185.78603810376137,
+      "generated_minus_private": 58.84615955506078,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 58.84615955506078,
+        "action_mean": 0.15492957746478872,
+        "action_std": 0.39886766925369843,
+        "episode_length_mean": 71.0,
+        "component_returns": {
+          "progress": -121.70087487191235,
+          "stability": -48.67182989851572,
+          "effort": -0.4133333333333335,
+          "terminal": -15.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    # Linear distance penalty for strong gradient at all distances\n    dist_penalty = -1.0 * dist\n    # Speed penalty: penalize high speed, especially vertical speed near ground\n    speed = math.sqrt(vx * vx + vy * vy)\n    speed_penalty = -0.5 * speed\n    # Additional vertical speed penalty when close to ground\n    if y < 0.3:\n        speed_penalty -= 0.8 * abs(vy)\n    progress = dist_penalty + speed_penalty\n    # Bound to reasonable range\n    progress = max(-6.0, min(0.0, progress))\n\n    # --- Stability component: maintain upright orientation ---\n    angle_penalty = -0.8 * abs(angle) - 0.2 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = max(-3.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.1 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), c",
+      "llm_rationale": "This candidate builds on g1_c2's successful approach with targeted improvements based on the feedback analysis. Key changes: (1) Increased linear distance penalty from -0.8 to -1.0 to provide stronger gradient (supported by the lesson that linear outperforms exponential and that progress should be the dominant signal). (2) Increased angle penalty from -0.6 to -0.8 and ground-proximity angle penalty from -0.5 to -0.6 to better balance the progress-stability ratio (currently ~14:1, this moves toward ~10:1). (3) Slightly reduced effort penalties (-0.15→-0.12 main, -0.05→-0.04 side) to encourage active engine use and prevent the \"do nothing\" action collapse observed in two candidates. (4) Maintained the proven moderate failure penalty (-15) and success reward (+100). The overall structure keeps g1_c2's targeted complexity (ground-proximity speed penalty, proximity angle penalty) which showed the best performance in generation 1."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g2_c3",
+      "parent_ids": [
+        "g1_c2",
+        "g1_c1"
+      ],
+      "status": "ok",
+      "selection_score": -195.78630440617198,
+      "private_eval_return": -195.78630440617198,
+      "generated_return": -150.1392788764225,
+      "generated_minus_private": 45.64702552974947,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 45.64702552974947,
+        "action_mean": 0.9428571428571428,
+        "action_std": 1.2860317068487883,
+        "episode_length_mean": 70.0,
+        "component_returns": {
+          "progress": -110.26819063456382,
+          "stability": -23.72442157519205,
+          "effort": -1.1466666666666672,
+          "terminal": -15.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: strong gradient toward pad, gentle speed penalty ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    \n    # Linear distance penalty for strong gradient at all distances (lesson: linear outperforms exponential)\n    dist_penalty = -1.0 * dist\n    # Speed penalty: moderate overall, but extra vertical penalty near ground\n    speed_penalty = -0.4 * speed\n    if y < 0.3:\n        speed_penalty -= 0.6 * abs(vy)  # extra vertical speed penalty near ground\n    progress = dist_penalty + speed_penalty\n    # Bound to prevent extreme negative values from dominating\n    progress = max(-4.0, min(0.0, progress))\n\n    # --- Stability component: upright orientation and low angular velocity ---\n    # Stronger angle penalty (lesson: increase stability scaling)\n    angle_penalty = -0.8 * abs(angle) - 0.15 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = max(-3.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        ",
+      "llm_rationale": "This candidate builds on g1_c2's successful structure with targeted improvements based on feedback. Key changes: (1) Increased linear distance penalty coefficient from -0.8 to -1.0 to provide stronger gradient (lesson: linear outperforms exponential, and stronger progress shaping helps). (2) Reduced overall speed penalty from -0.5 to -0.4 while keeping the ground-proximity vertical speed penalty, maintaining crash prevention focus. (3) Increased angle penalty from -0.6 to -0.8 to better balance the progress-stability ratio (currently ~14:1, targeting ~10:1). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to avoid discouraging engine use while still penalizing waste. The terminal component remains at +100/-15, consistent with the moderate failure penalty lesson. This design aims for negative generated_private_gap (conservative shaping) while providing stronger guidance signals to prevent action collapse."
+    },
+    {
+      "candidate_id": "g2_c2",
+      "parent_ids": [
+        "g1_c2",
+        "g1_c1"
+      ],
+      "status": "ok",
+      "selection_score": -244.63219765882215,
+      "private_eval_return": -244.63219765882215,
+      "generated_return": -185.78603810376137,
+      "generated_minus_private": 58.84615955506078,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 58.84615955506078,
+        "action_mean": 0.15492957746478872,
+        "action_std": 0.39886766925369843,
+        "episode_length_mean": 71.0,
+        "component_returns": {
+          "progress": -121.70087487191235,
+          "stability": -48.67182989851572,
+          "effort": -0.4133333333333335,
+          "terminal": -15.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    # Linear distance penalty for strong gradient at all distances\n    dist_penalty = -1.0 * dist\n    # Speed penalty: penalize high speed, especially vertical speed near ground\n    speed = math.sqrt(vx * vx + vy * vy)\n    speed_penalty = -0.5 * speed\n    # Additional vertical speed penalty when close to ground\n    if y < 0.3:\n        speed_penalty -= 0.8 * abs(vy)\n    progress = dist_penalty + speed_penalty\n    # Bound to reasonable range\n    progress = max(-6.0, min(0.0, progress))\n\n    # --- Stability component: maintain upright orientation ---\n    angle_penalty = -0.8 * abs(angle) - 0.2 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = max(-3.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.1 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), c",
+      "llm_rationale": "This candidate builds on g1_c2's successful approach with targeted improvements based on the feedback analysis. Key changes: (1) Increased linear distance penalty from -0.8 to -1.0 to provide stronger gradient (supported by the lesson that linear outperforms exponential and that progress should be the dominant signal). (2) Increased angle penalty from -0.6 to -0.8 and ground-proximity angle penalty from -0.5 to -0.6 to better balance the progress-stability ratio (currently ~14:1, this moves toward ~10:1). (3) Slightly reduced effort penalties (-0.15→-0.12 main, -0.05→-0.04 side) to encourage active engine use and prevent the \"do nothing\" action collapse observed in two candidates. (4) Maintained the proven moderate failure penalty (-15) and success reward (+100). The overall structure keeps g1_c2's targeted complexity (ground-proximity speed penalty, proximity angle penalty) which showed the best performance in generation 1."
+    },
+    {
+      "candidate_id": "g2_c1",
+      "parent_ids": [
+        "g1_c2",
+        "g1_c1"
+      ],
+      "status": "ok",
+      "selection_score": -423.6701716742494,
+      "private_eval_return": -423.6701716742494,
+      "generated_return": -306.0204010907846,
+      "generated_minus_private": 117.64977058346477,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 117.64977058346477,
+        "action_mean": 1.4481481481481482,
+        "action_std": 1.089978039320185,
+        "episode_length_mean": 90.0,
+        "component_returns": {
+          "progress": -251.34839836045512,
+          "stability": -34.61533606366283,
+          "effort": -5.056666666666655,
+          "terminal": -15.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: strong shaping toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    # Linear distance penalty for strong gradient at all distances\n    dist_penalty = -1.0 * dist\n    # Speed penalty: penalize high speed, especially vertical speed near ground\n    speed_penalty = -0.5 * speed - 0.3 * abs(vy)\n    if y < 0.3:\n        speed_penalty -= 1.0 * abs(vy)\n    # Small survival bonus to encourage longer flights and exploration\n    survival_bonus = 0.05\n    progress = dist_penalty + speed_penalty + survival_bonus\n    # Keep progress bounded but allow negative values to dominate\n    progress = max(-6.0, min(1.0, progress))\n\n    # --- Stability component: maintain upright orientation ---\n    angle_penalty = -0.8 * abs(angle) - 0.2 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.2:\n        angle_penalty -= 0.8\n    stability = max(-4.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.10\n    elif action in [1, 3]:  # side engines\n        effort = -0.03\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clip to absolute bound\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n    ",
+      "llm_rationale": "This candidate builds on g1_c2's successful pattern (best performer at -84.16) with targeted improvements informed by feedback and memory lessons. Key changes: (1) Increased distance penalty from -0.8*dist to -1.0*dist for stronger gradient, supporting the lesson that linear distance penalties outperform exponential ones. (2) Added a small survival bonus (+0.05) to counteract the \"do nothing\" collapse seen in other candidates, encouraging the agent to stay alive and explore. (3) Increased angle penalty from -0.6 to -0.8 and extra ground-angle penalty from -0.5 to -0.8 to improve stability shaping, addressing the progress-stability imbalance. (4) Reduced effort penalties slightly (-0.10 main, -0.03 side) to avoid discouraging engine use while still penalizing waste. (5) Maintained g1_c2's ground-proximity speed penalty structure (-1.0*abs(vy) near ground) which was effective. The overall design keeps the negative generated_private_gap pattern (conservative shaping) that correlated with "
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 1
+
+## Latest reflection
+## Reflection on Generation 1
+
+### 1. What worked
+
+- **Candidate g1_c2 significantly improved over all generation 0 candidates**: With private_eval_return = -84.16, it outperformed the previous best (g0_c0 at -122.83) by ~38 points, a meaningful improvement of ~31%. This is the first candidate to break the -100 barrier.
+- **g1_c2 has the smallest generated_private_gap (-69.65)** among all candidates in both generations, but notably this gap is *negative* (generated_return is worse than private). This is a new pattern - the candidate's own reward function is *more pessimistic* than the hidden evaluator, suggesting the shaping signals are providing useful guidance that the hidden evaluator values more highly.
+- **All 4 candidates passed validation** and had valid code, maintaining the 100% validation rate from generation 0.
+- **g1_c2's component returns show better balance**: progress (-129.52) is still the dominant negative term, but stability (-9.02) and effort (-0.27) are much more moderate. The terminal component (-15.0) is consistent with the moderate penalty approach.
+- **g1_c2 has non-zero action diversity** (action_mean=0.07, action_std=0.26), indicating the agent is exploring multiple actions rather than collapsing to a single action.
+- **g1_c2 explicitly addressed the key failure mode** from generation 0: it strengthened progress shaping (exponential distance, stronger vertical speed penalty near ground), increased angle penalty, and used moderate effort penalties - all aligned with the lessons from memory.
+
+### 2. What failed
+
+- **All candidates still have negative private_eval_return**, meaning none achieved successful landings. The best score (-84.16) is still far from positive.
+- **g1_c0 and g1_c1 performed worse than g0_c0** (the generation 0 best), with scores of -118.49 and -111.04 respectively. This is a regression - changes made in these candidates hurt more than helped.
+- **g1_c3 performed worst** at -140.55, despite having similar structure to g1_c2. The key difference? g1_c3 used exponential distance shaping with a cap at -0.8 * (1 - exp(-2*dist)), while g1_c2 used a linear -0.8*dist penalty. The linear version apparently provides stronger gradient.
+- **g1_c0 and g1_c1 have large positive generated_private_gaps** (54.05 and 39.41 respectively), meaning their own reward functions are *more optimistic* than the hidden evaluator. This is the opposite problem from g1_c2 - these candidates are overestimating reward.
+- **g1_c0 has action_mean=0.88 and action_std=1.22**, indicating action collapse toward main engine (action=2). Its effort component (-1.37) is the most negative of all candidates, yet the agent still fired engines heavily. This confirms the lesson that effort penalties alone can't prevent engine overuse when shaping signals are weak.
+- **g1_c1 and g1_c3 have action_std=0.0**, meaning zero action diversity - the agent is doing nothing (action_mean=0.0). This is a different failure mode: the reward function is so discouraging that the agent has learned to do nothing rather than attempt the task.
+- **Progress component dominates all candidates**: Even in g1_c2 (the best), progress is -129.52 while the next largest component (stability) is only -9.02. This 14:1 ratio suggests progress is still overwhelming other signals, though less severely than in generation 0.
+
+### 3. What to try next
+
+- **Analyze g1_c2's success more deeply**: Its negative generated_private_gap is unique. The hidden evaluator values its shaping more than the candidate itself thinks. This suggests the progress and stability components are well-aligned with the evaluator's priorities. **Double down on this approach** - strengthen the components that g1_c2 uses while keeping the overall structure.
+- **Increase progress scaling further**: g1_c2 used -0.8*dist, which outperformed g1_c3's exponential cap. Try -1.0*dist or -1.2*dist to provide even stronger gradient. The hidden evaluator seems to reward progress heavily.
+- **Add a survival bonus**: Episode lengths are still short (59-75 steps). Add a small positive reward per timestep (e.g., +0.1 or +0.05) to encourage longer flights. This could help the agent learn to avoid crashes and explore more.
+- **Fix the action collapse problem**: Two candidates had action_std=0.0 (no action diversity). The issue may be that the shaping signals are too weak relative to the terminal penalty when the agent isn't near the pad. Consider adding a small positive reward for maintaining altitude (y > 0.3) to encourage stable hovering before attempting landing.
+- **Reduce the progress-stability imbalance**: Progress is 14x more negative than stability. While progress should be the dominant signal, the ratio is extreme. Try increasing stability scaling (e.g., from -0.6*abs(angle) to -1.0*abs(angle)) to give it more influence.
+- **Consider a two-phase reward**: Phase 1 (high altitude): focus on stability and altitude maintenance. Phase 2 (low altitude, y < 0.3): focus on soft landing and precise positioning. This could prevent the "do nothing" behavior at high altitude.
+- **Test g1_c2's structure with stronger effort penalties**: g1_c2 has moderate effort (-0.15 main, -0.05 side) but action_mean=0.07 suggests the agent is barely using engines. Try slightly lower effort penalties (-0.10 main, -0.03 side) to encourage more active control while still penalizing waste.
+
+### 4. Which lessons seem supported or contradicted
+
+**Supported lessons:**
+- **Smaller generated_private_gap correlates with higher performance** - g1_c2 has the smallest absolute gap (-69.65) and the best score (-84.16). The gap direction matters too: negative gaps (candidate is pessimistic) seem better than positive gaps (candidate is optimistic).
+- **Moderate failure penalty (-10 to -30) outperforms harsh penalties** - g1_c2 uses -15, consistent with the lesson. All top candidates used -15 or -25, and the worst candidate (g1_c3) also used -15, suggesting the penalty magnitude alone isn't the key factor.
+- **Progress and stability components are key drivers** - g1_c2's stronger progress shaping (-0.8*dist vs. earlier -0.5*dist) directly contributed to its improvement, supporting the lesson to increase shaping magnitudes.
+- **Action diversity matters** - g1_c2 (action_std=0.26) outperformed g1_c1 and g1_c3 (action_std=0.0). The "do nothing" collapse is clearly detrimental.
+- **Don't rely on validation success** - all candidates passed validation, yet performance varied dramatically from -84 to -140. Validation is not a quality indicator.
+
+**Contradicted lessons:**
+- **Complex shaping is not always bad** - g1_c2 has *more* complexity than g1_c0 (which attempted delta shaping), yet g1_c2 performed better. The lesson that "complex shaping leads to poor performance" is nuanced: *targeted* complexity (exponential distance, ground-proximity velocity penalties) can help, while *poorly scaled* complexity (delta shaping with wrong scaling) hurts.
+- **Heavy effort penalties don't necessarily reduce engine usage** - confirmed again: g1_c0 had the highest effort penalty (-1.37 total) but still had action_mean=0.88 (near main engine). The lesson holds: effort penalties alone don't shape behavior when other signals are weak.
+- **The "minimal set" repair rule is contradicted** - g1_c2, the best candidate, has a more complex reward function with multiple specialized penalties (ground-proximity speed, exponential distance, extra angle penalty near ground). The best approach may be *targeted complexity* rather than minimalism.
+- **"Increase angle penalty scaling" lesson partially contradicted** - g1_c2 increased angle penalty to -0.6 (from -0.5 in g0_c0), which helped. But g1_c3 also used -0.6 and performed worst. The angle penalty alone isn't decisive - it must be combined with appropriate progress shaping.
+
+**New insights:**
+- **The sign of generated_private_gap matters**: Negative gaps (candidate undervalues its own behavior) correlate with better hidden evaluator scores. Positive gaps (candidate overvalues behavior) correlate with worse scores. This is a new diagnostic signal.
+- **Linear distance penalties may outperform exponential caps**: g1_c2 (linear -0.8*dist) outperformed g1_c3 (exponential -0.8*(1-exp(-2*dist))). The linear version provides stronger gradient at all distances.
+- **Action diversity can collapse in two directions**: either "always main engine" (action_mean=2.0) or "always do nothing" (action_mean=0.0). Both failure modes need different fixes: the first needs stronger progress/stability to incentivize controlled flight, the second needs positive rewards for engagement (survival bonus, altitude maintenance).
+
+## Recent environment lessons
+- failure_mode: Increase the magnitude of dense shaping rewards (e.g., progress scaling from -0.5 to -1.0 or -2.0) so they provide meaningful guidance throughout the episode, rather than relying on terminal rewards to drive learning.
+- reward_pattern: Use generated_private_gap as a primary optimization target. When iterating, prioritize changes that reduce this gap, and analyze the reward structure of candidates with the smallest gaps as starting points.
+- failure_mode: Ensure effort penalties are moderate (e.g., -0.1 to -0.2) and that progress/stability rewards are large enough to incentivize varied action selection. Monitor action_mean and action_std during evaluation to detect collapse early.
+- mutation_rule: When adding effort penalties, ensure that progress and stability rewards are strong enough to keep the agent engaged in the task. Consider a hybrid approach: moderate effort penalties (0.0 to -0.2) combined with stronger positive shaping for desired behavior.
+- repair_rule: Start with a minimal set of well-scaled shaping components (e.g., distance penalty, angle penalty, moderate effort penalty) and validate their contribution to generated_private_gap before adding complexity. Each new term should demonstrably reduce the gap.
+- general: Use a moderate failure penalty (e.g., -10 to -30) rather than very negative values like -50. The penalty should discourage crashes without overwhelming the shaping signals that guide the agent toward success.
+- failure_mode: Strengthen the stability component (e.g., increase angle penalty scaling) and add explicit rewards for maintaining altitude or avoiding ground contact at high speed. Consider a 'survival bonus' that rewards longer episodes to encourage stable flight.
+- reward_pattern: Focus on making the progress and stability components more aligned with the hidden evaluator. Use g0_c0's structure as a baseline and try increasing the scaling factors on these components while monitoring generated_private_gap.
+- general: Do not rely on validation success as an indicator of reward quality. Use private_eval_return and generated_private_gap as the primary metrics for evaluating candidate effectiveness.
+- reward_pattern: When optimizing reward functions, target a negative generated_private_gap by ensuring shaping components are conservative but directional, rather than optimistic. Use black-box selection feedback to monitor and reduce generated/private mismatch.
+- failure_mode: Add a small positive survival bonus per timestep (e.g., +0.05 or +0.1) and consider phase-based rewards that incentivize altitude maintenance at high altitude to prevent 'do nothing' behavior.
+- failure_mode: Strengthen progress and stability components to provide stronger gradient for controlled descent, rather than relying on effort penalties to shape behavior. Ensure shaping signals dominate over terminal penalties.
+- mutation_rule: Use linear distance penalties (e.g., -coeff * dist) rather than exponential or capped formulations to maintain strong gradient throughout the episode.
+- reward_pattern: Prioritize progress shaping as the primary signal, but consider gradually increasing stability scaling (e.g., from -0.6*abs(angle) to -1.0*abs(angle)) to provide more balanced guidance without undermining progress dominance.
+- general: Do not rely on validation success as a signal of reward quality. Use private_eval_return and generated_private_gap as primary quality metrics, and focus on component balance and shaping alignment.
+- reward_pattern: Maintain failure penalties in the moderate range (-10 to -30). Avoid harsh penalties (e.g., -50 or lower) that can dominate the reward signal and discourage exploration.
+- general: Add specialized shaping components that target observed failure modes (e.g., ground-proximity velocity penalties, altitude-dependent angle penalties) rather than relying on minimal component sets. Ensure each component is properly scaled.
+- prompt_rule: When generating reward candidates, explicitly instruct the LLM to produce reward functions that are conservative (slightly pessimistic) rather than optimistic, to achieve negative generated_private_gap. Use examples where conservative shaping outperforms optimistic shaping.
+- repair_rule: If action_std is 0.0, add positive rewards for engagement (survival bonus, altitude maintenance) rather than just adjusting penalties. If action_mean is near 2.0, strengthen progress/stability shaping to incentivize controlled flight.
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_a2f1a9dfbe] type=reward_pattern, confidence=0.6, condition=Candidate uses exponential shaping for progress (progress_reward = -0.8 * (1 - exp(-2*dist))) and bounds all components., recommendation=Use a steeper exponential decay (e.g., -0.5 * (1 - exp(-5*dist))) or cap the distance at a smaller value to reduce the influence of progress on the total reward.
+- [candidate_7103dfc776] type=general, confidence=0.9, condition=Candidate has action_mean=0.0 and action_std=0.0, indicating zero variance in actions across the episode., recommendation=Add a small positive incentive for engine use (e.g., +0.1 for main engine) or reduce the progress/stability penalties to allow occasional engine firing without overwhelming negative reward.
+- [candidate_e4b2cd066d] type=repair_rule, confidence=0.7, condition=Candidate had 0 repair attempts and no validation errors, yet performance is poor., recommendation=Implement a lightweight simulation check during repair that verifies action variance is non-zero and that component magnitudes are within a factor of 2 of each other.
+- [candidate_b80b05f184] type=mutation_rule, confidence=0.8, condition=Candidate relaxed the success condition (wider x tolerance, lower angle requirement) compared to parent., recommendation=When relaxing success conditions, also reduce shaping penalties (especially progress) to allow the agent to explore the terminal state more easily.
+- [candidate_21b02bb7b0] type=prompt_rule, confidence=0.7, condition=LLM rationale explicitly mentions addressing 'short episode length' and 'component imbalance' from memory lessons., recommendation=When memory lessons suggest a problem, recommend more aggressive numerical changes (e.g., halving the dominant component's weight) rather than moderate adjustments.
+
+Relevant environment-level lessons:
+- [environment_47dbd0d028] type=failure_mode, confidence=0.9, condition=action_mean is near 2.0 and action_std is high, recommendation=Strengthen progress and stability components to provide stronger gradient for controlled descent, rather than relying on effort penalties to shape behavior. Ensure shaping signals dominate over terminal penalties.
+- [environment_ef3cc0a43f] type=mutation_rule, confidence=0.75, condition=progress component uses linear distance penalty, recommendation=Use linear distance penalties (e.g., -coeff * dist) rather than exponential or capped formulations to maintain strong gradient throughout the episode.
+- [environment_ba96cd8f9e] type=reward_pattern, confidence=0.7, condition=component returns show a large imbalance between progress and stability, recommendation=Prioritize progress shaping as the primary signal, but consider gradually increasing stability scaling (e.g., from -0.6*abs(angle) to -1.0*abs(angle)) to provide more balanced guidance without undermining progress dominance.
+- [environment_b4bda18bbf] type=general, confidence=1.0, condition=validation passes but performance varies widely, recommendation=Do not rely on validation success as a signal of reward quality. Use private_eval_return and generated_private_gap as primary quality metrics, and focus on component balance and shaping alignment.
+- [environment_c6e431d62d] type=reward_pattern, confidence=0.85, condition=moderate failure penalty (-15 to -25) is used, recommendation=Maintain failure penalties in the moderate range (-10 to -30). Avoid harsh penalties (e.g., -50 or lower) that can dominate the reward signal and discourage exploration.
+- [environment_40406b277c] type=general, confidence=0.8, condition=targeted complexity improves performance over minimalism, recommendation=Add specialized shaping components that target observed failure modes (e.g., ground-proximity velocity penalties, altitude-dependent angle penalties) rather than relying on minimal component sets. Ensure each component is properly scaled.
+- [environment_73f11583f6] type=prompt_rule, confidence=0.75, condition=generated_private_gap is positive and large, recommendation=When generating reward candidates, explicitly instruct the LLM to produce reward functions that are conservative (slightly pessimistic) rather than optimistic, to achieve negative generated_private_gap. Use examples where conservative shaping outperforms optimistic shaping.
+- [environment_572c74eb20] type=repair_rule, confidence=0.9, condition=action diversity collapses to zero, recommendation=If action_std is 0.0, add positive rewards for engagement (survival bonus, altitude maintenance) rather than just adjusting penalties. If action_mean is near 2.0, strengthen progress/stability shaping to incentivize controlled flight.
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

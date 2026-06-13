@@ -1,0 +1,41 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 1
+Candidate ID: g1_c1
+
+Structured evidence:
+{
+  "generation": 1,
+  "candidate_id": "g1_c1",
+  "parent_ids": [
+    "g0_c0",
+    "g0_c1"
+  ],
+  "status": "ok",
+  "selection_score": -111.04183195821251,
+  "private_eval_return": -111.04183195821251,
+  "generated_return": -71.63191109288344,
+  "generated_minus_private": 39.40992086532907,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 39.40992086532907,
+    "action_mean": 0.0,
+    "action_std": 0.0,
+    "episode_length_mean": 59.0,
+    "component_returns": {
+      "progress": -43.65588438839745,
+      "stability": -12.976026704485994,
+      "effort": 0.0,
+      "terminal": -15.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    # Use a moderate negative distance penalty; exponential shaping for smooth gradient\n    progress = -0.8 * dist\n\n    # --- Stability component: encourage upright orientation and low angular velocity ---\n    # Angle penalty: 0 when upright, -0.5 per radian (typical angle range ~[-π, π])\n    angle_penalty = -0.5 * abs(angle)\n    # Angular velocity penalty: encourage stable rotation\n    ang_vel_penalty = -0.2 * abs(ang_vel)\n    # When near ground (y < 0.2), add extra penalty for high speed to prevent crash\n    near_ground = y < 0.2\n    speed = math.sqrt(vx * vx + vy * vy)\n    ground_speed_penalty = -0.6 * speed if near_ground else 0.0\n    stability = angle_penalty + ang_vel_penalty + ground_speed_penalty\n    # Clip stability to a reasonable range\n    stability = max(-2.0, min(0.0, stability))\n\n    # --- Effort component: penalize engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n    # Moderate penalties: -0.2 per main engine use, -0.05 per side engine use\n    effort = -0.2 * main_engine - 0.05 * side_engine\n\n    # --- Terminal component: reward successful landing or penalize crash ---\n    terminal = 0.0\n    if done:\n        # Check for successful landing\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.1 and abs(y) < 0.1\n        soft_landing = abs(vy) < 0.1 and abs(vx) < 0.1\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and soft_landing and upright:\n            terminal = 100.0   # large success bonus\n        else:\n            terminal = -15.0   # moderate crash/out-of-bounds penalty\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "reward_generation generated code"
+}
+
+Reflection report:
+reward_generation generated code
+
+Return JSON array of lessons. Do not include code blocks.

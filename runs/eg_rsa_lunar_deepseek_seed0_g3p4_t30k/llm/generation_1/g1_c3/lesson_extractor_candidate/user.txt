@@ -1,0 +1,41 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 1
+Candidate ID: g1_c3
+
+Structured evidence:
+{
+  "generation": 1,
+  "candidate_id": "g1_c3",
+  "parent_ids": [
+    "g0_c0",
+    "g0_c1"
+  ],
+  "status": "ok",
+  "selection_score": -140.54595044831507,
+  "private_eval_return": -140.54595044831507,
+  "generated_return": -69.6774706426561,
+  "generated_minus_private": 70.86847980565896,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 70.86847980565896,
+    "action_mean": 0.0,
+    "action_std": 0.0,
+    "episode_length_mean": 64.66666666666667,
+    "component_returns": {
+      "progress": -41.32950584611706,
+      "stability": -13.347964796539037,
+      "effort": 0.0,
+      "terminal": -15.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]                # normalized x position\n    y = obs[1]                # normalized y position\n    vx = obs[2]               # normalized x velocity\n    vy = obs[3]               # normalized y velocity\n    angle = obs[4]            # raw angle in radians\n    ang_vel = obs[5]          # normalized angular velocity\n    left_leg = obs[6]         # 0 or 1\n    right_leg = obs[7]        # 0 or 1\n\n    # --- Progress: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    # Use exponential shaping so progress is bounded and smooth\n    progress_reward = -0.8 * (1.0 - math.exp(-2.0 * dist))\n\n    # --- Stability: encourage upright orientation and low angular velocity ---\n    # Angle penalty grows quickly for large angles\n    angle_penalty = -0.6 * min(abs(angle), 1.0)\n    ang_vel_penalty = -0.3 * min(abs(ang_vel), 1.0)\n    # Extra penalty for high speed close to ground (danger zone)\n    ground_proximity = max(0.0, 1.0 - y / 0.3)  # 0 when high, 1 when at ground\n    speed = math.sqrt(vx * vx + vy * vy)\n    rough_landing_penalty = -0.8 * ground_proximity * min(speed, 1.0)\n    stability_reward = angle_penalty + ang_vel_penalty + rough_landing_penalty\n    # Clip stability to [-2.0, 0.0] to keep it bounded\n    stability_reward = max(-2.0, min(0.0, stability_reward))\n\n    # --- Effort: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n    effort_reward = -0.15 * main_engine - 0.05 * side_engine\n\n    # --- Terminal: success bonus or failure penalty ---\n    terminal_reward = 0.0\n    if done:\n        # Success condition: both legs on ground, near pad, low speed, upright\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = (abs(x) < 0.12 and y < 0.1)\n        low_speed = (abs(vx) < 0.1 and abs(vy) < 0.1)\n        upright = abs(angle) < 0.25\n        if both_legs and near_pad and low_speed and upright:\n            terminal_reward = 100.0\n        else:\n            # Moderate failure penalty to avoid dominating shaping signals\n            terminal_reward = -15.0\n\n    # Combine all components\n    total_reward = progress_reward + stability_reward + effort_reward + terminal_reward\n\n    # Clamp to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress_reward,\n        \"stability\": stability_reward,\n        \"effort\": effort_reward,\n        \"terminal\": terminal_reward,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "This candidate builds on the best-performing parent (g0_c0) with targeted adjustments based on feedback and memory lessons. Key changes: (1) Progress uses exponential shaping to bound its magnitude and prevent it from dominating other components, addressing the component imbalance issue. (2) Stability includes a ground-proximity modulated velocity penalty to discourage high-speed crashes near the ground, directly addressing the short episode length failure mode. (3) Effort penalty is moderate (-0.15 for main, -0.05 for side) to avoid action collapse while still encouraging fuel efficiency. (4) Terminal failure penalty is -15 (moderate, between -10 and -50) to discourage crashes without overwhelming shaping signals, following the lesson that moderate penalties outperform harsh ones. (5) All components are bounded to keep dynamic ranges similar, reducing the generated_private_gap. The success condition is slightly relaxed (wider x tolerance, lower angle requirement) to make positive terminal rewards more attainable."
+}
+
+Reflection report:
+This candidate builds on the best-performing parent (g0_c0) with targeted adjustments based on feedback and memory lessons. Key changes: (1) Progress uses exponential shaping to bound its magnitude and prevent it from dominating other components, addressing the component imbalance issue. (2) Stability includes a ground-proximity modulated velocity penalty to discourage high-speed crashes near the ground, directly addressing the short episode length failure mode. (3) Effort penalty is moderate (-0.15 for main, -0.05 for side) to avoid action collapse while still encouraging fuel efficiency. (4) Terminal failure penalty is -15 (moderate, between -10 and -50) to discourage crashes without overwhelming shaping signals, following the lesson that moderate penalties outperform harsh ones. (5) All components are bounded to keep dynamic ranges similar, reducing the generated_private_gap. The success condition is slightly relaxed (wider x tolerance, lower angle requirement) to make positive terminal rewards more attainable.
+
+Return JSON array of lessons. Do not include code blocks.

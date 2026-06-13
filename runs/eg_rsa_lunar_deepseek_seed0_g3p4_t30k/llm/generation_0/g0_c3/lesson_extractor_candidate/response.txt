@@ -1,0 +1,38 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The candidate's generated_return (-343.43) is much higher than private_eval_return (-620.11), yet component_returns show progress is extremely negative (-237.2) and terminal is -50.0.",
+    "observation": "The generated reward overestimates performance due to a large generated_private_gap of 276.68. The progress component penalizes distance linearly and heavily penalizes speed, while the terminal component only gives +100 on perfect landing conditions but -50 on any failure, causing a strong negative bias that the generator failed to offset.",
+    "explanation": "The reward is dominated by negative penalties from distance, speed, and angle, and the terminal reward is rarely positive because the landing conditions (both legs, near pad, low speed, upright) are too strict. This leads to a net negative reward in most episodes, but the generated_return is higher than private_eval because the private evaluator likely uses a different success metric that penalizes crashes even more severely.",
+    "recommendation": "Reduce the magnitude of negative penalties (e.g., use exponential distance shaping with a smaller coefficient) and relax the terminal success conditions (e.g., allow wider x tolerance or lower leg contact threshold) to make positive terminal rewards more attainable. Also, balance the component weights so progress and terminal contributions are not overshadowed by effort and stability penalties.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "action_std is 0.0 and action_mean is 2.0, meaning the agent always selects action 2 (main engine).",
+    "observation": "The action distribution has collapsed to a single deterministic action (main engine). This indicates the reward signal does not provide sufficient differentiation between actions, causing the policy to exploit a single action that yields the highest (but still low) reward.",
+    "explanation": "The effort penalty is -0.3 for main engine and -0.1 for side engines, but the progress and stability penalties dominate, so the agent learns that firing the main engine constantly is the least bad option. The reward structure does not incentivize diverse actions or proper throttle control.",
+    "recommendation": "Redesign the effort penalty to be more nuanced, e.g., penalize continuous firing or reward fuel-efficient trajectories. Additionally, introduce a shaping term that rewards smooth action transitions or penalizes action repetition to prevent collapse.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "Component returns: progress=-237.2, stability=-26.6, effort=-29.6, terminal=-50.0. Progress is an order of magnitude more negative than others.",
+    "observation": "The progress component is severely negative, dominating the total reward and masking contributions from stability, effort, and terminal components. This imbalance makes the reward signal noisy and hard for the policy to optimize.",
+    "explanation": "The progress component combines distance penalty (-0.5*dist) and speed penalties (vertical/horizontal), which together produce large negative values (around -200). Meanwhile, stability and effort are small negative constants, and terminal is rarely positive. The agent cannot distinguish which behaviors improve the overall score because progress overwhelms the signal.",
+    "recommendation": "Scale down the progress component by a factor of 10-100, or use a non-linear transformation (e.g., exponential decay) to bound its contribution. Ensure each component has a similar dynamic range (e.g., between -10 and 0) so that the policy can learn from all signals.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "This candidate was generated from scratch (parent_ids: []), and it shows a common pattern of over-penalizing distance and speed while setting strict terminal conditions.",
+    "observation": "The initial generation produced a reward that is too negative overall, with sparse positive terminal reward. This is a typical failure mode for naive reward design in landing tasks.",
+    "explanation": "Without a parent to inherit balanced components, the generator defaulted to a conservative design that penalizes all deviations heavily. The strict terminal conditions make positive rewards rare, so the policy sees mostly negative feedback.",
+    "recommendation": "When generating from scratch, include a warm-start template that has balanced component scales and realistic terminal conditions (e.g., wider tolerances, lower leg contact threshold). Alternatively, use a parent candidate that has better component balance.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  }
+]

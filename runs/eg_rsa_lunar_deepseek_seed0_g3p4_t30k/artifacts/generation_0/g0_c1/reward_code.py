@@ -1,0 +1,73 @@
+def compute_reward(obs, action, next_obs, done, info):
+    """
+    Reward shaping for Lunar Lander.
+    Encourages the lander to move toward the landing pad (0,0), maintain stable upright orientation,
+    land softly with both legs contacting the ground, and minimize fuel usage.
+    """
+    # Unpack observations
+    x, y = obs[0], obs[1]                # normalized position
+    vx, vy = obs[2], obs[3]              # normalized velocity
+    angle = obs[4]                        # raw angle in radians
+    ang_vel = obs[5]                      # normalized angular velocity
+    left_leg = obs[6]                     # 0 or 1
+    right_leg = obs[7]                    # 0 or 1
+
+    # Next obs for velocity change detection
+    next_x, next_y = next_obs[0], next_obs[1]
+    next_vx, next_vy = next_obs[2], next_obs[3]
+
+    # --- Progress component: encourage moving toward landing pad (0,0) ---
+    dist = math.sqrt(x * x + y * y)
+    # Reward reduction in distance
+    prev_dist = math.sqrt(next_x * next_x + next_y * next_y)
+    progress = (prev_dist - dist) * 2.0  # positive when moving closer
+    # Clip to avoid extreme values
+    progress = max(-1.0, min(1.0, progress))
+
+    # --- Stability component: penalize angle and angular velocity ---
+    angle_penalty = -abs(angle) * 0.5
+    ang_vel_penalty = -abs(ang_vel) * 0.2
+    stability = angle_penalty + ang_vel_penalty
+    # Bound stability to reasonable range
+    stability = max(-2.0, min(0.0, stability))
+
+    # --- Effort component: penalize engine usage ---
+    # action: 0=do nothing, 1=left, 2=main, 3=right
+    main_engine = 1.0 if action == 2 else 0.0
+    side_engine = 1.0 if action in [1, 3] else 0.0
+    effort = -0.3 * main_engine - 0.1 * side_engine
+
+    # --- Terminal component: large reward for successful landing ---
+    terminal_reward = 0.0
+    if done:
+        # Check if it's a success: both legs on ground, near pad, low velocity
+        both_legs = (left_leg > 0.5 and right_leg > 0.5)
+        near_pad = abs(x) < 0.1 and abs(y) < 0.1
+        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1
+        upright = abs(angle) < 0.2
+
+        if both_legs and near_pad and low_speed and upright:
+            terminal_reward = 100.0
+        else:
+            # Crash or out of bounds: negative terminal reward
+            terminal_reward = -50.0
+
+    # --- Additional shaping: velocity penalty for rough landing ---
+    vel_mag = math.sqrt(vx * vx + vy * vy)
+    velocity_penalty = -vel_mag * 0.5
+    velocity_penalty = max(-1.0, min(0.0, velocity_penalty))
+
+    # Combine all components
+    total_reward = progress + stability + effort + terminal_reward + velocity_penalty
+
+    # Clamp total reward to safe bounds
+    total_reward = max(-1000.0, min(1000.0, total_reward))
+
+    components = {
+        "progress": progress,
+        "stability": stability,
+        "effort": effort,
+        "terminal": terminal_reward,
+    }
+
+    return float(total_reward), components

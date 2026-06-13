@@ -1,0 +1,41 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 2
+Candidate ID: g2_c1
+
+Structured evidence:
+{
+  "generation": 2,
+  "candidate_id": "g2_c1",
+  "parent_ids": [
+    "g1_c2",
+    "g1_c1"
+  ],
+  "status": "ok",
+  "selection_score": -423.6701716742494,
+  "private_eval_return": -423.6701716742494,
+  "generated_return": -306.0204010907846,
+  "generated_minus_private": 117.64977058346477,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 117.64977058346477,
+    "action_mean": 1.4481481481481482,
+    "action_std": 1.089978039320185,
+    "episode_length_mean": 90.0,
+    "component_returns": {
+      "progress": -251.34839836045512,
+      "stability": -34.61533606366283,
+      "effort": -5.056666666666655,
+      "terminal": -15.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: strong shaping toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    # Linear distance penalty for strong gradient at all distances\n    dist_penalty = -1.0 * dist\n    # Speed penalty: penalize high speed, especially vertical speed near ground\n    speed_penalty = -0.5 * speed - 0.3 * abs(vy)\n    if y < 0.3:\n        speed_penalty -= 1.0 * abs(vy)\n    # Small survival bonus to encourage longer flights and exploration\n    survival_bonus = 0.05\n    progress = dist_penalty + speed_penalty + survival_bonus\n    # Keep progress bounded but allow negative values to dominate\n    progress = max(-6.0, min(1.0, progress))\n\n    # --- Stability component: maintain upright orientation ---\n    angle_penalty = -0.8 * abs(angle) - 0.2 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.2:\n        angle_penalty -= 0.8\n    stability = max(-4.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.10\n    elif action in [1, 3]:  # side engines\n        effort = -0.03\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clip to absolute bound\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "This candidate builds on g1_c2's successful pattern (best performer at -84.16) with targeted improvements informed by feedback and memory lessons. Key changes: (1) Increased distance penalty from -0.8*dist to -1.0*dist for stronger gradient, supporting the lesson that linear distance penalties outperform exponential ones. (2) Added a small survival bonus (+0.05) to counteract the \"do nothing\" collapse seen in other candidates, encouraging the agent to stay alive and explore. (3) Increased angle penalty from -0.6 to -0.8 and extra ground-angle penalty from -0.5 to -0.8 to improve stability shaping, addressing the progress-stability imbalance. (4) Reduced effort penalties slightly (-0.10 main, -0.03 side) to avoid discouraging engine use while still penalizing waste. (5) Maintained g1_c2's ground-proximity speed penalty structure (-1.0*abs(vy) near ground) which was effective. The overall design keeps the negative generated_private_gap pattern (conservative shaping) that correlated with g1_c2's success."
+}
+
+Reflection report:
+This candidate builds on g1_c2's successful pattern (best performer at -84.16) with targeted improvements informed by feedback and memory lessons. Key changes: (1) Increased distance penalty from -0.8*dist to -1.0*dist for stronger gradient, supporting the lesson that linear distance penalties outperform exponential ones. (2) Added a small survival bonus (+0.05) to counteract the "do nothing" collapse seen in other candidates, encouraging the agent to stay alive and explore. (3) Increased angle penalty from -0.6 to -0.8 and extra ground-angle penalty from -0.5 to -0.8 to improve stability shaping, addressing the progress-stability imbalance. (4) Reduced effort penalties slightly (-0.10 main, -0.03 side) to avoid discouraging engine use while still penalizing waste. (5) Maintained g1_c2's ground-proximity speed penalty structure (-1.0*abs(vy) near ground) which was effective. The overall design keeps the negative generated_private_gap pattern (conservative shaping) that correlated with g1_c2's success.
+
+Return JSON array of lessons. Do not include code blocks.

@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Progress component uses linear distance penalty with ground-proximity speed penalty",
+    "observation": "Progress component contributed -121.87, dominating the total reward and causing a large generated-private gap of 58.85.",
+    "explanation": "The linear distance penalty was increased to -1.0, making progress the strongest signal, but the stability component (-48.67) and effort (-0.41) are too weak to balance it, leading to misalignment with the private evaluator's preferred landing behavior.",
+    "recommendation": "Reduce the progress penalty magnitude or increase stability and effort penalties to achieve a more balanced component ratio, targeting a progress-to-stability ratio closer to 2:1 or 3:1 rather than 2.5:1 observed here.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Effort penalties are very small (-0.12 main, -0.04 side) to encourage engine use",
+    "observation": "Effort component contributed only -0.41, which is negligible compared to progress and stability, and may not effectively shape action selection.",
+    "explanation": "Reducing effort penalties too much can make the agent indifferent to engine usage, potentially leading to inefficient fuel consumption or failure to learn precise engine timing.",
+    "recommendation": "Keep effort penalties moderate (e.g., -0.2 to -0.5) to provide meaningful action shaping without causing action collapse.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Terminal component uses +100 for success and -15 for failure",
+    "observation": "Terminal component contributed -15.0, indicating all episodes ended in failure, and the sparse terminal reward did not compensate for the large negative progress and stability signals.",
+    "explanation": "The large negative progress and stability penalties dominate the total reward, making the terminal reward too small to overcome the per-step penalties, reducing the agent's ability to learn from successful landings.",
+    "recommendation": "Increase the terminal success reward (e.g., +200 or +500) or reduce per-step penalties so that successful landings provide a strong positive signal that can be learned.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Generated return (-185.79) is significantly higher than private eval return (-244.63)",
+    "observation": "The candidate's reward function overestimates performance relative to the hidden evaluator, indicating the generated reward components do not match the true objective.",
+    "explanation": "The large generated-private gap (58.85) suggests that the reward components, especially progress, are not aligned with the private evaluator's landing quality criteria, leading to optimistic self-evaluation.",
+    "recommendation": "Use black-box selection feedback to tune component weights and thresholds, aiming to reduce the generated-private gap by matching the private evaluator's preference for stable, precise landings over aggressive movement toward the pad.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Candidate increased distance penalty from -0.8 to -1.0 and angle penalty from -0.6 to -0.8",
+    "observation": "These changes increased the dominance of progress over stability, worsening the generated-private gap compared to parent g1_c2.",
+    "explanation": "Simply scaling up penalties without rebalancing component interactions can amplify misalignment, as the private evaluator may prioritize stability and terminal success more than distance reduction.",
+    "recommendation": "When mutating reward coefficients, adjust multiple components proportionally to maintain a balanced ratio, and validate against the generated-private gap before deployment.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  }
+]

@@ -1,0 +1,83 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "All candidates have negative private_eval_return and no successful landings",
+    "observation": "Despite having terminal success rewards (+100) and failure penalties, all 4 candidates achieved negative private_eval_return (-122 to -865). No candidate produced a single successful landing episode.",
+    "explanation": "Terminal rewards alone are insufficient to guide the agent toward successful landings in Lunar Lander. The dense shaping signals (progress, stability, effort) must provide strong enough gradients to steer the agent before termination occurs.",
+    "recommendation": "Increase the magnitude of dense shaping rewards (e.g., progress scaling from -0.5 to -1.0 or -2.0) so they provide meaningful guidance throughout the episode, rather than relying on terminal rewards to drive learning.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Smaller generated_private_gap correlates with higher private_eval_return",
+    "observation": "Candidate g0_c0 had the smallest generated_private_gap (54.09) and the best private_eval_return (-122.83). Candidate g0_c2 had the largest gap (728.62) and the worst private_eval_return (-865.50).",
+    "explanation": "The generated_private_gap measures misalignment between the candidate's own reward calculation and the hidden evaluator. Smaller gaps indicate the reward function's internal priorities better match what the hidden evaluator values.",
+    "recommendation": "Use generated_private_gap as a primary optimization target. When iterating, prioritize changes that reduce this gap, and analyze the reward structure of candidates with the smallest gaps as starting points.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Action distribution collapses to a single action (action_std=0.0)",
+    "observation": "Candidate g0_c3 had action_mean=2.0 and action_std=0.0, meaning the agent fired the main engine at every step. Candidate g0_c0 had action_mean=0.0 and action_std=0.0, meaning the agent never fired any engine.",
+    "explanation": "When effort penalties or other shaping signals are not properly balanced, the agent can collapse to a single action that minimizes immediate penalty regardless of long-term outcome, preventing exploration of successful landing trajectories.",
+    "recommendation": "Ensure effort penalties are moderate (e.g., -0.1 to -0.2) and that progress/stability rewards are large enough to incentivize varied action selection. Monitor action_mean and action_std during evaluation to detect collapse early.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Heavy effort penalties do not reduce engine usage when shaping signals are weak",
+    "observation": "Candidate g0_c3 had the highest effort penalty (-0.3 for main engine, -0.1 for side engines) yet still had action_mean=2.0 (constant main engine). The effort component return was -29.6, yet the agent did not reduce firing.",
+    "explanation": "If progress and stability rewards are too weak or negative, the agent may prefer to fire engines constantly to crash quickly (ending the episode) rather than attempt to satisfy difficult shaping criteria. The penalty becomes irrelevant when the agent gives up on the task.",
+    "recommendation": "When adding effort penalties, ensure that progress and stability rewards are strong enough to keep the agent engaged in the task. Consider a hybrid approach: moderate effort penalties (0.0 to -0.2) combined with stronger positive shaping for desired behavior.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Complex shaping with multiple velocity penalties and delta distance leads to poor performance",
+    "observation": "Candidate g0_c2 had the most elaborate shaping (delta distance, speed penalty, vertical penalty near ground, angle penalty) but performed worst with private_eval_return=-865.50 and the largest generated_private_gap.",
+    "explanation": "Adding multiple shaping terms without careful scaling can create conflicting gradients, reward hacking opportunities, or numerical imbalances that misalign the total reward from the hidden evaluator's priorities.",
+    "recommendation": "Start with a minimal set of well-scaled shaping components (e.g., distance penalty, angle penalty, moderate effort penalty) and validate their contribution to generated_private_gap before adding complexity. Each new term should demonstrably reduce the gap.",
+    "confidence": 0.75,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Moderate failure penalty (-10) outperforms harsh failure penalty (-50)",
+    "observation": "Candidate g0_c0 used failure penalty of -10 and achieved the best private_eval_return (-122.83). All other candidates used -50 and scored worse (-309 to -865).",
+    "explanation": "A very harsh failure penalty can dominate the total reward, making the agent risk-averse and preventing exploration of trajectories that might lead to successful landings. A moderate penalty allows the agent to learn from failures without being overwhelmed.",
+    "recommendation": "Use a moderate failure penalty (e.g., -10 to -30) rather than very negative values like -50. The penalty should discourage crashes without overwhelming the shaping signals that guide the agent toward success.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Episode length is short (64-133 steps) indicating early termination from crashes",
+    "observation": "All candidates had mean episode lengths well below the maximum (likely 200-300+), with g0_c0 at 64.33, g0_c1 at 95.0, g0_c3 at 98.67, and g0_c2 at 133.67 steps.",
+    "explanation": "Short episode lengths indicate the lander crashes or goes out of bounds early in the episode. The reward function is not providing sufficient guidance to keep the lander stable and moving toward the pad before termination.",
+    "recommendation": "Strengthen the stability component (e.g., increase angle penalty scaling) and add explicit rewards for maintaining altitude or avoiding ground contact at high speed. Consider a 'survival bonus' that rewards longer episodes to encourage stable flight.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Progress and stability component returns correlate with overall candidate ranking",
+    "observation": "The best candidate (g0_c0) had the best progress return (-50.64) and best stability return (-8.11). The worst candidate (g0_c2) had progress return (-2.38) but the worst stability (-58.47) and overall score.",
+    "explanation": "The hidden evaluator likely weights progress toward the pad and stability (upright orientation) heavily. Candidates that optimize these components achieve better alignment and higher private_eval_return.",
+    "recommendation": "Focus on making the progress and stability components more aligned with the hidden evaluator. Use g0_c0's structure as a baseline and try increasing the scaling factors on these components while monitoring generated_private_gap.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "All 4 candidates passed validation with no errors",
+    "observation": "Every candidate had status 'ok' with empty validation_errors, indicating the reward code was syntactically correct and executed without runtime errors during the validation check.",
+    "explanation": "The initial generation produced valid code, but validation only checks for syntax and basic execution, not for reward quality or alignment with the hidden evaluator. All generated functions can run but may not produce useful learning signals.",
+    "recommendation": "Do not rely on validation success as an indicator of reward quality. Use private_eval_return and generated_private_gap as the primary metrics for evaluating candidate effectiveness.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  }
+]

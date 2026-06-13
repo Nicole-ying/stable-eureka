@@ -1,0 +1,38 @@
+```json
+{
+  "reward_schema": {
+    "components": [
+      {
+        "id": "landing_success",
+        "description": "A high positive reward (e.g., +100) when both legs are in ground contact (state[6]==1 and state[7]==1) and the lander is near the pad (|state[0]| < 0.1) with low vertical velocity (|state[3]| < 0.1). This is the terminal success component.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "distance_penalty",
+        "description": "A negative reward proportional to the Euclidean distance from the landing pad (sqrt(state[0]^2 + state[1]^2)). Encourages moving toward the center.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "velocity_penalty",
+        "description": "A negative reward proportional to the magnitude of linear velocity (sqrt(state[2]^2 + state[3]^2)). Penalizes high speeds, especially near the ground.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "angle_penalty",
+        "description": "A negative reward proportional to the absolute angle (|state[4]|). Penalizes tilting too far from upright.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "fuel_penalty",
+        "description": "A small negative reward for each time step when the main engine is fired (m_power > 0). Encourages fuel efficiency.",
+        "direction": "minimize",
+        "required": true
+      }
+    ],
+    "reward_abs_bound": 1000.0
+  },
+  "search_plan": "# Search Plan for Lunar Lander Reward Function\n\n## Objective\nDesign a reward function that guides a reinforcement learning agent to safely land the lunar lander on the landing pad at (0,0) with minimal fuel consumption and time, while avoiding crashes.\n\n## Reward Components\n\n### 1. Landing Success (Terminal)\n- **Inputs**: state[0] (x position), state[1] (y position), state[3] (y velocity), state[6] (left leg), state[7] (right leg)\n- **Logic**: When both legs contact ground AND |x| < threshold AND |y_vel| < threshold, give large positive reward\n- **Purpose**: Clear success signal; episode continues until success or failure\n\n### 2. Distance Penalty\n- **Inputs**: state[0] (x), state[1] (y)\n- **Logic**: Negative reward proportional to Euclidean distance from origin\n- **Purpose**: Encourage moving toward landing pad\n\n### 3. Velocity Penalty\n- **Inputs**: state[2] (x_vel), state[3] (y_vel)\n- **Logic**: Negative reward proportional to speed magnitude\n- **Purpose**: Encourage gentle landing; prevent crashes\n\n### 4. Angle Penalty\n- **Inputs**: state[4] (angle), state[5] (angular velocity) - optional\n- **Logic**: Negative reward proportional to |angle|\n- **Purpose**: Maintain upright orientation for stable landing\n\n### 5. Fuel Penalty\n- **Inputs**: m_power (from reward function call)\n- **Logic**: Small negative reward when main engine fires\n- **Purpose**: Encourage fuel efficiency and faster landings\n\n## Search Strategy\n\n1. **Initialization**: Start with equal weights for all components, scaled so total reward per step is roughly -1 to 0 during flight, with +100 on success\n\n2. **Balancing Heuristics**:\n   - Distance penalty: ~0.1 per unit distance\n   - Velocity penalty: ~0.5 per unit speed\n   - Angle penalty: ~0.2 per radian of tilt\n   - Fuel penalty: ~0.3 per engine firing\n   - Landing success: +100 (dominates episode return)\n\n3. **Hyperparameter Search**:\n   - Use random search or grid search over weight multipliers for each component\n   - Test on episodes with known optimal trajectories\n   - Tune thresholds for landing success (x threshold, velocity threshold)\n\n4. **Evaluation Metrics**:\n   - Success rate (% of landings on pad)\n   - Average fuel consumption\n   - Average time to land\n   - Stability (angular variance during descent)\n\n5. **Refinement**:\n   - If agent crashes often: increase velocity penalty near ground\n   - If agent flies away: increase distance penalty\n   - If agent uses too much fuel: increase fuel penalty\n   - If agent lands tilted: increase angle penalty\n\n## Implementation Notes\n- All rewards should be bounded to prevent extreme values\n- Use normalized observations for consistency\n- The landing success component should only activate when truly successful\n- Consider shaping: smaller penalties during early descent, stricter near ground"

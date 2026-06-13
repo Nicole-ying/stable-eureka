@@ -1,0 +1,58 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Candidate has a large generated_private_gap (70.87) despite component bounding and moderate penalties.",
+    "observation": "Generated return (-69.68) is much higher than private_eval_return (-140.55), indicating the reward signal is over-optimistic relative to the hidden evaluator.",
+    "explanation": "The progress component (-41.33) and terminal component (-15.0) dominate the total reward, but the private evaluator likely penalizes the same behaviors more harshly, leading to misalignment.",
+    "recommendation": "Reduce the magnitude of the progress component further (e.g., scale from -0.8 to -0.4) and increase the terminal failure penalty (e.g., -30 instead of -15) to better match the private evaluator's assessment.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Candidate uses exponential shaping for progress (progress_reward = -0.8 * (1 - exp(-2*dist))) and bounds all components.",
+    "observation": "Despite bounding, progress still contributes -41.33, which is the largest negative component, and the generated_private_gap remains large.",
+    "explanation": "Exponential shaping bounds the progress reward between -0.8 and 0, but the distance dist may saturate slowly in practice, causing the progress term to still dominate over other bounded components like stability (clipped to [-2,0]).",
+    "recommendation": "Use a steeper exponential decay (e.g., -0.5 * (1 - exp(-5*dist))) or cap the distance at a smaller value to reduce the influence of progress on the total reward.",
+    "confidence": 0.6,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Candidate has action_mean=0.0 and action_std=0.0, indicating zero variance in actions across the episode.",
+    "observation": "All actions are identical (likely action 0), leading to no exploration and poor performance (episode length mean 64.67).",
+    "explanation": "The effort penalty (-0.15 for main, -0.05 for side) is too mild to cause action collapse by itself, but the combination of large progress and stability penalties may discourage any engine use, resulting in a policy that learns to do nothing.",
+    "recommendation": "Add a small positive incentive for engine use (e.g., +0.1 for main engine) or reduce the progress/stability penalties to allow occasional engine firing without overwhelming negative reward.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Candidate had 0 repair attempts and no validation errors, yet performance is poor.",
+    "observation": "The reward code passes structural validation (no syntax errors, no forbidden imports) but fails functionally due to component imbalance and action collapse.",
+    "explanation": "Validation only checks for code-level errors, not for behavioral issues like action collapse or reward misalignment, which require simulation-based evaluation.",
+    "recommendation": "Implement a lightweight simulation check during repair that verifies action variance is non-zero and that component magnitudes are within a factor of 2 of each other.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Candidate relaxed the success condition (wider x tolerance, lower angle requirement) compared to parent.",
+    "observation": "Despite relaxed conditions, terminal reward is still -15.0 (failure) in all episodes, indicating no successful landings.",
+    "explanation": "Relaxing success criteria alone is insufficient if the shaping rewards still prevent the agent from reaching the terminal state; the agent may never approach the landing pad due to high progress penalties.",
+    "recommendation": "When relaxing success conditions, also reduce shaping penalties (especially progress) to allow the agent to explore the terminal state more easily.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "prompt_rule",
+    "condition": "LLM rationale explicitly mentions addressing 'short episode length' and 'component imbalance' from memory lessons.",
+    "observation": "Despite these intentions, the candidate still has short episodes (mean 64.67) and large component imbalance (progress -41.33 vs effort 0.0).",
+    "explanation": "The LLM correctly identified the problems but the numerical adjustments (e.g., exponential shaping, -0.8 scaling, -15 terminal penalty) were insufficient to resolve them in practice.",
+    "recommendation": "When memory lessons suggest a problem, recommend more aggressive numerical changes (e.g., halving the dominant component's weight) rather than moderate adjustments.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  }
+]
+```

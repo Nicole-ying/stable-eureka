@@ -1,0 +1,40 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "generated_return is much higher than private_eval_return (gap = 728.6) and selection_score is very negative (-865.5)",
+    "observation": "Candidate g0_c2 has a large positive gap between generated_return (-136.9) and private_eval_return (-865.5), indicating the generated reward overestimates performance relative to the true objective.",
+    "explanation": "The reward components are misaligned: progress and effort provide small positive or negative contributions, but the terminal bonus of +100 for success is rarely achieved, while the -50 crash penalty dominates. The large gap suggests the generated reward fails to capture the true evaluation criteria, leading to optimistic generated returns but very poor private returns.",
+    "recommendation": "Reduce the optimism gap by lowering the terminal success bonus or increasing penalties for behaviors that lead to crashes. Use black-box selection feedback to align generated components with private returns.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "component_returns show terminal = -50.0 dominating other components (progress = -2.38, stability = -58.47, effort = -26.03)",
+    "observation": "The terminal component is highly negative (-50) and contributes significantly to the total reward, while progress is nearly zero. This imbalance causes the reward to focus on avoiding terminal states rather than learning effective control.",
+    "explanation": "With a large negative terminal penalty for crashes and a rare positive success bonus, the agent is primarily punished for failures without sufficient positive shaping to guide it toward successful landings. The progress and stability components are too weak to counteract the terminal penalty.",
+    "recommendation": "Re-balance components: increase the weight of progress and stability to provide stronger positive shaping, and reduce the magnitude of the terminal penalty or make it more proportional to the severity of the crash.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "action_mean = 2.03 (close to action 2, the main engine) and action_std = 0.18 (low variance)",
+    "observation": "The agent predominantly uses the main engine (action 2) with little variation, suggesting action collapse due to the reward structure.",
+    "explanation": "The effort penalty penalizes main engine use (-0.2) and side engines (-0.05), but the agent still favors the main engine, likely because the progress and stability components do not sufficiently reward fine-grained control. The low action variance indicates the reward does not encourage exploration of different actions.",
+    "recommendation": "Increase the relative weight of progress and stability to reward nuanced control, and consider reducing the effort penalty to avoid discouraging necessary engine use. Alternatively, add a small exploration bonus to diversify actions.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "validation_errors is empty and status is 'ok', but performance is poor",
+    "observation": "The reward code passes validation (no errors) but produces very low private returns, indicating that validation only checks syntax and basic structure, not reward quality.",
+    "explanation": "Validation does not catch semantic issues like component imbalance or misalignment with the true objective. The candidate appears valid but is ineffective.",
+    "recommendation": "Use private_eval_return as a diagnostic signal to iteratively adjust reward components. Consider adding a validation step that checks for reasonable component magnitudes or simulated rollouts.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  }
+]
+```

@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When a reward function includes a landing_shaping bonus that is small (max 0.5) and near-pad (dist < 0.2, speed < 0.2), but the overall reward is dominated by large negative components (progress around -118, terminal at -15) and generated_return is -137.65 vs private_eval_return -100.89.",
+    "observation": "The landing_shaping bonus is negligible relative to the large negative components, and the generated_private_gap is -36.77, indicating the reward is much more conservative than the hidden evaluator.",
+    "explanation": "The landing_shaping bonus is too small to counteract the strong negative gradients from distance penalty (-1.0*dist) and speed penalties. The progress component dominates with a mean of -118.55, far outweighing the small positive shaping. The generated reward is overly pessimistic, causing the agent to avoid risky but potentially successful behaviors.",
+    "recommendation": "Increase the landing_shaping bonus magnitude (e.g., to 2.0-5.0) and reduce the distance penalty magnitude (e.g., from -1.0 to -0.5) to better balance positive and negative shaping, aiming to align generated_return closer to private_eval_return.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the reward function has a progress component with a strong linear distance penalty (-1.0*dist) and speed penalties (-0.5*speed - 0.4*abs(vy) plus additional -1.0*abs(vy) when y<0.3), resulting in a mean progress component of -118.55.",
+    "observation": "The progress component dominates the total reward by a large margin, with other components (stability -3.85, effort -0.25, terminal -15.0) being orders of magnitude smaller. This imbalance leads to agent behavior focused solely on reducing distance and speed, potentially neglecting stability and terminal success.",
+    "explanation": "The progress component is overly aggressive, causing the agent to prioritize minimizing distance and speed at all costs, which may result in premature descent, poor orientation, and crashes. The component imbalance (progress magnitude ~118 vs others <16) reduces the influence of stability and terminal rewards.",
+    "recommendation": "Scale down the progress component penalties (e.g., reduce distance penalty to -0.3, speed penalties by half) to bring it in line with other components. Aim for component magnitudes within a factor of 2-3 of each other to ensure balanced learning.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the reward function includes a terminal component with a success reward of +100.0 and a failure penalty of -15.0, and the agent rarely achieves success (mean terminal component -15.0 indicates all episodes end in failure).",
+    "observation": "Despite the large success reward, the agent fails in all episodes, resulting in a mean terminal component of -15.0. The generated_return is much lower than private_eval_return, suggesting the reward shaping is too conservative.",
+    "explanation": "The large success reward (+100) is never reached because the shaping penalties (progress, stability) prevent the agent from attempting or achieving successful landings. The failure penalty (-15) is moderate but consistently applied, further dragging down the reward without providing useful guidance.",
+    "recommendation": "Reduce the success reward to a moderate value (e.g., 20-30) to avoid extreme reward sparsity, and adjust shaping components to encourage exploration toward successful landings. Alternatively, consider removing the terminal component and relying on shaping alone to guide behavior, as the hidden evaluator may already handle terminal outcomes.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "When the reward function has a large generated_private_gap (-36.77) and the generated_return is much lower than private_eval_return.",
+    "observation": "The generated reward is too conservative, causing the agent to avoid behaviors that the hidden evaluator considers successful. The gap indicates misalignment between the reward shaping and the true objective.",
+    "explanation": "The reward function over-penalizes movement and speed, leading to passive behavior that fails to achieve the landing task. The hidden evaluator likely rewards more aggressive but controlled descent and landing.",
+    "recommendation": "Reduce the magnitude of negative penalties (distance, speed, angle) by 30-50% and increase positive shaping (landing_shaping) to encourage exploration. Use black-box selection feedback to iteratively adjust until generated_return and private_eval_return converge.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When a reward function inherits successful structure from a parent (g1_c2) but modifies it by increasing distance penalty and adding landing_shaping, yet the generated_return worsens.",
+    "observation": "The modifications (stronger distance penalty, landing_shaping bonus) did not improve performance; generated_return dropped from parent levels. The increased penalty likely made the reward too harsh, and the bonus was too small to compensate.",
+    "explanation": "Inheriting a successful structure does not guarantee improvement if modifications unbalance the components. The stronger distance penalty exacerbated the component imbalance, and the small landing_shaping bonus was ineffective.",
+    "recommendation": "When modifying a working reward function, make small, incremental changes and validate component balance. Use diagnostic component returns to ensure no single component dominates. Consider A/B testing of individual modifications before combining them.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

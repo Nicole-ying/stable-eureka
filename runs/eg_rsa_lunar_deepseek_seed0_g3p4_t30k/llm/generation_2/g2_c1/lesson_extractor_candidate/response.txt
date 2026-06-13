@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Candidate applies targeted improvements to a successful parent but still underperforms parent (g2_c1: -423.67 vs g1_c2: -84.16).",
+    "observation": "Candidate g2_c1 had a private_eval_return of -423.67, much worse than its parent g1_c2 (-84.16), despite implementing several promising modifications based on memory lessons.",
+    "explanation": "The cumulative effect of multiple small changes (stronger distance penalty, survival bonus, increased stability penalties, reduced effort penalties) disrupted the delicate balance of the parent reward. The survival bonus (+0.05) and reduced effort penalties may have inadvertently encouraged the agent to stay aloft with suboptimal flight patterns, while stronger penalties for distance and ground proximity could have created conflicting gradients that destabilized learning. The generated_private_gap of 117.65 indicates the reward candidate's own evaluation was more optimistic than the private evaluator, suggesting the shaping misaligned with true landing success.",
+    "recommendation": "When iterating on a successful parent, change only one or two components at a time and validate the impact via black-box selection feedback before adding more modifications. Prioritize changes that directly address the generated/private gap rather than adding multiple new shaping terms.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Candidate adds a small survival bonus to counteract action collapse.",
+    "observation": "Adding a +0.05 survival bonus to counter 'do nothing' collapse led to a large performance drop (-423.67 vs parent -84.16).",
+    "explanation": "Even a small positive constant reward for staying alive can create a strong incentive for the agent to prolong episodes without achieving the landing objective, especially when combined with reduced effort penalties. This can cause the agent to avoid terminal states (both success and failure), leading to long, drifting episodes that accumulate negative shaping from distance and speed penalties, ultimately degrading overall return.",
+    "recommendation": "Avoid adding survival bonuses unless the reward is dominated by terminal success signals. Instead, address action collapse by ensuring progress and stability components provide sufficient negative feedback for undesirable states.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Candidate reduces effort penalties from parent values to avoid discouraging engine use.",
+    "observation": "Reducing effort penalties (main from -0.15 to -0.10, side from -0.05 to -0.03) in combination with other changes led to worse performance than parent.",
+    "explanation": "Weakened effort penalties reduce the cost of unnecessary engine firing, potentially allowing the agent to hover or drift with continuous main engine use. This can increase fuel consumption and destabilize flight, especially when the progress component already penalizes distance and speed. Effort penalties serve as a regularizer that encourages efficient control; reducing them without compensating adjustments can degrade overall behavior.",
+    "recommendation": "When reducing effort penalties, ensure that other components (e.g., progress, stability) are strong enough to guide the agent toward efficient landing. Alternatively, keep effort penalties at parent levels if the parent was successful.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Candidate has a large generated_private_gap (117.65) indicating reward shaping misalignment.",
+    "observation": "Candidate g2_c1's generated_return (-306.02) was much higher than private_eval_return (-423.67), indicating the reward candidate overestimates performance relative to the true objective.",
+    "explanation": "A positive generated_private_gap means the reward function's shaping (progress, stability, effort) gives more credit to behaviors than the hidden evaluator considers correct. This can happen when components like the survival bonus or reduced effort penalties reward suboptimal flight patterns that the private evaluator penalizes heavily upon termination (e.g., crashing after long flights).",
+    "recommendation": "Use the generated_private_gap as a diagnostic signal to identify which components are overly optimistic. Reduce or remove components that inflate generated_return without improving private_eval_return, such as survival bonuses or weak effort penalties.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Candidate applies multiple modifications from memory lessons to a successful parent.",
+    "observation": "Applying several memory-derived improvements simultaneously (stronger distance penalty, survival bonus, increased stability, reduced effort) resulted in a 5x performance drop compared to the parent.",
+    "explanation": "Memory lessons from different candidates may not combine additively; interactions between changes can create unintended consequences. For example, a stronger distance penalty paired with a survival bonus can trap the agent in a regime where it avoids both landing and crashing, leading to long, inefficient episodes.",
+    "recommendation": "Validate each modification independently via black-box selection feedback before combining. Use ablation-style testing: apply one change at a time and observe the generated_private_gap trend to isolate positive and negative contributions.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  }
+]

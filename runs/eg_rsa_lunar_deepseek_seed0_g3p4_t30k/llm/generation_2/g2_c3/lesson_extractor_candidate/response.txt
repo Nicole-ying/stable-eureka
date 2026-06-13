@@ -1,0 +1,38 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When the progress component dominates the total reward (progress magnitude ~14x stability magnitude)",
+    "observation": "Progress component returns -110.19, stability returns -23.72, leading to a 4.6x imbalance. This imbalance contributed to a positive generated_private_gap of 45.65, indicating the shaping reward overestimates progress relative to what the private evaluator values.",
+    "explanation": "A heavily dominant progress component can cause the agent to move toward the pad aggressively while neglecting stability, leading to crashes that the private evaluator penalizes. The generated return is higher than private return because the shaping reward overrewards progress that does not translate into successful landings.",
+    "recommendation": "Reduce the progress penalty magnitude (e.g., from -1.0 to -0.6) or increase stability penalty magnitude (e.g., from -0.8 to -1.2) to bring the component ratio closer to 1:1. This balances the trade-off between reaching the pad and maintaining control.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When using a linear distance penalty with coefficient -1.0 and speed penalty -0.4",
+    "observation": "Action mean is 0.94 and action std is 1.29, indicating frequent engine use with moderate variance. The generated_private_gap is positive (45.65), suggesting the reward encourages behaviors not fully aligned with the private evaluator's success criteria.",
+    "explanation": "The strong linear distance gradient may push the agent to descend quickly, but the speed penalty near ground and stability constraints are insufficient to prevent crashes. The agent learns to accumulate progress reward but fails to achieve the terminal success condition, creating a gap between generated and private returns.",
+    "recommendation": "Increase the ground-proximity vertical speed penalty (e.g., from 0.6 to 1.0) or add a soft constraint that penalizes high vertical velocity when y is low. This encourages gentler landings that satisfy the private evaluator's success criteria.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "When increasing a component coefficient from -0.8 to -1.0 based on the lesson 'linear outperforms exponential'",
+    "observation": "The progress component became more dominant (return -110.19 vs -23.72 for stability), leading to a positive generated_private_gap. The stronger gradient did not reduce the gap as intended.",
+    "explanation": "Increasing the coefficient amplified the existing imbalance between progress and stability. The lesson 'linear outperforms exponential' was applied without considering the relative scaling of other components, causing the shaping reward to overemphasize progress.",
+    "recommendation": "When applying the lesson 'linear outperforms exponential', also normalize the component scales (e.g., by adjusting other component coefficients proportionally) to maintain balance. Test the new ratio in a quick simulation before finalizing.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When the generated_private_gap is positive (45.65) and the private_eval_return is -195.79",
+    "observation": "The reward candidate achieves a higher generated return (-150.14) than private return (-195.79), indicating the shaping reward provides optimistic signals that do not translate into private evaluator success.",
+    "explanation": "Positive generated_private_gap suggests the reward over-rewards intermediate states (e.g., being close to the pad) without sufficiently penalizing behaviors that lead to crashes. The agent learns to maximize the shaping reward but fails to achieve the terminal success condition valued by the private evaluator.",
+    "recommendation": "Use black-box selection feedback to reduce generated/private mismatch by lowering the progress component's weight and increasing the terminal failure penalty (e.g., from -15 to -25). This aligns the shaping reward more closely with the private evaluator's emphasis on successful landings.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  }
+]

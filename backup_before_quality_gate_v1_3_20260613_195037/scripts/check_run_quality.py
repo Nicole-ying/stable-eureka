@@ -61,32 +61,6 @@ def main() -> None:
     if memory_rows and not env_lessons:
         errors.append("missing env_lessons.jsonl or no environment lessons generated")
 
-    unsafe_phrases = [
-        "hidden evaluator's likely structure",
-        "hidden evaluator structure",
-        "hidden evaluator formula",
-        "infer the hidden evaluator",
-        "reconstruct the hidden evaluator",
-        "reverse engineer",
-        "imitate the hidden evaluator",
-        "approximate the hidden evaluator",
-    ]
-    action_guess_phrases = [
-        "continuous action is common",
-        "if actions are continuous",
-    ]
-
-    for source_name, rows in [
-        ("candidate_lessons", candidate_lessons),
-        ("env_lessons", env_lessons),
-    ]:
-        for row in rows:
-            text = " ".join(str(row.get(k, "")) for k in ("condition", "observation", "explanation", "recommendation")).lower()
-            if any(p.lower() in text for p in unsafe_phrases):
-                errors.append(f"unsafe hidden-evaluator wording in {source_name}: {row.get('lesson_id')}")
-            if any(p.lower() in text for p in action_guess_phrases):
-                warnings.append(f"possible action-space guess in {source_name}: {row.get('lesson_id')}")
-
     invalid_import = []
     for r in memory_rows:
         errs = " ".join(map(str, r.get("validation_errors", [])))

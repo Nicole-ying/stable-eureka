@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "All components are negative or zero except a rare terminal success bonus",
+    "observation": "Component returns: progress=-43.66, stability=-12.98, effort=0.0, terminal=-15.0. The total reward is always negative unless a perfect landing occurs, which is extremely rare. The agent receives no positive shaping to guide it toward the rare success.",
+    "explanation": "When every step yields negative reward, the agent is trained to minimize penalties rather than actively seek the goal. This can lead to early episode termination (e.g., crashing) as a way to stop the penalty stream, resulting in short episodes (mean length 59 steps) and poor overall performance.",
+    "recommendation": "Introduce at least one positive shaping component that rewards progress toward the goal, such as a small reward for reducing distance to the pad or maintaining stability. Ensure the agent receives consistent positive feedback during exploration to avoid learned helplessness.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Terminal component uses a large positive bonus (100) for success and a moderate negative penalty (-15) for non-success termination",
+    "observation": "The terminal reward is 100 for perfect landing, -15 otherwise. The agent rarely achieves the perfect landing, so the effective terminal reward is almost always -15, dominating the total reward and discouraging exploration.",
+    "explanation": "A large sparse success bonus with a frequent negative penalty creates a reward landscape where most episodes end badly. The agent learns to avoid termination rather than to seek the success condition, especially when the success condition is difficult to reach.",
+    "recommendation": "Reduce the magnitude of the failure penalty or make it zero, and instead rely on dense shaping rewards to guide the agent. If a terminal bonus is used, consider making it more achievable by relaxing the success criteria or providing intermediate rewards.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Effort component yields exactly zero reward (effort=0.0) even though the agent takes actions",
+    "observation": "The effort component penalizes engine usage with -0.2 for main engine and -0.05 for side engines, but the actual reward for effort is 0.0. This suggests the agent may be taking actions that are not recognized by the component (e.g., action 0 or actions outside the expected set) or the penalty is too small to be visible in the mean.",
+    "explanation": "An effort component that produces zero reward indicates either the agent is not using engines (action=0) or the penalty is negligible compared to other components. If the agent is using engines but the effort is zero, the action mapping may be incorrect or the penalty is overwhelmed by other negative components.",
+    "recommendation": "Verify that the action IDs in the reward code match the environment's action space. If the agent is indeed not using engines, consider whether that is desirable. If effort is intended to discourage engine use, ensure the penalty is significant enough to influence behavior relative to other components.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Action mean and std are both 0.0",
+    "observation": "The diagnostics show action_mean=0.0 and action_std=0.0, indicating the agent always outputs the same action (likely action 0, 'do nothing'). This action collapse may be a result of the reward structure penalizing all actions or not providing sufficient incentive to act.",
+    "explanation": "When the reward is always negative regardless of actions, the agent may learn to output a default action (do nothing) to minimize variance or avoid penalties. This leads to no exploration and poor performance.",
+    "recommendation": "Ensure the reward function provides positive reinforcement for taking actions that lead to progress. Consider adding an exploration bonus or reducing penalties for early steps to encourage the agent to try different actions.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Repair attempts = 0 and validation errors = [] but candidate has poor performance",
+    "observation": "The candidate passed validation (no errors) but has very low selection score and generated return (-71.63) compared to private return (-111.04). No repair was attempted, suggesting the system accepted the candidate despite poor performance.",
+    "explanation": "Validation only checks for code correctness, not reward quality. A candidate can be syntactically correct and still have a poor reward structure. The absence of repair attempts means the system missed an opportunity to improve the reward function.",
+    "recommendation": "Implement a heuristic to trigger repair for candidates with large generated/private gaps or very negative returns, even if validation passes. For example, if generated_return < -50 or generated_private_gap > 20, attempt repair to adjust component weights or add positive shaping.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  }
+]

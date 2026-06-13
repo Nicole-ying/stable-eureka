@@ -1,0 +1,38 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "progress component uses next_obs to compute previous distance, creating an inverse reward signal that penalizes moving closer and rewards moving away",
+    "observation": "progress = (prev_dist - dist) * 2.0 where prev_dist = sqrt(next_x^2 + next_y^2) and dist = sqrt(x^2 + y^2). Since prev_dist is computed from next_obs (future state), this rewards moving away from the pad and penalizes moving closer, which is the opposite of the intended behavior. The progress component mean is only 0.61 despite the large generated-private gap of 172.",
+    "explanation": "The reward code incorrectly uses next_obs to compute a 'previous' distance, but next_obs is the state after taking the action. The intended logic should compare current distance to a previous distance to reward reduction. Using next_obs as the 'before' state creates a reversed progress signal that misaligns with the private evaluator's goals.",
+    "recommendation": "Remove the next_obs usage for progress and instead compute progress as a simple negative distance to the target, or use a diminishing distance bonus. Alternatively, if using delta, compute progress = dist - next_dist to correctly reward moving closer.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "terminal_reward of -50.0 for non-success episodes dominates the total reward, overwhelming all other shaping components",
+    "observation": "Terminal component mean is -50.0, while progress mean is 0.61, stability mean is -23.37, and effort mean is -8.5. The terminal penalty is 50x larger than the progress reward and roughly 2x the stability penalty, making the agent's primary signal whether it survives until termination rather than how well it flies.",
+    "explanation": "A large negative terminal reward for any non-landing episode creates a sparse, high-magnitude signal that drowns out the dense shaping rewards. This causes the agent to focus on delaying termination (e.g., hovering high) rather than learning to land properly, contributing to the large generated-private gap.",
+    "recommendation": "Reduce the terminal penalty magnitude to be comparable to other components (e.g., -5 to -10), or remove it entirely and rely on dense shaping. If a terminal penalty is needed, scale it proportionally to the episode length or velocity at impact.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "velocity_penalty is added as a separate component but overlaps with the stability component's angular velocity penalty and the progress component's implicit velocity dependence",
+    "observation": "The reward includes both a stability component with ang_vel_penalty = -abs(ang_vel)*0.2 and a separate velocity_penalty = -vel_mag*0.5. The progress component also implicitly depends on velocity through distance change. This redundancy can lead to double-penalizing the agent for high velocity.",
+    "explanation": "Multiple components penalizing related aspects of motion (speed, angular velocity, distance change) without coordination can create conflicting gradients. The agent may be penalized excessively for any movement, discouraging exploration and causing the high action_std of 0.91 to not translate into useful behavior.",
+    "recommendation": "Consolidate velocity penalties into a single component. For example, use a soft landing bonus that rewards low velocity only when near the pad, rather than a global velocity penalty that discourages all movement.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "generated_return (-137.09) is significantly higher than private_eval_return (-309.38), indicating the reward function is poorly aligned with the private evaluator",
+    "observation": "The gap between generated and private return is 172.29. The generated reward gives high scores for behaviors that the private evaluator penalizes, particularly the reversed progress and excessive terminal penalties.",
+    "explanation": "The large positive gap suggests the generated reward is overly optimistic about the agent's performance. The private evaluator likely uses a more balanced or differently structured reward that penalizes the reversed progress and rewards smoother landings. This misalignment means the agent learns behaviors that look good under the generated reward but fail under the private evaluator.",
+    "recommendation": "Use the black-box private_eval_return as a diagnostic to detect misalignment. When gap exceeds 50, consider simplifying the reward to fewer, more robust components that are less likely to produce spurious high scores. Prioritize components that directly correlate with landing success (e.g., leg contact, near-zero velocity at touchdown).",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  }
+]

@@ -6,60 +6,6 @@ from pathlib import Path
 from typing import Any
 
 
-
-UNSAFE_LESSON_PHRASES = (
-    "hidden evaluator's likely structure",
-    "hidden evaluator structure",
-    "hidden evaluator formula",
-    "infer the hidden evaluator",
-    "infer hidden evaluator",
-    "reconstruct the hidden evaluator",
-    "reverse engineer",
-    "imitate the hidden evaluator",
-    "approximate the hidden evaluator",
-)
-
-ACTION_SPACE_GUESS_PHRASES = (
-    "continuous action is common",
-    "common in lunarlender",
-    "common in lunarlander",
-    "if actions are continuous",
-)
-
-
-def sanitize_lesson_text(row: dict[str, Any]) -> dict[str, Any]:
-    """
-    Remove unsafe or misleading lesson wording before storing memory.
-
-    Lessons may use private_eval_return as black-box feedback, but must not
-    recommend reconstructing hidden evaluator internals.
-    """
-    out = dict(row)
-
-    text_fields = ["condition", "observation", "explanation", "recommendation"]
-    combined = " ".join(str(out.get(k, "")) for k in text_fields).lower()
-
-    if any(p.lower() in combined for p in UNSAFE_LESSON_PHRASES):
-        out["recommendation"] = (
-            "Use private_eval_return only as black-box selection feedback. "
-            "Reduce generated/private mismatch by adjusting reward component scales and behavior diagnostics, "
-            "without inferring or reconstructing hidden evaluator internals."
-        )
-        out["confidence"] = min(float(out.get("confidence", 0.5)), 0.5)
-        out["lesson_type"] = "prompt_rule"
-
-    combined = " ".join(str(out.get(k, "")) for k in text_fields).lower()
-    if any(p.lower() in combined for p in ACTION_SPACE_GUESS_PHRASES):
-        out["recommendation"] = (
-            "Use only the action semantics explicitly shown in the provided step.py. "
-            "Do not guess continuous or discrete action structure beyond the task files."
-        )
-        out["confidence"] = min(float(out.get("confidence", 0.5)), 0.6)
-        out["lesson_type"] = "prompt_rule"
-
-    return out
-
-
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -90,7 +36,7 @@ def normalize_lesson(
     generation: int | None = None,
     candidate_id: str | None = None,
 ) -> dict[str, Any]:
-    out = sanitize_lesson_text(dict(lesson))
+    out = dict(lesson)
     out.setdefault("lesson_id", f"{scope}_{uuid.uuid4().hex[:10]}")
     out.setdefault("scope", scope)
     out.setdefault("lesson_type", "general")

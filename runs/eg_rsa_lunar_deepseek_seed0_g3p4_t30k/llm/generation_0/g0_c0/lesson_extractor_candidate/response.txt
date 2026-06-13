@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "progress_reward and stability_reward are both negative and large in magnitude relative to the total reward range",
+    "observation": "The progress_reward (-50.64) and stability_reward (-8.11) are heavily negative, dominating the total reward and causing a low generated_return of -68.75, while effort_reward is zero and terminal_reward is -10.",
+    "explanation": "The reward components for progress and stability are designed as penalties (negative values) that accumulate over the episode, resulting in a large negative total even before considering the terminal outcome. This discourages the agent because it receives continuous negative feedback regardless of its behavior.",
+    "recommendation": "Redesign the progress and stability components to include positive incentives for desirable states (e.g., moving toward the pad, maintaining low angle) rather than only negative penalties. Use a reward shaping approach that provides small positive rewards for intermediate progress.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "effort_reward is zero for all actions because the penalty conditions are not met",
+    "observation": "The effort_reward component returns 0.0, meaning no penalty is applied for engine usage, making this component inactive and not contributing to the learning signal.",
+    "explanation": "The fuel_penalty is only applied for action==2 (main engine) and actions in [1,3] (side engines), but the action_mean is 0.0, indicating the agent never uses those actions (action collapse). Thus the effort component provides no gradient or feedback.",
+    "recommendation": "Ensure the effort component provides a baseline penalty or reward for all actions to remain active, or restructure it to incentivize desirable actions (e.g., small positive reward for no action) to avoid action collapse.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "terminal_reward is always -10.0 because landing conditions are never met",
+    "observation": "The terminal_reward is -10.0 (crash penalty) in every episode, indicating the agent never achieves a successful landing, which contributes to the low total reward and high generated_private_gap of 54.08.",
+    "explanation": "The success condition (both legs contact, near pad, soft landing) is too strict for the current policy, resulting in only negative terminal outcomes. This misaligns with the private evaluator which expects positive rewards for progress.",
+    "recommendation": "Add intermediate positive rewards for partial progress toward landing (e.g., reducing distance, reducing speed, getting legs down) rather than relying solely on a binary terminal reward. This can bridge the gap between generated_return and private_eval_return.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "action_mean and action_std are both 0.0, indicating action collapse",
+    "observation": "The agent always selects action 0 (do nothing), as shown by action_mean=0.0 and action_std=0.0, leading to no movement and no positive reward accumulation.",
+    "explanation": "The reward structure heavily penalizes any action (via effort component) and provides no positive reinforcement for movement, causing the policy to converge to a no-op strategy that avoids penalties but also fails to achieve any goal.",
+    "recommendation": "Introduce a small positive reward for taking any action that leads to progress (e.g., reducing distance to pad) to encourage exploration and prevent action collapse. Remove or reduce penalties for engine usage to allow initial learning.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "generated_return (-68.75) is significantly higher than private_eval_return (-122.83), indicating a large positive gap of 54.08",
+    "observation": "The generated_return is less negative than the private_eval_return, meaning the reward function is overestimating performance relative to the hidden evaluator, likely due to missing positive rewards for key behaviors.",
+    "explanation": "The private evaluator likely expects positive rewards for progress toward landing, but the generated reward function only provides negative penalties, leading to a mismatch. The gap suggests the generated reward lacks components that the private evaluator values.",
+    "recommendation": "Use black-box selection feedback to reduce generated/private mismatch by adding reward components that mimic the evaluator's implicit preferences, such as rewarding proximity to pad and low velocity in a positive manner.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  }
+]

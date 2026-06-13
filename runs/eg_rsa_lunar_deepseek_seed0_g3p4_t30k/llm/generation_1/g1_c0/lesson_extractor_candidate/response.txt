@@ -1,0 +1,56 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "reward function uses math.sqrt or other math functions without an import statement in the code head",
+    "observation": "Candidate g1_c0 failed validation on first attempt because math.sqrt was called without importing math. The repair added 'import math' at the top of the function.",
+    "explanation": "The reward execution namespace does not automatically include the math module; it must be explicitly imported at the top of the function code.",
+    "recommendation": "When generating reward code that uses math functions, always include 'import math' as the first line of the function body.",
+    "confidence": 1.0,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "progress component uses delta shaping with a scaling factor and a small distance penalty",
+    "observation": "Candidate g1_c0 uses progress_delta = (next_dist - dist) * 5.0 clamped to [-1, 1] plus dist_penalty = -0.3 * dist. This yields progress_reward = -23.63, which is the least negative component.",
+    "explanation": "Delta shaping with a moderate scaling factor (5.0) provides a strong gradient for moving toward the target. Adding a small distance penalty keeps the signal dense even when the agent is not moving closer. This aligns with the hidden evaluator's likely priority of distance reduction.",
+    "recommendation": "For progress rewards, combine delta shaping with a small distance penalty to provide both immediate gradient and dense signal. Scale the delta by 3-10x to make it impactful without dominating other components.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "stability component includes a ground proximity penalty for high vertical speed near the landing pad",
+    "observation": "Candidate g1_c0 adds a ground_proximity_penalty: if y < 0.2, penalty = -1.0 * max(0.0, abs(vy) - 0.1). This penalizes high descent speed near the ground, encouraging soft landings.",
+    "explanation": "Adding a ground proximity penalty that activates only when the agent is close to the ground (y < 0.2) and vertical speed exceeds a threshold (0.1) helps prevent crashes and encourages gentle touchdowns. This addresses the hidden evaluator's likely preference for stable landings.",
+    "recommendation": "Include a ground proximity penalty that penalizes high vertical speed only when the agent is near the ground. Use a threshold (e.g., vy > 0.1) to avoid penalizing normal descent.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "terminal reward uses a moderate failure penalty (-25) instead of harsh (-50) or mild (-10)",
+    "observation": "Candidate g1_c0 uses terminal_reward = -25.0 for failures, which is between the harsher -50 and milder -10 used in other candidates. The generated_return is -64.44, and private_eval_return is -118.49.",
+    "explanation": "A moderate failure penalty (-25) balances the need to discourage crashes without dominating the total reward. Harsh penalties (-50) can make learning difficult by overwhelming other signals, while mild penalties (-10) may not sufficiently discourage failure. The -25 value is a reasonable middle ground.",
+    "recommendation": "Use a moderate failure penalty (around -20 to -30) for terminal components. Avoid extreme values that can dominate the reward signal or fail to discourage failure adequately.",
+    "confidence": 0.6,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "generated_private_gap is large (54.05) despite candidate being selected and repaired successfully",
+    "observation": "Candidate g1_c0 has generated_return = -64.44 and private_eval_return = -118.49, a gap of 54.05. The selection_score is -118.49, matching the private_eval_return.",
+    "explanation": "A large positive generated_private_gap indicates the generated reward overestimates performance relative to the hidden evaluator. This suggests the generated reward components (progress, stability, effort, terminal) are not aligned with the hidden evaluator's weighting or priorities. The candidate was selected because it had the best private_eval_return among available options, not because the gap is small.",
+    "recommendation": "Use black-box selection feedback to iteratively reduce the generated/private mismatch. Focus on adjusting component weights and thresholds to better match the hidden evaluator's priorities, without attempting to reverse engineer its structure.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "effort component uses moderate penalties (-0.15 main, -0.05 side) that are non-zero but not dominating",
+    "observation": "Candidate g1_c0 uses effort_reward = -0.15 for main engine and -0.05 for side engine. The effort component mean is -1.37, which is small relative to other components.",
+    "explanation": "Moderate effort penalties discourage wasteful engine usage without collapsing action diversity. The small magnitude ensures effort does not dominate the total reward, allowing progress and stability signals to drive learning.",
+    "recommendation": "Keep effort penalties moderate (0.1-0.2 range) to discourage wasteful actions without overwhelming other reward components. Ensure effort does not dominate the total reward signal.",
+    "confidence": 0.6,
+    "reuse_policy": "similar_env"
+  }
+]

@@ -1,0 +1,38 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 0
+Candidate ID: g0_c3
+
+Structured evidence:
+{
+  "generation": 0,
+  "candidate_id": "g0_c3",
+  "parent_ids": [],
+  "status": "ok",
+  "selection_score": -620.1095869701975,
+  "private_eval_return": -620.1095869701975,
+  "generated_return": -343.43095565976233,
+  "generated_minus_private": 276.67863131043515,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 276.67863131043515,
+    "action_mean": 2.0,
+    "action_std": 0.0,
+    "episode_length_mean": 98.66666666666667,
+    "component_returns": {
+      "progress": -237.20387907646887,
+      "stability": -26.627076583293576,
+      "effort": -29.600000000000048,
+      "terminal": -50.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract state components from next_obs (post-transition state)\n    x = next_obs[0]\n    y = next_obs[1]\n    x_vel = next_obs[2]\n    y_vel = next_obs[3]\n    angle = next_obs[4]\n    ang_vel = next_obs[5]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n    \n    # Progress: encourage moving toward landing pad (0,0) with gentle speed\n    dist = np.sqrt(x**2 + y**2)\n    # Use exponential shaping to give strong signal near pad, mild signal far away\n    dist_reward = -0.5 * dist  # linear penalty for distance\n    \n    # Speed shaping: penalize high speeds, especially vertical speed near ground\n    speed = np.sqrt(x_vel**2 + y_vel**2)\n    # Heavier penalty for vertical speed (crash risk)\n    vertical_penalty = 1.0 * abs(y_vel)\n    horizontal_penalty = 0.3 * abs(x_vel)\n    speed_penalty = -0.5 * speed - 0.5 * vertical_penalty - 0.2 * horizontal_penalty\n    \n    # Stability: penalize large angles and angular velocity\n    angle_penalty = -1.0 * abs(angle) - 0.5 * abs(ang_vel)\n    \n    # Effort: penalize engine usage (fuel cost)\n    # action is discrete: 0=do nothing, 1=left, 2=main, 3=right\n    # Main engine (action 2) costs fuel and is heavy\n    # Side engines (1,3) cost some fuel\n    main_fuel_penalty = -0.3 if action == 2 else 0.0\n    side_fuel_penalty = -0.1 if action in (1, 3) else 0.0\n    effort_penalty = main_fuel_penalty + side_fuel_penalty\n    \n    # Terminal: reward safe landing when both legs contact ground\n    # Landing pad is at (0,0), allow small x tolerance, require low vertical speed\n    both_legs = left_leg > 0.5 and right_leg > 0.5\n    near_pad = abs(x) < 0.15\n    low_speed = abs(y_vel) < 0.1 and abs(x_vel) < 0.15\n    upright = abs(angle) < 0.2\n    \n    terminal_reward = 0.0\n    if done:\n        # Check if termination was a successful landing or crash\n        if both_legs and near_pad and low_speed and upright:\n            terminal_reward = 100.0  # Successful landing\n        else:\n            # Crash or out-of-bounds: negative penalty\n            terminal_reward = -50.0\n            \n    # Total reward\n    total_reward = dist_reward + speed_penalty + angle_penalty + effort_penalty + terminal_reward\n    \n    # Clamp to absolute bound\n    total_reward = np.clip(total_reward, -1000.0, 1000.0)\n    \n    # Components dict matching schema IDs\n    components = {\n        \"progress\": float(dist_reward + speed_penalty),  # task progress toward landing\n        \"stability\": float(angle_penalty),               # upright orientation\n        \"effort\": float(effort_penalty),                 # fuel efficiency\n        \"terminal\": float(terminal_reward)               # landing success/failure\n    }\n    \n    return float(total_reward), components\n",
+  "llm_rationale": "reward_generation generated code"
+}
+
+Reflection report:
+reward_generation generated code
+
+Return JSON array of lessons. Do not include code blocks.

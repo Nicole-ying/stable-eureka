@@ -1,0 +1,94 @@
+```json
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "generated_private_gap is negative (candidate reward is more pessimistic than hidden evaluator)",
+    "observation": "Candidate g1_c2 had a negative generated_private_gap of -69.65 and achieved the best private_eval_return of -84.16, while candidates with positive gaps performed worse.",
+    "explanation": "A negative gap indicates the reward function provides shaping signals that are more conservative than the hidden evaluator's assessment. This suggests the shaping aligns well with the evaluator's priorities, providing useful guidance without overestimating progress.",
+    "recommendation": "When optimizing reward functions, target a negative generated_private_gap by ensuring shaping components are conservative but directional, rather than optimistic. Use black-box selection feedback to monitor and reduce generated/private mismatch.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "action_std is 0.0 and action_mean is 0.0",
+    "observation": "Candidates g1_c1 and g1_c3 had action_std=0.0 and action_mean=0.0, indicating the agent learned to do nothing, resulting in poor performance.",
+    "explanation": "When shaping signals are too weak or negative relative to the terminal penalty, the agent may learn that doing nothing is safer than attempting the task, leading to action collapse.",
+    "recommendation": "Add a small positive survival bonus per timestep (e.g., +0.05 or +0.1) and consider phase-based rewards that incentivize altitude maintenance at high altitude to prevent 'do nothing' behavior.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "action_mean is near 2.0 and action_std is high",
+    "observation": "Candidate g1_c0 had action_mean=0.88 and action_std=1.22, indicating action collapse toward main engine use despite high effort penalties.",
+    "explanation": "Effort penalties alone cannot prevent engine overuse when other shaping signals are weak. The agent fires the main engine because the progress/stability incentives are insufficient to guide controlled flight.",
+    "recommendation": "Strengthen progress and stability components to provide stronger gradient for controlled descent, rather than relying on effort penalties to shape behavior. Ensure shaping signals dominate over terminal penalties.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "progress component uses linear distance penalty",
+    "observation": "Candidate g1_c2 used linear -0.8*dist and outperformed g1_c3 which used exponential -0.8*(1-exp(-2*dist)), despite similar other components.",
+    "explanation": "Linear distance penalties provide stronger and more consistent gradient across all distances compared to exponential caps, which saturate and reduce incentive for the agent to improve at larger distances.",
+    "recommendation": "Use linear distance penalties (e.g., -coeff * dist) rather than exponential or capped formulations to maintain strong gradient throughout the episode.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "component returns show a large imbalance between progress and stability",
+    "observation": "In g1_c2, progress component return was -129.52 while stability was only -9.02, a 14:1 ratio, yet this candidate was the best performer.",
+    "explanation": "The hidden evaluator appears to weight progress heavily, so a dominant progress component can still yield good alignment even if other components have less influence. However, extreme imbalance may still limit further improvement.",
+    "recommendation": "Prioritize progress shaping as the primary signal, but consider gradually increasing stability scaling (e.g., from -0.6*abs(angle) to -1.0*abs(angle)) to provide more balanced guidance without undermining progress dominance.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "validation passes but performance varies widely",
+    "observation": "All 4 candidates passed validation with no errors, yet private_eval_return ranged from -84.16 to -140.55, showing validation is not a quality indicator.",
+    "explanation": "The validator only checks for code syntax and basic runtime errors using generic smoke-test observations. It does not evaluate reward quality, component balance, or alignment with the hidden evaluator.",
+    "recommendation": "Do not rely on validation success as a signal of reward quality. Use private_eval_return and generated_private_gap as primary quality metrics, and focus on component balance and shaping alignment.",
+    "confidence": 1.0,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "moderate failure penalty (-15 to -25) is used",
+    "observation": "All top candidates used moderate failure penalties (-15 or -25), consistent with the lesson that moderate penalties outperform harsh ones. g1_c2 used -15 and achieved best performance.",
+    "explanation": "Moderate failure penalties provide enough disincentive to avoid crashes without overwhelming the shaping signals, allowing the agent to learn from both successes and failures.",
+    "recommendation": "Maintain failure penalties in the moderate range (-10 to -30). Avoid harsh penalties (e.g., -50 or lower) that can dominate the reward signal and discourage exploration.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "targeted complexity improves performance over minimalism",
+    "observation": "Candidate g1_c2 had more complex reward components (exponential distance, ground-proximity speed penalties, extra angle penalty near ground) and outperformed simpler candidates.",
+    "explanation": "Targeted complexity that addresses specific failure modes (e.g., high speed near ground, large angles at low altitude) can improve alignment with the hidden evaluator, while poorly scaled complexity (like delta shaping with wrong scaling) hurts.",
+    "recommendation": "Add specialized shaping components that target observed failure modes (e.g., ground-proximity velocity penalties, altitude-dependent angle penalties) rather than relying on minimal component sets. Ensure each component is properly scaled.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "prompt_rule",
+    "condition": "generated_private_gap is positive and large",
+    "observation": "Candidates g1_c0 and g1_c1 had large positive generated_private_gaps (54.05 and 39.41) and performed worse than g1_c2 which had a negative gap.",
+    "explanation": "Positive generated_private_gap means the candidate's own reward function is more optimistic than the hidden evaluator, leading to overestimation of progress and poor alignment with the evaluator's priorities.",
+    "recommendation": "When generating reward candidates, explicitly instruct the LLM to produce reward functions that are conservative (slightly pessimistic) rather than optimistic, to achieve negative generated_private_gap. Use examples where conservative shaping outperforms optimistic shaping.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "action diversity collapses to zero",
+    "observation": "Two candidates had action_std=0.0, indicating the agent learned a degenerate policy of doing nothing, which requires a different fix than the 'always main engine' collapse.",
+    "explanation": "Zero action diversity indicates the reward function is so discouraging or flat that the agent finds no benefit in taking any action. This requires adding positive incentives for engagement rather than just adjusting penalties.",
+    "recommendation": "If action_std is 0.0, add positive rewards for engagement (survival bonus, altitude maintenance) rather than just adjusting penalties. If action_mean is near 2.0, strengthen progress/stability shaping to incentivize controlled flight.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  }
+]
+```

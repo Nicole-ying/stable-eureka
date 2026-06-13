@@ -1,0 +1,38 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 0
+Candidate ID: g0_c1
+
+Structured evidence:
+{
+  "generation": 0,
+  "candidate_id": "g0_c1",
+  "parent_ids": [],
+  "status": "ok",
+  "selection_score": -309.3836541494763,
+  "private_eval_return": -309.3836541494763,
+  "generated_return": -137.08930180532033,
+  "generated_minus_private": 172.29435234415595,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 172.29435234415595,
+    "action_mean": 0.5964912280701754,
+    "action_std": 0.9149757761687928,
+    "episode_length_mean": 95.0,
+    "component_returns": {
+      "progress": 0.6132937380007873,
+      "stability": -23.365070489514626,
+      "effort": -8.500000000000005,
+      "terminal": -50.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    \"\"\"\n    Reward shaping for Lunar Lander.\n    Encourages the lander to move toward the landing pad (0,0), maintain stable upright orientation,\n    land softly with both legs contacting the ground, and minimize fuel usage.\n    \"\"\"\n    # Unpack observations\n    x, y = obs[0], obs[1]                # normalized position\n    vx, vy = obs[2], obs[3]              # normalized velocity\n    angle = obs[4]                        # raw angle in radians\n    ang_vel = obs[5]                      # normalized angular velocity\n    left_leg = obs[6]                     # 0 or 1\n    right_leg = obs[7]                    # 0 or 1\n\n    # Next obs for velocity change detection\n    next_x, next_y = next_obs[0], next_obs[1]\n    next_vx, next_vy = next_obs[2], next_obs[3]\n\n    # --- Progress component: encourage moving toward landing pad (0,0) ---\n    dist = math.sqrt(x * x + y * y)\n    # Reward reduction in distance\n    prev_dist = math.sqrt(next_x * next_x + next_y * next_y)\n    progress = (prev_dist - dist) * 2.0  # positive when moving closer\n    # Clip to avoid extreme values\n    progress = max(-1.0, min(1.0, progress))\n\n    # --- Stability component: penalize angle and angular velocity ---\n    angle_penalty = -abs(angle) * 0.5\n    ang_vel_penalty = -abs(ang_vel) * 0.2\n    stability = angle_penalty + ang_vel_penalty\n    # Bound stability to reasonable range\n    stability = max(-2.0, min(0.0, stability))\n\n    # --- Effort component: penalize engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n    effort = -0.3 * main_engine - 0.1 * side_engine\n\n    # --- Terminal component: large reward for successful landing ---\n    terminal_reward = 0.0\n    if done:\n        # Check if it's a success: both legs on ground, near pad, low velocity\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.1 and abs(y) < 0.1\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal_reward = 100.0\n        else:\n            # Crash or out of bounds: negative terminal reward\n            terminal_reward = -50.0\n\n    # --- Additional shaping: velocity penalty for rough landing ---\n    vel_mag = math.sqrt(vx * vx + vy * vy)\n    velocity_penalty = -vel_mag * 0.5\n    velocity_penalty = max(-1.0, min(0.0, velocity_penalty))\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal_reward + velocity_penalty\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal_reward,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "reward_generation generated code"
+}
+
+Reflection report:
+reward_generation generated code
+
+Return JSON array of lessons. Do not include code blocks.

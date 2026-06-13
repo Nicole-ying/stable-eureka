@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "progress component dominates total reward with large negative values compared to other components",
+    "observation": "The progress component returned -129.53 while stability returned -9.02, effort returned -0.27, and terminal returned -15.00, making progress 86% of total negative reward and overwhelming the shaping signal.",
+    "explanation": "The exponential distance penalty and vertical speed penalty near ground were too aggressive, causing the progress component to dominate and drown out stability and terminal signals, hindering alignment with the hidden evaluator.",
+    "recommendation": "Reduce the magnitude of distance and speed penalties in the progress component to balance contributions across components, e.g., scale dist_penalty from -0.8 to -0.3 and reduce near-ground vertical speed penalty from -0.8 to -0.4.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "generated_return (-153.81) is much lower than private_eval_return (-84.16), indicating misalignment",
+    "observation": "The generated_private_gap is -69.65, meaning the reward function systematically undervalues good behavior relative to the hidden evaluator, likely due to overly harsh penalties.",
+    "explanation": "The large gap suggests the reward function penalizes intermediate states too heavily, especially progress and terminal failure, causing the agent to receive lower generated returns than the evaluator expects.",
+    "recommendation": "Use black-box selection feedback to reduce generated/private mismatch by softening progress penalties and adjusting terminal failure reward from -15 to -10 or -5 to better match evaluator expectations.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "progress component (-129.53) is an order of magnitude larger than stability (-9.02) and effort (-0.27)",
+    "observation": "Progress dominates the reward signal with -129.53, while stability and effort contribute negligibly, leading to an unbalanced learning signal.",
+    "explanation": "The component_returns show severe imbalance; progress overshadows other shaping signals, which can cause the agent to focus only on distance/speed and neglect orientation and fuel efficiency.",
+    "recommendation": "Scale down progress penalties (e.g., reduce dist_penalty coefficient from -0.8 to -0.3) and increase stability penalties (e.g., raise angle_penalty coefficient from -0.6 to -1.0) to achieve more balanced component contributions.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "terminal success reward is high (100) but success conditions are rarely met, causing terminal component to be mostly negative (-15 per episode)",
+    "observation": "The terminal component returned -15.00 on average, indicating episodes almost always ended in failure, and the high success reward of 100 did not compensate for the frequent -15 penalty.",
+    "explanation": "The strict success conditions (both legs, near pad, low speed, upright) are rarely satisfied in 75-step episodes, so the large success reward is inaccessible, and the failure penalty dominates terminal reward.",
+    "recommendation": "Relax success conditions further (e.g., increase x tolerance to 0.15, y tolerance to 0.1, angle tolerance to 0.3) or reduce failure penalty to -5 to avoid overwhelming the shaping signal.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "action_mean is 0.071 and action_std is 0.257, indicating near-zero action usage",
+    "observation": "The action statistics show the agent rarely fires engines (mean close to 0, low std), likely because the effort penalty discourages engine use despite being small.",
+    "explanation": "Even small effort penalties (-0.15 for main, -0.05 for side) can discourage engine firing when combined with large negative progress and stability penalties, leading to passive behavior.",
+    "recommendation": "Consider making effort penalties even smaller (e.g., -0.05 for main, -0.02 for side) or remove them entirely to encourage active control, especially since the agent needs to fire engines to achieve soft landing.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  }
+]

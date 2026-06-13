@@ -1,0 +1,41 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 2
+Candidate ID: g2_c3
+
+Structured evidence:
+{
+  "generation": 2,
+  "candidate_id": "g2_c3",
+  "parent_ids": [
+    "g1_c2",
+    "g1_c1"
+  ],
+  "status": "ok",
+  "selection_score": -195.78630440617198,
+  "private_eval_return": -195.78630440617198,
+  "generated_return": -150.1392788764225,
+  "generated_minus_private": 45.64702552974947,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 45.64702552974947,
+    "action_mean": 0.9428571428571428,
+    "action_std": 1.2860317068487883,
+    "episode_length_mean": 70.0,
+    "component_returns": {
+      "progress": -110.26819063456382,
+      "stability": -23.72442157519205,
+      "effort": -1.1466666666666672,
+      "terminal": -15.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack normalized observations\n    x = obs[0]          # normalized x position, target 0\n    y = obs[1]          # normalized y position, target ~0 (helipad)\n    vx = obs[2]         # normalized x velocity\n    vy = obs[3]         # normalized y velocity\n    angle = obs[4]      # raw angle in radians, target 0\n    ang_vel = obs[5]    # normalized angular velocity\n    left_leg = obs[6]   # 0 or 1\n    right_leg = obs[7]  # 0 or 1\n\n    # --- Progress component: strong gradient toward pad, gentle speed penalty ---\n    dist = math.sqrt(x * x + y * y)\n    speed = math.sqrt(vx * vx + vy * vy)\n    \n    # Linear distance penalty for strong gradient at all distances (lesson: linear outperforms exponential)\n    dist_penalty = -1.0 * dist\n    # Speed penalty: moderate overall, but extra vertical penalty near ground\n    speed_penalty = -0.4 * speed\n    if y < 0.3:\n        speed_penalty -= 0.6 * abs(vy)  # extra vertical speed penalty near ground\n    progress = dist_penalty + speed_penalty\n    # Bound to prevent extreme negative values from dominating\n    progress = max(-4.0, min(0.0, progress))\n\n    # --- Stability component: upright orientation and low angular velocity ---\n    # Stronger angle penalty (lesson: increase stability scaling)\n    angle_penalty = -0.8 * abs(angle) - 0.15 * abs(ang_vel)\n    # Extra penalty for large angles near ground (dangerous)\n    if y < 0.3 and abs(angle) > 0.3:\n        angle_penalty -= 0.6\n    stability = max(-3.0, min(0.0, angle_penalty))\n\n    # --- Effort component: moderate penalty for engine usage ---\n    # action: 0=do nothing, 1=left, 2=main, 3=right\n    if action == 2:  # main engine\n        effort = -0.12\n    elif action in [1, 3]:  # side engines\n        effort = -0.04\n    else:\n        effort = 0.0\n\n    # --- Terminal component: success or failure ---\n    terminal = 0.0\n    if done:\n        both_legs = (left_leg > 0.5 and right_leg > 0.5)\n        near_pad = abs(x) < 0.12 and abs(y) < 0.08\n        low_speed = abs(vx) < 0.1 and abs(vy) < 0.1\n        upright = abs(angle) < 0.25\n\n        if both_legs and near_pad and low_speed and upright:\n            terminal = 100.0  # successful landing\n        else:\n            terminal = -15.0  # crash or out-of-bounds\n\n    # Combine all components\n    total_reward = progress + stability + effort + terminal\n\n    # Clamp total reward to safe bounds\n    total_reward = max(-1000.0, min(1000.0, total_reward))\n\n    components = {\n        \"progress\": progress,\n        \"stability\": stability,\n        \"effort\": effort,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "This candidate builds on g1_c2's successful structure with targeted improvements based on feedback. Key changes: (1) Increased linear distance penalty coefficient from -0.8 to -1.0 to provide stronger gradient (lesson: linear outperforms exponential, and stronger progress shaping helps). (2) Reduced overall speed penalty from -0.5 to -0.4 while keeping the ground-proximity vertical speed penalty, maintaining crash prevention focus. (3) Increased angle penalty from -0.6 to -0.8 to better balance the progress-stability ratio (currently ~14:1, targeting ~10:1). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to avoid discouraging engine use while still penalizing waste. The terminal component remains at +100/-15, consistent with the moderate failure penalty lesson. This design aims for negative generated_private_gap (conservative shaping) while providing stronger guidance signals to prevent action collapse."
+}
+
+Reflection report:
+This candidate builds on g1_c2's successful structure with targeted improvements based on feedback. Key changes: (1) Increased linear distance penalty coefficient from -0.8 to -1.0 to provide stronger gradient (lesson: linear outperforms exponential, and stronger progress shaping helps). (2) Reduced overall speed penalty from -0.5 to -0.4 while keeping the ground-proximity vertical speed penalty, maintaining crash prevention focus. (3) Increased angle penalty from -0.6 to -0.8 to better balance the progress-stability ratio (currently ~14:1, targeting ~10:1). (4) Slightly reduced effort penalties (-0.12 main, -0.04 side) to avoid discouraging engine use while still penalizing waste. The terminal component remains at +100/-15, consistent with the moderate failure penalty lesson. This design aims for negative generated_private_gap (conservative shaping) while providing stronger guidance signals to prevent action collapse.
+
+Return JSON array of lessons. Do not include code blocks.
