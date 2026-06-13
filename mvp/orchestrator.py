@@ -10,7 +10,6 @@ from .agents import (
     EnvUnderstandingAgent,
     LessonExtractorAgent,
     ReflectionAgent,
-    RepairAgent,
     RewardCoderAgent,
     SchemaPlannerAgent,
     VisionJudgeAgent,
@@ -32,7 +31,7 @@ from .rl_worker import RLWorker
 from .task_specs import get_private_task_spec, make_env_alias
 
 
-MAX_REPAIR_ATTEMPTS = 2
+MAX_REPAIR_ATTEMPTS = 0  # RewardSpec IR should be fixed at the spec layer, not by patching Python code.
 
 
 class RewardEvolutionOrchestrator:
@@ -46,7 +45,6 @@ class RewardEvolutionOrchestrator:
         self.env_understander = EnvUnderstandingAgent(self.model)
         self.schema_planner = SchemaPlannerAgent(self.model)
         self.coder = RewardCoderAgent(self.model)
-        self.repairer = RepairAgent(self.model)
         self.reflector = ReflectionAgent(self.model)
         self.lesson_extractor = LessonExtractorAgent(self.model)
         self.judge = VisionJudgeAgent(self.model)
@@ -97,7 +95,7 @@ class RewardEvolutionOrchestrator:
                 schema_version=reward_schema["schema_version"],
                 env_alias=clean_interface["env_alias"],
             )
-            parent_codes = [r["reward_code"] for r in top[: self.cfg.memory.parent_code_top_k]]
+            parent_specs = [r.get("reward_spec", {}) for r in top[: self.cfg.memory.parent_code_top_k] if r.get("reward_spec")]
             parent_ids = [r["candidate_id"] for r in top]
 
             memory_context = retrieve_memory_context(
@@ -129,6 +127,7 @@ class RewardEvolutionOrchestrator:
                 video = self.cfg.videos_dir / f"{cid}.gif"
 
                 reward_code = ""
+                reward_spec: dict = {}
                 rationale = ""
                 validation_errors: list[str] = []
                 validation_errors_before_repair: list[str] = []
@@ -160,17 +159,23 @@ class RewardEvolutionOrchestrator:
                         search_plan=search_plan,
                         feedback_context=feedback_context[-self.cfg.memory.feedback_max_chars:],
                         memory_context=memory_context,
-                        parent_codes=parent_codes,
+                        parent_specs=parent_specs,
                         log_dir=candidate_llm_dir / "reward_coder",
                         parent_code_max_chars=self.cfg.memory.parent_code_max_chars,
                     )
                     reward_code = draft.reward_code
+                    reward_spec = draft.reward_spec
                     rationale = draft.rationale
-                    prompt_budgets["reward_coder"] = draft.prompt_budget
-                    prompt_paths["reward_coder"] = draft.prompt_budget.get("paths", {})
+                    prompt_budgets["reward_spec_agent"] = draft.prompt_budget
+                    prompt_paths["reward_spec_agent"] = draft.prompt_budget.get("paths", {})
 
+                    (candidate_artifact_dir / "reward_spec.json").write_text(
+                        json.dumps(reward_spec, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
                     (candidate_artifact_dir / "reward_code.py").write_text(reward_code, encoding="utf-8")
                     (candidate_artifact_dir / "rationale.txt").write_text(rationale, encoding="utf-8")
+                    artifact_paths["reward_spec"] = str(candidate_artifact_dir / "reward_spec.json")
                     artifact_paths["reward_code"] = str(candidate_artifact_dir / "reward_code.py")
 
                     valid, validation_errors = validate_reward_code(
@@ -178,41 +183,7 @@ class RewardEvolutionOrchestrator:
                         reward_schema,
                         clean_interface,
                     )
-
-                    if not valid:
-                        validation_errors_before_repair = list(validation_errors)
-
-                        for attempt in range(1, MAX_REPAIR_ATTEMPTS + 1):
-                            if not self.repairer.can_repair(reward_code, validation_errors):
-                                break
-
-                            repair_attempts = attempt
-                            repair_draft = self.repairer.repair(
-                                reward_code=reward_code,
-                                validation_errors=validation_errors,
-                                reward_schema=reward_schema,
-                                attempt_index=attempt,
-                                log_dir=candidate_llm_dir / f"repair_{attempt}",
-                            )
-                            reward_code = repair_draft.reward_code
-                            rationale += f"\n\nREPAIR_ATTEMPT_{attempt}: {repair_draft.rationale}"
-                            prompt_budgets[f"repair_{attempt}"] = repair_draft.prompt_budget
-                            prompt_paths[f"repair_{attempt}"] = repair_draft.prompt_budget.get("paths", {})
-
-                            (candidate_artifact_dir / f"repaired_reward_code_{attempt}.py").write_text(
-                                reward_code,
-                                encoding="utf-8",
-                            )
-
-                            valid, validation_errors = validate_reward_code(
-                                reward_code,
-                                reward_schema,
-                                clean_interface,
-                            )
-                            if valid:
-                                repair_success = True
-                                break
-
+                    validation_errors_before_repair = list(validation_errors)
                     validation_errors_after_repair = list(validation_errors)
                     self._write_json(
                         candidate_artifact_dir / "validation.json",
@@ -221,6 +192,8 @@ class RewardEvolutionOrchestrator:
                             "validation_errors": validation_errors,
                             "validation_errors_before_repair": validation_errors_before_repair,
                             "validation_errors_after_repair": validation_errors_after_repair,
+                            "reward_spec_validated": bool(reward_spec),
+                            "reward_spec_id": reward_spec.get("spec_id"),
                         },
                     )
 
@@ -281,6 +254,7 @@ class RewardEvolutionOrchestrator:
                     judge_reason=judge_reason,
                     judge_details=judge_details,
                     video_path=str(video),
+                    reward_spec=reward_spec,
                     prompt_paths=prompt_paths,
                     prompt_budgets=prompt_budgets,
                     artifact_paths=artifact_paths,
@@ -453,12 +427,17 @@ def format_report(best: dict, out_path: Path) -> None:
         json.dumps(best.get("diagnostics", {}), ensure_ascii=False, indent=2),
         "```",
         "",
+        "## RewardSpec JSON IR",
+        "```json",
+        json.dumps(best.get("reward_spec", {}), ensure_ascii=False, indent=2),
+        "```",
+        "",
         "## Prompt paths",
         "```json",
         json.dumps(best.get("prompt_paths", {}), ensure_ascii=False, indent=2),
         "```",
         "",
-        "## Reward code",
+        "## Compiled reward code",
         "```python",
         best.get("reward_code", ""),
         "```",
