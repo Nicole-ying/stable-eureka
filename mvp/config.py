@@ -43,6 +43,7 @@ class RLConfig:
     #   gamma=0.999, n_epochs=4, ent_coef=0.01.
     n_envs: int = 1
     vec_env_type: str = "dummy"  # dummy | subproc
+    device: str = "auto"  # auto | cpu | cuda
     n_steps: int = 2048
     batch_size: int = 64
     n_epochs: int = 10
