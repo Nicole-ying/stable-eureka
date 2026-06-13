@@ -112,6 +112,9 @@ class RLWorker:
     def train_and_eval(self, reward_code: str, ckpt_path: Path) -> dict[str, object]:
         reward_fn = compile_reward_function(reward_code)
 
+        # Single-environment training by design.
+        # PPO hyperparameters are configurable, but we intentionally do not add
+        # candidate/env parallelism here to keep long-run debugging simple.
         train_env = RewardFunctionWrapper(gym.make(self.cfg.env_id), reward_fn)
         model = PPO(
             "MlpPolicy",
@@ -119,6 +122,14 @@ class RLWorker:
             verbose=0,
             learning_rate=self.cfg.learning_rate,
             gamma=self.cfg.gamma,
+            n_steps=self.cfg.n_steps,
+            batch_size=self.cfg.batch_size,
+            n_epochs=self.cfg.n_epochs,
+            gae_lambda=self.cfg.gae_lambda,
+            ent_coef=self.cfg.ent_coef,
+            clip_range=self.cfg.clip_range,
+            vf_coef=self.cfg.vf_coef,
+            max_grad_norm=self.cfg.max_grad_norm,
         )
         model.learn(total_timesteps=self.cfg.total_timesteps)
         ckpt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,6 +189,17 @@ class RLWorker:
                 "action_std": float(np.std(action_arr)),
                 "episode_length_mean": float(np.mean(episode_lengths)),
                 "component_returns": component_mean,
+                "ppo_total_timesteps": int(self.cfg.total_timesteps),
+                "ppo_n_steps": int(self.cfg.n_steps),
+                "ppo_batch_size": int(self.cfg.batch_size),
+                "ppo_n_epochs": int(self.cfg.n_epochs),
+                "ppo_gae_lambda": float(self.cfg.gae_lambda),
+                "ppo_gamma": float(self.cfg.gamma),
+                "ppo_ent_coef": float(self.cfg.ent_coef),
+                "ppo_learning_rate": float(self.cfg.learning_rate),
+                "ppo_clip_range": float(self.cfg.clip_range),
+                "ppo_vf_coef": float(self.cfg.vf_coef),
+                "ppo_max_grad_norm": float(self.cfg.max_grad_norm),
             },
         }
 
