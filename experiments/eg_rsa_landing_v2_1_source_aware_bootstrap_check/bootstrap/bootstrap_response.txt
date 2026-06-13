@@ -1,19 +1,23 @@
 {
   "reward_blueprint": {
-    "task_objective": "Land the vehicle safely on the target zone by approaching the center, descending gently, staying upright, using minimal control effort, and making stable ground contact without bouncing or crashing.",
+    "task_objective": "Land the vehicle gently at the target zone by minimizing horizontal error, vertical speed, tilt, and control effort while ensuring stable upright contact with both legs.",
     "primitive_variable_roles": {
       "progress_variables": [
         "x_pos",
-        "y_pos",
-        "y_vel"
+        "y_pos"
       ],
       "safety_variables": [
-        "angle",
-        "ang_vel"
+        "tilt_angle",
+        "angular_vel",
+        "y_vel",
+        "left_leg_contact",
+        "right_leg_contact"
       ],
       "terminal_evidence_variables": [
-        "left_leg",
-        "right_leg"
+        "left_leg_contact",
+        "right_leg_contact",
+        "tilt_angle",
+        "y_vel"
       ],
       "control_variables": [
         "main_engine",
@@ -23,36 +27,41 @@
     "phase_structure": [],
     "component_blueprint": [
       {
-        "role": "dense_guidance",
-        "description": "Reward for horizontal proximity to target center",
-        "variables_used": ["x_pos"]
+        "name": "target_proximity",
+        "description": "Reward horizontal closeness to target center",
+        "formula": "sub(1.0, min(abs(x_pos), 1.0))"
       },
       {
-        "role": "dense_guidance",
-        "description": "Reward for low altitude above ground",
-        "variables_used": ["y_pos"]
+        "name": "altitude_progress",
+        "description": "Reward low altitude using exponential decay",
+        "formula": "exp(-abs(y_pos))"
       },
       {
-        "role": "dense_guidance",
-        "description": "Reward for near‑optimal descent velocity around -0.5 m/s",
-        "variables_used": ["y_vel"]
+        "name": "stability",
+        "description": "Reward small tilt angle and angular velocity",
+        "formula": "sub(1.0, min(add(abs(tilt_angle), abs(angular_vel)), 1.0))"
       },
       {
-        "role": "stability_quality",
-        "description": "Penalize body tilt and angular velocity to keep upright",
-        "variables_used": ["angle", "ang_vel"]
+        "name": "control_cost",
+        "description": "Penalize main engine and side engine usage",
+        "formula": "neg(add(mul(0.1, main_engine), mul(0.1, abs(side_engine))))"
       },
       {
-        "role": "control_cost",
-        "description": "Penalty for using main and side engines",
-        "variables_used": ["main_engine", "side_engine"]
+        "name": "tilt_safety",
+        "description": "Extra penalty if tilt exceeds 0.5 rad",
+        "formula": "if gt(abs(tilt_angle), 0.5) then -abs(tilt_angle) else 0"
+      },
+      {
+        "name": "landing_success",
+        "description": "Terminal reward for stable upright landing with both legs",
+        "formula": "reward 100 if left_leg_contact and right_leg_contact and abs(tilt_angle)<0.1 and abs(y_vel)<0.2"
       }
     ],
     "anti_exploit_principles": [
-      "All dense rewards are clipped to prevent unbounded exploitation.",
-      "Descent velocity reward follows a smooth Gaussian shape to avoid oscillation incentives.",
-      "Terminal bonus requires both legs to contact, preventing early termination cheating.",
-      "Control cost is signed negative to discourage unnecessary actuation."
+      "Use clipped and bounded rewards to avoid unbounded exploitation.",
+      "Prevent reward hacking by ensuring progress rewards require actual progress, not just abstaining from control.",
+      "Terminal reward condition must be strict to avoid rewarding crashes.",
+      "Safety constraints should dominate to discourage dangerous states."
     ]
   },
   "initial_schema": {
@@ -64,7 +73,7 @@
     },
     "components": [
       {
-        "name": "horizontal_approach",
+        "name": "target_proximity",
         "type": "formula_component",
         "weight": 1.0,
         "formula_ast": {
@@ -109,16 +118,58 @@
             }
           }
         },
-        "clip": [0.0, 1.0],
+        "clip": [
+          0.0,
+          1.0
+        ],
         "enabled": true,
         "semantic_role": "dense_guidance",
         "reward_timing": "dense",
         "behavior_channel": "progress"
       },
       {
-        "name": "vertical_approach",
+        "name": "altitude_progress",
         "type": "formula_component",
-        "weight": 1.0,
+        "weight": 0.5,
+        "formula_ast": {
+          "op": "exp",
+          "arg": {
+            "op": "neg",
+            "arg": {
+              "op": "abs",
+              "arg": {
+                "var": "y_pos"
+              }
+            }
+          }
+        },
+        "params": {
+          "formula_ast": {
+            "op": "exp",
+            "arg": {
+              "op": "neg",
+              "arg": {
+                "op": "abs",
+                "arg": {
+                  "var": "y_pos"
+                }
+              }
+            }
+          }
+        },
+        "clip": [
+          0.0,
+          1.0
+        ],
+        "enabled": true,
+        "semantic_role": "dense_guidance",
+        "reward_timing": "dense",
+        "behavior_channel": "progress"
+      },
+      {
+        "name": "stability",
+        "type": "formula_component",
+        "weight": 0.5,
         "formula_ast": {
           "op": "sub",
           "left": {
@@ -128,7 +179,21 @@
             "op": "min",
             "args": [
               {
-                "var": "y_pos"
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "tilt_angle"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angular_vel"
+                    }
+                  }
+                ]
               },
               {
                 "const": 1.0
@@ -146,7 +211,21 @@
               "op": "min",
               "args": [
                 {
-                  "var": "y_pos"
+                  "op": "add",
+                  "args": [
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "tilt_angle"
+                      }
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "angular_vel"
+                      }
+                    }
+                  ]
                 },
                 {
                   "const": 1.0
@@ -155,191 +234,48 @@
             }
           }
         },
-        "clip": [0.0, 1.0],
-        "enabled": true,
-        "semantic_role": "dense_guidance",
-        "reward_timing": "dense",
-        "behavior_channel": "progress"
-      },
-      {
-        "name": "descent_rate",
-        "type": "formula_component",
-        "weight": 1.0,
-        "formula_ast": {
-          "op": "exp",
-          "arg": {
-            "op": "mul",
-            "args": [
-              {
-                "const": -25.0
-              },
-              {
-                "op": "add",
-                "args": [
-                  {
-                    "var": "y_vel"
-                  },
-                  {
-                    "const": 0.5
-                  }
-                ]
-              },
-              {
-                "op": "add",
-                "args": [
-                  {
-                    "var": "y_vel"
-                  },
-                  {
-                    "const": 0.5
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        "params": {
-          "formula_ast": {
-            "op": "exp",
-            "arg": {
-              "op": "mul",
-              "args": [
-                {
-                  "const": -25.0
-                },
-                {
-                  "op": "add",
-                  "args": [
-                    {
-                      "var": "y_vel"
-                    },
-                    {
-                      "const": 0.5
-                    }
-                  ]
-                },
-                {
-                  "op": "add",
-                  "args": [
-                    {
-                      "var": "y_vel"
-                    },
-                    {
-                      "const": 0.5
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        },
-        "clip": [0.0, 1.0],
-        "enabled": true,
-        "semantic_role": "dense_guidance",
-        "reward_timing": "dense",
-        "behavior_channel": "progress"
-      },
-      {
-        "name": "attitude_stability",
-        "type": "formula_component",
-        "weight": 1.0,
-        "formula_ast": {
-          "op": "exp",
-          "arg": {
-            "op": "add",
-            "args": [
-              {
-                "op": "mul",
-                "args": [
-                  {
-                    "const": -10.0
-                  },
-                  {
-                    "var": "angle"
-                  },
-                  {
-                    "var": "angle"
-                  }
-                ]
-              },
-              {
-                "op": "mul",
-                "args": [
-                  {
-                    "const": -10.0
-                  },
-                  {
-                    "var": "ang_vel"
-                  },
-                  {
-                    "var": "ang_vel"
-                  }
-                ]
-              }
-            ]
-          }
-        },
-        "params": {
-          "formula_ast": {
-            "op": "exp",
-            "arg": {
-              "op": "add",
-              "args": [
-                {
-                  "op": "mul",
-                  "args": [
-                    {
-                      "const": -10.0
-                    },
-                    {
-                      "var": "angle"
-                    },
-                    {
-                      "var": "angle"
-                    }
-                  ]
-                },
-                {
-                  "op": "mul",
-                  "args": [
-                    {
-                      "const": -10.0
-                    },
-                    {
-                      "var": "ang_vel"
-                    },
-                    {
-                      "var": "ang_vel"
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        },
-        "clip": [0.0, 1.0],
+        "clip": [
+          0.0,
+          1.0
+        ],
         "enabled": true,
         "semantic_role": "stability_quality",
         "reward_timing": "dense",
-        "behavior_channel": "safety"
+        "behavior_channel": "stability"
       },
       {
-        "name": "control_cost",
+        "name": "control_effort",
         "type": "formula_component",
-        "weight": 0.1,
+        "weight": 1.0,
         "formula_ast": {
           "op": "neg",
           "arg": {
             "op": "add",
             "args": [
               {
-                "var": "main_engine"
+                "op": "mul",
+                "args": [
+                  {
+                    "const": 0.1
+                  },
+                  {
+                    "var": "main_engine"
+                  }
+                ]
               },
               {
-                "op": "abs",
-                "arg": {
-                  "var": "side_engine"
-                }
+                "op": "mul",
+                "args": [
+                  {
+                    "const": 0.1
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "side_engine"
+                    }
+                  }
+                ]
               }
             ]
           }
@@ -351,13 +287,29 @@
               "op": "add",
               "args": [
                 {
-                  "var": "main_engine"
+                  "op": "mul",
+                  "args": [
+                    {
+                      "const": 0.1
+                    },
+                    {
+                      "var": "main_engine"
+                    }
+                  ]
                 },
                 {
-                  "op": "abs",
-                  "arg": {
-                    "var": "side_engine"
-                  }
+                  "op": "mul",
+                  "args": [
+                    {
+                      "const": 0.1
+                    },
+                    {
+                      "op": "abs",
+                      "arg": {
+                        "var": "side_engine"
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -368,69 +320,126 @@
         "semantic_role": "control_cost",
         "reward_timing": "dense",
         "behavior_channel": "efficiency"
+      },
+      {
+        "name": "tilt_safety",
+        "type": "conditional_formula_component",
+        "weight": -1.0,
+        "condition_ast": {
+          "op": "gt",
+          "left": {
+            "op": "abs",
+            "arg": {
+              "var": "tilt_angle"
+            }
+          },
+          "right": {
+            "const": 0.5
+          }
+        },
+        "formula_ast": {
+          "op": "abs",
+          "arg": {
+            "var": "tilt_angle"
+          }
+        },
+        "params": {
+          "condition_ast": {
+            "op": "gt",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "var": "tilt_angle"
+              }
+            },
+            "right": {
+              "const": 0.5
+            }
+          },
+          "formula_ast": {
+            "op": "abs",
+            "arg": {
+              "var": "tilt_angle"
+            }
+          }
+        },
+        "clip": null,
+        "enabled": true,
+        "semantic_role": "safety_constraint",
+        "reward_timing": "dense",
+        "behavior_channel": "safety"
       }
     ],
     "event_rules": [
       {
-        "name": "landing_bonus",
+        "name": "landing_success",
+        "type": "event_predicate",
         "condition": {
           "expr_ast": {
             "op": "and",
             "args": [
               {
-                "op": "gt",
+                "var": "left_leg_contact"
+              },
+              {
+                "var": "right_leg_contact"
+              },
+              {
+                "op": "lt",
                 "left": {
-                  "var": "left_leg"
+                  "op": "abs",
+                  "arg": {
+                    "var": "tilt_angle"
+                  }
                 },
                 "right": {
-                  "const": 0.5
+                  "const": 0.1
                 }
               },
               {
-                "op": "gt",
+                "op": "lt",
                 "left": {
-                  "var": "right_leg"
+                  "op": "abs",
+                  "arg": {
+                    "var": "y_vel"
+                  }
                 },
                 "right": {
-                  "const": 0.5
+                  "const": 0.2
                 }
               }
             ]
           }
         },
-        "effect": {
-          "reward": 100.0
-        },
-        "description": "Terminal success reward when both legs make ground contact."
+        "reward": 100.0,
+        "terminal": true,
+        "semantic_role": "terminal_success"
       }
     ]
   },
   "diagnostics": {
     "expected_failure_modes": [
-      "Agent may hover indefinitely to collect dense position rewards without completing landing.",
-      "Over‑reliance on vertical position reward could cause fast descent near ground, compensated by descent rate term.",
-      "Stability component may be overpowered, making the agent risk‑averse to necessary tilting for translation."
+      "Vehicle may stay high to collect altitude progress without approaching target.",
+      "Agent may oscillate tilt to exploit stability component's tolerance.",
+      "Excessive engine use may be traded for safety, leading to high fuel cost but still achieving terminal reward.",
+      "Crash landing might satisfy leg contact but fail due to high velocity or tilt; event condition may be too strict."
     ],
     "risk_notes": [
-      "Assumes y_pos ≥ 0 (altitude above ground) for vertical approach formula; if negative, clip to 0 still works.",
-      "Descent rate target of -0.5 m/s is arbitrary and may not match physical limits; tuning needed.",
-      "Terminal bonus lacks a timeout override; agent might learn to prematurely trigger legs contact."
+      "No explicit penalty for hard landings unless tilt or y_vel thresholds exceeded at contact.",
+      "Control cost weight may need tuning relative to progress rewards.",
+      "Exponential decay for altitude gives diminishing returns at low heights, may not incentivize final touchdown."
     ]
   },
   "bootstrap_report": {
-    "design_rationale": "The schema combines multiple dense guidance terms that individually capture horizontal centering, altitude, and safe descent speed. Stability is encouraged via Gaussian penalties on tilt and angular velocity. Control effort is minimized with a negative cost component. A terminal event detects dual leg contact and provides a large success reward, aligning with the objective of stable ground contact.",
+    "design_rationale": "The reward encourages horizontal proximity to target, low altitude (descent), stability through small tilt and angular velocity, and penalizes control effort. A terminal reward is given only if both legs are on the ground, tilt is very small, and vertical velocity is low. An additional safety constraint heavily penalizes large tilts even before landing.",
     "assumptions": [
-      "y_pos is the altitude above the landing surface and is non‑negative.",
-      "x_pos is the signed horizontal distance from the target center.",
-      "angle is measured in radians and should be near zero when upright.",
-      "The Gaussian shapes (exp) implicitly normalise rewards to [0,1].",
-      "Leg contact variables are reliable 0/1 signals."
+      "Variable ranges: x_pos and y_pos are measured in meters, with y_pos decreasing to zero at ground.",
+      "tilt_angle in radians, motor torques normalized.",
+      "main_engine is binary 0/1, side_engine in [-1,1]."
     ],
     "risk_notes": [
-      "Reward weights and constants (0.5, 10, 25) were chosen heuristically; they may require tuning for the specific dynamics.",
-      "Heavy action cost could discourage necessary engine use; the 0.1 weight is a starting point.",
-      "Event rule uses a hard threshold on legs; noisy contact signals may trigger false bonuses.",
-      "No explicit safety cut‑off exists for extreme velocities; the descent rate term partially mitigates."
+      "Without curriculum, agent may struggle to satisfy strict terminal condition.",
+      "High terminal reward may dominate other components causing exploration challenges."
     ],
     "identity_hidden_from_llm": true,
     "raw_env_code_input": false

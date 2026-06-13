@@ -29,12 +29,12 @@
     "action_variables": [
       {
         "name": "main_engine",
-        "description": "main upward thrust (0 or 1)",
+        "description": "main engine thrust (0 or 1)",
         "type": "float"
       },
       {
         "name": "side_engine",
-        "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+        "description": "side engine thrust (-1 to 1)",
         "type": "float"
       }
     ],
@@ -43,10 +43,10 @@
       "y_pos",
       "x_vel",
       "y_vel",
-      "angle",
-      "ang_vel",
-      "left_leg",
-      "right_leg",
+      "tilt_angle",
+      "angular_vel",
+      "left_leg_contact",
+      "right_leg_contact",
       "main_engine",
       "side_engine"
     ],
@@ -60,13 +60,14 @@
       "tanh"
     ],
     "canonicalization_notes": [
-      "Event rule landing_bonus: inferred semantic_role from one_time sign.",
-      "Component control_cost: replaced invalid clip None with role-based default [-1.0, 0.0]."
+      "Event rule landing_success: moved reward into weight.",
+      "Component control_effort: replaced invalid clip None with role-based default [-1.0, 0.0].",
+      "Component tilt_safety: replaced invalid clip None with role-based default [-1.0, 0.0]."
     ]
   },
   "components": [
     {
-      "name": "horizontal_approach",
+      "name": "target_proximity",
       "type": "formula_component",
       "weight": 1.0,
       "formula_ast": {
@@ -122,9 +123,49 @@
       "inputs": []
     },
     {
-      "name": "vertical_approach",
+      "name": "altitude_progress",
       "type": "formula_component",
-      "weight": 1.0,
+      "weight": 0.5,
+      "formula_ast": {
+        "op": "exp",
+        "arg": {
+          "op": "neg",
+          "arg": {
+            "op": "abs",
+            "arg": {
+              "var": "y_pos"
+            }
+          }
+        }
+      },
+      "params": {
+        "formula_ast": {
+          "op": "exp",
+          "arg": {
+            "op": "neg",
+            "arg": {
+              "op": "abs",
+              "arg": {
+                "var": "y_pos"
+              }
+            }
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "inputs": []
+    },
+    {
+      "name": "stability",
+      "type": "formula_component",
+      "weight": 0.5,
       "formula_ast": {
         "op": "sub",
         "left": {
@@ -134,7 +175,21 @@
           "op": "min",
           "args": [
             {
-              "var": "y_pos"
+              "op": "add",
+              "args": [
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "tilt_angle"
+                  }
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "angular_vel"
+                  }
+                }
+              ]
             },
             {
               "const": 1.0
@@ -152,7 +207,21 @@
             "op": "min",
             "args": [
               {
-                "var": "y_pos"
+                "op": "add",
+                "args": [
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "tilt_angle"
+                    }
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "angular_vel"
+                    }
+                  }
+                ]
               },
               {
                 "const": 1.0
@@ -166,198 +235,44 @@
         1.0
       ],
       "enabled": true,
-      "semantic_role": "dense_guidance",
-      "reward_timing": "dense",
-      "behavior_channel": "progress",
-      "inputs": []
-    },
-    {
-      "name": "descent_rate",
-      "type": "formula_component",
-      "weight": 1.0,
-      "formula_ast": {
-        "op": "exp",
-        "arg": {
-          "op": "mul",
-          "args": [
-            {
-              "const": -25.0
-            },
-            {
-              "op": "add",
-              "args": [
-                {
-                  "var": "y_vel"
-                },
-                {
-                  "const": 0.5
-                }
-              ]
-            },
-            {
-              "op": "add",
-              "args": [
-                {
-                  "var": "y_vel"
-                },
-                {
-                  "const": 0.5
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "params": {
-        "formula_ast": {
-          "op": "exp",
-          "arg": {
-            "op": "mul",
-            "args": [
-              {
-                "const": -25.0
-              },
-              {
-                "op": "add",
-                "args": [
-                  {
-                    "var": "y_vel"
-                  },
-                  {
-                    "const": 0.5
-                  }
-                ]
-              },
-              {
-                "op": "add",
-                "args": [
-                  {
-                    "var": "y_vel"
-                  },
-                  {
-                    "const": 0.5
-                  }
-                ]
-              }
-            ]
-          }
-        }
-      },
-      "clip": [
-        0.0,
-        1.0
-      ],
-      "enabled": true,
-      "semantic_role": "dense_guidance",
-      "reward_timing": "dense",
-      "behavior_channel": "progress",
-      "inputs": []
-    },
-    {
-      "name": "attitude_stability",
-      "type": "formula_component",
-      "weight": 1.0,
-      "formula_ast": {
-        "op": "exp",
-        "arg": {
-          "op": "add",
-          "args": [
-            {
-              "op": "mul",
-              "args": [
-                {
-                  "const": -10.0
-                },
-                {
-                  "var": "angle"
-                },
-                {
-                  "var": "angle"
-                }
-              ]
-            },
-            {
-              "op": "mul",
-              "args": [
-                {
-                  "const": -10.0
-                },
-                {
-                  "var": "ang_vel"
-                },
-                {
-                  "var": "ang_vel"
-                }
-              ]
-            }
-          ]
-        }
-      },
-      "params": {
-        "formula_ast": {
-          "op": "exp",
-          "arg": {
-            "op": "add",
-            "args": [
-              {
-                "op": "mul",
-                "args": [
-                  {
-                    "const": -10.0
-                  },
-                  {
-                    "var": "angle"
-                  },
-                  {
-                    "var": "angle"
-                  }
-                ]
-              },
-              {
-                "op": "mul",
-                "args": [
-                  {
-                    "const": -10.0
-                  },
-                  {
-                    "var": "ang_vel"
-                  },
-                  {
-                    "var": "ang_vel"
-                  }
-                ]
-              }
-            ]
-          }
-        }
-      },
-      "clip": [
-        0.0,
-        1.0
-      ],
-      "enabled": true,
       "semantic_role": "stability_quality",
       "reward_timing": "dense",
-      "behavior_channel": "safety",
+      "behavior_channel": "stability",
       "inputs": []
     },
     {
-      "name": "control_cost",
+      "name": "control_effort",
       "type": "formula_component",
-      "weight": 0.1,
+      "weight": 1.0,
       "formula_ast": {
         "op": "neg",
         "arg": {
           "op": "add",
           "args": [
             {
-              "var": "main_engine"
+              "op": "mul",
+              "args": [
+                {
+                  "const": 0.1
+                },
+                {
+                  "var": "main_engine"
+                }
+              ]
             },
             {
-              "op": "abs",
-              "arg": {
-                "var": "side_engine"
-              }
+              "op": "mul",
+              "args": [
+                {
+                  "const": 0.1
+                },
+                {
+                  "op": "abs",
+                  "arg": {
+                    "var": "side_engine"
+                  }
+                }
+              ]
             }
           ]
         }
@@ -369,13 +284,29 @@
             "op": "add",
             "args": [
               {
-                "var": "main_engine"
+                "op": "mul",
+                "args": [
+                  {
+                    "const": 0.1
+                  },
+                  {
+                    "var": "main_engine"
+                  }
+                ]
               },
               {
-                "op": "abs",
-                "arg": {
-                  "var": "side_engine"
-                }
+                "op": "mul",
+                "args": [
+                  {
+                    "const": 0.1
+                  },
+                  {
+                    "op": "abs",
+                    "arg": {
+                      "var": "side_engine"
+                    }
+                  }
+                ]
               }
             ]
           }
@@ -390,46 +321,107 @@
       "reward_timing": "dense",
       "behavior_channel": "efficiency",
       "inputs": []
+    },
+    {
+      "name": "tilt_safety",
+      "type": "conditional_formula_component",
+      "weight": -1.0,
+      "condition_ast": {
+        "op": "gt",
+        "left": {
+          "op": "abs",
+          "arg": {
+            "var": "tilt_angle"
+          }
+        },
+        "right": {
+          "const": 0.5
+        }
+      },
+      "formula_ast": {
+        "op": "abs",
+        "arg": {
+          "var": "tilt_angle"
+        }
+      },
+      "params": {
+        "condition_ast": {
+          "op": "gt",
+          "left": {
+            "op": "abs",
+            "arg": {
+              "var": "tilt_angle"
+            }
+          },
+          "right": {
+            "const": 0.5
+          }
+        },
+        "formula_ast": {
+          "op": "abs",
+          "arg": {
+            "var": "tilt_angle"
+          }
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "safety_constraint",
+      "reward_timing": "dense",
+      "behavior_channel": "safety",
+      "inputs": []
     }
   ],
   "event_rules": [
     {
-      "name": "landing_bonus",
+      "name": "landing_success",
+      "type": "event_predicate",
       "condition": {
         "expr_ast": {
           "op": "and",
           "args": [
             {
-              "op": "gt",
+              "var": "left_leg_contact"
+            },
+            {
+              "var": "right_leg_contact"
+            },
+            {
+              "op": "lt",
               "left": {
-                "var": "left_leg"
+                "op": "abs",
+                "arg": {
+                  "var": "tilt_angle"
+                }
               },
               "right": {
-                "const": 0.5
+                "const": 0.1
               }
             },
             {
-              "op": "gt",
+              "op": "lt",
               "left": {
-                "var": "right_leg"
+                "op": "abs",
+                "arg": {
+                  "var": "y_vel"
+                }
               },
               "right": {
-                "const": 0.5
+                "const": 0.2
               }
             }
           ]
         },
         "duration_steps": 1
       },
-      "effect": {
-        "reward": 100.0
-      },
-      "description": "Terminal success reward when both legs make ground contact.",
+      "terminal": true,
+      "semantic_role": "terminal_success",
       "enabled": true,
       "one_time": true,
-      "type": "event_predicate",
-      "weight": 1.0,
-      "semantic_role": "terminal_success",
+      "weight": 100.0,
       "reward_timing": "sparse_event",
       "behavior_channel": "completion"
     }

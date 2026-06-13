@@ -531,272 +531,57 @@ This is repair attempt {attempt} of {max_attempts}.
 
     @staticmethod
     def _build_runtime_spec_from_primitive_interface(primitive_interface: Dict[str, Any]) -> Dict[str, Any]:
-        """Build executable diagnostics from the verified primitive interface.
-
-        This function must use the same canonical variable names as the reward
-        schema. It intentionally avoids official/oracle reward. The generated
-        events/metrics are semantic rollout probes for EG-RSA reflection/editing.
-
-        Important:
-          - bool leg/contact variables should become contact evidence events.
-          - landing-like tasks need stable_landing_condition and success proxies.
-          - these diagnostics are not used as reward unless a schema explicitly
-            references them; they are mainly for analysis/edit decisions.
-        """
         observation_mapping = primitive_interface.get("observation_mapping")
         if not isinstance(observation_mapping, dict) or not observation_mapping:
             observation_mapping = {}
             for idx, item in enumerate(primitive_interface.get("observation_variables", []) or []):
                 if isinstance(item, dict) and item.get("name"):
-                    observation_mapping[str(item["name"])] = idx
-        else:
-            observation_mapping = {str(k): int(v) for k, v in observation_mapping.items()}
-
+                    observation_mapping[item["name"]] = idx
         observation_variables = primitive_interface.get("observation_variables", []) or []
         action_variables = primitive_interface.get("action_variables", []) or []
-
         bool_vars = []
         numeric_vars = []
-        descriptions: Dict[str, str] = {}
-
         for item in observation_variables:
             if not isinstance(item, dict) or not item.get("name"):
                 continue
             name = str(item["name"])
-            desc = str(item.get("description", "") or "")
-            descriptions[name] = desc
             typ = str(item.get("type", "")).lower()
             if typ in {"bool", "boolean"}:
                 bool_vars.append(name)
             else:
                 numeric_vars.append(name)
-
-        action_names = [
-            str(item["name"])
-            for item in action_variables
-            if isinstance(item, dict) and item.get("name")
-        ]
-
-        def has_var(name: str) -> bool:
-            return name in observation_mapping
-
-        def first_existing(candidates: list[str]) -> str | None:
-            for name in candidates:
-                if has_var(name):
-                    return name
-            return None
-
-        def name_or_desc_contains(name: str, keywords: list[str]) -> bool:
-            hay = f"{name} {descriptions.get(name, '')}".lower()
-            return any(k.lower() in hay for k in keywords)
-
-        # Canonical semantic slots. These names match the current source-aware
-        # landing interface but also keep compatibility with older aliases.
-        x_var = first_existing([
-            "x_pos", "x", "horizontal_position", "horizontal_pos", "position_x",
-            "target_x", "relative_x",
-        ])
-        y_var = first_existing([
-            "y_pos", "y", "vertical_position", "vertical_pos", "position_y",
-            "height", "altitude",
-        ])
-        x_vel_var = first_existing([
-            "x_vel", "vx", "horizontal_velocity", "horizontal_speed", "velocity_x",
-        ])
-        y_vel_var = first_existing([
-            "y_vel", "vy", "vertical_velocity", "vertical_speed", "velocity_y",
-        ])
-        angle_var = first_existing([
-            "angle", "body_angle", "hull_angle", "tilt", "tilt_angle",
-        ])
-        ang_vel_var = first_existing([
-            "ang_vel", "angular_velocity", "angular_vel",
-            "body_angular_velocity", "hull_angular_velocity",
-        ])
-
-        left_contact_var = None
-        right_contact_var = None
-
-        for name in bool_vars:
-            if left_contact_var is None and name_or_desc_contains(name, ["left", "leg", "contact", "touch", "ground", "support"]):
-                if name_or_desc_contains(name, ["left"]):
-                    left_contact_var = name
-            if right_contact_var is None and name_or_desc_contains(name, ["right", "leg", "contact", "touch", "ground", "support"]):
-                if name_or_desc_contains(name, ["right"]):
-                    right_contact_var = name
-
-        # Fallback when names are simply left_leg/right_leg or similar.
-        if left_contact_var is None:
-            left_contact_var = first_existing(["left_leg", "left_contact", "left_leg_contact", "left_support", "left_touch"])
-        if right_contact_var is None:
-            right_contact_var = first_existing(["right_leg", "right_contact", "right_leg_contact", "right_support", "right_touch"])
-
-        contact_like = []
-        for name in bool_vars:
-            if name_or_desc_contains(name, ["contact", "touch", "ground", "support", "leg"]):
-                contact_like.append(name)
-
-        # Preserve left/right order when known.
-        ordered_contact_like = []
-        for name in [left_contact_var, right_contact_var]:
-            if name and name not in ordered_contact_like:
-                ordered_contact_like.append(name)
-        for name in contact_like:
-            if name not in ordered_contact_like:
-                ordered_contact_like.append(name)
-        contact_like = ordered_contact_like
-
+        action_names = [str(item["name"]) for item in action_variables if isinstance(item, dict) and item.get("name")]
         events: Dict[str, Dict[str, Any]] = {}
-
-        # Expose bool observation variables as threshold events.
         for name in bool_vars:
             events[name] = {"type": "threshold_gt", "var": name, "threshold": 0.5}
-
-        if left_contact_var:
-            events["left_leg_contact"] = {"type": "threshold_gt", "var": left_contact_var, "threshold": 0.5}
-        if right_contact_var:
-            events["right_leg_contact"] = {"type": "threshold_gt", "var": right_contact_var, "threshold": 0.5}
-
+        contact_like = [name for name in bool_vars if "contact" in name.lower() or "touch" in name.lower() or "ground" in name.lower()]
         if contact_like:
-            events["any_contact"] = {
-                "type": "any",
-                "events": [
-                    "left_leg_contact" if name == left_contact_var else
-                    "right_leg_contact" if name == right_contact_var else
-                    name
-                    for name in contact_like[:4]
-                ],
-            }
-
-        if left_contact_var and right_contact_var:
-            events["both_contact"] = {
-                "type": "all",
-                "events": ["left_leg_contact", "right_leg_contact"],
-            }
-        elif len(contact_like) >= 2:
-            events["both_contact"] = {"type": "all", "events": contact_like[:2]}
-
-        # Landing semantic events. Thresholds are conservative and only used as
-        # diagnostic probes, not as official reward.
-        if x_var:
-            events["near_center"] = {"type": "threshold_abs", "var": x_var, "threshold": 0.25}
-        if x_vel_var:
-            events["low_horizontal_speed"] = {"type": "threshold_abs", "var": x_vel_var, "threshold": 0.5}
-        if y_vel_var:
-            events["low_vertical_speed"] = {"type": "threshold_abs", "var": y_vel_var, "threshold": 0.5}
-        if angle_var:
-            events["upright"] = {"type": "threshold_abs", "var": angle_var, "threshold": 0.25}
-        if ang_vel_var:
-            events["low_angular_speed"] = {"type": "threshold_abs", "var": ang_vel_var, "threshold": 0.5}
-
-        safe_contact_children = [name for name in ["both_contact", "low_vertical_speed", "upright"] if name in events]
-        if len(safe_contact_children) >= 2:
-            events["safe_contact"] = {"type": "all", "events": safe_contact_children}
-
-        stable_children = [
-            name for name in [
-                "both_contact",
-                "near_center",
-                "low_horizontal_speed",
-                "low_vertical_speed",
-                "upright",
-                "low_angular_speed",
-            ]
-            if name in events
-        ]
-        if len(stable_children) >= 3:
-            events["stable_landing_condition"] = {"type": "all", "events": stable_children}
-
+            events["any_contact_evidence"] = {"type": "any", "events": contact_like}
+        if len(contact_like) >= 2:
+            events["all_contact_evidence"] = {"type": "all", "events": contact_like[:4]}
         if action_names:
             events["action_nonzero"] = {"type": "action_nonzero"}
-
         task_metrics: Dict[str, Dict[str, Any]] = {}
 
-        if x_var:
-            task_metrics["approach_region_score"] = {
-                "type": "target_region",
-                "inputs": [x_var],
-                "center": [0.0],
-                "tolerance": [0.25],
-            }
+        def add_raw_abs_inverse_metric(metric_name: str, inputs: list[str]) -> None:
+            valid = [x for x in inputs if x in observation_mapping]
+            if valid:
+                task_metrics[metric_name] = {"type": "raw_abs_inverse", "inputs": valid}
 
-        if x_var and y_var:
-            task_metrics["position_centering"] = {
-                "type": "distance_to_target",
-                "inputs": [x_var, y_var],
-                "target": [0.0, 0.0],
-            }
-        elif x_var:
-            task_metrics["position_centering"] = {
-                "type": "raw_abs_inverse",
-                "inputs": [x_var],
-            }
-
-        velocity_inputs = [x for x in [x_vel_var, y_vel_var] if x]
-        if velocity_inputs:
-            task_metrics["velocity_smoothness"] = {
-                "type": "bounded_stability",
-                "inputs": velocity_inputs,
-                "scales": [0.5 for _ in velocity_inputs],
-            }
-
-        attitude_inputs = [x for x in [angle_var, ang_vel_var] if x]
-        if attitude_inputs:
-            task_metrics["stability"] = {
-                "type": "bounded_stability",
-                "inputs": attitude_inputs,
-                "scales": [0.25 if x == angle_var else 0.5 for x in attitude_inputs],
-            }
-            task_metrics["attitude_smoothness"] = {
-                "type": "raw_abs_inverse",
-                "inputs": attitude_inputs,
-            }
-
+        add_raw_abs_inverse_metric("position_centering", [x for x in ["x", "position", "pos", "horizontal_position"] if x in observation_mapping])
+        add_raw_abs_inverse_metric("velocity_smoothness", [x for x in ["vx", "vy", "velocity", "horizontal_speed", "vertical_speed"] if x in observation_mapping])
+        add_raw_abs_inverse_metric("attitude_smoothness", [x for x in ["angle", "angular_velocity", "hull_angle", "hull_angular_velocity", "body_angle", "body_angular_velocity"] if x in observation_mapping])
+        if not task_metrics and numeric_vars:
+            add_raw_abs_inverse_metric("state_smoothness", numeric_vars[:4])
         if action_names:
             task_metrics["energy_cost"] = {"type": "action_cost"}
-
-        if "both_contact" in events:
-            task_metrics["contact_evidence"] = {"type": "event_score", "event": "both_contact"}
-        elif "any_contact" in events:
-            task_metrics["contact_evidence"] = {"type": "event_score", "event": "any_contact"}
-
-        if "safe_contact" in events:
-            task_metrics["safe_contact_score"] = {"type": "event_score", "event": "safe_contact"}
-
-        if "stable_landing_condition" in events:
-            task_metrics["success"] = {"type": "event_success", "event": "stable_landing_condition"}
-            task_metrics["stable_landing_score"] = {"type": "event_score", "event": "stable_landing_condition"}
-        elif "safe_contact" in events:
-            task_metrics["success"] = {"type": "event_success", "event": "safe_contact"}
-
-        progress_metrics = [
-            name for name in [
-                "approach_region_score",
-                "position_centering",
-                "velocity_smoothness",
-                "stability",
-                "contact_evidence",
-            ]
-            if name in task_metrics
-        ]
+        if "all_contact_evidence" in events:
+            task_metrics["contact_evidence"] = {"type": "event_score", "event": "all_contact_evidence"}
+        elif "any_contact_evidence" in events:
+            task_metrics["contact_evidence"] = {"type": "event_score", "event": "any_contact_evidence"}
+        progress_metrics = [name for name in ["position_centering", "velocity_smoothness", "attitude_smoothness", "state_smoothness", "contact_evidence"] if name in task_metrics]
         if progress_metrics:
             task_metrics["progress"] = {"type": "metric_mean", "metrics": progress_metrics}
-
-        landing_quality_metrics = [
-            name for name in [
-                "approach_region_score",
-                "velocity_smoothness",
-                "stability",
-                "contact_evidence",
-                "safe_contact_score",
-                "stable_landing_score",
-                "success",
-            ]
-            if name in task_metrics
-        ]
-        if landing_quality_metrics:
-            task_metrics["landing_quality"] = {"type": "metric_mean", "metrics": landing_quality_metrics}
-
         return {
             "source": "primitive_interface_generated_runtime_spec",
             "input_boundary": primitive_interface.get("input_boundary", "primitive_interface_conditioned"),

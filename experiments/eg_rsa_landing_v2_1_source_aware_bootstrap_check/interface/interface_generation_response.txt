@@ -28,27 +28,27 @@
       },
       {
         "index": 4,
-        "name": "angle",
+        "name": "tilt_angle",
         "meaning": "body tilt angle",
         "type": "float"
       },
       {
         "index": 5,
-        "name": "ang_vel",
+        "name": "angular_vel",
         "meaning": "angular velocity",
         "type": "float"
       },
       {
         "index": 6,
-        "name": "left_leg",
-        "meaning": "left leg ground contact (0/1)",
-        "type": "float"
+        "name": "left_leg_contact",
+        "meaning": "whether the left support leg is touching the ground",
+        "type": "bool"
       },
       {
         "index": 7,
-        "name": "right_leg",
-        "meaning": "right leg ground contact (0/1)",
-        "type": "float"
+        "name": "right_leg_contact",
+        "meaning": "whether the right support leg is touching the ground",
+        "type": "bool"
       }
     ],
     "action_semantics": [
@@ -58,7 +58,7 @@
       },
       {
         "raw_action": 1,
-        "meaning": "side thrust (one direction)"
+        "meaning": "side thrust in one direction"
       },
       {
         "raw_action": 2,
@@ -66,7 +66,7 @@
       },
       {
         "raw_action": 3,
-        "meaning": "side thrust (opposite direction)"
+        "meaning": "side thrust in the opposite direction"
       }
     ],
     "uncertainties": []
@@ -98,35 +98,35 @@
         "type": "float"
       },
       {
-        "name": "angle",
+        "name": "tilt_angle",
         "description": "body tilt angle",
         "type": "float"
       },
       {
-        "name": "ang_vel",
+        "name": "angular_vel",
         "description": "angular velocity",
         "type": "float"
       },
       {
-        "name": "left_leg",
-        "description": "left leg ground contact (0/1)",
-        "type": "float"
+        "name": "left_leg_contact",
+        "description": "whether the left support leg is touching the ground",
+        "type": "bool"
       },
       {
-        "name": "right_leg",
-        "description": "right leg ground contact (0/1)",
-        "type": "float"
+        "name": "right_leg_contact",
+        "description": "whether the right support leg is touching the ground",
+        "type": "bool"
       }
     ],
     "action_variables": [
       {
         "name": "main_engine",
-        "description": "main upward thrust (0 or 1)",
+        "description": "main engine thrust (0 or 1)",
         "type": "float"
       },
       {
         "name": "side_engine",
-        "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+        "description": "side engine thrust (-1 to 1)",
         "type": "float"
       }
     ],
@@ -135,10 +135,10 @@
       "y_pos": 1,
       "x_vel": 2,
       "y_vel": 3,
-      "angle": 4,
-      "ang_vel": 5,
-      "left_leg": 6,
-      "right_leg": 7
+      "tilt_angle": 4,
+      "angular_vel": 5,
+      "left_leg_contact": 6,
+      "right_leg_contact": 7
     },
     "action_mapping": {
       "type": "discrete_lookup",
@@ -164,10 +164,10 @@
       "y_pos",
       "x_vel",
       "y_vel",
-      "angle",
-      "ang_vel",
-      "left_leg",
-      "right_leg",
+      "tilt_angle",
+      "angular_vel",
+      "left_leg_contact",
+      "right_leg_contact",
       "main_engine",
       "side_engine"
     ],
@@ -189,14 +189,15 @@
     ]
   },
   "interface_report": {
-    "design_rationale": "Observation variables directly capture pose, velocity, orientation, and ground contact. The discrete actions are translated into two continuous semantic variables: main_engine (0/1) and side_engine (-1/0/1). This avoids raw action ids and allows reward designers to penalize thrust magnitude, encourage lateral stabilization, and express control costs naturally.",
+    "design_rationale": "The discrete action space is mapped to two independent thrust components (main_engine and side_engine) so that reward formulas can refer to semantic control signals rather than raw integer action IDs. Observation variables are named to reflect their physical meaning, making reward design intuitive.",
     "assumptions": [
-      "Side engine direction convention is chosen arbitrarily (1 for action 1, -1 for action 3); physical left/right is not exposed.",
-      "Leg contact signals are expected to be 0.0/1.0 floats."
+      "Side engine positive thrust corresponds to action 1 direction, negative to action 3 direction; exact left/right convention is assumed but can be reversed without loss of generality.",
+      "Leg contact indicators are treated as boolean (0/1) values, compatible with arithmetic in formula functions.",
+      "The environment is a lander-type task where the main engine provides upward force and side engines provide lateral force."
     ],
     "uncertainties": [
-      "The exact sign convention of side_engine may differ between environment versions, but using absolute value can mitigate this in reward formulas.",
-      "The environment may provide additional internal termination signals not directly observable; reward should rely only on the listed observation variables."
+      "The absolute orientation of side thrust (which side is positive) is not defined; reward terms may rely on sign conventions that should be verified in the actual environment.",
+      "Whether leg contacts are provided as floats (0.0/1.0) or booleans is not explicitly clear from the summary; 'bool' is used to indicate binary state."
     ]
   }
 }

@@ -4,7 +4,6 @@ set -euo pipefail
 BASE_EXP="experiments/eg_rsa_landing_v2_1_source_aware_bootstrap_check"
 SCHEMA_PATH="${BASE_EXP}/bootstrap/generated_initial_schema.json"
 DIAG_PATH="${BASE_EXP}/bootstrap/generated_diagnostics.yml"
-INTERFACE_PATH="${BASE_EXP}/interface/generated_primitive_interface.json"
 
 OUT_ROOT="experiments/landing_v2_1_10iter_6seeds_2M"
 CFG_DIR="configs/generated_landing_10iter_6seeds_2M"
@@ -31,16 +30,10 @@ if [ ! -f "${DIAG_PATH}" ]; then
   exit 1
 fi
 
-if [ ! -f "${INTERFACE_PATH}" ]; then
-  echo "[ERROR] Missing primitive interface: ${INTERFACE_PATH}"
-  exit 1
-fi
-
 echo "============================================================"
 echo "Frozen-schema ${N_ITERATIONS} iter × ${N_SEEDS} seeds × ${TOTAL_TIMESTEPS} steps"
 echo "SCHEMA_PATH      = ${SCHEMA_PATH}"
 echo "DIAG_PATH        = ${DIAG_PATH}"
-echo "INTERFACE_PATH   = ${INTERFACE_PATH}"
 echo "OUT_ROOT         = ${OUT_ROOT}"
 echo "TOTAL_TIMESTEPS  = ${TOTAL_TIMESTEPS}"
 echo "N_ITERATIONS     = ${N_ITERATIONS}"
@@ -78,7 +71,6 @@ eg_rsa:
   schema_source:
     type: manual
     initial_schema_path: ${SCHEMA_PATH}
-    primitive_interface_path: ${INTERFACE_PATH}
 
   diagnostic_spec_path: ${DIAG_PATH}
 
@@ -115,10 +107,6 @@ edit_gate:
   max_edits_per_iteration: 3
   min_target_ratio: 0.02
   min_target_trigger_rate: 0.01
-
-edit_repair:
-  on_validation_error: true
-  max_attempts: 1
 
 outcome_acceptor:
   min_task_improvement: 0.02

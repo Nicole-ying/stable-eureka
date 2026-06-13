@@ -8,16 +8,16 @@ observation_mapping:
   y_pos: 1
   x_vel: 2
   y_vel: 3
-  angle: 4
-  ang_vel: 5
-  left_leg: 6
-  right_leg: 7
+  tilt_angle: 4
+  angular_vel: 5
+  left_leg_contact: 6
+  right_leg_contact: 7
 action_variables:
 - name: main_engine
-  description: main upward thrust (0 or 1)
+  description: main engine thrust (0 or 1)
   type: float
 - name: side_engine
-  description: side engine thrust (-1 for one direction, 0 off, 1 for opposite)
+  description: side engine thrust (-1 to 1)
   type: float
 action_mapping:
   type: discrete_lookup
@@ -35,16 +35,126 @@ action_mapping:
       '3': -1.0
       default: 0.0
 events:
+  left_leg_contact:
+    type: threshold_gt
+    var: left_leg_contact
+    threshold: 0.5
+  right_leg_contact:
+    type: threshold_gt
+    var: right_leg_contact
+    threshold: 0.5
+  any_contact:
+    type: any
+    events:
+    - left_leg_contact
+    - right_leg_contact
+  both_contact:
+    type: all
+    events:
+    - left_leg_contact
+    - right_leg_contact
+  near_center:
+    type: threshold_abs
+    var: x_pos
+    threshold: 0.25
+  low_horizontal_speed:
+    type: threshold_abs
+    var: x_vel
+    threshold: 0.5
+  low_vertical_speed:
+    type: threshold_abs
+    var: y_vel
+    threshold: 0.5
+  upright:
+    type: threshold_abs
+    var: tilt_angle
+    threshold: 0.25
+  low_angular_speed:
+    type: threshold_abs
+    var: angular_vel
+    threshold: 0.5
+  safe_contact:
+    type: all
+    events:
+    - both_contact
+    - low_vertical_speed
+    - upright
+  stable_landing_condition:
+    type: all
+    events:
+    - both_contact
+    - near_center
+    - low_horizontal_speed
+    - low_vertical_speed
+    - upright
+    - low_angular_speed
   action_nonzero:
     type: action_nonzero
 task_metrics:
+  approach_region_score:
+    type: target_region
+    inputs:
+    - x_pos
+    center:
+    - 0.0
+    tolerance:
+    - 0.25
+  position_centering:
+    type: distance_to_target
+    inputs:
+    - x_pos
+    - y_pos
+    target:
+    - 0.0
+    - 0.0
+  velocity_smoothness:
+    type: bounded_stability
+    inputs:
+    - x_vel
+    - y_vel
+    scales:
+    - 0.5
+    - 0.5
+  stability:
+    type: bounded_stability
+    inputs: &id001
+    - tilt_angle
+    - angular_vel
+    scales:
+    - 0.25
+    - 0.5
   attitude_smoothness:
     type: raw_abs_inverse
-    inputs:
-    - angle
+    inputs: *id001
   energy_cost:
     type: action_cost
+  contact_evidence:
+    type: event_score
+    event: both_contact
+  safe_contact_score:
+    type: event_score
+    event: safe_contact
+  success:
+    type: event_success
+    event: stable_landing_condition
+  stable_landing_score:
+    type: event_score
+    event: stable_landing_condition
   progress:
     type: metric_mean
     metrics:
-    - attitude_smoothness
+    - approach_region_score
+    - position_centering
+    - velocity_smoothness
+    - stability
+    - contact_evidence
+  landing_quality:
+    type: metric_mean
+    metrics:
+    - approach_region_score
+    - velocity_smoothness
+    - stability
+    - contact_evidence
+    - safe_contact_score
+    - stable_landing_score
+    - success

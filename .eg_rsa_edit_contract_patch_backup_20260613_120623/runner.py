@@ -72,7 +72,6 @@ class EGRSARunner:
         best_schema = schema
         best_score = -float("inf")
         task_description = self._load_task_description()
-        self.current_task_description = task_description
         self._write_json(self.output_dir / "experiment_mode.json", self.mode.to_dict())
         self._write_json(self.output_dir / "structural_context.json", self.structural_context)
 
@@ -680,106 +679,15 @@ class EGRSARunner:
             validation = EditPlanValidator.validate(schema, [], structural_context=self.structural_context)
             validation.errors.append(f"LLM chose {edit_decision} with next_action={next_action}; no schema edit applied.")
             return [], validation, None, None, next_action
-
         plan_metadata = plan_metadata or {}
         is_atomic = plan_metadata.get("atomicity") == "atomic" and plan_metadata.get("plan_type") == "coupled_rebalancing"
         validation = EditPlanValidator.validate(schema, raw_edit_plan, structural_context=self.structural_context)
-
-        # Repair invalid edit plans before wasting a full training iteration.
-        # This is different from scale/behavior-audit repair: it fixes syntax,
-        # variable-contract, operator, and AST validation failures.
-        repair_cfg = self.config.get("edit_repair", {}) or {}
-        repair_enabled = bool(repair_cfg.get("on_validation_error", True))
-        max_repair_attempts = int(repair_cfg.get("max_attempts", 1) or 1)
-
-        if (
-            self.mode.use_llm_edit
-            and repair_enabled
-            and validation.rejected_edits
-            and max_repair_attempts > 0
-        ):
-            original_validation_dict = validation.to_dict()
-            current_plan = list(raw_edit_plan or [])
-            current_errors = list(validation.errors or [])
-
-            for repair_attempt in range(1, max_repair_attempts + 1):
-                try:
-                    failed_edit_response = {
-                        "repair_trigger": "edit_plan_validation_error",
-                        "attempt": repair_attempt,
-                        "previous_edit_plan": current_plan,
-                        "validation": original_validation_dict,
-                        "latest_validation_errors": current_errors,
-                        "allowed_formula_variables": list(
-                            (schema.metadata or {}).get(
-                                "allowed_formula_variables",
-                                self.structural_context.get("allowed_formula_variables", []),
-                            )
-                        ),
-                        "instruction": (
-                            "Repair the edit_plan so every AST variable uses only allowed_formula_variables. "
-                            "Preserve the intent if possible; otherwise return no_edit + continue_training."
-                        ),
-                    }
-
-                    repair_response = self.edit_agent.generate_repair_edit_plan(
-                        task_description=getattr(self, "current_task_description", "") or self._load_task_description(),
-                        current_reward_schema=schema.to_dict(),
-                        diagnostic_report=diagnostic_report,
-                        retrieved_memories=[],
-                        retrieved_lessons=[],
-                        reflection_report={"strategy": plan_metadata.get("reflection_strategy", {})},
-                        failed_edit_response=failed_edit_response,
-                        scale_audit_report={"audit_pass": True, "source": "validation_repair_not_scale_audit"},
-                        behavior_risk_report={"audit_pass": True, "source": "validation_repair_not_behavior_audit"},
-                    )
-
-                    repaired_plan = repair_response.get("edit_plan", [])
-                    repaired_metadata = self._extract_plan_metadata(
-                        repair_response,
-                        {"strategy": plan_metadata.get("reflection_strategy", {})},
-                    )
-                    repaired_validation = EditPlanValidator.validate(
-                        schema,
-                        repaired_plan,
-                        structural_context=self.structural_context,
-                    )
-
-                    repaired_validation.warnings.append(
-                        "Edit plan repaired after validation failure. "
-                        f"attempt={repair_attempt}; original_errors={current_errors}"
-                    )
-
-                    if repaired_validation.valid_edits and not repaired_validation.rejected_edits:
-                        raw_edit_plan = repaired_plan
-                        validation = repaired_validation
-                        plan_metadata = repaired_metadata
-                        is_atomic = (
-                            plan_metadata.get("atomicity") == "atomic"
-                            and plan_metadata.get("plan_type") == "coupled_rebalancing"
-                        )
-                        next_action = self._extract_next_action(repair_response)
-                        break
-
-                    current_plan = repaired_plan
-                    current_errors = list(repaired_validation.errors or ["repair produced no valid edits"])
-                    validation.warnings.append(
-                        f"Validation repair attempt {repair_attempt} failed: {current_errors}"
-                    )
-
-                except Exception as exc:
-                    validation.warnings.append(
-                        f"Validation repair attempt {repair_attempt} raised {type(exc).__name__}: {exc}"
-                    )
-
         candidate_result = None
         gate_result = None
         edit_plan: List[Dict[str, Any]] = []
-
         if is_atomic and validation.rejected_edits:
             validation.errors.append("Atomic coupled package rejected before execution because at least one edit failed validation; partial execution is forbidden.")
             return [], validation, None, None, "structural_search"
-
         if validation.valid_edits:
             candidate_result = RewardCandidateEvaluator.evaluate(validation.valid_edits, trajectories, self.config.get("candidate_evaluator", {}))
             if is_atomic and len(candidate_result.accepted_edits) != len(validation.valid_edits):
@@ -803,12 +711,10 @@ class EGRSARunner:
             next_action = "apply_edit"
             validation.errors.append("No valid edit remained; used non-LLM safe fallback edit plan.")
         else:
-            validation.errors.append("No valid edit remained after validation and optional repair; skipped schema edit.")
-
+            validation.errors.append("No valid edit remained; skipped schema edit.")
         if not self.mode.use_operator_constraints:
             validation.errors.append("Operator constraints disabled for ablation; no schema edit was applied.")
             edit_plan = []
-
         return edit_plan, validation, candidate_result, gate_result, next_action
 
     @staticmethod

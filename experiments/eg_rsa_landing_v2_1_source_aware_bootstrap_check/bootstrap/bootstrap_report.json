@@ -1,17 +1,13 @@
 {
-  "design_rationale": "The schema combines multiple dense guidance terms that individually capture horizontal centering, altitude, and safe descent speed. Stability is encouraged via Gaussian penalties on tilt and angular velocity. Control effort is minimized with a negative cost component. A terminal event detects dual leg contact and provides a large success reward, aligning with the objective of stable ground contact.",
+  "design_rationale": "The reward encourages horizontal proximity to target, low altitude (descent), stability through small tilt and angular velocity, and penalizes control effort. A terminal reward is given only if both legs are on the ground, tilt is very small, and vertical velocity is low. An additional safety constraint heavily penalizes large tilts even before landing.",
   "assumptions": [
-    "y_pos is the altitude above the landing surface and is non‑negative.",
-    "x_pos is the signed horizontal distance from the target center.",
-    "angle is measured in radians and should be near zero when upright.",
-    "The Gaussian shapes (exp) implicitly normalise rewards to [0,1].",
-    "Leg contact variables are reliable 0/1 signals."
+    "Variable ranges: x_pos and y_pos are measured in meters, with y_pos decreasing to zero at ground.",
+    "tilt_angle in radians, motor torques normalized.",
+    "main_engine is binary 0/1, side_engine in [-1,1]."
   ],
   "risk_notes": [
-    "Reward weights and constants (0.5, 10, 25) were chosen heuristically; they may require tuning for the specific dynamics.",
-    "Heavy action cost could discourage necessary engine use; the 0.1 weight is a starting point.",
-    "Event rule uses a hard threshold on legs; noisy contact signals may trigger false bonuses.",
-    "No explicit safety cut‑off exists for extreme velocities; the descent rate term partially mitigates."
+    "Without curriculum, agent may struggle to satisfy strict terminal condition.",
+    "High terminal reward may dominate other components causing exploration challenges."
   ],
   "identity_hidden_from_llm": true,
   "raw_env_code_input": false,
@@ -30,10 +26,10 @@
       "y_pos",
       "x_vel",
       "y_vel",
-      "angle",
-      "ang_vel",
-      "left_leg",
-      "right_leg",
+      "tilt_angle",
+      "angular_vel",
+      "left_leg_contact",
+      "right_leg_contact",
       "main_engine",
       "side_engine"
     ],
@@ -42,10 +38,10 @@
       "y_pos": 1,
       "x_vel": 2,
       "y_vel": 3,
-      "angle": 4,
-      "ang_vel": 5,
-      "left_leg": 6,
-      "right_leg": 7
+      "tilt_angle": 4,
+      "angular_vel": 5,
+      "left_leg_contact": 6,
+      "right_leg_contact": 7
     },
     "action_mapping": {
       "type": "discrete_lookup",
@@ -72,7 +68,8 @@
     ]
   },
   "canonicalization_notes": [
-    "Event rule landing_bonus: inferred semantic_role from one_time sign.",
-    "Component control_cost: replaced invalid clip None with role-based default [-1.0, 0.0]."
+    "Event rule landing_success: moved reward into weight.",
+    "Component control_effort: replaced invalid clip None with role-based default [-1.0, 0.0].",
+    "Component tilt_safety: replaced invalid clip None with role-based default [-1.0, 0.0]."
   ]
 }
