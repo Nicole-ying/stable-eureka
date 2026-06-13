@@ -111,18 +111,10 @@ def _schema_component_ids(schema: dict[str, Any]) -> list[str]:
     return [str(c.get("id", "")).strip() for c in schema.get("components", []) if str(c.get("id", "")).strip()]
 
 
-def _required_component_ids(schema: dict[str, Any]) -> list[str]:
-    return [
-        str(c.get("id", "")).strip()
-        for c in schema.get("components", [])
-        if c.get("required", True) and str(c.get("id", "")).strip()
-    ]
-
-
 def _validate_clip(value: Any, field_name: str) -> tuple[float, float]:
     if value is None:
         return (-1000.0, 1000.0)
-    if not isinstance(value, list | tuple) or len(value) != 2:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise RewardSpecError(f"{field_name} must be [low, high]")
     lo = float(value[0])
     hi = float(value[1])
@@ -194,9 +186,7 @@ def normalize_reward_spec(raw_spec: dict[str, Any], schema: dict[str, Any]) -> d
         raise RewardSpecError("reward spec must contain components list")
 
     schema_ids = _schema_component_ids(schema)
-    required_ids = _required_component_ids(schema)
     allowed_set = set(schema_ids)
-    required_set = set(required_ids)
 
     by_id: dict[str, dict[str, Any]] = {}
     for c in raw_components:
@@ -221,16 +211,16 @@ def normalize_reward_spec(raw_spec: dict[str, Any], schema: dict[str, Any]) -> d
             "description": str(c.get("description", "")).strip(),
         }
 
-    missing = [cid for cid in required_ids if cid not in by_id]
+    missing = [cid for cid in schema_ids if cid not in by_id]
     if missing:
-        raise RewardSpecError(f"missing required components: {missing}")
+        raise RewardSpecError(f"missing schema components: {missing}")
 
     extra = [cid for cid in by_id if cid not in allowed_set]
     if extra:
         raise RewardSpecError(f"extra components not in schema: {extra}")
 
     # Keep component order identical to the schema. This makes diffs and memory stable.
-    ordered = [by_id[cid] for cid in schema_ids if cid in by_id]
+    ordered = [by_id[cid] for cid in schema_ids]
 
     final_clip = _validate_clip(raw_spec.get("final_clip", [-1000.0, 1000.0]), "final_clip")
     total = str(raw_spec.get("total", "sum_components")).strip() or "sum_components"
