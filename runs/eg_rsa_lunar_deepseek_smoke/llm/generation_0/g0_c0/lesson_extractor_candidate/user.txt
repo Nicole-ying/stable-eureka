@@ -1,0 +1,40 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 0
+Candidate ID: g0_c0
+
+Structured evidence:
+{
+  "generation": 0,
+  "candidate_id": "g0_c0",
+  "parent_ids": [],
+  "status": "ok",
+  "selection_score": -480.5731370508223,
+  "private_eval_return": -480.5731370508223,
+  "generated_return": -87.21102223114299,
+  "generated_minus_private": 393.36211481967933,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 393.36211481967933,
+    "action_mean": 3.0,
+    "action_std": 0.0,
+    "episode_length_mean": 56.0,
+    "component_returns": {
+      "distance_shaping": -24.92944849968054,
+      "velocity_penalty": -20.249119434981573,
+      "angle_penalty": -32.032454296480864,
+      "fuel_efficiency": 0.0,
+      "ground_contact_bonus": 0.0,
+      "terminal": -10.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract observations\n    x, y = obs[0], obs[1]\n    x_vel, y_vel = obs[2], obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_leg = obs[6]\n    right_leg = obs[7]\n\n    # Extract next_obs for terminal check\n    nx, ny = next_obs[0], next_obs[1]\n    nx_vel, ny_vel = next_obs[2], next_obs[3]\n    nleft_leg = next_obs[6]\n    nright_leg = next_obs[7]\n\n    # 1. Distance shaping: encourage moving closer to pad (0,0)\n    distance = np.sqrt(x**2 + y**2)\n    distance_shaping = -0.5 * distance  # linear penalty, scaled modestly\n\n    # 2. Velocity penalty: penalize high speed, especially vertical\n    speed = np.sqrt(x_vel**2 + y_vel**2)\n    vel_penalty = -0.3 * speed - 0.8 * max(y_vel, 0.0)  # extra penalty for upward velocity\n\n    # 3. Angle penalty: penalize deviation from upright\n    angle_penalty = -0.4 * abs(angle) - 0.1 * abs(ang_vel)\n\n    # 4. Fuel efficiency: penalize main engine use (action == 2)\n    fuel_penalty = -0.2 if action == 2 else 0.0\n\n    # 5. Ground contact bonus: reward when both legs touch\n    ground_bonus = 1.0 if (left_leg > 0.5 and right_leg > 0.5) else 0.0\n\n    # 6. Terminal component: large reward for success, large penalty for failure\n    terminal = 0.0\n    if done:\n        # Check if landing was successful: both legs contact, near pad, low velocity\n        both_legs = (nleft_leg > 0.5 and nright_leg > 0.5)\n        near_pad = np.sqrt(nx**2 + ny**2) < 0.15\n        low_speed = np.sqrt(nx_vel**2 + ny_vel**2) < 0.1\n        good_angle = abs(angle) < 0.1\n        if both_legs and near_pad and low_speed and good_angle:\n            terminal = 20.0  # successful landing\n        else:\n            terminal = -10.0  # crash or out-of-bounds\n\n    # Sum all components\n    total_reward = distance_shaping + vel_penalty + angle_penalty + fuel_penalty + ground_bonus + terminal\n\n    # Clip to reasonable bounds\n    total_reward = max(min(total_reward, 100.0), -100.0)\n\n    components = {\n        \"distance_shaping\": distance_shaping,\n        \"velocity_penalty\": vel_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"fuel_efficiency\": fuel_penalty,\n        \"ground_contact_bonus\": ground_bonus,\n        \"terminal\": terminal,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "reward_generation generated code"
+}
+
+Reflection report:
+reward_generation generated code
+
+Return JSON array of lessons. Do not include code blocks.

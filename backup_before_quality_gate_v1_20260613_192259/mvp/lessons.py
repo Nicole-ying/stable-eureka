@@ -90,13 +90,9 @@ def retrieve_memory_context(
         if x.get("env_alias") == env_alias
     ][-env_lesson_top_k:]
 
-    # Do not retrieve current-environment lessons from LTM. Otherwise the
-    # same generation's environment lessons can immediately re-enter as
-    # "cross-environment" memory and pollute the next prompt.
     ltm_lessons = [
         x for x in ltm_lessons
         if x.get("reuse_policy") in ("global", "similar_env", None)
-        and x.get("env_alias") != env_alias
     ][-ltm_lesson_top_k:]
 
     parts = []
@@ -157,24 +153,4 @@ def pack_generation_evidence(
         "top_candidates": [slim(r) for r in ok_rows[:top_k]],
         "bottom_candidates": [slim(r) for r in ok_rows[-top_k:]],
         "failed_candidates": [slim(r) for r in gen_rows if r.get("status") != "ok"],
-    }
-
-
-def pack_candidate_evidence(record: dict[str, Any]) -> dict[str, Any]:
-    """Compact evidence for candidate-level lesson extraction."""
-    return {
-        "generation": record.get("generation"),
-        "candidate_id": record.get("candidate_id"),
-        "parent_ids": record.get("parent_ids", []),
-        "status": record.get("status"),
-        "selection_score": record.get("selection_score"),
-        "private_eval_return": record.get("hidden_eval_return"),
-        "generated_return": record.get("train_mean_return"),
-        "generated_minus_private": float(record.get("train_mean_return", 0.0)) - float(record.get("hidden_eval_return", 0.0)),
-        "repair_attempts": record.get("repair_attempts", 0),
-        "repair_success": record.get("repair_success", False),
-        "validation_errors": record.get("validation_errors", []),
-        "diagnostics": record.get("diagnostics", {}),
-        "reward_code_head": str(record.get("reward_code", ""))[:3500],
-        "llm_rationale": str(record.get("llm_rationale", ""))[:1500],
     }

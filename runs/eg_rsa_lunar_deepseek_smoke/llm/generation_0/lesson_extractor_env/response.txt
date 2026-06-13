@@ -1,56 +1,57 @@
 [
   {
     "lesson_type": "failure_mode",
-    "condition": "When distance penalty coefficient is too large relative to progress reward in a Lunar Lander environment",
-    "observation": "Distance penalty of -1.0 per unit distance produced -73.34 total penalty while progress reward only gave +3.54, making net reward almost always negative and preventing any learning signal.",
-    "explanation": "A massive imbalance between negative penalties and positive shaping rewards drowns out any useful gradient for the agent, causing it to take no varied actions (action mean/std = 0) and fail to learn.",
-    "recommendation": "Set distance penalty coefficient to -0.05 or -0.01 and progress shaping coefficient to at least 5.0 for distance improvement to ensure positive signal can outweigh negative penalties.",
+    "condition": "All shaping terms are negative penalties and terminal reward is sparse and hard to achieve",
+    "observation": "Agent action mean=3.0, std=0.0; it never fires the main engine, never achieves ground contact, and all component returns are negative; episode length 56 steps, private return -480.57.",
+    "explanation": "The reward function punished movement (velocity, angle, distance) and offered no positive reinforcement for progress; the only positive rewards (ground contact +1, terminal +20) were never reached. The agent learned a trivial do-nothing policy to minimize penalties.",
+    "recommendation": "Restructure reward to include positive shaping for progress (e.g., reduction in distance or angle), reduce penalty magnitudes, and relax success thresholds to be achievable during early learning.",
     "confidence": 0.95,
-    "reuse_policy": "similar_env"
+    "reuse_policy": "global"
   },
   {
     "lesson_type": "reward_pattern",
-    "condition": "When all episodes end in crash (landing_bonus = 0, crash_penalty = -30) and no landings are achieved",
-    "observation": "The reward function produced zero landing bonuses and a crash penalty of -30.0 per episode, indicating the agent never achieved a successful landing.",
-    "explanation": "Without a strong positive terminal reward for successful landing, the agent has no target to aim for and always falls into the crash penalty, leading to uniformly poor returns.",
-    "recommendation": "Add an explicit landing success reward of at least +100 in the terminal component when both legs contact the pad, velocity is low, and angle is near zero, to provide a clear positive signal that counterbalances negative shaping.",
+    "condition": "Large generated-minus-private gap (>100) observed in a single candidate",
+    "observation": "Generated return -87.21, private return -480.57, gap +393.36; agent learned a policy that looks good under the shaping terms but performs terribly on the hidden evaluator.",
+    "observation": "The shaping components (distance, velocity, angle penalties) provided a reward signal that was not aligned with the true objective; the agent exploited the mismatch by doing nothing.",
+    "explanation": "The shaping components (distance, velocity, angle penalties) provided a reward signal that was not aligned with the true objective; the agent exploited the mismatch by doing nothing.",
+    "recommendation": "Ensure shaping terms are small relative to the terminal reward and directly correlate with the hidden metric; consider using delta-based positive rewards instead of static penalties.",
     "confidence": 0.9,
-    "reuse_policy": "similar_env"
+    "reuse_policy": "global"
   },
   {
     "lesson_type": "failure_mode",
-    "condition": "When time penalty is applied per step in a time-limited episode",
-    "observation": "A constant time penalty of -0.1 per step accumulated to -7.0 over 70 steps, significantly dragging down the total reward without adding useful learning signal.",
-    "explanation": "In environments with a fixed episode length, a per-step time penalty only makes all rewards more negative without encouraging faster completion, as the agent cannot shorten the episode beyond its limit.",
-    "recommendation": "Remove the time penalty entirely or reduce it to -0.01 per step, since the episode is already bounded and the penalty does not provide meaningful guidance.",
+    "condition": "Ground contact bonus requires both legs > 0.5 threshold and is never triggered",
+    "observation": "ground_contact_bonus component return = 0.0 across all episodes; agent never achieved both-leg contact.",
+    "explanation": "The threshold (both legs > 0.5) was too strict for the agent's initial behavior; the bonus provided no learning signal and was effectively absent from the reward.",
+    "recommendation": "Lower leg contact thresholds (e.g., > 0.1) or use a continuous signal (e.g., sum of leg values) to make the bonus easier to achieve; reward any leg contact initially.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Fuel penalty only applied to main engine use (action == 2)",
+    "observation": "Agent never takes action 2 (fuel penalty always 0), but also never uses engine to correct trajectory; action std=0.",
+    "explanation": "The penalty was narrowly defined and did not discourage engine use per se, but combined with other movement penalties it discouraged any action that changes state; the agent defaulted to a no-op action.",
+    "recommendation": "Avoid penalties that implicitly discourage exploration; instead, provide small positive rewards for engine use when it improves the state (e.g., reduces distance to pad or slows descent).",
     "confidence": 0.85,
     "reuse_policy": "global"
   },
   {
-    "lesson_type": "repair_rule",
-    "condition": "When reward function code uses numpy imports in an environment that does not support them",
-    "observation": "The initial code contained 'import numpy as np', which caused a validation error. The repair system removed the import and replaced numpy functions with pure Python equivalents (e.g., abs() instead of np.abs()).",
-    "explanation": "Many custom environment reward functions are executed in a restricted sandbox without external libraries like numpy, so any dependency on them will cause runtime errors that require repair.",
-    "recommendation": "Always use pure Python built-in functions (abs(), math.sqrt with math import if allowed, or **0.5) instead of numpy functions to avoid validation failures and repair overhead.",
-    "confidence": 0.98,
+    "lesson_type": "failure_mode",
+    "condition": "Terminal success criteria are too strict for early learning",
+    "observation": "Terminal component return = -10.0 (failure) in all episodes; success condition (distance<0.15, speed<0.1, angle<0.1, both legs) never met.",
+    "explanation": "The agent never achieved the precise landing conditions required for the +20 reward, so the terminal signal was always a large penalty (-10), reinforcing avoidance of terminal states and encouraging the do-nothing policy.",
+    "recommendation": "Use relaxed success thresholds initially (e.g., distance<0.5, speed<0.5, angle<0.3) and gradually tighten as training progresses; or provide intermediate rewards for partial success.",
+    "confidence": 0.95,
     "reuse_policy": "global"
   },
   {
     "lesson_type": "general",
-    "condition": "When reward function has multiple terminal-related variables (e.g., crash_penalty, landing_bonus, terminal_reward) that are assigned separately",
-    "observation": "The terminal component likely used separate variables for crash penalty, landing bonus, and terminal reward instead of consolidating them into a single terminal_reward variable, which may cause evaluation issues.",
-    "explanation": "The schema requires the terminal component to use exactly one variable with one value assignment when done is True, so splitting terminal logic across multiple variables can lead to misalignment with the evaluator.",
-    "recommendation": "Consolidate all terminal logic into a single variable (e.g., terminal_reward) that is assigned exactly once when done is True, combining crash penalties and landing bonuses into one expression.",
-    "confidence": 0.9,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "When action mean and std are both zero in diagnostics",
-    "observation": "The diagnostics showed action_mean = 0.0 and action_std = 0.0, indicating the lander took no varied actions throughout the episode.",
-    "explanation": "Zero action variance implies the reward signal is too weak or confusing for the agent to learn any meaningful policy, causing it to default to a single action (likely no action) and fail to explore.",
-    "recommendation": "Ensure reward components are balanced so that positive progress signals can outweigh negative penalties, and consider adding small exploration bonuses or reducing penalty magnitudes to create a usable gradient.",
+    "condition": "All reward components are negative or zero and agent learns a do-nothing policy",
+    "observation": "Action std=0.0, episode length 56 (not truncated early), all component returns negative except zero-value ones.",
+    "explanation": "When all shaping terms are penalties and no positive reinforcement exists for progress, the optimal policy is to minimize the sum of penalties by doing nothing; this is a local minimum that blocks exploration.",
+    "recommendation": "Ensure at least one component provides positive reward for desirable behavior (e.g., progress toward goal, leg contact, successful steps); balance positive and negative signals to drive exploration.",
     "confidence": 0.95,
-    "reuse_policy": "similar_env"
+    "reuse_policy": "global"
   }
 ]

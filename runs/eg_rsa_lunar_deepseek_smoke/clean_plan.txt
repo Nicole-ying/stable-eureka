@@ -1,59 +1,20 @@
-# Search Plan for Lunar Lander Reward Design
+## Search Plan for Reward Generation
 
-## Objective
-Design a reward function for the Lunar Lander environment that encourages the agent to:
-- Land safely on the landing pad (0,0)
-- Land quickly
-- Use minimal fuel
-- Maintain stable orientation
+1. **Initialize with baseline components**: Use the six components defined in the schema. For each component, define candidate functional forms (linear, quadratic, exponential, clipped) and scaling factors.
 
-## Approach
-We will use an iterative search over reward function components, starting from simple shaping and progressively adding complexity. The search will be guided by evaluating agent performance (e.g., success rate, fuel usage, landing precision) on a fixed set of random seeds.
+2. **Generate variations**: For each component, create 3-5 variants by:
+   - Adjusting the functional form (e.g., `-distance`, `-distance^2`, `-exp(distance)`)
+   - Tuning the coefficient magnitude to balance component scales (target: each component contributes roughly 0.1 to 10 per step)
+   - Adding clipping or thresholds (e.g., only penalize velocity above a threshold)
 
-## Search Steps
+3. **Combine components**: Assemble full reward functions by selecting one variant per component. Use additive combination with optional multiplicative gating (e.g., only apply angle penalty when in air).
 
-### Step 1: Define Base Reward Components
-- **Landing bonus**: Award when both legs contact ground AND position is near (0,0) with low velocities.
-- **Crash penalty**: Large negative reward on termination due to crash or out-of-bounds.
-- **Distance penalty**: Negative reward proportional to Euclidean distance from pad.
-- **Velocity penalties**: Penalize high vertical and horizontal speeds.
-- **Angle penalty**: Penalize large tilt and angular velocity.
-- **Fuel penalty**: Small penalty per engine firing.
-- **Time penalty**: Small negative reward per step.
+4. **Evaluate candidate rewards**: For each candidate reward function, run a short training (e.g., 50k steps) with a simple RL algorithm (e.g., PPO). Track:
+   - Episodic return
+   - Landing success rate
+   - Average fuel consumption
+   - Crash rate
 
-### Step 2: Parameterize Each Component
-- For each component, define a set of hyperparameters (weights, thresholds, scaling factors).
-- Example: distance_penalty = -w_dist * sqrt(state[0]^2 + state[1]^2)
-- Example: landing_bonus = +100 if both legs contact and |state[0]|<0.1 and |state[1]|<0.1 and |state[3]|<0.1 and |state[2]|<0.1 and |state[4]|<0.1
+5. **Iterate**: Based on evaluation, refine component forms and coefficients. Re-run top candidates with longer training (e.g., 200k steps). Select the best-performing reward function.
 
-### Step 3: Conduct Grid Search / Random Search
-- Vary weights and thresholds systematically.
-- For each configuration, train an agent (e.g., using PPO) for a fixed number of timesteps.
-- Evaluate the trained agent on a held-out set of episodes and record metrics: success rate, average fuel consumption, average landing distance from pad, average episode length.
-
-### Step 4: Analyze Results and Refine
-- Identify which components are most impactful.
-- Adjust weights to balance exploration and exploitation.
-- Possibly add new components (e.g., shaping for smooth descent profile).
-
-### Step 5: Finalize Reward Function
-- Select the configuration that yields the best trade-off between success rate, fuel efficiency, and landing precision.
-- Document the final reward function and its components.
-
-## Evaluation Metrics
-- Success rate (percentage of episodes ending with safe landing on pad)
-- Average fuel consumption per successful landing (sum of m_power and s_power over episode)
-- Average distance from pad at landing
-- Average episode length
-- Stability (variance of metrics across seeds)
-
-## Tools
-- Use the `compute_reward` function to evaluate candidate rewards.
-- Use `compute_fitness_score` as a proxy for overall performance.
-- Use `individual_reward` dictionary to track component contributions.
-- Train agents using a standard RL algorithm (e.g., PPO) with the Gymnasium environment.
-
-## Constraints
-- Do not use official reward formulas or expert templates.
-- Reward magnitude should be bounded within [-1000, 1000] (using reward_abs_bound).
-- All components must be derived from the public observation space and action variables.
+6. **Final validation**: Test the chosen reward on multiple random seeds to ensure robustness. Report the final reward function and its performance metrics.

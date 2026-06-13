@@ -20,7 +20,6 @@ from .env_sanitizer import infer_clean_env_interface
 from .lessons import (
     append_jsonl,
     normalize_lesson,
-    pack_candidate_evidence,
     pack_generation_evidence,
     read_jsonl,
     retrieve_memory_context,
@@ -282,56 +281,6 @@ class RewardEvolutionOrchestrator:
                     diagnostics=dict(train_result.get("diagnostics", {})),
                     lesson_ids=[],
                 )
-                as_dict = rec.__dict__
-
-                # Candidate-level lesson extraction.
-                # This gives STM a real lesson layer instead of only storing raw candidate records.
-                lesson_ids: list[str] = []
-                try:
-                    candidate_evidence = pack_candidate_evidence(as_dict)
-                    candidate_lessons_raw, candidate_lesson_budget = self.lesson_extractor.extract(
-                        evidence=candidate_evidence,
-                        reflection_report=rationale,
-                        scope="candidate",
-                        env_alias=clean_interface["env_alias"],
-                        generation=g,
-                        candidate_id=cid,
-                        log_dir=candidate_llm_dir / "lesson_extractor_candidate",
-                    )
-                    candidate_lessons = [
-                        normalize_lesson(
-                            x,
-                            scope="candidate",
-                            env_alias=clean_interface["env_alias"],
-                            generation=g,
-                            candidate_id=cid,
-                        )
-                        for x in candidate_lessons_raw
-                    ]
-                    append_jsonl(self.cfg.candidate_lessons_path, candidate_lessons)
-                    lesson_ids = [str(x.get("lesson_id")) for x in candidate_lessons]
-                except Exception as e:
-                    candidate_lessons = [
-                        normalize_lesson(
-                            {
-                                "lesson_type": "extractor_error",
-                                "condition": "Candidate lesson extraction failed.",
-                                "observation": str(e),
-                                "explanation": "Candidate lesson extraction raised an exception.",
-                                "recommendation": "Inspect candidate lesson extractor prompt/response.",
-                                "confidence": 0.2,
-                                "reuse_policy": "same_env",
-                            },
-                            scope="candidate",
-                            env_alias=clean_interface["env_alias"],
-                            generation=g,
-                            candidate_id=cid,
-                        )
-                    ]
-                    append_jsonl(self.cfg.candidate_lessons_path, candidate_lessons)
-                    lesson_ids = [str(x.get("lesson_id")) for x in candidate_lessons]
-
-                rec.lesson_ids = lesson_ids
                 self.memory.append(rec)
                 as_dict = rec.__dict__
                 generation_records.append(as_dict)
@@ -387,8 +336,11 @@ class RewardEvolutionOrchestrator:
                 for x in env_lessons_raw
             ]
             append_jsonl(self.cfg.env_lessons_path, env_lessons)
-            # Quality-gate v1: do not push current-run lessons into LTM during the same run.
-            # LTM should be updated by a separate cross-run promotion step, not inside each generation.
+            append_jsonl(self.cfg.ltm_lessons_path, [
+                normalize_lesson(x, scope="cross_environment", env_alias=clean_interface["env_alias"], generation=g)
+                for x in env_lessons_raw
+                if str(x.get("reuse_policy", "")).lower() in ("global", "cross_environment", "similar_env")
+            ])
 
             env_memory_text = (
                 "# Environment Memory\n\n"

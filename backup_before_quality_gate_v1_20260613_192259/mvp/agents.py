@@ -55,22 +55,6 @@ def _contains_private_term(text: str) -> bool:
     return any(term.lower() in lower for term in PRIVATE_TERMS)
 
 
-def _strip_import_lines(code: str) -> str:
-    """
-    Programmatic fallback: remove import lines from generated reward code.
-
-    The validator still forbids imports. This fallback avoids wasting repair
-    attempts when the LLM adds harmless imports like import math or import numpy.
-    """
-    cleaned = []
-    for line in code.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("import ") or stripped.startswith("from "):
-            continue
-        cleaned.append(line)
-    return "\n".join(cleaned).strip() + "\n"
-
-
 def _extract_code_and_rationale(text: str, stage: str) -> tuple[str, str]:
     if not text or not text.strip():
         raise ValueError(f"empty LLM response at stage={stage}")
@@ -102,7 +86,7 @@ def _extract_code_and_rationale(text: str, stage: str) -> tuple[str, str]:
 
     rationale_match = re.search(r"RATIONALE:(.*)", text, re.DOTALL | re.IGNORECASE)
     rationale = rationale_match.group(1).strip() if rationale_match else f"{stage} generated code"
-    return _strip_import_lines(code.strip()), rationale
+    return code.strip(), rationale
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -376,13 +360,11 @@ class LessonExtractorAgent:
         env_alias: str,
         generation: int,
         log_dir: Path,
-        candidate_id: str | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         user = (
             f"Scope: {scope}\n"
             f"Env alias: {env_alias}\n"
-            f"Generation: {generation}\n"
-            f"Candidate ID: {candidate_id or 'N/A'}\n\n"
+            f"Generation: {generation}\n\n"
             "Structured evidence:\n"
             f"{json.dumps(evidence, ensure_ascii=False, indent=2)}\n\n"
             "Reflection report:\n"
@@ -390,13 +372,7 @@ class LessonExtractorAgent:
             "Return JSON array of lessons. Do not include code blocks."
         )
         response = self.model.chat(self.system_prompt, user)
-        budget = write_llm_call(
-            log_dir,
-            self.system_prompt,
-            user,
-            response,
-            {"agent": "LessonExtractorAgent", "scope": scope, "candidate_id": candidate_id},
-        )
+        budget = write_llm_call(log_dir, self.system_prompt, user, response, {"agent": "LessonExtractorAgent", "scope": scope})
         lessons = _extract_json_array(response)
         return lessons, budget
 

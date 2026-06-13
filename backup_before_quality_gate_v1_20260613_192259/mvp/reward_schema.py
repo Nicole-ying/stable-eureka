@@ -82,16 +82,6 @@ def build_default_schema(clean_interface: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_schema(raw: dict[str, Any] | None, clean_interface: dict[str, Any]) -> dict[str, Any]:
-    """
-    Normalize an LLM-generated reward schema.
-
-    Quality-gate v1 policy:
-      - If the LLM provides at least 4 valid components, trust that schema.
-      - Do not blindly append default progress/stability/effort/terminal.
-      - Keep required component count between 4 and 6 where possible.
-      - Avoid multiple terminal-like components activating on done.
-      - Fall back to default schema only when LLM schema is missing or too small.
-    """
     if not isinstance(raw, dict):
         raw = {}
 
@@ -100,39 +90,18 @@ def normalize_schema(raw: dict[str, Any] | None, clean_interface: dict[str, Any]
     schema = dict(default)
     schema.update({k: v for k, v in raw.items() if v is not None})
 
-    raw_components = raw.get("components")
-    if not isinstance(raw_components, list):
-        raw_components = []
+    components = raw.get("components")
+    if not isinstance(components, list) or not components:
+        components = default["components"]
 
     normalized_components = []
     seen = set()
-    terminal_like_seen = False
-
-    for c in raw_components:
+    for c in components:
         if not isinstance(c, dict):
             continue
-
         cid = str(c.get("id", "")).strip()
-        if not cid:
+        if not cid or cid in seen:
             continue
-
-        cid_norm = cid.lower()
-        is_terminal_like = any(
-            term in cid_norm
-            for term in ("terminal", "landing", "crash", "success", "failure", "done")
-        )
-
-        # Keep one terminal-outcome component only. This prevents schemas such as
-        # landing_bonus + crash_penalty + terminal all being required simultaneously.
-        if is_terminal_like:
-            if terminal_like_seen:
-                continue
-            cid = "terminal"
-            terminal_like_seen = True
-
-        if cid in seen:
-            continue
-
         seen.add(cid)
         normalized_components.append(
             {
@@ -143,20 +112,11 @@ def normalize_schema(raw: dict[str, Any] | None, clean_interface: dict[str, Any]
             }
         )
 
-    # If LLM schema is too small or malformed, use default compact schema.
-    if len(normalized_components) < 4:
-        normalized_components = list(default["components"])
-    else:
-        # Cap at 6 required components to keep reward code compact and interpretable.
-        required = [c for c in normalized_components if c.get("required", True)]
-        optional = [c for c in normalized_components if not c.get("required", True)]
-
-        if len(required) > 6:
-            kept_required = required[:6]
-            kept_ids = {c["id"] for c in kept_required}
-            normalized_components = kept_required + [c for c in optional if c["id"] in kept_ids]
-        else:
-            normalized_components = normalized_components[:6]
+    required_ids = {c["id"] for c in normalized_components if c.get("required")}
+    for c in default["components"]:
+        if c["id"] not in seen:
+            normalized_components.append(c)
+            required_ids.add(c["id"])
 
     schema["components"] = normalized_components
     schema["reward_signature"] = "compute_reward(obs, action, next_obs, done, info)"
