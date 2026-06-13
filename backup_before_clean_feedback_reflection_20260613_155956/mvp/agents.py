@@ -7,7 +7,6 @@ from typing import Any
 
 from .leak_audit import LeakAuditError, assert_no_leak_text
 from .models import ModelGateway
-from .clean_feedback import build_clean_reflection, prepare_parent_code_for_prompt
 from .reward_schema import build_default_schema
 from .task_specs import PublicTaskSpec
 
@@ -169,15 +168,9 @@ class RewardCoderAgent:
         reflection_context: str,
         parent_codes: list[str],
     ) -> RewardDraft:
-        safe_parent_codes = []
-        for c in parent_codes:
-            safe_code = prepare_parent_code_for_prompt(c)
-            if safe_code:
-                safe_parent_codes.append(safe_code)
-
         parent_block = "\n\n".join(
-            [f"Parent {i + 1}:\n```python\n{c}\n```" for i, c in enumerate(safe_parent_codes)]
-        ) or "No anonymous parent code available."
+            [f"Parent {i + 1}:\n```python\n{c}\n```" for i, c in enumerate(parent_codes)]
+        ) or "No clean parent code yet."
 
         schema_components = "\n".join(
             [
@@ -301,16 +294,42 @@ class VisionJudgeAgent:
 
 
 class ReflectionAgent:
-    """
-    Deterministic clean feedback agent.
-
-    不再调用 LLM 自由生成 reflection，避免把物理语义词、
-    benchmark 先验、绝对性能判断带回下一代 RewardCoder prompt。
-    """
-
     def __init__(self, model: ModelGateway):
         self.model = model
+        self.system_prompt = (PROMPT_DIR / "reflection_system.txt").read_text(encoding="utf-8")
 
     def summarize(self, top_records: list[dict]) -> str:
-        return build_clean_reflection(top_records)
+        if not top_records:
+            return (
+                "No prior clean candidates. Start with bounded progress, stability, effort, "
+                "and terminal components. Avoid environment-specific assumptions."
+            )
 
+        summary_lines = []
+        for r in top_records:
+            summary_lines.append(
+                (
+                    f"id={r.get('candidate_id')}, status={r.get('status')}, "
+                    f"selection_score={r.get('selection_score')}, "
+                    f"private_eval_return={r.get('hidden_eval_return')}, "
+                    f"generated_return={r.get('train_mean_return')}, "
+                    f"repair_attempts={r.get('repair_attempts', 0)}, "
+                    f"repair_success={r.get('repair_success', False)}, "
+                    f"reason={r.get('judge_reason')}, "
+                    f"validation_errors={r.get('validation_errors', [])}"
+                )
+            )
+
+        user = (
+            "Past clean candidates from the same schema only:\n"
+            + "\n".join(summary_lines)
+            + "\n\nDo not infer the real environment identity. Propose schema-preserving mutation hypotheses."
+        )
+
+        assert_no_leak_text(
+            "reflection_user_prompt",
+            user,
+            extra_terms=("env_reward", "hidden_env_reward", "_hidden_env_reward", "fitness_score"),
+        )
+
+        return self.model.chat(self.system_prompt, user)
