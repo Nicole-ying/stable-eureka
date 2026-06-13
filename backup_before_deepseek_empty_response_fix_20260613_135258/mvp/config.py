@@ -22,8 +22,6 @@ class ModelConfig:
     # DeepSeek is OpenAI-compatible, but should use its own base_url and key env.
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_api_key_env: str = "DEEPSEEK_API_KEY"
-    deepseek_thinking: str = "disabled"  # disabled | enabled
-    deepseek_reasoning_effort: str | None = None
 
     # Ollama settings.
     ollama_host: str = "http://localhost:11434"

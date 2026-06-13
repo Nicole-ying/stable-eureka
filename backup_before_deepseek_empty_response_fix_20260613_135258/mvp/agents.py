@@ -51,53 +51,6 @@ def _contains_private_term(text: str) -> bool:
     return any(term.lower() in text_lower for term in PRIVATE_TERMS)
 
 
-
-def _extract_code_and_rationale(text: str, stage: str) -> tuple[str, str]:
-    """
-    Robustly extract reward code from LLM output.
-
-    支持：
-      - ```python ... ```
-      - ```py ... ```
-      - ``` ... ```
-      - 直接从 def compute_reward(...) 开始的裸代码
-
-    如果提取不到 compute_reward，直接报错，不再让空代码进入 validator。
-    """
-    if not text or not text.strip():
-        raise ValueError(f"empty LLM response at stage={stage}")
-
-    patterns = [
-        r"```(?:python|py)\s*\n(.*?)```",
-        r"```\s*\n(.*?)```",
-    ]
-
-    code = ""
-    for pat in patterns:
-        m = re.search(pat, text, re.DOTALL | re.IGNORECASE)
-        if m:
-            code = m.group(1).strip()
-            break
-
-    if not code:
-        m = re.search(r"(def\s+compute_reward\s*\(.*)", text, re.DOTALL)
-        if m:
-            code = m.group(1).strip()
-        else:
-            code = text.strip()
-
-    if "def compute_reward" not in code:
-        raise ValueError(
-            f"could not extract compute_reward from LLM output at stage={stage}. "
-            f"output_head={text[:500]!r}"
-        )
-
-    rationale_match = re.search(r"RATIONALE:(.*)", text, re.DOTALL | re.IGNORECASE)
-    rationale = rationale_match.group(1).strip() if rationale_match else f"{stage} generated code"
-
-    return code.strip(), rationale
-
-
 def _sanitize_errors(errors: list[str]) -> list[str]:
     sanitized = []
     for err in errors:
@@ -194,7 +147,10 @@ class RewardCoderAgent:
         assert_no_leak_text("reward_coder_user_prompt", user)
 
         text = self.model.chat(self.system_prompt, user)
-        reward_code, rationale = _extract_code_and_rationale(text, stage="reward_generation")
+        code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
+        reward_code = code_match.group(1).strip() if code_match else text.strip()
+        rationale_match = re.search(r"RATIONALE:(.*)", text, re.DOTALL)
+        rationale = rationale_match.group(1).strip() if rationale_match else "LLM-generated clean reward candidate"
         return RewardDraft(candidate_id=candidate_id, reward_code=reward_code, rationale=rationale)
 
 
@@ -258,7 +214,10 @@ class RepairAgent:
         assert_no_leak_text("repair_user_prompt", user)
 
         text = self.model.chat(self.system_prompt, user)
-        repaired_code, rationale = _extract_code_and_rationale(text, stage="repair")
+        code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
+        repaired_code = code_match.group(1).strip() if code_match else text.strip()
+        rationale_match = re.search(r"RATIONALE:(.*)", text, re.DOTALL)
+        rationale = rationale_match.group(1).strip() if rationale_match else "schema repair"
         return RepairDraft(reward_code=repaired_code, rationale=rationale)
 
 

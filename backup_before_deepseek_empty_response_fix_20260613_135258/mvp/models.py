@@ -50,51 +50,18 @@ class ModelGateway:
                 "Expected one of: openai, deepseek, ollama, mock."
             )
 
-    def _chat_openai_compatible(self, system: str, user: str) -> str:
-        kwargs = {
-            "model": self.config.llm_model,
-            "temperature": self.config.temperature,
-            "max_tokens": self.config.max_tokens,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        }
-
-        if self.provider == "deepseek":
-            thinking = getattr(self.config, "deepseek_thinking", "disabled")
-            reasoning_effort = getattr(self.config, "deepseek_reasoning_effort", None)
-
-            if thinking:
-                kwargs["extra_body"] = {
-                    "thinking": {
-                        "type": str(thinking),
-                    }
-                }
-
-            if reasoning_effort:
-                kwargs["reasoning_effort"] = reasoning_effort
-
-        response = self.openai_client.chat.completions.create(**kwargs)
-        choice = response.choices[0]
-        message = choice.message
-        content = message.content or ""
-
-        if not content.strip():
-            finish_reason = getattr(choice, "finish_reason", None)
-            usage = getattr(response, "usage", None)
-            raise RuntimeError(
-                "LLM returned empty message.content. "
-                f"provider={self.provider}, model={self.config.llm_model}, "
-                f"finish_reason={finish_reason}, usage={usage}. "
-                "For DeepSeek code generation, use deepseek_thinking: disabled and increase max_tokens if needed."
-            )
-
-        return content
-
     def chat(self, system: str, user: str) -> str:
         if self.provider in ("openai", "deepseek"):
-            return self._chat_openai_compatible(system, user)
+            response = self.openai_client.chat.completions.create(
+                model=self.config.llm_model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            return response.choices[0].message.content or ""
 
         if self.provider == "ollama":
             response = self.ollama_client.chat(
@@ -105,12 +72,7 @@ class ModelGateway:
                 ],
                 options={"temperature": self.config.temperature},
             )
-            content = response["message"]["content"] or ""
-            if not content.strip():
-                raise RuntimeError(
-                    f"Ollama returned empty content. model={self.config.llm_model}"
-                )
-            return content
+            return response["message"]["content"]
 
         # mock provider
         return (
