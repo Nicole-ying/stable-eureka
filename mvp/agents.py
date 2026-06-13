@@ -8,7 +8,8 @@ from typing import Any
 
 from .llm_logging import write_llm_call
 from .models import ModelGateway
-from .reward_schema import build_default_schema, normalize_schema
+from .reward_schema import normalize_schema
+from .reward_spec import parse_validate_compile_reward_spec
 
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
@@ -30,6 +31,7 @@ PRIVATE_TERMS = (
 class RewardDraft:
     candidate_id: str
     reward_code: str
+    reward_spec: dict[str, Any]
     rationale: str
     llm_response: str
     prompt_budget: dict[str, Any]
@@ -59,8 +61,8 @@ def _strip_import_lines(code: str) -> str:
     """
     Programmatic fallback: remove import lines from generated reward code.
 
-    The validator still forbids imports. This fallback avoids wasting repair
-    attempts when the LLM adds harmless imports like import math or import numpy.
+    This is now mostly used by the legacy RepairAgent. RewardSpec generation
+    should not emit Python code at all.
     """
     cleaned = []
     for line in code.splitlines():
@@ -226,14 +228,20 @@ class SchemaPlannerAgent:
 
 
 class RewardCoderAgent:
+    """
+    RewardSpec JSON IR generator.
+
+    The LLM no longer writes executable Python reward code. It proposes a
+    schema-constrained JSON RewardSpec, and the framework deterministically
+    compiles that spec into compute_reward().
+    """
+
     def __init__(self, model: ModelGateway):
         self.model = model
         self.system_prompt = _read_prompt(
             "reward_coder_system.txt",
-            "You are a reward engineer. Use Eureka task_description.txt and step.py plus EG-RSA memory/feedback "
-            "to generate compute_reward(obs, action, next_obs, done, info). "
-            "Output a Python function and a short RATIONALE. Do not use env_reward, fitness_score, official reward formulas, "
-            "or hidden evaluator details.",
+            "You design rewards by outputting JSON RewardSpec only. Do not write Python code. "
+            "The framework will compile RewardSpec into compute_reward(obs, action, next_obs, done, info).",
         )
 
     def draft(
@@ -245,19 +253,18 @@ class RewardCoderAgent:
         search_plan: str,
         feedback_context: str,
         memory_context: str,
-        parent_codes: list[str],
+        parent_specs: list[dict[str, Any]],
         log_dir: Path,
         parent_code_max_chars: int,
     ) -> RewardDraft:
-        safe_parent_codes = []
-        for c in parent_codes:
-            if _contains_private_term(c):
+        safe_parent_specs = []
+        for spec in parent_specs:
+            text = json.dumps(spec, ensure_ascii=False)
+            if _contains_private_term(text):
                 continue
-            safe_parent_codes.append(_truncate(c, parent_code_max_chars))
+            safe_parent_specs.append(json.loads(_truncate(text, parent_code_max_chars).replace("\n...[TRUNCATED]", "")) if len(text) <= parent_code_max_chars else spec)
 
-        parent_block = "\n\n".join(
-            [f"Parent {i + 1}:\n```python\n{c}\n```" for i, c in enumerate(safe_parent_codes)]
-        ) or "No parent reward code available."
+        parent_block = json.dumps(safe_parent_specs, ensure_ascii=False, indent=2) if safe_parent_specs else "[]"
 
         user = (
             f"Candidate ID: {candidate_id}\n\n"
@@ -275,18 +282,25 @@ class RewardCoderAgent:
             f"{feedback_context}\n\n"
             "Memory context:\n"
             f"{memory_context}\n\n"
-            "Parent reward codes:\n"
+            "Parent RewardSpecs:\n"
             f"{parent_block}\n\n"
-            "Generate one reward candidate. You may use task semantics from task_description.txt and step.py. "
-            "The only hard output contract is compute_reward(obs, action, next_obs, done, info) returning float reward and components dict. "
-            "Do not use env_reward, fitness_score, compute_fitness_score, official reward formulas, or hidden evaluator details."
+            "Generate exactly one RewardSpec JSON object. Do not output Python code. "
+            "The RewardSpec components must exactly match the reward schema component IDs. "
+            "Each component must contain id, expression, and clip. Expressions may only use obs, next_obs, action, done, info, np, math, abs, min, max, float, int, bool. "
+            "Use private_eval_return only as black-box feedback; do not infer hidden evaluator internals."
         )
 
         response = self.model.chat(self.system_prompt, user)
-        budget = write_llm_call(log_dir, self.system_prompt, user, response, {"agent": "RewardCoderAgent", "candidate_id": candidate_id})
-        reward_code, rationale = _extract_code_and_rationale(response, stage="reward_generation")
+        budget = write_llm_call(log_dir, self.system_prompt, user, response, {"agent": "RewardSpecAgent", "candidate_id": candidate_id})
+        parsed = _extract_json_object(response)
+        raw_spec = parsed.get("reward_spec", parsed) if isinstance(parsed, dict) else {}
+        reward_spec, reward_code = parse_validate_compile_reward_spec(raw_spec, reward_schema)
 
-        return RewardDraft(candidate_id, reward_code, rationale, response, budget)
+        rationale = str(parsed.get("rationale", "") if isinstance(parsed, dict) else "").strip()
+        if not rationale:
+            rationale = str(reward_spec.get("rationale", "")).strip() or "RewardSpec JSON IR generated."
+
+        return RewardDraft(candidate_id, reward_code, reward_spec, rationale, response, budget)
 
 
 class RepairAgent:
