@@ -1,58 +1,56 @@
-```json
 [
   {
-    "lesson_type": "reward_pattern",
-    "condition": "When using progress shaping with distance and velocity deltas",
-    "observation": "Shaping bonus was only 1.29 despite coefficients of 1.0 and 0.5, providing negligible guidance to the agent",
-    "explanation": "The shaping bonus is computed as a small delta between successive steps, so even moderate coefficients produce tiny values that are easily overwhelmed by other penalties",
-    "recommendation": "Use coefficients 5-10x larger (e.g., 5.0 for distance progress, 2.0 for velocity progress) so the shaping bonus meaningfully contributes to total reward",
-    "confidence": 0.85,
-    "reuse_policy": "global"
+    "lesson_type": "failure_mode",
+    "condition": "Fuel efficiency penalty uses a binary check on action != 0 with a coefficient of -0.5 or higher",
+    "observation": "Action mean dropped to 0.067 and action std to 0.42; the agent almost never fires engines, leading to short episodes (mean 73 steps) and no successful landings.",
+    "explanation": "A binary penalty that penalizes every non-zero action equally, especially with a moderate coefficient, strongly discourages any engine use. The agent learns that doing nothing yields a smaller penalty than firing engines, causing learned helplessness.",
+    "recommendation": "Replace binary fuel penalty with a continuous penalty proportional to action magnitude, e.g., -0.05 * sum(action**2). This allows small corrective thruster firings with minimal penalty while still discouraging excessive thrust.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "failure_mode",
-    "condition": "When action mean is ~1.9 but engine_usage_penalty is 0.0",
-    "observation": "The agent uses non-idle actions extensively but the engine penalty only targets action==2 (main engine), resulting in zero penalty despite fuel consumption",
-    "explanation": "The action space has multiple engine actions (left, main, right), but the reward only penalizes the main engine, leaving other fuel-consuming actions unpenalized",
-    "recommendation": "Penalize all non-idle actions (action != 1) rather than just the main engine, or use action magnitude to penalize any engine fire proportionally",
-    "confidence": 0.9,
-    "reuse_policy": "same_env"
+    "condition": "No positive per-step survival bonus is included in the reward function",
+    "observation": "Episode length is short (mean 73 steps) and terminal penalty of -50 applies every episode; the agent has little incentive to stay alive and explore controlled descent.",
+    "explanation": "Without a small positive signal for each timestep survived, the agent is not motivated to keep the lander airborne. Combined with any penalty for action, the agent prefers to crash quickly to avoid accumulating penalties.",
+    "recommendation": "Add a small positive survival bonus, e.g., +0.1 per timestep, to counteract negative incentives and give the agent more time to learn controlled maneuvers.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "reward_pattern",
-    "condition": "When switching from aggressive squared penalties to moderate linear penalties combined with progress shaping",
-    "observation": "Generated-private gap dropped from -1056 to 32.19, a dramatic improvement in alignment with the hidden evaluator",
-    "explanation": "Linear penalties avoid the explosive negative values of squared terms, while progress shaping provides dense gradient toward the goal, reducing mismatch between generated and private reward",
-    "recommendation": "Use moderate linear coefficients (e.g., -2*distance, -1*velocity) paired with progress shaping to reduce generated-private gap",
-    "confidence": 0.95,
+    "condition": "Touchdown bonus uses strict thresholds and binary all-or-nothing condition",
+    "observation": "Touchdown bonus remains 0.0 across all episodes; the agent never achieves the landing conditions despite relaxed thresholds.",
+    "explanation": "A binary bonus that requires simultaneous satisfaction of multiple strict conditions provides no gradient for learning. The agent receives no partial credit for getting closer to the landing conditions.",
+    "recommendation": "Add progressive shaping bonuses that reward getting closer to the target, e.g., +0.1 * (1 - abs(obs[0]) / 1.5) for horizontal proximity, or +0.1 * (1 - abs(obs[4]) / 0.5) for upright angle. This gives the agent a continuous signal to follow.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated_private_gap narrowed significantly after reducing dominating penalty coefficients",
+    "observation": "Generated_private_gap went from -199.79 in gen 1 to +39.04 in gen 2; distance and velocity penalties are no longer saturated.",
+    "explanation": "Reducing coefficients on distance and velocity penalties prevented saturation, making the reward function more aligned with the private evaluator's scale. The generated return became less pessimistic.",
+    "recommendation": "When the generated_private_gap is large and negative, first check for saturated penalty components and reduce their coefficients to restore gradient and improve alignment.",
+    "confidence": 0.9,
     "reuse_policy": "global"
   },
   {
     "lesson_type": "mutation_rule",
-    "condition": "When terminal reward is +300 and landing thresholds are relaxed (distance<0.2, angle<0.2, vy<0.2)",
-    "observation": "Terminal reward reached 150.0 and crash penalty was -25.0, indicating some successful landings occurred for the first time",
-    "explanation": "Relaxed landing conditions make the goal achievable, and a high terminal reward (+300) provides strong incentive while balanced crash penalty (-50) prevents excessive risk-taking",
-    "recommendation": "Set landing bonus to at least +300 with relaxed thresholds (distance<0.2, angle<0.2, vy<0.2) and crash penalty around -50 to enable first successful landings",
-    "confidence": 0.9,
-    "reuse_policy": "same_env"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "When only 1 candidate is generated despite recommendations for 3-5",
-    "observation": "Only one candidate was produced, limiting the ability to explore different parameter combinations and find better solutions",
-    "explanation": "With a single candidate, there is no opportunity to compare variations in component weights, thresholds, or structure, reducing the chance of discovering an optimal reward",
-    "recommendation": "Always generate at least 3-5 candidates with systematic variation of key parameters (terminal reward, penalty coefficients, shaping weights, engine penalty scope) to enable effective exploration",
-    "confidence": 0.95,
-    "reuse_policy": "global"
+    "condition": "A fuel efficiency penalty change from -0.1 to -0.5 per non-zero action caused action mean to drop from 1.62 to 0.067",
+    "observation": "Increasing the binary fuel penalty coefficient 5x almost completely suppressed engine use, demonstrating high sensitivity to this parameter.",
+    "explanation": "The fuel efficiency penalty directly controls the cost of taking any action. A small coefficient change can dramatically shift the agent's behavior from active control to complete inaction.",
+    "recommendation": "When tuning fuel efficiency, use small coefficient increments (e.g., 0.01 steps) and monitor action mean closely. Prefer continuous magnitude-based penalties to avoid binary suppression.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "general",
-    "condition": "When component returns are well-balanced (distance:-131, velocity:-71, terminal:+150, crash:-25)",
-    "observation": "No single component dominates the total reward, enabling the agent to learn from multiple signals simultaneously",
-    "explanation": "Balanced component scales prevent one penalty from overwhelming the gradient, allowing the agent to respond to distance, velocity, orientation, and terminal outcomes",
-    "recommendation": "Normalize component scales so that each contributes meaningfully (within roughly an order of magnitude) to total reward",
+    "condition": "Conservative changes from parent were implemented in a single candidate generation",
+    "observation": "The candidate reduced terminal penalty from -100 to -50, relaxed touchdown thresholds, and adjusted coefficients modestly; validation passed and no runtime errors occurred.",
+    "explanation": "Making incremental, conservative changes reduces the risk of introducing bugs or destabilizing the reward function, while still allowing measurable improvement.",
+    "recommendation": "When iterating on reward design, apply one or two targeted changes per generation rather than many simultaneous modifications. This makes it easier to attribute performance changes to specific adjustments.",
     "confidence": 0.9,
     "reuse_policy": "global"
   }
 ]
-```

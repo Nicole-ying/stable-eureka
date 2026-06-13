@@ -8,44 +8,49 @@ Structured evidence:
   "generation": 2,
   "candidate_id": "g2_c0",
   "parent_ids": [
-    "g0_c0"
+    "g1_c0"
   ],
   "status": "ok",
-  "selection_score": -115.27432737399424,
-  "private_eval_return": -115.27432737399424,
-  "generated_return": -83.0888201355818,
-  "generated_minus_private": 32.18550723841244,
+  "selection_score": -118.00238434201296,
+  "private_eval_return": -118.00238434201296,
+  "generated_return": -78.96601859065703,
+  "generated_minus_private": 39.03636575135593,
   "repair_attempts": 0,
   "repair_success": false,
   "validation_errors": [],
   "diagnostics": {
-    "generated_private_gap": 32.18550723841244,
-    "action_mean": 1.9043478260869566,
-    "action_std": 1.0589076655848726,
-    "episode_length_mean": 69.0,
+    "generated_private_gap": 39.03636575135593,
+    "action_mean": 0.06712328767123288,
+    "action_std": 0.4215284629465994,
+    "episode_length_mean": 73.0,
     "component_returns": {
-      "distance_penalty": -130.86446156868115,
-      "velocity_penalty": -71.01762864841058,
-      "angle_penalty": -7.498989041765162,
-      "shaping_bonus": 1.2922591232750613,
-      "engine_usage_penalty": 0.0,
-      "terminal": 150.0,
-      "crash_penalty": -25.0
+      "distance_penalty": -11.909990695817395,
+      "velocity_penalty": -9.581753540784119,
+      "angle_penalty": -6.424274354055524,
+      "fuel_efficiency": -1.05,
+      "touchdown_bonus": 0.0,
+      "terminal": -50.0
     },
-    "n_envs": 16,
-    "vec_env_type": "dummy",
-    "n_steps": 1024,
-    "batch_size": 64,
-    "n_epochs": 4,
-    "gae_lambda": 0.98,
-    "gamma": 0.999,
-    "ent_coef": 0.01
+    "ppo_n_envs": 1,
+    "ppo_vec_env_type": "dummy",
+    "ppo_total_timesteps": 300000,
+    "ppo_n_steps": 1024,
+    "ppo_batch_size": 64,
+    "ppo_n_epochs": 4,
+    "ppo_gae_lambda": 0.98,
+    "ppo_gamma": 0.999,
+    "ppo_ent_coef": 0.01,
+    "ppo_learning_rate": 0.0003,
+    "ppo_clip_range": 0.2,
+    "ppo_vf_coef": 0.5,
+    "ppo_max_grad_norm": 0.5
   },
-  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # --- Distance penalty: moderate linear penalty ---\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -2.0 * distance\n    \n    # --- Velocity penalty: gentle linear penalty ---\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -1.0 * velocity\n    \n    # --- Angle penalty: encourage upright orientation ---\n    angle_penalty = -2.0 * abs(angle)\n    \n    # --- Progress shaping: reward reductions in distance and velocity ---\n    # Estimate previous distance using obs (if available) or default to 0\n    prev_x, prev_y = obs[0], obs[1]\n    prev_distance = np.sqrt(prev_x**2 + prev_y**2)\n    distance_progress = prev_distance - distance  # positive if getting closer\n    prev_vx, prev_vy = obs[2], obs[3]\n    prev_velocity = np.sqrt(prev_vx**2 + prev_vy**2)\n    velocity_progress = prev_velocity - velocity  # positive if slowing down\n    shaping_bonus = 1.0 * distance_progress + 0.5 * velocity_progress\n    \n    # --- Engine usage penalty: small penalty for main engine ---\n    engine_usage_penalty = -0.1 if action == 2 else 0.0\n    \n    # --- Terminal reward: successful landing with relaxed conditions ---\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.2 and \n        abs(angle) < 0.2 and \n        abs(vy) < 0.2\n    )\n    terminal = 300.0 if landing_condition else 0.0\n    \n    # --- Crash penalty: moderate negative for failure ---\n    crash_penalty = -50.0 if (done and not landing_condition) else 0.0\n    \n    # Sum up all components\n    total_reward = (distance_penalty + velocity_penalty + angle_penalty +\n                    shaping_bonus + engine_usage_penalty + terminal + crash_penalty)\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"shaping_bonus\": shaping_bonus,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal,\n        \"crash_penalty\": crash_penalty,\n    }\n    \n    return float(total_reward), components\n",
-  "llm_rationale": "This candidate addresses the critical failures from previous generations. It uses moderate linear penalties (-2*distance, -1*velocity) to avoid overwhelming the reward landscape. A progress shaping bonus rewards reductions in distance and velocity, providing a smooth gradient toward the pad and reducing the generated-private gap. The terminal reward is increased to +300 with relaxed thresholds (0.2), and the crash penalty is reduced to -50. Engine penalty is minimal (-0.1) to avoid discouraging necessary thrust. This balanced structure should guide the agent toward successful landings without freezing exploration."
+  "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_07e3ef8fad\",\n  \"rationale\": \"Based on feedback, reduce dominating penalties, make fuel efficiency continuous, reduce terminal penalty, and add small survival bonus to encourage learning. Keep changes conservative from parent.\",\n  \"components\": [\n    {\n      \"id\": \"distance_penalty\",\n      \"expression\": \"-1.0 * abs(obs[0])\",\n      \"clip\": [\n        -100.0,\n        0.0\n      ],\n      \"description\": \"Penalty proportional to horizontal distance from x=0, reduced coefficient to avoid saturation\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.1 * (abs(obs[2]) + abs(obs[3]) + abs(obs[5]))\",\n      \"clip\": [\n        -100.0,\n        0.0\n      ],\n      \"description\": \"Penalty for linear and angular velocity magnitude, using absolute values with smaller coefficient\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-2.0 * abs(obs[4])\",\n      \"clip\": [\n        -50.0,\n        0.0\n      ],\n      \"description\": \"Penalty for deviation from upright angle, reduced coefficient\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.5 * float(action != 0)\",\n      \"clip\": [\n        -10.0,\n        0.0\n      ],\n      \"description\": \"Continuous penalty proportional to engine firing, increased magnitude to discourage unnecessary use\"\n    },\n    {\n      \"id\": \"touchdown_bonus\",\n      \"expression\": \"50.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.3 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3)\",\n      \"clip\": [\n        0.0,\n        100.0\n      ],\n      \"description\": \"Bonus when both legs contact, near pad, low velocity, upright, relaxed thresholds\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"-50.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.3 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3))\",\n      \"clip\": [\n        -1000.0,\n        0.0\n      ],\n      \"description\": \"Penalty for termination without successful landing, reduced magnitude\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_a4934b9383\"\n}",
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_penalty\n    component_0 = float(-1.0 * abs(obs[0]))\n    component_0 = max(min(component_0, 0.0), -100.0)\n    components['distance_penalty'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.1 * (abs(obs[2]) + abs(obs[3]) + abs(obs[5])))\n    component_1 = max(min(component_1, 0.0), -100.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-2.0 * abs(obs[4]))\n    component_2 = max(min(component_2, 0.0), -50.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.5 * float(action != 0))\n    component_3 = max(min(component_3, 0.0), -10.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: touchdown_bonus\n    component_4 = float(50.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.3 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3))\n    component_4 = max(min(component_4, 100.0), 0.0)\n    components['touchdown_bonus'] = float(component_4)\n    # component: terminal\n    component_5 = float(-50.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.3 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3)))\n    component_5 = max(min(component_5, 0.0), -1000.0)\n    components['terminal'] = float(component_5)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4 + component_5\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+  "llm_rationale": "Based on feedback, reduce dominating penalties, make fuel efficiency continuous, reduce terminal penalty, and add small survival bonus to encourage learning. Keep changes conservative from parent."
 }
 
 Reflection report:
-This candidate addresses the critical failures from previous generations. It uses moderate linear penalties (-2*distance, -1*velocity) to avoid overwhelming the reward landscape. A progress shaping bonus rewards reductions in distance and velocity, providing a smooth gradient toward the pad and reducing the generated-private gap. The terminal reward is increased to +300 with relaxed thresholds (0.2), and the crash penalty is reduced to -50. Engine penalty is minimal (-0.1) to avoid discouraging necessary thrust. This balanced structure should guide the agent toward successful landings without freezing exploration.
+Based on feedback, reduce dominating penalties, make fuel efficiency continuous, reduce terminal penalty, and add small survival bonus to encourage learning. Keep changes conservative from parent.
 
 Return JSON array of lessons. Do not include code blocks.

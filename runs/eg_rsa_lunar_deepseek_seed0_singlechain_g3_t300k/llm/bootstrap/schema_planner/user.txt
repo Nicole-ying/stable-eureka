@@ -197,107 +197,83 @@ Environment understanding:
 ## Environment Understanding Report
 
 ### Task Goal
-The lander must land safely on the landing pad at coordinates (0,0) as fast as possible while minimizing fuel consumption. The lander starts at the top center with random initial force. The optimal policy is to use discrete engine controls (on/off).
+The lander must land on the landing pad at coordinates (0,0) as fast as possible while minimizing fuel usage. The landing pad is located between two flags. The lander starts at the top center of the viewport with random initial forces.
 
 ### Observations (8-dimensional vector)
-1. **x-coordinate**: Normalized position (-1 to 1, where 0 is center)
-2. **y-coordinate**: Normalized position (relative to helipad)
-3. **x-velocity**: Normalized linear velocity in x direction
-4. **y-velocity**: Normalized linear velocity in y direction
-5. **angle**: Lander's rotation angle
+1. **x-coordinate**: Normalized horizontal position (range ~[-1, 1], termination at |x|>=1)
+2. **y-coordinate**: Normalized vertical position relative to helipad
+3. **x-velocity**: Normalized horizontal velocity
+4. **y-velocity**: Normalized vertical velocity
+5. **angle**: Lander's rotation angle (radians)
 6. **angular velocity**: Scaled angular velocity
 7. **left leg contact**: Boolean (1.0 if ground contact, else 0.0)
 8. **right leg contact**: Boolean (1.0 if ground contact, else 0.0)
 
-### Actions (Discrete)
+### Actions (Discrete: 0-3)
 - **0**: Do nothing
 - **1**: Fire left orientation engine (side engine)
 - **2**: Fire main engine (downward thrust)
 - **3**: Fire right orientation engine (side engine)
 
 ### Termination Conditions
-1. **Crash**: Lander body contacts the moon surface
-2. **Out of bounds**: |x-coordinate| >= 1.0 (outside viewport)
-3. **Not awake**: Lander enters sleep state
+1. Lander crashes (body contacts moon surface)
+2. Lander goes outside viewport (|x-coordinate| >= 1.0)
+3. Lander is not awake (physics body sleeping)
 
-### Reward Function Visible Inputs
-The reward function receives: `obs`, `action`, `next_obs`, `done`, `info`
-- `obs`/`next_obs`: The 8-dimensional state vector
-- `action`: Discrete action (0-3)
-- `done`: Boolean termination flag
-- `info`: Dictionary (may contain additional information)
+### Public Reward Design Variables
+- `m_power`: Main engine power (0.0 when off, 1.0 when firing)
+- `s_power`: Side engine power (0.0 when off, 1.0 when firing)
+- `state`: The 8-dimensional observation vector
+- `terminated`: Boolean termination flag
+- `action`: The discrete action taken (0-3)
 
-### Inferable Public Quantities
-- **Main engine power (m_power)**: 1.0 when action=2, 0.0 otherwise
-- **Side engine power (s_power)**: 1.0 when action=1 or 3, 0.0 otherwise
-- **Ground contact**: From obs[6] and obs[7] (leg contact booleans)
-- **Velocity magnitude**: Computable from obs[2] and obs[3]
-- **Distance to pad**: Computable from obs[0] and obs[1] (target is 0,0)
-- **Angle deviation**: From obs[4] (ideal angle is 0 for landing)
-
-### Risks
-1. **Wind and turbulence**: Random forces applied when not in ground contact (not directly observable in state)
-2. **Engine dispersion**: Random impulse variations (±1/SCALE) affect actual thrust direction
-3. **Infinite fuel**: No fuel constraints, but fuel efficiency is part of the goal
-4. **The state is normalized**: Raw physics values are scaled, so reward design must account for normalized ranges
-5. **Termination on crash**: Any body contact with ground ends episode, not just leg contact
-6. **Side engine torque**: Position of side engine thrust depends on lander orientation, creating orientation-dependent torque
+### Risks and Considerations
+1. **Wind and turbulence**: Random forces applied to lander when not in ground contact, making hovering/landing challenging
+2. **Engine dispersion**: Random noise (±1/SCALE) applied to engine impulse positions
+3. **Coordinate system**: Observations are normalized, raw positions need denormalization for distance calculations
+4. **Fuel is infinite**: No fuel constraint, but minimizing fuel usage is part of the goal
+5. **Landing pad at (0,0)**: After normalization, the pad center corresponds to specific normalized coordinates
+6. **Contact booleans**: Both legs must likely contact ground for successful landing
+7. **Side engine asymmetry**: Side engine impulse position calculation has a known bug/artifact with orientation-dependent torque
 
 ```json
 {
-  "task_goal": "Land the rocket safely on the landing pad at coordinates (0,0) as fast as possible with minimal fuel consumption",
+  "task_goal": "Land the rocket on the landing pad at coordinates (0,0) as fast as possible with minimal fuel usage",
   "observations": {
-    "dimension": 8,
-    "elements": [
-      "x_coordinate_normalized",
-      "y_coordinate_normalized",
-      "x_velocity_normalized",
-      "y_velocity_normalized",
-      "angle",
-      "angular_velocity_scaled",
-      "left_leg_contact_boolean",
-      "right_leg_contact_boolean"
-    ]
+    "x": "Normalized horizontal position [-1, 1]",
+    "y": "Normalized vertical position relative to helipad",
+    "x_velocity": "Normalized horizontal velocity",
+    "y_velocity": "Normalized vertical velocity",
+    "angle": "Lander rotation angle",
+    "angular_velocity": "Scaled angular velocity",
+    "left_leg_contact": "Boolean, 1 if left leg touches ground",
+    "right_leg_contact": "Boolean, 1 if right leg touches ground"
   },
   "actions": {
-    "type": "discrete",
-    "space_size": 4,
-    "mapping": {
-      "0": "do_nothing",
-      "1": "fire_left_orientation_engine",
-      "2": "fire_main_engine",
-      "3": "fire_right_orientation_engine"
-    }
+    "0": "Do nothing",
+    "1": "Fire left orientation engine",
+    "2": "Fire main engine",
+    "3": "Fire right orientation engine"
   },
-  "termination": {
-    "conditions": [
-      "lander_crashes_body_contacts_moon",
-      "x_coordinate_outside_viewport_abs_greater_than_1",
-      "lander_not_awake"
-    ]
-  },
-  "reward_function_visible_inputs": [
-    "obs_8_dim_state_vector",
-    "action_0_to_3",
-    "next_obs_8_dim_state_vector",
-    "done_boolean",
-    "info_dict"
+  "termination": [
+    "Lander crashes (body contacts moon)",
+    "|x-coordinate| >= 1.0 (outside viewport)",
+    "Lander is not awake"
   ],
-  "inferable_public_quantities": {
-    "main_engine_power": "1.0_when_action_2_else_0.0",
-    "side_engine_power": "1.0_when_action_1_or_3_else_0.0",
-    "ground_contact": "from_obs_index_6_and_7",
-    "velocity_magnitude": "sqrt(obs[2]^2_+_obs[3]^2)",
-    "distance_to_pad": "sqrt(obs[0]^2_+_obs[1]^2)",
-    "angle_deviation": "abs(obs[4])"
-  },
+  "public_reward_design_variables": [
+    "state (8-dim observation vector)",
+    "m_power (main engine power, 0.0 or 1.0)",
+    "s_power (side engine power, 0.0 or 1.0)",
+    "terminated (boolean flag)",
+    "action (discrete action 0-3)"
+  ],
   "risks": [
-    "Wind_and_turbulence_random_forces_not_directly_observable",
-    "Engine_dispersion_causes_random_thrust_variations",
-    "Infinite_fuel_but_fuel_efficiency_is_reward_goal",
-    "Normalized_state_requires_careful_reward_scaling",
-    "Crash_termination_on_any_body_contact_not_just_legs",
-    "Side_engine_torque_depends_on_lander_orientation"
+    "Wind and turbulence forces applied when not in ground contact",
+    "Engine impulse dispersion adds randomness to thrust direction",
+    "Observations are normalized; raw positions require denormalization for accurate distance calculations",
+    "No fuel constraint despite goal to minimize fuel usage",
+    "Side engine impulse position has orientation-dependent torque artifact",
+    "Successful landing requires both legs in ground contact at pad position"
   ]
 }
 ```

@@ -1,47 +1,38 @@
 [
   {
-    "lesson_type": "reward_pattern",
-    "condition": "Candidate uses squared penalties with high coefficients (distance: -10*distance^2, velocity: -5*velocity^2) and a large terminal reward (150) plus a crash penalty (-100)",
-    "observation": "Generated return (-1245.27) is much lower than private_eval_return (-188.84), with a gap of -1056.43. The distance_penalty (-649.76) and velocity_penalty (-450.68) dominate the total reward, overwhelming the terminal reward and crash penalty.",
-    "explanation": "The squared penalties are too aggressive, producing large negative values at moderate distances and velocities, which dominate the reward signal. The terminal reward and crash penalty are too small to compensate, causing the agent to learn strong avoidance behaviors rather than aiming for the landing pad.",
-    "recommendation": "Reduce the coefficients of distance and velocity penalties (e.g., -1.0*distance instead of -10.0*distance^2) and increase the terminal reward to at least 200 to better balance the reward components and reduce the generated/private gap.",
+    "lesson_type": "failure_mode",
+    "condition": "Candidate uses obs indices to detect leg contact (obs[6], obs[7]) and terminal condition duplicating the same logic as touchdown_bonus.",
+    "observation": "g1_c0 has low selection_score (-117.2) and large generated_private_gap (-199.8). Component returns show distance_penalty (-99.0), velocity_penalty (-100.0), terminal (-100.0) dominating, while touchdown_bonus is 0.0.",
+    "explanation": "The touchdown_bonus condition is extremely strict (both legs contacting, near pad, low velocities, upright). The terminal condition penalizes heavily when done is true but the same strict landing criteria are not met. This creates a sparse reward landscape where nearly all episodes end with a large penalty and no bonus is ever achieved, causing the reward to be dominated by negative penalties and leading to poor policy learning.",
+    "recommendation": "Relax the touchdown_bonus thresholds to be more achievable (e.g., allow moderate distance/velocity) and reduce the terminal penalty magnitude or make it proportional to failure severity. Consider progressive shaping to guide the lander toward the pad.",
     "confidence": 0.9,
     "reuse_policy": "similar_env"
   },
   {
-    "lesson_type": "failure_mode",
-    "condition": "Candidate uses squared penalties with high coefficients",
-    "observation": "Distance and velocity penalties are disproportionately large (-649.76 and -450.68) compared to other components (angle: -39.91, engine: -4.92, terminal: -100+150=50), causing reward imbalance.",
-    "explanation": "The squared scaling with high coefficients creates a steep gradient that penalizes the agent excessively for being far from the pad or moving fast, preventing it from exploring landing strategies.",
-    "recommendation": "Use linear penalties with moderate coefficients (e.g., -1.0*distance) to provide smoother gradients and avoid overwhelming other reward components.",
+    "lesson_type": "reward_pattern",
+    "condition": "Candidate uses action != 0 as a binary fuel efficiency penalty.",
+    "observation": "fuel_efficiency component is -0.1 * float(action != 0), clipped to [-10,0]. This yields a small constant penalty each step the engine fires, but the component return is only -5.73, indicating low impact.",
+    "explanation": "A binary penalty for any engine use is too coarse. It penalizes all actions equally regardless of magnitude, which does not encourage efficient fuel usage. The small magnitude also makes it negligible compared to other penalties.",
+    "recommendation": "Use a continuous penalty proportional to action magnitude (e.g., -0.01 * sum(action**2)) to differentiate between small and large thruster firings, encouraging gentler corrections.",
     "confidence": 0.85,
-    "reuse_policy": "same_env"
-  },
-  {
-    "lesson_type": "repair_rule",
-    "condition": "Candidate has a large generated_private_gap (-1056.43) due to component imbalance",
-    "observation": "The gap indicates the reward function misaligns with the hidden evaluator. The distance and velocity penalties are too dominant.",
-    "explanation": "The hidden evaluator likely expects a more balanced reward structure where the terminal reward is the primary signal. The current penalties overshadow the landing incentive.",
-    "recommendation": "Adjust component weights so that the terminal reward (or penalty) has a comparable magnitude to the sum of other penalties, reducing the generated/private mismatch.",
-    "confidence": 0.8,
     "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "general",
-    "condition": "Candidate uses next_obs to extract x, y, vx, vy, angle, left_contact, right_contact",
-    "observation": "The code correctly uses next_obs for state extraction, no indexing errors or private-signal leakage.",
-    "explanation": "The reward function adheres to the contract by using valid observation fields from next_obs without accessing hidden information.",
-    "recommendation": "Continue using next_obs for state extraction in future candidates, as this approach is valid and does not cause issues.",
-    "confidence": 0.95,
+    "condition": "Candidate has a large generated_private_gap (-199.8) despite passing validation.",
+    "observation": "The generated_return (-316.99) is much lower than the private_eval_return (-117.20), indicating the candidate's reward signal is significantly more negative or less informative than the hidden evaluator's.",
+    "explanation": "The candidate's reward is dominated by large negative penalties (distance, velocity, terminal) with no positive reinforcement achieved. The hidden evaluator likely uses a more balanced reward structure that provides positive shaping, leading to the gap.",
+    "recommendation": "Introduce positive shaping components (e.g., small bonuses for reducing distance, velocity, or angle) to align the generated reward more closely with the black-box evaluator's signal. Use black-box selection feedback to iteratively reduce the gap.",
+    "confidence": 0.9,
     "reuse_policy": "global"
   },
   {
-    "lesson_type": "failure_mode",
-    "condition": "Candidate has a crash penalty (-100) and terminal reward (150) combined into one component",
-    "observation": "The combined terminal component value is 50 (150-100), which is small compared to distance and velocity penalties. The crash penalty only applies when done is True, which may be rare in early episodes.",
-    "explanation": "The crash penalty and terminal reward are infrequent events (only at episode end), so they have limited influence during training compared to the continuous distance and velocity penalties that affect every step.",
-    "recommendation": "Increase the terminal reward significantly (e.g., to 500) or reduce the continuous penalties to ensure the landing signal is strong enough to guide learning.",
-    "confidence": 0.75,
-    "reuse_policy": "same_env"
+    "lesson_type": "repair_rule",
+    "condition": "Candidate removes info-dependent checks from previous generation to fix KeyError.",
+    "observation": "The rationale states this candidate fixes a KeyError by removing all info-dependent fuel efficiency and touchdown checks, replacing them with obs/action-based checks.",
+    "explanation": "This is a valid repair for avoiding KeyError, but it simplified the reward too much, losing informative signals from info (e.g., fuel consumption, ground contact details). The resulting reward lacks nuance.",
+    "recommendation": "When repairing info-dependent components, ensure the replacement captures similar behavioral shaping. Avoid over-simplifying to binary or very strict conditions that make the reward sparse.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
   }
 ]

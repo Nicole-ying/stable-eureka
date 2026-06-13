@@ -1,56 +1,39 @@
 {
-  "task_goal": "Land the rocket safely on the landing pad at coordinates (0,0) as fast as possible with minimal fuel consumption",
+  "task_goal": "Land the rocket on the landing pad at coordinates (0,0) as fast as possible with minimal fuel usage",
   "observations": {
-    "dimension": 8,
-    "elements": [
-      "x_coordinate_normalized",
-      "y_coordinate_normalized",
-      "x_velocity_normalized",
-      "y_velocity_normalized",
-      "angle",
-      "angular_velocity_scaled",
-      "left_leg_contact_boolean",
-      "right_leg_contact_boolean"
-    ]
+    "x": "Normalized horizontal position [-1, 1]",
+    "y": "Normalized vertical position relative to helipad",
+    "x_velocity": "Normalized horizontal velocity",
+    "y_velocity": "Normalized vertical velocity",
+    "angle": "Lander rotation angle",
+    "angular_velocity": "Scaled angular velocity",
+    "left_leg_contact": "Boolean, 1 if left leg touches ground",
+    "right_leg_contact": "Boolean, 1 if right leg touches ground"
   },
   "actions": {
-    "type": "discrete",
-    "space_size": 4,
-    "mapping": {
-      "0": "do_nothing",
-      "1": "fire_left_orientation_engine",
-      "2": "fire_main_engine",
-      "3": "fire_right_orientation_engine"
-    }
+    "0": "Do nothing",
+    "1": "Fire left orientation engine",
+    "2": "Fire main engine",
+    "3": "Fire right orientation engine"
   },
-  "termination": {
-    "conditions": [
-      "lander_crashes_body_contacts_moon",
-      "x_coordinate_outside_viewport_abs_greater_than_1",
-      "lander_not_awake"
-    ]
-  },
-  "reward_function_visible_inputs": [
-    "obs_8_dim_state_vector",
-    "action_0_to_3",
-    "next_obs_8_dim_state_vector",
-    "done_boolean",
-    "info_dict"
+  "termination": [
+    "Lander crashes (body contacts moon)",
+    "|x-coordinate| >= 1.0 (outside viewport)",
+    "Lander is not awake"
   ],
-  "inferable_public_quantities": {
-    "main_engine_power": "1.0_when_action_2_else_0.0",
-    "side_engine_power": "1.0_when_action_1_or_3_else_0.0",
-    "ground_contact": "from_obs_index_6_and_7",
-    "velocity_magnitude": "sqrt(obs[2]^2_+_obs[3]^2)",
-    "distance_to_pad": "sqrt(obs[0]^2_+_obs[1]^2)",
-    "angle_deviation": "abs(obs[4])"
-  },
+  "public_reward_design_variables": [
+    "state (8-dim observation vector)",
+    "m_power (main engine power, 0.0 or 1.0)",
+    "s_power (side engine power, 0.0 or 1.0)",
+    "terminated (boolean flag)",
+    "action (discrete action 0-3)"
+  ],
   "risks": [
-    "Wind_and_turbulence_random_forces_not_directly_observable",
-    "Engine_dispersion_causes_random_thrust_variations",
-    "Infinite_fuel_but_fuel_efficiency_is_reward_goal",
-    "Normalized_state_requires_careful_reward_scaling",
-    "Crash_termination_on_any_body_contact_not_just_legs",
-    "Side_engine_torque_depends_on_lander_orientation"
+    "Wind and turbulence forces applied when not in ground contact",
+    "Engine impulse dispersion adds randomness to thrust direction",
+    "Observations are normalized; raw positions require denormalization for accurate distance calculations",
+    "No fuel constraint despite goal to minimize fuel usage",
+    "Side engine impulse position has orientation-dependent torque artifact",
+    "Successful landing requires both legs in ground contact at pad position"
   ]
 }

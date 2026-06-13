@@ -1,41 +1,40 @@
 ## Search Plan for Reward Generation
 
-### 1. Initial Prototype Generation
-- **Objective**: Produce 3-5 distinct reward function candidates based on the schema.
-- **Method**: For each candidate, instantiate the six components with specific coefficient values and optional shaping functions (e.g., exponential decay for distance, quadratic for velocity).
-- **Key considerations**:
-  - Normalize each component to have comparable magnitudes (e.g., distance ~[-1,0], velocity ~[-1,0], angle ~[-0.5,0]).
-  - Ensure landing_bonus and crash_penalty are mutually exclusive and dominate the reward magnitude.
-  - Test edge cases: near-pad hovering, fast sideways movement, upside-down landing attempts.
+### Step 1: Define the Reward Function Structure
+- Create a function `compute_reward(state, m_power, s_power, terminated)` that returns a scalar reward and a dictionary of individual components.
+- The function will use only the provided inputs: `state` (8-dim observation), `m_power`, `s_power`, and `terminated`.
+- The reward will be a weighted sum of the six components defined above.
 
-### 2. Local Mutation and Refinement
-- **Objective**: Iteratively improve the best-performing candidates.
-- **Method**: Apply small random perturbations to component coefficients (±10-20%), or replace linear functions with sigmoid/clipped variants.
-- **Evaluation criteria**:
-  - Average episodic return (higher is better).
-  - Landing success rate (percentage of episodes with landing_bonus triggered).
-  - Fuel efficiency (average number of main engine firings per episode).
-  - Stability of training curve (low variance across seeds).
+### Step 2: Extract Relevant State Variables
+- Parse the 8-dimensional state vector:
+  - `x = state[0]` (horizontal position)
+  - `y = state[1]` (vertical position)
+  - `vx = state[2]` (horizontal velocity)
+  - `vy = state[3]` (vertical velocity)
+  - `angle = state[4]` (rotation angle)
+  - `angular_vel = state[5]` (angular velocity)
+  - `left_leg = state[6]` (left leg contact)
+  - `right_leg = state[7]` (right leg contact)
 
-### 3. Dynamic Reward Shaping (Optional)
-- **Objective**: Introduce time-dependent or adaptive components if static rewards plateau.
-- **Examples**:
-  - Add a small time penalty (-0.01 per step) to encourage faster landing.
-  - Scale distance reward by (1 - step/max_steps) to emphasize early navigation.
-  - Use a curriculum: start with lenient angle tolerance, gradually tighten.
+### Step 3: Implement Each Reward Component
+1. **distance_penalty**: Compute `-|x|` or `-x^2`. Scale to ensure meaningful contribution (e.g., weight ~1-10).
+2. **velocity_penalty**: Compute `-(vx^2 + vy^2 + angular_vel^2)`. Weight to penalize high speeds (e.g., weight ~0.1-1).
+3. **angle_penalty**: Compute `-|angle|`. Weight to encourage upright orientation (e.g., weight ~1-5).
+4. **fuel_efficiency**: Compute `-(m_power + s_power)`. Weight to discourage unnecessary engine use (e.g., weight ~0.01-0.1).
+5. **touchdown_bonus**: If `left_leg == 1 and right_leg == 1 and |x| < 0.1 and |vx| < 0.1 and |vy| < 0.1 and |angle| < 0.1`: apply a large positive bonus (e.g., +100). Only once.
+6. **terminal_penalty**: If `terminated == True` and not a successful landing (i.e., not both legs contact or not near pad), apply a large negative penalty (e.g., -100).
 
-### 4. Validation and Selection
-- **Objective**: Choose the final reward function for training.
-- **Method**: Train each candidate for 500k steps across 3 random seeds. Compare:
-  - Mean final reward (last 100 episodes).
-  - Landing success rate.
-  - Robustness to wind and turbulence (test with enable_wind=True).
-- **Selection**: Pick the candidate with highest success rate and lowest variance.
+### Step 4: Tune Weights and Thresholds
+- Start with equal weights and adjust based on empirical performance.
+- Thresholds for touchdown: `|x| < 0.1`, `|vx| < 0.1`, `|vy| < 0.1`, `|angle| < 0.1`.
+- Ensure the total reward stays within `[-1000, 1000]`.
+- Use a shaping factor (e.g., `1 - 0.99 * step_count`) to encourage faster landings if needed.
 
-### 5. Ablation Studies
-- **Objective**: Understand contribution of each component.
-- **Method**: Remove one component at a time and retrain. Measure drop in performance.
-- **Expected outcome**: landing_bonus and crash_penalty will be critical; angle_penalty may be less important if velocity control is sufficient.
+### Step 5: Test and Iterate
+- Run simulations with the reward function and observe lander behavior.
+- Adjust weights and thresholds to achieve stable, upright landings at the pad with minimal fuel.
+- Ensure the agent learns to avoid crashes and out-of-bounds states.
 
-### 6. Final Documentation
-- **Output**: Final reward function code with clear comments, recommended hyperparameters, and known failure modes (e.g., wind causes oscillation near pad).
+### Step 6: Finalize
+- Return the final `compute_reward` function with all components and weights.
+- Provide a dictionary of individual components for debugging and analysis.

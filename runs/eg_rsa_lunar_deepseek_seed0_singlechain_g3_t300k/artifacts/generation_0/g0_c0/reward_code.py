@@ -1,47 +1,29 @@
 def compute_reward(obs, action, next_obs, done, info):
-    # Extract relevant quantities from next_obs
-    x, y = next_obs[0], next_obs[1]
-    vx, vy = next_obs[2], next_obs[3]
-    angle = next_obs[4]
-    left_contact = next_obs[6]
-    right_contact = next_obs[7]
-    
-    # Distance penalty: encourage moving toward the pad at (0,0)
-    distance = np.sqrt(x**2 + y**2)
-    distance_penalty = -distance
-    
-    # Velocity penalty: encourage gentle landing speed
-    velocity = np.sqrt(vx**2 + vy**2)
-    velocity_penalty = -velocity
-    
-    # Angle penalty: encourage upright orientation
-    angle_penalty = -abs(angle)
-    
-    # Engine usage penalty: discourage fuel consumption
-    # Main engine (action==2) costs fuel
-    engine_usage_penalty = -0.3 if action == 2 else 0.0
-    
-    # Terminal reward: successful landing
-    # Conditions: both legs on ground, close to pad, upright, low vertical speed
-    landing_condition = (
-        left_contact > 0.5 and 
-        right_contact > 0.5 and 
-        distance < 0.1 and 
-        abs(angle) < 0.1 and 
-        abs(vy) < 0.1
-    )
-    terminal = 100.0 if landing_condition else 0.0
-    
-    # Sum up all components
-    total_reward = distance_penalty + velocity_penalty + angle_penalty + engine_usage_penalty + terminal
-    
-    # Build components dictionary
-    components = {
-        "distance_penalty": distance_penalty,
-        "velocity_penalty": velocity_penalty,
-        "angle_penalty": angle_penalty,
-        "engine_usage_penalty": engine_usage_penalty,
-        "terminal": terminal,
-    }
-    
+    components = {}
+    # component: distance_penalty
+    component_0 = float(-abs(obs[0]))
+    component_0 = max(min(component_0, 0.0), -10.0)
+    components['distance_penalty'] = float(component_0)
+    # component: velocity_penalty
+    component_1 = float(-(obs[2]**2 + obs[3]**2 + obs[5]**2))
+    component_1 = max(min(component_1, 0.0), -10.0)
+    components['velocity_penalty'] = float(component_1)
+    # component: angle_penalty
+    component_2 = float(-abs(obs[4]))
+    component_2 = max(min(component_2, 0.0), -5.0)
+    components['angle_penalty'] = float(component_2)
+    # component: fuel_efficiency
+    component_3 = float(-(info['m_power'] + info['s_power']))
+    component_3 = max(min(component_3, 0.0), -2.0)
+    components['fuel_efficiency'] = float(component_3)
+    # component: touchdown_bonus
+    component_4 = float(100.0 if (done and obs[6]==1.0 and obs[7]==1.0 and abs(obs[0])<0.1 and abs(obs[2])<0.1 and abs(obs[3])<0.1 and abs(obs[4])<0.1) else 0.0)
+    component_4 = max(min(component_4, 100.0), 0.0)
+    components['touchdown_bonus'] = float(component_4)
+    # component: terminal
+    component_5 = float(-100.0 if (done and not (obs[6]==1.0 and obs[7]==1.0 and abs(obs[0])<0.1 and abs(obs[2])<0.1 and abs(obs[3])<0.1 and abs(obs[4])<0.1)) else 0.0)
+    component_5 = max(min(component_5, 0.0), -100.0)
+    components['terminal'] = float(component_5)
+    total_reward = component_0 + component_1 + component_2 + component_3 + component_4 + component_5
+    total_reward = max(min(total_reward, 1000.0), -1000.0)
     return float(total_reward), components

@@ -1,58 +1,29 @@
 def compute_reward(obs, action, next_obs, done, info):
-    # Extract relevant quantities from next_obs
-    x, y = next_obs[0], next_obs[1]
-    vx, vy = next_obs[2], next_obs[3]
-    angle = next_obs[4]
-    left_contact = next_obs[6]
-    right_contact = next_obs[7]
-    
-    # Distance penalty: use squared distance with scaling for stronger gradient near the pad
-    distance = np.sqrt(x**2 + y**2)
-    distance_penalty = -10.0 * distance**2  # Stronger penalty far away, smoother near pad
-    
-    # Velocity penalty: penalize speed quadratically to encourage slowing down
-    velocity = np.sqrt(vx**2 + vy**2)
-    velocity_penalty = -5.0 * velocity**2  # Quadratic penalty for high speed
-    
-    # Angle penalty: penalize deviation from upright orientation
-    angle_penalty = -2.0 * abs(angle)  # Linear penalty, moderate weight
-    
-    # Engine usage penalty: discourage all engine firings (fuel efficiency)
-    # Action 2 is main engine (costly), actions 1 and 3 are side engines (less costly)
-    if action == 2:
-        engine_usage_penalty = -0.5  # Main engine is expensive
-    elif action == 1 or action == 3:
-        engine_usage_penalty = -0.1  # Side engines are cheaper
-    else:
-        engine_usage_penalty = 0.0   # No engine firing
-    
-    # Terminal reward: successful landing
-    landing_condition = (
-        left_contact > 0.5 and 
-        right_contact > 0.5 and 
-        distance < 0.15 and  # Slightly relaxed distance threshold
-        abs(angle) < 0.15 and  # Slightly relaxed angle threshold
-        abs(vy) < 0.15  # Slightly relaxed vertical velocity threshold
-    )
-    
-    # Crash penalty: large negative reward when episode ends without successful landing
-    # This helps the agent avoid crashing
-    crash_penalty = 0.0
-    if done and not landing_condition:
-        crash_penalty = -100.0  # Strong penalty for crashing
-    
-    terminal = 150.0 if landing_condition else 0.0  # Increased terminal reward
-    
-    # Sum up all components
-    total_reward = distance_penalty + velocity_penalty + angle_penalty + engine_usage_penalty + terminal + crash_penalty
-    
-    # Build components dictionary
-    components = {
-        "distance_penalty": distance_penalty,
-        "velocity_penalty": velocity_penalty,
-        "angle_penalty": angle_penalty,
-        "engine_usage_penalty": engine_usage_penalty,
-        "terminal": terminal + crash_penalty,  # Combine terminal outcomes into one component
-    }
-    
+    components = {}
+    # component: distance_penalty
+    component_0 = float(-10.0 * abs(obs[0]))
+    component_0 = max(min(component_0, 0.0), -100.0)
+    components['distance_penalty'] = float(component_0)
+    # component: velocity_penalty
+    component_1 = float(-1.0 * (obs[2]**2 + obs[3]**2 + obs[5]**2))
+    component_1 = max(min(component_1, 0.0), -100.0)
+    components['velocity_penalty'] = float(component_1)
+    # component: angle_penalty
+    component_2 = float(-5.0 * abs(obs[4]))
+    component_2 = max(min(component_2, 0.0), -50.0)
+    components['angle_penalty'] = float(component_2)
+    # component: fuel_efficiency
+    component_3 = float(-0.1 * float(action != 0))
+    component_3 = max(min(component_3, 0.0), -10.0)
+    components['fuel_efficiency'] = float(component_3)
+    # component: touchdown_bonus
+    component_4 = float(10.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1))
+    component_4 = max(min(component_4, 100.0), 0.0)
+    components['touchdown_bonus'] = float(component_4)
+    # component: terminal
+    component_5 = float(-100.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1)))
+    component_5 = max(min(component_5, 0.0), -1000.0)
+    components['terminal'] = float(component_5)
+    total_reward = component_0 + component_1 + component_2 + component_3 + component_4 + component_5
+    total_reward = max(min(total_reward, 1000.0), -1000.0)
     return float(total_reward), components

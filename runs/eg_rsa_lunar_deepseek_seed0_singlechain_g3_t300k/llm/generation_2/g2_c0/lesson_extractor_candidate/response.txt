@@ -1,47 +1,47 @@
 [
   {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal penalty (-50) is applied when the episode ends without a successful landing, but the episode length mean is 73 steps and the terminal component contributes -50 while touchdown_bonus is 0.0, indicating that the agent almost never achieves the touchdown conditions.",
+    "observation": "The terminal component dominates the total reward (-50 out of approximately -118), and the touchdown bonus is never triggered, meaning the agent fails to land consistently.",
+    "explanation": "The terminal penalty is too large relative to the sparse success signal; the agent receives negative reward for failing without any positive reinforcement for progress, leading to a learned behavior of avoiding termination or collapse.",
+    "recommendation": "Reduce the terminal penalty magnitude (e.g., from -50 to -10 or -20) or add a small per-step survival bonus to offset the penalty and encourage longer episodes that may lead to landing.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
     "lesson_type": "reward_pattern",
-    "condition": "The reward function uses moderate linear penalties for distance and velocity.",
-    "observation": "Despite moderate scaling, the distance_penalty component dominates at -130.86, overwhelming other signals and yielding a large generated-private gap of 32.19.",
-    "explanation": "Linear penalties on distance and velocity accumulate over the episode, creating a large negative baseline that overshadows the terminal and shaping bonuses. The shaping bonus only provides positive increments when progress is made, but the persistent negative penalties keep the total reward low and may discourage exploration.",
-    "recommendation": "Reduce the magnitude of distance and velocity penalties further, or clip their contributions to prevent them from dominating the total reward. Alternatively, rebalance by increasing the shaping bonus scaling or terminal reward to compensate.",
+    "condition": "All penalty components (distance, velocity, angle, fuel) are active and non-zero, but the touchdown bonus is 0.0 across all episodes, indicating the landing conditions are too strict or unreachable with current policy.",
+    "observation": "Component returns: distance_penalty=-11.9, velocity_penalty=-9.6, angle_penalty=-6.4, fuel_efficiency=-1.05, touchdown_bonus=0.0, terminal=-50.0.",
+    "explanation": "The agent accumulates penalties throughout the episode but never satisfies the touchdown conditions (leg contact, near pad, low velocity, upright), so the sparse bonus is never earned, making the reward signal entirely negative.",
+    "recommendation": "Relax touchdown conditions or increase the bonus magnitude to make the sparse reward more attainable; consider a shaping reward that provides partial credit for approaching the landing state.",
     "confidence": 0.85,
-    "reuse_policy": "similar_env"
+    "reuse_policy": "same_env"
   },
   {
-    "lesson_type": "failure_mode",
-    "condition": "The shaping bonus uses a subtraction of current quantity from previous quantity (prev_distance - distance) to compute progress.",
-    "observation": "The shaping bonus (1.29) is very small compared to the distance penalty (-130.86), indicating that the progress signal is weak and does not effectively guide the agent.",
-    "explanation": "The progress calculation relies on a single-step difference, which may be noisy and small in magnitude, especially when the agent is far from the goal. This weak signal fails to counteract the large penalties and does not provide a strong gradient toward the landing pad.",
-    "recommendation": "Consider using a non-linear shaping bonus, such as a potential-based function that scales with the change in a transformed state variable (e.g., exponential decay of distance), to amplify the progress signal and provide a clearer gradient.",
-    "confidence": 0.80,
-    "reuse_policy": "similar_env"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "The terminal reward is set to +300 with relaxed thresholds, and the crash penalty is -50.",
-    "observation": "The terminal component contributed +150.0 on average, while crash penalty contributed -25.0, indicating that the agent achieved landing in some episodes but also crashed in others. The generated-private gap remains large.",
-    "explanation": "The terminal reward and crash penalty are asymmetric and may not align well with the hidden evaluator's scoring. The high terminal reward can cause the agent to focus on achieving the landing condition at the expense of other behavior, while the crash penalty may not sufficiently penalize failures, leading to a mismatch between generated and private returns.",
-    "recommendation": "Reduce the terminal reward magnitude and increase the crash penalty to better balance success and failure outcomes. Validate the component weights against the private evaluator's return to minimize the generated-private gap.",
-    "confidence": 0.75,
+    "lesson_type": "component_imbalance",
+    "condition": "The terminal penalty (-50) is more than 4x larger than any other single penalty component (e.g., distance_penalty at -11.9), causing the total reward to be dominated by the end-of-episode signal.",
+    "observation": "Terminal component accounts for ~42% of total negative reward, while other penalties are smaller and more evenly distributed.",
+    "explanation": "When the terminal penalty dominates, the policy may learn to avoid termination (e.g., by not moving) rather than learning to land successfully, as the cost of failure overshadows all other feedback.",
+    "recommendation": "Reduce terminal penalty to be comparable to other penalties (e.g., -10 to -20) or remove it entirely and rely on per-step penalties and a large landing bonus to shape behavior.",
+    "confidence": 0.9,
     "reuse_policy": "same_env"
   },
   {
     "lesson_type": "mutation_rule",
-    "condition": "The candidate was mutated from g0_c0 with adjusted penalties, shaping, terminal reward, and crash penalty.",
-    "observation": "The mutation improved the private return from a likely lower value to -115.27, but the generated-private gap is still positive (32.19), indicating that the changes did not fully align with the private evaluator.",
-    "explanation": "The mutation adjusted several components simultaneously, which can make it difficult to isolate which change was effective. While some improvements were made, the remaining gap suggests that further targeted adjustments are needed.",
-    "recommendation": "In future mutations, change only one or two components at a time to better understand their individual impact on the generated-private gap. Prioritize adjustments that reduce the dominance of distance_penalty and strengthen the shaping bonus.",
-    "confidence": 0.70,
-    "reuse_policy": "global"
+    "condition": "The parent candidate (g1_c0) likely had different component coefficients or structure; the child reduced penalties and made fuel efficiency continuous, but the generated return (-78.97) is higher than private eval return (-118.00), indicating the reward code does not match the intended reward specification or the generated reward is easier to optimize but less aligned with the hidden evaluator.",
+    "observation": "Generated return (-78.97) is 39 points higher than private eval return (-118.00), showing a positive gap where the policy performs better under the generated reward than the private evaluator.",
+    "explanation": "The generated reward may be too lenient or miss key constraints that the private evaluator enforces, leading to policies that exploit the generated reward but fail under the true evaluation metric.",
+    "recommendation": "Align the generated reward more closely with the private evaluator by adding constraints or penalties that the private evaluator likely uses, such as stricter landing conditions or higher penalties for instability.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "general",
-    "condition": "The reward function has multiple components with widely different magnitudes.",
-    "observation": "The component returns show large imbalance: distance_penalty (-130.86), velocity_penalty (-71.02), angle_penalty (-7.50), shaping_bonus (1.29), terminal (150.0), crash_penalty (-25.0). The total reward is dominated by a few components.",
-    "explanation": "When reward components have vastly different scales, the gradient from smaller components is effectively ignored, causing the agent to optimize only the dominant ones. This reduces the effectiveness of the shaping and penalty signals.",
-    "recommendation": "Normalize or clip each component to a similar range (e.g., -1 to 1 or -10 to 10) to ensure all components contribute meaningfully to the learning signal. Use adaptive scaling or manual tuning based on observed component returns.",
-    "confidence": 0.90,
-    "reuse_policy": "global"
+    "condition": "The reward includes a fuel_efficiency component that penalizes any nonzero action (-0.5 per step), but the action mean is 0.067 and std is 0.42, indicating the agent uses actions frequently, incurring a small but consistent penalty.",
+    "observation": "Fuel_efficiency contributes -1.05 over 73 steps, meaning the agent takes nonzero actions about 14% of the time (approx 10 steps), which is reasonable but may discourage necessary maneuvering.",
+    "explanation": "A penalty for any action can discourage the agent from making small corrections that are needed to achieve a landing, especially if the penalty is applied even for minimal thruster use.",
+    "recommendation": "Consider making the fuel penalty proportional to action magnitude (e.g., -0.5 * abs(action)) rather than binary, so small corrections are penalized less than large burns.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
   }
 ]

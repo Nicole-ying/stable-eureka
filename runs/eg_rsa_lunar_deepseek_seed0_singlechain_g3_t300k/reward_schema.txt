@@ -1,5 +1,5 @@
 {
-  "schema_version": "eg_rsa_reward_schema_v1_05ce8b7470",
+  "schema_version": "eg_rsa_reward_schema_v1_07e3ef8fad",
   "env_alias": "Env-90b964d9",
   "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
   "return_contract": "return float(total_reward), components_dict",
@@ -14,31 +14,37 @@
   "components": [
     {
       "id": "distance_penalty",
-      "description": "Negative reward proportional to Euclidean distance from the landing pad (0,0). Computed as -sqrt(next_obs[0]^2 + next_obs[1]^2). Encourages moving toward the pad.",
+      "description": "Negative reward proportional to horizontal distance from landing pad (x=0), encouraging the lander to stay centered above the pad. Computed as -|x| or -x^2.",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "velocity_penalty",
-      "description": "Negative reward proportional to the magnitude of linear velocity. Computed as -sqrt(next_obs[2]^2 + next_obs[3]^2). Encourages gentle landing speed.",
+      "description": "Negative reward proportional to the magnitude of linear and angular velocities, encouraging a soft landing with minimal motion. Computed as -(vx^2 + vy^2 + angular_velocity^2).",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "angle_penalty",
-      "description": "Negative reward proportional to the absolute angle deviation from vertical. Computed as -abs(next_obs[4]). Encourages upright orientation.",
+      "description": "Negative reward proportional to the absolute angle from upright, encouraging the lander to remain vertical. Computed as -|angle|.",
       "direction": "maximize",
       "required": true
     },
     {
-      "id": "engine_usage_penalty",
-      "description": "Small negative reward for firing the main engine (action==2) to encourage fuel efficiency. Computed as -0.3 if action==2 else 0.0.",
+      "id": "fuel_efficiency",
+      "description": "Negative reward for firing engines (main or side), encouraging minimal fuel usage. Computed as -(m_power + s_power) or a small constant penalty per engine activation.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "touchdown_bonus",
+      "description": "Large positive reward when both legs are in ground contact (left_leg_contact=1 and right_leg_contact=1) and the lander is near the pad (|x| < threshold) with low velocity, indicating a successful landing. Only applied once at termination.",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "terminal",
-      "description": "Large positive reward when the lander successfully lands on the pad. Condition: both legs contact ground (next_obs[6]==1 and next_obs[7]==1) and distance to pad < 0.1 and |angle| < 0.1 and |y_velocity| < 0.1. Value: +100.",
+      "description": "Large negative reward when the episode terminates due to crash (body contact with moon) or going out of bounds (|x|>=1), penalizing failure. Not applied for successful landings.",
       "direction": "maximize",
       "required": true
     }

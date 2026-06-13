@@ -4,43 +4,43 @@
     "components": [
       {
         "id": "distance_penalty",
-        "description": "Negative reward proportional to Euclidean distance from the landing pad (0,0). Computed as -sqrt(next_obs[0]^2 + next_obs[1]^2). Encourages moving toward the pad.",
+        "description": "Negative reward proportional to horizontal distance from landing pad (x=0), encouraging the lander to stay centered above the pad. Computed as -|x| or -x^2.",
         "direction": "maximize",
         "required": true
       },
       {
         "id": "velocity_penalty",
-        "description": "Negative reward proportional to the magnitude of linear velocity. Computed as -sqrt(next_obs[2]^2 + next_obs[3]^2). Encourages gentle landing speed.",
+        "description": "Negative reward proportional to the magnitude of linear and angular velocities, encouraging a soft landing with minimal motion. Computed as -(vx^2 + vy^2 + angular_velocity^2).",
         "direction": "maximize",
         "required": true
       },
       {
         "id": "angle_penalty",
-        "description": "Negative reward proportional to the absolute angle deviation from vertical. Computed as -abs(next_obs[4]). Encourages upright orientation.",
+        "description": "Negative reward proportional to the absolute angle from upright, encouraging the lander to remain vertical. Computed as -|angle|.",
         "direction": "maximize",
         "required": true
       },
       {
-        "id": "engine_usage_penalty",
-        "description": "Small negative reward for firing the main engine (action==2) to encourage fuel efficiency. Computed as -0.3 if action==2 else 0.0.",
+        "id": "fuel_efficiency",
+        "description": "Negative reward for firing engines (main or side), encouraging minimal fuel usage. Computed as -(m_power + s_power) or a small constant penalty per engine activation.",
         "direction": "maximize",
         "required": true
       },
       {
-        "id": "landing_bonus",
-        "description": "Large positive reward when the lander successfully lands on the pad. Condition: both legs contact ground (next_obs[6]==1 and next_obs[7]==1) and distance to pad < 0.1 and |angle| < 0.1 and |y_velocity| < 0.1. Value: +100.",
+        "id": "touchdown_bonus",
+        "description": "Large positive reward when both legs are in ground contact (left_leg_contact=1 and right_leg_contact=1) and the lander is near the pad (|x| < threshold) with low velocity, indicating a successful landing. Only applied once at termination.",
         "direction": "maximize",
         "required": true
       },
       {
-        "id": "crash_penalty",
-        "description": "Large negative penalty when the episode terminates due to crash (done=True without successful landing). Value: -100.",
+        "id": "terminal_penalty",
+        "description": "Large negative reward when the episode terminates due to crash (body contact with moon) or going out of bounds (|x|>=1), penalizing failure. Not applied for successful landings.",
         "direction": "maximize",
         "required": true
       }
     ],
     "reward_abs_bound": 1000.0
   },
-  "search_plan": "## Search Plan for Reward Generation\n\n### 1. Initial Prototype Generation\n- **Objective**: Produce 3-5 distinct reward function candidates based on the schema.\n- **Method**: For each candidate, instantiate the six components with specific coefficient values and optional shaping functions (e.g., exponential decay for distance, quadratic for velocity).\n- **Key considerations**:\n  - Normalize each component to have comparable magnitudes (e.g., distance ~[-1,0], velocity ~[-1,0], angle ~[-0.5,0]).\n  - Ensure landing_bonus and crash_penalty are mutually exclusive and dominate the reward magnitude.\n  - Test edge cases: near-pad hovering, fast sideways movement, upside-down landing attempts.\n\n### 2. Local Mutation and Refinement\n- **Objective**: Iteratively improve the best-performing candidates.\n- **Method**: Apply small random perturbations to component coefficients (±10-20%), or replace linear functions with sigmoid/clipped variants.\n- **Evaluation criteria**:\n  - Average episodic return (higher is better).\n  - Landing success rate (percentage of episodes with landing_bonus triggered).\n  - Fuel efficiency (average number of main engine firings per episode).\n  - Stability of training curve (low variance across seeds).\n\n### 3. Dynamic Reward Shaping (Optional)\n- **Objective**: Introduce time-dependent or adaptive components if static rewards plateau.\n- **Examples**:\n  - Add a small time penalty (-0.01 per step) to encourage faster landing.\n  - Scale distance reward by (1 - step/max_steps) to emphasize early navigation.\n  - Use a curriculum: start with lenient angle tolerance, gradually tighten.\n\n### 4. Validation and Selection\n- **Objective**: Choose the final reward function for training.\n- **Method**: Train each candidate for 500k steps across 3 random seeds. Compare:\n  - Mean final reward (last 100 episodes).\n  - Landing success rate.\n  - Robustness to wind and turbulence (test with enable_wind=True).\n- **Selection**: Pick the candidate with highest success rate and lowest variance.\n\n### 5. Ablation Studies\n- **Objective**: Understand contribution of each component.\n- **Method**: Remove one component at a time and retrain. Measure drop in performance.\n- **Expected outcome**: landing_bonus and crash_penalty will be critical; angle_penalty may be less important if velocity control is sufficient.\n\n### 6. Final Documentation\n- **Output**: Final reward function code with clear comments, recommended hyperparameters, and known failure modes (e.g., wind causes oscillation near pad)."
+  "search_plan": "## Search Plan for Reward Generation\n\n### Step 1: Define the Reward Function Structure\n- Create a function `compute_reward(state, m_power, s_power, terminated)` that returns a scalar reward and a dictionary of individual components.\n- The function will use only the provided inputs: `state` (8-dim observation), `m_power`, `s_power`, and `terminated`.\n- The reward will be a weighted sum of the six components defined above.\n\n### Step 2: Extract Relevant State Variables\n- Parse the 8-dimensional state vector:\n  - `x = state[0]` (horizontal position)\n  - `y = state[1]` (vertical position)\n  - `vx = state[2]` (horizontal velocity)\n  - `vy = state[3]` (vertical velocity)\n  - `angle = state[4]` (rotation angle)\n  - `angular_vel = state[5]` (angular velocity)\n  - `left_leg = state[6]` (left leg contact)\n  - `right_leg = state[7]` (right leg contact)\n\n### Step 3: Implement Each Reward Component\n1. **distance_penalty**: Compute `-|x|` or `-x^2`. Scale to ensure meaningful contribution (e.g., weight ~1-10).\n2. **velocity_penalty**: Compute `-(vx^2 + vy^2 + angular_vel^2)`. Weight to penalize high speeds (e.g., weight ~0.1-1).\n3. **angle_penalty**: Compute `-|angle|`. Weight to encourage upright orientation (e.g., weight ~1-5).\n4. **fuel_efficiency**: Compute `-(m_power + s_power)`. Weight to discourage unnecessary engine use (e.g., weight ~0.01-0.1).\n5. **touchdown_bonus**: If `left_leg == 1 and right_leg == 1 and |x| < 0.1 and |vx| < 0.1 and |vy| < 0.1 and |angle| < 0.1`: apply a large positive bonus (e.g., +100). Only once.\n6. **terminal_penalty**: If `terminated == True` and not a successful landing (i.e., not both legs contact or not near pad), apply a large negative penalty (e.g., -100).\n\n### Step 4: Tune Weights and Thresholds\n- Start with equal weights and adjust based on empirical performance.\n- Thresholds for touchdown: `|x| < 0.1`, `|vx| < 0.1`, `|vy| < 0.1`, `|angle| < 0.1`.\n- Ensure the total reward stays within `[-1000, 1000]`.\n- Use a shaping factor (e.g., `1 - 0.99 * step_count`) to encourage faster landings if needed.\n\n### Step 5: Test and Iterate\n- Run simulations with the reward function and observe lander behavior.\n- Adjust weights and thresholds to achieve stable, upright landings at the pad with minimal fuel.\n- Ensure the agent learns to avoid crashes and out-of-bounds states.\n\n### Step 6: Finalize\n- Return the final `compute_reward` function with all components and weights.\n- Provide a dictionary of individual components for debugging and analysis."
 }
 ```

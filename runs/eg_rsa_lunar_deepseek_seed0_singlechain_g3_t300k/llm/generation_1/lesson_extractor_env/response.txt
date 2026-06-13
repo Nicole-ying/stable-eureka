@@ -1,56 +1,67 @@
+```json
 [
   {
+    "lesson_type": "reward_pattern",
+    "condition": "When designing a multi-component reward for a lunar lander task with distance, velocity, angle, fuel, and terminal components",
+    "observation": "The distance penalty coefficient of -10.0 and the squared velocity penalty saturated at -99 and -100 respectively, while the binary fuel penalty (-0.1 per action) was too weak to discourage constant high throttle (action mean 1.62). The touchdown bonus was never achieved, and the terminal penalty of -100 dominated every episode.",
+    "explanation": "Component coefficients were not calibrated relative to each other. The large distance and velocity penalties overwhelmed other signals, the binary fuel penalty provided no fine-grained control, and the terminal penalty was so large that it dominated the total reward, preventing the agent from learning nuanced landing behavior.",
+    "recommendation": "Use moderate, non-saturating coefficients for distance and velocity penalties (e.g., -1.0 * abs(obs[0]) and -0.1 * (abs(obs[2]) + abs(obs[3]) + abs(obs[5]))), use a continuous fuel penalty proportional to action magnitude squared, add a small survival bonus (e.g., +0.1 per timestep), and reduce the terminal penalty to -50 or -10 so that it does not dominate the reward signal.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
     "lesson_type": "failure_mode",
-    "condition": "Squared distance/velocity penalties with coefficients >5 are applied in a lunar-lander-like environment where the agent must navigate to a landing pad",
-    "observation": "Distance penalty of -10*distance² (-649.76) and velocity penalty of -5*velocity² (-450.68) completely dominate the total reward, overwhelming all other components and preventing the agent from exploring toward the pad.",
-    "explanation": "Squared penalties with high coefficients create extremely steep reward gradients far from the goal state, making any movement away from the origin (or toward the pad with high speed) massively negative. This freezes the agent or causes it to crash immediately rather than attempt to approach the landing zone.",
-    "recommendation": "Use linear penalties (e.g., -2*distance, -1*velocity) or squared penalties with coefficients ≤1 to avoid dominating the reward landscape. Combine with a progress bonus to create a smooth gradient toward the goal.",
+    "condition": "When a reward function uses a binary condition for fuel efficiency based on action != 0",
+    "observation": "The binary fuel penalty (-0.1 per step if action != 0) was too weak to discourage constant high throttle, resulting in an action mean of 1.62 and no incentive for fine-grained control.",
+    "explanation": "A binary penalty provides no gradient for the agent to reduce throttle magnitude; it only distinguishes zero from non-zero. This fails to reward gentle maneuvering and allows the agent to fire engines at full throttle continuously without additional cost.",
+    "recommendation": "Replace binary fuel penalties with a continuous penalty proportional to the squared action magnitude (e.g., -0.5 * sum(action**2)). This provides a smooth gradient that incentivizes lower throttle and more precise control.",
     "confidence": 0.9,
     "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "failure_mode",
-    "condition": "A crash penalty of -100 and a landing bonus of +150 are used alongside large per-step negative penalties",
-    "observation": "Terminal reward component was -100.0, meaning no successful landings occurred in any episode; the agent crashed every time with episode length 63.5 (slightly shorter than prior generation).",
-    "explanation": "When per-step penalties accumulate hundreds of negative reward before reaching the goal, a net landing benefit of only +50 (150 - 100) is insufficient to incentivize the agent to overcome the penalty barrier and attempt landings. The crash penalty fires every episode, providing no differential signal.",
-    "recommendation": "Increase the landing bonus to at least +300 and reduce the crash penalty to -50 or lower. Better yet, use a continuous landing bonus that scales with proximity to the ideal landing state, and ensure the total positive reward for a successful landing outweighs the accumulated negative per-step penalties.",
+    "condition": "When a reward component includes a large negative terminal penalty (e.g., -100) that is applied every episode",
+    "observation": "The terminal penalty of -100 was applied in every episode (mean episode length 71 steps) because no successful landings occurred, making it the dominant component and overwhelming all other reward signals.",
+    "explanation": "A large terminal penalty that is always applied prevents the agent from receiving differentiated feedback during the episode. The total reward is dominated by this single large negative value, making it difficult for the agent to learn from intermediate state transitions.",
+    "recommendation": "Reduce the terminal penalty magnitude (e.g., -50 or -10) so that it does not dominate the sum of per-step penalties. Alternatively, consider not using a terminal penalty at all and instead relying on per-step penalties and a large touchdown bonus to shape behavior.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a reward component uses squared velocity terms with a coefficient of -1.0",
+    "observation": "The velocity penalty saturated at -100 (its clip limit) with a mean of -100.02, indicating the agent was always moving too fast and the penalty provided no differentiated feedback across states.",
+    "explanation": "Squared velocity values can grow very large (especially with multiple dimensions), causing the penalty to hit its clip limit early in training. Once saturated, the agent receives no gradient to reduce velocity further, stalling learning.",
+    "recommendation": "Use absolute values with smaller coefficients for velocity penalties (e.g., -0.1 * (abs(obs[2]) + abs(obs[3]) + abs(obs[5]))) to keep the penalty moderate and provide a smooth gradient across the full range of velocities.",
     "confidence": 0.85,
     "reuse_policy": "similar_env"
   },
   {
-    "lesson_type": "failure_mode",
-    "condition": "The generated-private return gap exceeds 1000 (-1056.43) in a lunar-lander-like environment",
-    "observation": "Generated return was -1245.27 while private eval return was -188.84, creating a massive gap. The agent's internal reward function is fundamentally misaligned with the hidden evaluator's success metric.",
-    "explanation": "A gap >1000 indicates the reward function does not capture what the evaluator considers important. The evaluator likely rewards behaviors (e.g., smooth descent, fuel efficiency, stable approach) that the reward function either ignores or actively punishes. Per-step penalties that dominate the signal can mask any terminal success signal.",
-    "recommendation": "Add dense shaping rewards that track progress toward the goal: reward reductions in distance to the pad, reductions in velocity magnitude, and maintaining upright orientation. Remove or drastically reduce per-step penalties that are not aligned with the evaluator's criteria. Use black-box selection feedback to iteratively reduce the gap.",
-    "confidence": 0.9,
-    "reuse_policy": "similar_env"
+    "lesson_type": "reward_pattern",
+    "condition": "When a reward function has a large gap between generated return and private evaluator return (gap = -199.79)",
+    "observation": "The generated return (-316.99) was much more negative than the private evaluator return (-117.20), indicating the reward function is poorly aligned with the true objective and likely over-penalizes states that the evaluator considers less harmful.",
+    "explanation": "A large negative gap means the reward function is producing rewards that are systematically lower than what the private evaluator considers appropriate. This misalignment can cause the agent to learn suboptimal behaviors that avoid over-penalized states rather than achieving the true objective.",
+    "recommendation": "Use black-box selection feedback to iteratively reduce the generated/private gap. Adjust component coefficients to bring generated returns closer to private evaluator returns, focusing on reducing excessive penalties that are not reflected in the evaluator.",
+    "confidence": 0.75,
+    "reuse_policy": "global"
   },
   {
-    "lesson_type": "mutation_rule",
-    "condition": "Only one candidate is generated from a parent reward function that already has poor performance",
-    "observation": "Generation 1 produced exactly 1 candidate (g1_c0), which performed worse than its parent (private eval -188.84 vs -107.3). No alternative reward structures were explored or compared.",
-    "explanation": "With a single candidate, there is no ability to compare different coefficient scales, component weightings, or shaping approaches. The search process cannot diagnose whether the failure is due to incorrect magnitudes, missing components, or fundamental misalignment.",
-    "recommendation": "Generate at least 3-5 candidates per generation, systematically varying key coefficients (penalty scales, terminal reward magnitudes, threshold values) to explore the reward design space and identify effective parameter ranges.",
+    "lesson_type": "general",
+    "condition": "When designing a reward function for a lunar lander environment with leg contact sensors",
+    "observation": "The touchdown bonus condition required both legs to contact (obs[6]==1.0 and obs[7]==1.0) with strict position, velocity, and angle thresholds (all <0.1), but the bonus was never achieved (mean 0.0), providing no learning signal.",
+    "explanation": "Excessively strict landing conditions make the bonus unachievable during early training, so the agent never experiences the positive reward and has no gradient to learn toward successful landings. The agent needs to experience intermediate successes to shape behavior.",
+    "recommendation": "Relax the touchdown bonus thresholds (e.g., allow x < 0.5, velocities < 0.5, angle < 0.3) or increase the bonus magnitude (e.g., 100.0) to provide a stronger and more achievable learning signal. Consider a progressive bonus that increases as conditions become stricter.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "When a reward candidate fails with KeyError due to accessing missing info keys",
+    "observation": "The previous generation failed because it accessed info['m_power'] and info['s_power'] which do not exist. The fix removed all info-dependent components and replaced them with obs- and action-based alternatives, which resolved the runtime error.",
+    "explanation": "The info dictionary in this environment does not contain private or evaluator-specific keys. Using info for reward computation is risky unless the keys are guaranteed by the environment contract. Removing info dependency is a reliable repair strategy.",
+    "recommendation": "When a KeyError occurs from accessing info, remove all info-dependent components and replace them with equivalent expressions using only obs, action, next_obs, and done. This ensures the reward function is robust to the available observation space.",
     "confidence": 0.95,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "general",
-    "condition": "A reward function includes a crash penalty that fires in every episode and a terminal bonus that is never achieved",
-    "observation": "The terminal component value was -100.0 (crash penalty) across all episodes, with zero landing bonuses achieved. The crash penalty provides no differential learning signal since it always fires identically.",
-    "explanation": "When a crash penalty or terminal condition fires uniformly across all episodes, it becomes a constant offset that does not help the agent distinguish good trajectories from bad ones. It only adds a uniform negative bias to the reward signal, which can destabilize value estimation.",
-    "recommendation": "Ensure that terminal penalties and bonuses provide differential feedback across episodes. If the agent always crashes, reduce the crash penalty magnitude and focus on improving the per-step shaping to guide the agent toward successful landings. A terminal signal that never fires positively is not useful for learning.",
-    "confidence": 0.85,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "general",
-    "condition": "Component returns show one or two components dominating the total reward by an order of magnitude or more",
-    "observation": "Distance penalty (-649.76) and velocity penalty (-450.68) together account for -1100.44 out of -1245.27 total generated return, while the terminal component is -100.0 and other components are negligible.",
-    "explanation": "When component scales differ by an order of magnitude, the dominant components overwhelm the learning signal from smaller components. The agent cannot learn to balance multiple objectives because the gradient from the largest penalty drowns out all other feedback.",
-    "recommendation": "Normalize component scales so that no single component dominates. Use diagnostic component returns to identify imbalances, and adjust coefficients so that each component contributes meaningfully to the total reward (within roughly the same order of magnitude).",
-    "confidence": 0.9,
     "reuse_policy": "global"
   }
 ]
+```

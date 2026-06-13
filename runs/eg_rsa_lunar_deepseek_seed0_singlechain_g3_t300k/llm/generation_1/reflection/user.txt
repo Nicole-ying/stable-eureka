@@ -6,79 +6,89 @@ Structured evidence for this generation:
   "top_candidates": [
     {
       "candidate_id": "g1_c0",
-      "parent_ids": [
-        "g0_c0"
-      ],
+      "parent_ids": [],
       "status": "ok",
-      "selection_score": -188.83776640681262,
-      "private_eval_return": -188.83776640681262,
-      "generated_return": -1245.2672022853874,
-      "generated_minus_private": -1056.4294358785748,
+      "selection_score": -117.1963597432239,
+      "private_eval_return": -117.1963597432239,
+      "generated_return": -316.9884240420974,
+      "generated_minus_private": -199.7920642988735,
       "repair_attempts": 0,
       "repair_success": false,
       "validation_errors": [],
       "diagnostics": {
-        "generated_private_gap": -1056.4294358785748,
-        "action_mean": 2.0188976377952756,
-        "action_std": 1.2943080894697603,
-        "episode_length_mean": 63.5,
+        "generated_private_gap": -199.7920642988735,
+        "action_mean": 1.6169014084507043,
+        "action_std": 1.1961188310052393,
+        "episode_length_mean": 71.0,
         "component_returns": {
-          "distance_penalty": -649.7561592584158,
-          "velocity_penalty": -450.6810310390538,
-          "angle_penalty": -39.91001198791783,
-          "engine_usage_penalty": -4.919999999999999,
+          "distance_penalty": -99.04507490951801,
+          "velocity_penalty": -100.01660082447503,
+          "angle_penalty": -12.196748308104361,
+          "fuel_efficiency": -5.729999999999996,
+          "touchdown_bonus": 0.0,
           "terminal": -100.0
         },
-        "n_envs": 16,
-        "vec_env_type": "dummy",
-        "n_steps": 1024,
-        "batch_size": 64,
-        "n_epochs": 4,
-        "gae_lambda": 0.98,
-        "gamma": 0.999,
-        "ent_coef": 0.01
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 300000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
       },
-      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # Distance penalty: use squared distance with scaling for stronger gradient near the pad\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -10.0 * distance**2  # Stronger penalty far away, smoother near pad\n    \n    # Velocity penalty: penalize speed quadratically to encourage slowing down\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -5.0 * velocity**2  # Quadratic penalty for high speed\n    \n    # Angle penalty: penalize deviation from upright orientation\n    angle_penalty = -2.0 * abs(angle)  # Linear penalty, moderate weight\n    \n    # Engine usage penalty: discourage all engine firings (fuel efficiency)\n    # Action 2 is main engine (costly), actions 1 and 3 are side engines (less costly)\n    if action == 2:\n        engine_usage_penalty = -0.5  # Main engine is expensive\n    elif action == 1 or action == 3:\n        engine_usage_penalty = -0.1  # Side engines are cheaper\n    else:\n        engine_usage_penalty = 0.0   # No engine firing\n    \n    # Terminal reward: successful landing\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.15 and  # Slightly relaxed distance threshold\n        abs(angle) < 0.15 and  # Slightly relaxed angle threshold\n        abs(vy) < 0.15  # Slightly relaxed vertical velocity threshold\n    )\n    \n    # Crash penalty: large negative reward when episode ends without successful landing\n    # This helps the agent avoid crashing\n    crash_penalty = 0.0\n    if done and not landing_condition:\n        crash_penalty = -100.0  # Strong penalty for crashing\n    \n    terminal = 150.0 if landing_condition else 0.0  # Increased terminal reward\n    \n    # Sum up all components\n    total_reward = distance_penalty + velocity_penalty + angle_penalty + engine_usage_penalty + terminal + crash_penalty\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal + crash_penalty,  # Combine terminal outcomes into one component\n    }\n    \n    return float(total_reward), components\n",
-      "llm_rationale": "This candidate addresses the key failure modes from the feedback:\n1. **Nonlinear scaling**: Distance and velocity penalties use squared terms with higher coefficients (10x and 5x respectively) to create stronger gradients near the pad and discourage high speeds.\n2. **Crash penalty**: Added explicit -100 penalty when `done=True` but landing conditions aren't met, strongly discouraging crashes.\n3. **Engine usage**: Differentiated penalties for main engine (-0.5) vs side engines (-0.1) to encourage efficient use while still allowing maneuvering.\n4. **Relaxed landing thresholds**: Slightly increased tolerances (0.15 vs 0.1) to make the terminal reward more achievable.\n5. **Increased terminal reward**: Raised to 150 to better balance against the penalties.\n6. **Single terminal component**: Combined landing bonus and crash penalty into one component to avoid double-counting terminal outcomes."
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_07e3ef8fad\",\n  \"rationale\": \"This candidate fixes the KeyError from the previous generation by removing all info-dependent fuel efficiency and touchdown checks. Fuel efficiency is replaced with a penalty on the action magnitude (using action directly, which is always available). Touchdown bonus is simplified to use only obs (leg contacts and position/velocity thresholds). The terminal component uses done and obs for crash/out-of-bounds detection. All components use safe expressions with obs, action, next_obs, done, np, math, abs, min, max, float, int, bool.\",\n  \"components\": [\n    {\n      \"id\": \"distance_penalty\",\n      \"expression\": \"-10.0 * abs(obs[0])\",\n      \"clip\": [\n        -100.0,\n        0.0\n      ],\n      \"description\": \"Penalty proportional to horizontal distance from x=0\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-1.0 * (obs[2]**2 + obs[3]**2 + obs[5]**2)\",\n      \"clip\": [\n        -100.0,\n        0.0\n      ],\n      \"description\": \"Penalty for linear and angular velocity magnitude\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-5.0 * abs(obs[4])\",\n      \"clip\": [\n        -50.0,\n        0.0\n      ],\n      \"description\": \"Penalty for deviation from upright angle\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.1 * float(action != 0)\",\n      \"clip\": [\n        -10.0,\n        0.0\n      ],\n      \"description\": \"Small penalty for any engine firing (action != 0)\"\n    },\n    {\n      \"id\": \"touchdown_bonus\",\n      \"expression\": \"10.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1)\",\n      \"clip\": [\n        0.0,\n        100.0\n      ],\n      \"description\": \"Bonus when both legs contact, near pad, low velocity, upright\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"-100.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1))\",\n      \"clip\": [\n        -1000.0,\n        0.0\n      ],\n      \"description\": \"Large penalty for termination without successful landing\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_5477270411\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_penalty\n    component_0 = float(-10.0 * abs(obs[0]))\n    component_0 = max(min(component_0, 0.0), -100.0)\n    components['distance_penalty'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-1.0 * (obs[2]**2 + obs[3]**2 + obs[5]**2))\n    component_1 = max(min(component_1, 0.0), -100.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-5.0 * abs(obs[4]))\n    component_2 = max(min(component_2, 0.0), -50.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.1 * float(action != 0))\n    component_3 = max(min(component_3, 0.0), -10.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: touchdown_bonus\n    component_4 = float(10.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1))\n    component_4 = max(min(component_4, 100.0), 0.0)\n    components['touchdown_bonus'] = float(component_4)\n    # component: terminal\n    component_5 = float(-100.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1)))\n    component_5 = max(min(component_5, 0.0), -1000.0)\n    components['terminal'] = float(component_5)\n    total_reward = component_0 + component_1 + compo",
+      "llm_rationale": "This candidate fixes the KeyError from the previous generation by removing all info-dependent fuel efficiency and touchdown checks. Fuel efficiency is replaced with a penalty on the action magnitude (using action directly, which is always available). Touchdown bonus is simplified to use only obs (leg contacts and position/velocity thresholds). The terminal component uses done and obs for crash/out-of-bounds detection. All components use safe expressions with obs, action, next_obs, done, np, math, abs, min, max, float, int, bool."
     }
   ],
   "bottom_candidates": [
     {
       "candidate_id": "g1_c0",
-      "parent_ids": [
-        "g0_c0"
-      ],
+      "parent_ids": [],
       "status": "ok",
-      "selection_score": -188.83776640681262,
-      "private_eval_return": -188.83776640681262,
-      "generated_return": -1245.2672022853874,
-      "generated_minus_private": -1056.4294358785748,
+      "selection_score": -117.1963597432239,
+      "private_eval_return": -117.1963597432239,
+      "generated_return": -316.9884240420974,
+      "generated_minus_private": -199.7920642988735,
       "repair_attempts": 0,
       "repair_success": false,
       "validation_errors": [],
       "diagnostics": {
-        "generated_private_gap": -1056.4294358785748,
-        "action_mean": 2.0188976377952756,
-        "action_std": 1.2943080894697603,
-        "episode_length_mean": 63.5,
+        "generated_private_gap": -199.7920642988735,
+        "action_mean": 1.6169014084507043,
+        "action_std": 1.1961188310052393,
+        "episode_length_mean": 71.0,
         "component_returns": {
-          "distance_penalty": -649.7561592584158,
-          "velocity_penalty": -450.6810310390538,
-          "angle_penalty": -39.91001198791783,
-          "engine_usage_penalty": -4.919999999999999,
+          "distance_penalty": -99.04507490951801,
+          "velocity_penalty": -100.01660082447503,
+          "angle_penalty": -12.196748308104361,
+          "fuel_efficiency": -5.729999999999996,
+          "touchdown_bonus": 0.0,
           "terminal": -100.0
         },
-        "n_envs": 16,
-        "vec_env_type": "dummy",
-        "n_steps": 1024,
-        "batch_size": 64,
-        "n_epochs": 4,
-        "gae_lambda": 0.98,
-        "gamma": 0.999,
-        "ent_coef": 0.01
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 300000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
       },
-      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # Distance penalty: use squared distance with scaling for stronger gradient near the pad\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -10.0 * distance**2  # Stronger penalty far away, smoother near pad\n    \n    # Velocity penalty: penalize speed quadratically to encourage slowing down\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -5.0 * velocity**2  # Quadratic penalty for high speed\n    \n    # Angle penalty: penalize deviation from upright orientation\n    angle_penalty = -2.0 * abs(angle)  # Linear penalty, moderate weight\n    \n    # Engine usage penalty: discourage all engine firings (fuel efficiency)\n    # Action 2 is main engine (costly), actions 1 and 3 are side engines (less costly)\n    if action == 2:\n        engine_usage_penalty = -0.5  # Main engine is expensive\n    elif action == 1 or action == 3:\n        engine_usage_penalty = -0.1  # Side engines are cheaper\n    else:\n        engine_usage_penalty = 0.0   # No engine firing\n    \n    # Terminal reward: successful landing\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.15 and  # Slightly relaxed distance threshold\n        abs(angle) < 0.15 and  # Slightly relaxed angle threshold\n        abs(vy) < 0.15  # Slightly relaxed vertical velocity threshold\n    )\n    \n    # Crash penalty: large negative reward when episode ends without successful landing\n    # This helps the agent avoid crashing\n    crash_penalty = 0.0\n    if done and not landing_condition:\n        crash_penalty = -100.0  # Strong penalty for crashing\n    \n    terminal = 150.0 if landing_condition else 0.0  # Increased terminal reward\n    \n    # Sum up all components\n    total_reward = distance_penalty + velocity_penalty + angle_penalty + engine_usage_penalty + terminal + crash_penalty\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal + crash_penalty,  # Combine terminal outcomes into one component\n    }\n    \n    return float(total_reward), components\n",
-      "llm_rationale": "This candidate addresses the key failure modes from the feedback:\n1. **Nonlinear scaling**: Distance and velocity penalties use squared terms with higher coefficients (10x and 5x respectively) to create stronger gradients near the pad and discourage high speeds.\n2. **Crash penalty**: Added explicit -100 penalty when `done=True` but landing conditions aren't met, strongly discouraging crashes.\n3. **Engine usage**: Differentiated penalties for main engine (-0.5) vs side engines (-0.1) to encourage efficient use while still allowing maneuvering.\n4. **Relaxed landing thresholds**: Slightly increased tolerances (0.15 vs 0.1) to make the terminal reward more achievable.\n5. **Increased terminal reward**: Raised to 150 to better balance against the penalties.\n6. **Single terminal component**: Combined landing bonus and crash penalty into one component to avoid double-counting terminal outcomes."
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_07e3ef8fad\",\n  \"rationale\": \"This candidate fixes the KeyError from the previous generation by removing all info-dependent fuel efficiency and touchdown checks. Fuel efficiency is replaced with a penalty on the action magnitude (using action directly, which is always available). Touchdown bonus is simplified to use only obs (leg contacts and position/velocity thresholds). The terminal component uses done and obs for crash/out-of-bounds detection. All components use safe expressions with obs, action, next_obs, done, np, math, abs, min, max, float, int, bool.\",\n  \"components\": [\n    {\n      \"id\": \"distance_penalty\",\n      \"expression\": \"-10.0 * abs(obs[0])\",\n      \"clip\": [\n        -100.0,\n        0.0\n      ],\n      \"description\": \"Penalty proportional to horizontal distance from x=0\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-1.0 * (obs[2]**2 + obs[3]**2 + obs[5]**2)\",\n      \"clip\": [\n        -100.0,\n        0.0\n      ],\n      \"description\": \"Penalty for linear and angular velocity magnitude\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-5.0 * abs(obs[4])\",\n      \"clip\": [\n        -50.0,\n        0.0\n      ],\n      \"description\": \"Penalty for deviation from upright angle\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.1 * float(action != 0)\",\n      \"clip\": [\n        -10.0,\n        0.0\n      ],\n      \"description\": \"Small penalty for any engine firing (action != 0)\"\n    },\n    {\n      \"id\": \"touchdown_bonus\",\n      \"expression\": \"10.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1)\",\n      \"clip\": [\n        0.0,\n        100.0\n      ],\n      \"description\": \"Bonus when both legs contact, near pad, low velocity, upright\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"-100.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1))\",\n      \"clip\": [\n        -1000.0,\n        0.0\n      ],\n      \"description\": \"Large penalty for termination without successful landing\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_5477270411\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_penalty\n    component_0 = float(-10.0 * abs(obs[0]))\n    component_0 = max(min(component_0, 0.0), -100.0)\n    components['distance_penalty'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-1.0 * (obs[2]**2 + obs[3]**2 + obs[5]**2))\n    component_1 = max(min(component_1, 0.0), -100.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-5.0 * abs(obs[4]))\n    component_2 = max(min(component_2, 0.0), -50.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.1 * float(action != 0))\n    component_3 = max(min(component_3, 0.0), -10.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: touchdown_bonus\n    component_4 = float(10.0 * float(obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1))\n    component_4 = max(min(component_4, 100.0), 0.0)\n    components['touchdown_bonus'] = float(component_4)\n    # component: terminal\n    component_5 = float(-100.0 * float(done and not (obs[6] == 1.0 and obs[7] == 1.0 and abs(obs[0]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1)))\n    component_5 = max(min(component_5, 0.0), -1000.0)\n    components['terminal'] = float(component_5)\n    total_reward = component_0 + component_1 + compo",
+      "llm_rationale": "This candidate fixes the KeyError from the previous generation by removing all info-dependent fuel efficiency and touchdown checks. Fuel efficiency is replaced with a penalty on the action magnitude (using action directly, which is always available). Touchdown bonus is simplified to use only obs (leg contacts and position/velocity thresholds). The terminal component uses done and obs for crash/out-of-bounds detection. All components use safe expressions with obs, action, next_obs, done, np, math, abs, min, max, float, int, bool."
     }
   ],
   "failed_candidates": []
@@ -91,86 +101,41 @@ env_alias: Env-90b964d9
 latest_generation: 0
 
 ## Latest reflection
-## Reflection on Generation 0
+1. **What worked.**
+   - The overall structure of the reward spec is coherent: it includes penalties for distance, velocity, angle, and fuel, plus a terminal success/failure component. The rationale for each component is clear and aligned with the typical goals of a lunar lander task.
+   - The candidate was generated and submitted for evaluation without any obvious formatting or syntax errors in the spec itself.
 
-### 1. What Worked
+2. **What failed.**
+   - The candidate failed the smoke test due to a `KeyError: 'm_power'` in the `info` dictionary. This indicates that the key `'m_power'` (and likely `'s_power'` as well) does not exist in the `info` dict provided by the environment. The reward function attempted to access these keys directly, causing an exception.
+   - As a result, the candidate received a selection score of `-1e9` (effectively the worst possible score), and zero candidates passed validation.
 
-- **Basic structure is correct**: The reward function follows the required schema with proper component decomposition and returns `(float, dict)` format
-- **Terminal reward is being achieved**: The `terminal` component shows a return of 40.0, indicating some successful landings occurred across the 16 environments
-- **Angle penalty is well-controlled**: Only -1.45 total, suggesting the lander maintains reasonable orientation
-- **Engine usage penalty is zero**: The agent isn't firing the main engine (action==2) - or the penalty is too small to appear in the sum
-- **Validation passed**: No structural errors in the code
+3. **What to try next.**
+   - **Fix the `info` key issue:** Determine the correct keys for main and side engine power in the environment. Common keys in such environments might be `'main_engine'`, `'side_engine'`, `'engine_power'`, or similar. Alternatively, if the environment does not expose engine power, remove the fuel efficiency component entirely or replace it with a proxy (e.g., sum of absolute actions).
+   - **Use safe dictionary access:** If the keys are uncertain, use `info.get('m_power', 0.0)` to avoid crashes.
+   - **Re-run with corrected keys or removed component:** Generate a new candidate that either uses the correct info keys or drops the fuel efficiency component to ensure the smoke test passes.
+   - Consider adding a simple fallback logic: if the component cannot be computed due to missing info, default to 0.
 
-### 2. What Failed
-
-- **Very low overall return (-107.3)**: The private_eval_return is extremely negative, indicating poor performance
-- **Massive distance penalty (-66.8)**: The lander is staying far from the landing pad on average, suggesting it's not learning to approach
-- **Large velocity penalty (-72.7)**: Even worse than distance, meaning the lander is moving too fast when near the pad or simply tumbling
-- **Large generated-minus-private gap (6.3)**: The agent's own reward calculation differs significantly from the hidden evaluator, suggesting the reward function doesn't align with what the evaluator considers good behavior
-- **High action mean (2.01)**: The agent fires the main engine almost constantly (action==2), which is wasteful and counterproductive
-- **Action std ~1.0**: No clear policy; actions are nearly random (uniform over {0,1,2})
-- **Episode length 69.3 / 1024 steps**: Episodes terminate early, likely from crashing rather than successful landing
-- **No repair attempts**: The candidate wasn't flagged for repair despite poor performance
-
-### 3. What to Try Next
-
-**Critical issues to address:**
-
-1. **Fix the distance penalty scaling**: `-distance` creates a gradient of ~-1 everywhere, which is too weak relative to terminal reward. Scale it up or use a nonlinear function like `-10 * distance` or `-distance^2`
-
-2. **Fix the velocity penalty scaling**: Similarly, `-velocity` is too weak. Try `-5 * velocity` or `-velocity^2` to create stronger braking incentive
-
-3. **Add a crash penalty**: The current code has no explicit penalty for crashing (hitting ground with high velocity). Add a large negative reward when `done` is true but landing conditions aren't met
-
-4. **Rethink engine usage**: The -0.3 penalty for action==2 is negligible. Either increase it significantly or change approach - perhaps penalize all engine usage with a continuous fuel consumption model based on action magnitude
-
-5. **Consider reward shaping**: The gap between generated and private return suggests the evaluator measures something different. Try:
-   - Using `info` dict if available for additional signals
-   - Adding a shaping bonus for progress toward the goal (e.g., improvement in distance from previous timestep)
-   - Making the terminal reward conditional on the private evaluator's success criteria
-
-6. **Suggested new approach**: A shaped reward that:
-   - Heavily penalizes distance squared: `-10 * distance^2`
-   - Penalizes velocity squared: `-5 * velocity^2`  
-   - Has a large crash penalty: `-100 if done and not landed`
-   - Has a moderate terminal reward: `+200 if landed`
-   - Uses continuous fuel penalty: `-0.1 * abs(action - 1)` to discourage all engine use, not just main engine
-
-### 4. Lessons Analysis
-
-**Supported lessons:**
-- **None from memory** (no prior lessons available)
-
-**Contradicted lessons:**
-- **None from memory** (no prior lessons available)
-
-**Emerging lessons from this generation:**
-- **L1**: Linear penalties without scaling are too weak to shape behavior when terminal rewards are sparse
-- **L2**: A large gap between generated_return and private_eval_return indicates the reward function doesn't match the evaluator's criteria
-- **L3**: Without crash penalties, the agent learns to crash quickly rather than attempt landing
-- **L4**: Action mean far from 1.0 indicates the agent isn't learning to use engines appropriately (action 1 = idle is optimal for fuel efficiency but not for control)
+4. **Which lessons seem supported or contradicted.**
+   - **Supported:** The lesson that reward functions must be robust to the actual keys provided by the environment's `info` dict. Assumptions about `info` contents must be verified.
+   - **Contradicted:** No existing lessons are contradicted by this failure; it is a straightforward key-missing error.
+   - **New lesson to record:** "When designing reward components that rely on `info` dictionary keys, always verify the exact key names from the environment documentation or use safe access methods (e.g., `.get()`). If the environment does not provide the expected info, either remove the component or use a proxy."
 
 ## Recent environment lessons
-- failure_mode: Use nonlinear scaling such as -10*distance^2 or -5*velocity^2 to create stronger gradients near the goal and weaker gradients far away, making it easier for the agent to learn to approach the pad and slow down.
-- failure_mode: Add a large negative reward (e.g., -100) when done is true and landing conditions are not met, to strongly discourage crashing.
-- failure_mode: Use black-box selection feedback to iteratively reduce the generated/private mismatch. Adjust component weights or add missing signals (e.g., progress shaping) that better match the evaluator's criteria.
-- failure_mode: Either increase the engine penalty significantly (e.g., -1.0 per main engine use) or use a continuous fuel consumption model based on action magnitude to create a stronger disincentive for wasteful engine use.
-- general: Increase the number of candidates per generation to at least 3-5 to encourage exploration of different reward structures and provide a basis for selection and mutation.
+- failure_mode: Always verify info dictionary keys from environment documentation or use safe access methods like info.get('key', default_value). If keys are uncertain, remove the component or replace it with a proxy based on available observations or actions.
+- reward_pattern: If engine power info is unavailable, replace the fuel efficiency component with a proxy such as the sum of absolute action values (e.g., -sum(abs(action))), or remove the component entirely to avoid KeyError.
+- general: Before generating reward candidates, verify the available info keys from the environment documentation or by inspecting the info dict during a test rollout. Use safe access methods or fallback defaults to avoid crashes.
 
 Retrieved memory context:
 Relevant candidate-level lessons:
-- [candidate_119e5f5c5d] type=failure_mode, confidence=0.9, condition=component_returns show distance_penalty (-66.8) and velocity_penalty (-72.7) dominate the total reward while terminal reward is only 40.0 on average, recommendation=Normalize each component to a similar scale (e.g., using tanh or dividing by expected max values) so that distance and velocity penalties do not dominate the terminal reward, and consider increasing the terminal reward magnitude.
-- [candidate_8b5097700d] type=failure_mode, confidence=0.85, condition=terminal reward is only triggered in 40% of episodes (component_return 40.0 vs max 100.0), recommendation=Relax the terminal condition, e.g., use a smaller terminal reward for partial success (like one leg contact or low speed) or use a shaping reward that gives smaller positive increments as the agent gets closer to landing.
-- [candidate_1c0f250335] type=component_imbalance, confidence=0.8, condition=engine_usage_penalty is 0.0 in diagnostics, indicating the agent almost never fires the main engine (action==2), recommendation=Redesign the reward to encourage engine use for maneuvering, e.g., give a small positive reward for reducing distance or velocity when the engine fires, or remove the engine penalty and instead rely on distance/velocity shaping.
-- [candidate_450a2db44f] type=reward_pattern, confidence=0.75, condition=generated_return (-100.99) is higher than private_eval_return (-107.31) by 6.33, indicating a mismatch between the reward function and the hidden evaluator, recommendation=Use black-box selection feedback to adjust component weights or add shaping rewards that better match the private evaluator's implicit priorities, e.g., reward reducing distance and velocity simultaneously.
-- [candidate_77ab076dcc] type=mutation_rule, confidence=0.7, condition=action is discrete (value 2 for main engine) and engine_usage_penalty is tied to a specific action value, recommendation=When mutating, replace action==2 with a more general condition like 'action > threshold' if the action space is continuous, or use action magnitude if discrete actions represent throttle levels.
+- [candidate_df36371382] type=failure_mode, confidence=0.98, condition=reward spec references info keys that do not exist in the environment's info dict, recommendation=Only use info keys that are guaranteed to exist in the environment's info dict. If fuel efficiency is desired, first verify available info keys from the environment or step.py, or omit the component and rely on observable state (obs).
+- [candidate_2c9a3a563c] type=repair_rule, confidence=0.95, condition=a reward component fails due to a missing info key, recommendation=When a component fails due to missing info keys, remove that component or replace it with a safe alternative using only obs (e.g., action magnitude penalty). Avoid referencing info unless you have confirmed the keys exist.
+- [candidate_a8d789cc41] type=reward_pattern, confidence=0.97, condition=reward spec includes a fuel_efficiency component using info keys without verifying their existence, recommendation=Do not use info keys for fuel or power unless the environment documentation or step.py confirms they exist. Instead, penalize action magnitude using obs or action directly (e.g., -sum(action**2)), which is always safe.
+- [candidate_24e6245107] type=general, confidence=0.96, condition=candidate fails validation due to a runtime KeyError in the reward function, recommendation=Always write reward components to handle missing info keys gracefully, or avoid using info entirely unless keys are guaranteed. Use obs and action for all components to ensure robustness across environments.
 
 Relevant environment-level lessons:
-- [environment_0dad1c6fae] type=failure_mode, confidence=0.9, condition=Linear penalty components (e.g., -distance, -velocity) are used without scaling in a sparse-terminal-reward environment, recommendation=Use nonlinear scaling such as -10*distance^2 or -5*velocity^2 to create stronger gradients near the goal and weaker gradients far away, making it easier for the agent to learn to approach the pad and slow down.
-- [environment_6ea50438ba] type=failure_mode, confidence=0.95, condition=No explicit crash penalty is included in the reward function, recommendation=Add a large negative reward (e.g., -100) when done is true and landing conditions are not met, to strongly discourage crashing.
-- [environment_7b978e6fa5] type=failure_mode, confidence=0.85, condition=Generated return and private eval return show a large gap (e.g., >5), recommendation=Use black-box selection feedback to iteratively reduce the generated/private mismatch. Adjust component weights or add missing signals (e.g., progress shaping) that better match the evaluator's criteria.
-- [environment_93a5b27099] type=failure_mode, confidence=0.8, condition=Action mean is far from 1.0 (idle) in a discrete-action environment with engine penalty, recommendation=Either increase the engine penalty significantly (e.g., -1.0 per main engine use) or use a continuous fuel consumption model based on action magnitude to create a stronger disincentive for wasteful engine use.
-- [environment_13dad86244] type=general, confidence=0.7, condition=Only one candidate is generated in a generation and it fails to produce a good policy, recommendation=Increase the number of candidates per generation to at least 3-5 to encourage exploration of different reward structures and provide a basis for selection and mutation.
+- [environment_eabb4e82a7] type=failure_mode, confidence=1.0, condition=Reward component accesses info dictionary keys directly without verifying their existence in the environment., recommendation=Always verify info dictionary keys from environment documentation or use safe access methods like info.get('key', default_value). If keys are uncertain, remove the component or replace it with a proxy based on available observations or actions.
+- [environment_d05518034b] type=reward_pattern, confidence=0.9, condition=Designing a reward component that penalizes engine usage in a lunar lander task., recommendation=If engine power info is unavailable, replace the fuel efficiency component with a proxy such as the sum of absolute action values (e.g., -sum(abs(action))), or remove the component entirely to avoid KeyError.
+- [environment_afd033c8eb] type=general, confidence=1.0, condition=Reward function relies on info dictionary keys that are not documented or verified., recommendation=Before generating reward candidates, verify the available info keys from the environment documentation or by inspecting the info dict during a test rollout. Use safe access methods or fallback defaults to avoid crashes.
 
 Relevant cross-environment lessons:
 - none
