@@ -44,6 +44,7 @@ class CandidateRecord:
     semantic_warnings: dict[str, Any] = field(default_factory=dict)
 
     # New EG-RSA fields.
+    reward_spec: dict[str, Any] = field(default_factory=dict)
     prompt_paths: dict[str, Any] = field(default_factory=dict)
     prompt_budgets: dict[str, Any] = field(default_factory=dict)
     artifact_paths: dict[str, Any] = field(default_factory=dict)
