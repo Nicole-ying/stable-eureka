@@ -69,9 +69,6 @@ def summarize_one(ws: Path) -> dict:
         "status_pipeline_error": statuses.get("pipeline_error", 0),
         "repair_attempts_total": sum(int(r.get("repair_attempts", 0) or 0) for r in rows),
         "repair_success_count": sum(int(bool(r.get("repair_success", False))) for r in rows),
-        "identity_warning_count_total": sum(int(r.get("identity_warning_count", 0) or 0) for r in rows),
-        "semantic_term_warning_count_total": sum(int(r.get("semantic_term_warning_count", 0) or 0) for r in rows),
-        "semantic_warning_count_total": sum(int(r.get("semantic_warning_count", 0) or 0) for r in rows),
         "semantic_warning_count_total": sum(int(r.get("semantic_warning_count", 0) or 0) for r in rows),
         "best_candidate": "" if best is None else best.get("candidate_id"),
         "best_selection_score": "" if best is None else float(best.get("selection_score", 0.0)),
@@ -105,9 +102,6 @@ def aggregate(rows: list[dict]) -> list[dict]:
                 "mean_pipeline_error": mean([int(r["status_pipeline_error"]) for r in group]) if group else "",
                 "mean_repair_attempts": mean([int(r["repair_attempts_total"]) for r in group]) if group else "",
                 "mean_repair_success": mean([int(r["repair_success_count"]) for r in group]) if group else "",
-                "mean_identity_warning_count": mean([int(r.get("identity_warning_count_total", 0)) for r in group]) if group else "",
-                "mean_semantic_term_warning_count": mean([int(r.get("semantic_term_warning_count_total", 0)) for r in group]) if group else "",
-                "mean_semantic_warning_count": mean([int(r.get("semantic_warning_count_total", 0)) for r in group]) if group else "",
                 "mean_semantic_warning_count": mean([int(r.get("semantic_warning_count_total", 0)) for r in group]) if group else "",
             }
         )

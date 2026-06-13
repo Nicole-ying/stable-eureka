@@ -22,10 +22,6 @@ class CandidateRecord:
     validation_errors_before_repair: list[str]
     validation_errors_after_repair: list[str]
 
-    identity_warning_count: int
-    identity_warnings: dict[str, Any]
-    semantic_term_warning_count: int
-    semantic_term_warnings: dict[str, Any]
     semantic_warning_count: int
     semantic_warnings: dict[str, Any]
 
