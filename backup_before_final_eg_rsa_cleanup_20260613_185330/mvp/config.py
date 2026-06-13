@@ -33,6 +33,11 @@ class ModelConfig:
 class RLConfig:
     env_id: str = "LunarLander-v3"
 
+    # eureka_clean:
+    #   Main EG-RSA setting. The LLM sees Eureka-style task_description.txt + step.py.
+    # anonymous_clean:
+    #   Optional ablation. The reward function sees anonymized observations.
+    interface_mode: str = "eureka_clean"
 
     total_timesteps: int = 30_000
     eval_episodes: int = 3

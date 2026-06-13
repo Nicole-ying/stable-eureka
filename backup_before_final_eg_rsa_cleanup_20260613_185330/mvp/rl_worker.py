@@ -12,6 +12,7 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from .config import RLConfig
+from .env_sanitizer import ObservationAnonymizer
 
 
 RewardFn = Callable[[np.ndarray, np.ndarray, np.ndarray, bool, dict], tuple[float, dict]]
@@ -55,35 +56,32 @@ def compile_reward_function(reward_code: str) -> RewardFn:
 
 
 class RewardFunctionWrapper(gym.Wrapper):
-    """
-    Final EG-RSA wrapper.
-
-    Policy sees the original Gym observation.
-    Reward function sees public transition inputs:
-      obs, action, next_obs, done, info
-
-    It never receives env_reward. The original env reward is stored only as
-    private evaluation signal in safe_info["_hidden_env_reward"].
-    """
-
-    def __init__(self, env: gym.Env, reward_fn: RewardFn):
+    def __init__(self, env: gym.Env, reward_fn: RewardFn, interface_mode: str = "eureka_clean"):
         super().__init__(env)
         self.reward_fn = reward_fn
-        self._prev_obs = None
+        self.interface_mode = interface_mode
+        self._prev_obs_reward_view = None
+        self._anonymizer = ObservationAnonymizer(env.observation_space)
+
+    def _reward_view(self, obs):
+        if self.interface_mode == "anonymous_clean":
+            return self._anonymizer.transform(obs)
+        return obs
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
-        self._prev_obs = obs
+        self._prev_obs_reward_view = self._reward_view(obs)
         return obs, info
 
     def step(self, action):
         next_obs, hidden_env_reward, terminated, truncated, info = self.env.step(action)
         done = bool(terminated or truncated)
+        next_obs_reward_view = self._reward_view(next_obs)
 
         out = self.reward_fn(
-            self._prev_obs,
+            self._prev_obs_reward_view,
             action,
-            next_obs,
+            next_obs_reward_view,
             done,
             info,
         )
@@ -101,18 +99,23 @@ class RewardFunctionWrapper(gym.Wrapper):
         safe_info["_hidden_env_reward"] = float(hidden_env_reward)
         safe_info["_reward_components"] = {str(k): float(v) for k, v in components.items()}
 
-        self._prev_obs = next_obs
+        self._prev_obs_reward_view = next_obs_reward_view
         return next_obs, reward, terminated, truncated, safe_info
 
 
 class RLWorker:
     def __init__(self, cfg: RLConfig):
         self.cfg = cfg
+        self.interface_mode = getattr(cfg, "interface_mode", "eureka_clean")
 
     def train_and_eval(self, reward_code: str, ckpt_path: Path) -> dict[str, object]:
         reward_fn = compile_reward_function(reward_code)
 
-        train_env = RewardFunctionWrapper(gym.make(self.cfg.env_id), reward_fn)
+        train_env = RewardFunctionWrapper(
+            gym.make(self.cfg.env_id),
+            reward_fn,
+            interface_mode=self.interface_mode,
+        )
         model = PPO(
             "MlpPolicy",
             train_env,
@@ -125,7 +128,11 @@ class RLWorker:
         model.save(str(ckpt_path))
         train_env.close()
 
-        eval_env = RewardFunctionWrapper(gym.make(self.cfg.env_id), reward_fn)
+        eval_env = RewardFunctionWrapper(
+            gym.make(self.cfg.env_id),
+            reward_fn,
+            interface_mode=self.interface_mode,
+        )
 
         generated_returns = []
         hidden_returns = []
@@ -144,7 +151,6 @@ class RLWorker:
             while not done:
                 action, _ = model.predict(obs, deterministic=True)
                 action_values.append(np.asarray(action, dtype=float).reshape(-1))
-
                 obs, reward, terminated, truncated, info = eval_env.step(action)
                 done = bool(terminated or truncated)
 

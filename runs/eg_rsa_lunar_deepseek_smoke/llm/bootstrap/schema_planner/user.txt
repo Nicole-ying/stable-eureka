@@ -1,0 +1,291 @@
+Eureka task_description.txt:
+This environment is a classic rocket trajectory optimization problem. It is optimal to fire the engine at full throttle or turn it off. This is the reason why this environment has discrete actions: engine on or off.
+The landing pad is always at coordinates (0,0). The coordinates are the first two numbers in the state vector. Landing outside of the landing pad is possible. Fuel is infinite, so an agent can learn to fly and then land on its first attempt.
+The goal is to land at the pad in the middle of the two flags, as fast as possible, with the least fuel spent. The lander starts at the top center of the viewport with a random initial force applied to its center of mass.
+Action Space: There are four discrete actions available:
+    0: do nothing
+    1: fire left orientation engine
+    2: fire main engine
+    3: fire right orientation engine
+Observation Space: The state is an 8-dimensional vector: the coordinates of the lander in x & y, its linear velocities in x & y, its angle, its angular velocity, and two booleans that represent whether each leg is in contact with the ground or not.
+The episode finishes if:
+    1) the lander crashes (the lander body gets in contact with the moon);
+    2) the lander gets outside of the viewport (`x` coordinate is greater than 1);
+    3) the lander is not awake.
+
+Eureka step.py:
+def step(self, action):
+    assert self.lander is not None
+
+    # Update wind and apply to the lander
+    assert self.lander is not None, "You forgot to call reset()"
+    if self.enable_wind and not (
+            self.legs[0].ground_contact or self.legs[1].ground_contact
+    ):
+        # the function used for wind is tanh(sin(2 k x) + sin(pi k x)),
+        # which is proven to never be periodic, k = 0.01
+        wind_mag = (
+                math.tanh(
+                    math.sin(0.02 * self.wind_idx)
+                    + (math.sin(math.pi * 0.01 * self.wind_idx))
+                )
+                * self.wind_power
+        )
+        self.wind_idx += 1
+        self.lander.ApplyForceToCenter(
+            (wind_mag, 0.0),
+            True,
+        )
+
+        # the function used for torque is tanh(sin(2 k x) + sin(pi k x)),
+        # which is proven to never be periodic, k = 0.01
+        torque_mag = math.tanh(
+            math.sin(0.02 * self.torque_idx)
+            + (math.sin(math.pi * 0.01 * self.torque_idx))
+        ) * (self.turbulence_power)
+        self.torque_idx += 1
+        self.lander.ApplyTorque(
+            (torque_mag),
+            True,
+        )
+
+    if self.continuous:
+        action = np.clip(action, -1, +1).astype(np.float32)
+    else:
+        assert self.action_space.contains(
+            action
+        ), f"{action!r} ({type(action)}) invalid "
+
+    # Apply Engine Impulses
+
+    # Tip is a the (X and Y) components of the rotation of the lander.
+    tip = (math.sin(self.lander.angle), math.cos(self.lander.angle))
+
+    # Side is the (-Y and X) components of the rotation of the lander.
+    side = (-tip[1], tip[0])
+
+    # Generate two random numbers between -1/SCALE and 1/SCALE.
+    dispersion = [self.np_random.uniform(-1.0, +1.0) / SCALE for _ in range(2)]
+
+    m_power = 0.0
+    if (self.continuous and action[0] > 0.0) or (
+            not self.continuous and action == 2
+    ):
+        # Main engine
+        if self.continuous:
+            m_power = (np.clip(action[0], 0.0, 1.0) + 1.0) * 0.5  # 0.5..1.0
+            assert m_power >= 0.5 and m_power <= 1.0
+        else:
+            m_power = 1.0
+
+        # 4 is move a bit downwards, +-2 for randomness
+        # The components of the impulse to be applied by the main engine.
+        ox = (
+                tip[0] * (MAIN_ENGINE_Y_LOCATION / SCALE + 2 * dispersion[0])
+                + side[0] * dispersion[1]
+        )
+        oy = (
+                -tip[1] * (MAIN_ENGINE_Y_LOCATION / SCALE + 2 * dispersion[0])
+                - side[1] * dispersion[1]
+        )
+
+        impulse_pos = (self.lander.position[0] + ox, self.lander.position[1] + oy)
+        if self.render_mode is not None:
+            # particles are just a decoration, with no impact on the physics, so don't add them when not rendering
+            p = self._create_particle(
+                3.5,  # 3.5 is here to make particle speed adequate
+                impulse_pos[0],
+                impulse_pos[1],
+                m_power,
+            )
+            p.ApplyLinearImpulse(
+                (
+                    ox * MAIN_ENGINE_POWER * m_power,
+                    oy * MAIN_ENGINE_POWER * m_power,
+                ),
+                impulse_pos,
+                True,
+            )
+        self.lander.ApplyLinearImpulse(
+            (-ox * MAIN_ENGINE_POWER * m_power, -oy * MAIN_ENGINE_POWER * m_power),
+            impulse_pos,
+            True,
+        )
+
+    s_power = 0.0
+    if (self.continuous and np.abs(action[1]) > 0.5) or (
+            not self.continuous and action in [1, 3]
+    ):
+        # Orientation/Side engines
+        if self.continuous:
+            direction = np.sign(action[1])
+            s_power = np.clip(np.abs(action[1]), 0.5, 1.0)
+            assert s_power >= 0.5 and s_power <= 1.0
+        else:
+            # action = 1 is left, action = 3 is right
+            direction = action - 2
+            s_power = 1.0
+
+        # The components of the impulse to be applied by the side engines.
+        ox = tip[0] * dispersion[0] + side[0] * (
+                3 * dispersion[1] + direction * SIDE_ENGINE_AWAY / SCALE
+        )
+        oy = -tip[1] * dispersion[0] - side[1] * (
+                3 * dispersion[1] + direction * SIDE_ENGINE_AWAY / SCALE
+        )
+
+        # The constant 17 is a constant, that is presumably meant to be SIDE_ENGINE_HEIGHT.
+        # However, SIDE_ENGINE_HEIGHT is defined as 14
+        # This casuses the position of the thurst on the body of the lander to change, depending on the orientation of the lander.
+        # This in turn results in an orientation depentant torque being applied to the lander.
+        impulse_pos = (
+            self.lander.position[0] + ox - tip[0] * 17 / SCALE,
+            self.lander.position[1] + oy + tip[1] * SIDE_ENGINE_HEIGHT / SCALE,
+        )
+        if self.render_mode is not None:
+            # particles are just a decoration, with no impact on the physics, so don't add them when not rendering
+            p = self._create_particle(0.7, impulse_pos[0], impulse_pos[1], s_power)
+            p.ApplyLinearImpulse(
+                (
+                    ox * SIDE_ENGINE_POWER * s_power,
+                    oy * SIDE_ENGINE_POWER * s_power,
+                ),
+                impulse_pos,
+                True,
+            )
+        self.lander.ApplyLinearImpulse(
+            (-ox * SIDE_ENGINE_POWER * s_power, -oy * SIDE_ENGINE_POWER * s_power),
+            impulse_pos,
+            True,
+        )
+
+    self.world.Step(1.0 / FPS, 6 * 30, 2 * 30)
+
+    pos = self.lander.position
+    vel = self.lander.linearVelocity
+
+    state = [
+        (pos.x - VIEWPORT_W / SCALE / 2) / (VIEWPORT_W / SCALE / 2),
+        (pos.y - (self.helipad_y + LEG_DOWN / SCALE)) / (VIEWPORT_H / SCALE / 2),
+        vel.x * (VIEWPORT_W / SCALE / 2) / FPS,
+        vel.y * (VIEWPORT_H / SCALE / 2) / FPS,
+        self.lander.angle,
+        20.0 * self.lander.angularVelocity / FPS,
+        1.0 if self.legs[0].ground_contact else 0.0,
+        1.0 if self.legs[1].ground_contact else 0.0,
+    ]
+    assert len(state) == 8
+
+    terminated = False
+    if self.game_over or abs(state[0]) >= 1.0:
+        terminated = True
+    if not self.lander.awake:
+        terminated = True
+
+    reward, individual_reward = self.compute_reward(state, m_power, s_power, terminated)
+
+    if self.render_mode == "human":
+        self.render()
+
+    fitness_score = self.compute_fitness_score(state, m_power, s_power, terminated)
+    individual_reward.update({'fitness_score': fitness_score})
+
+    return np.array(state, dtype=np.float32), reward, terminated, False, individual_reward
+
+
+Environment understanding:
+## Environment Understanding Report
+
+This is a 2D rocket landing simulation (Lunar Lander variant) where the agent must land a spacecraft safely on a designated landing pad at coordinates (0,0). The environment features discrete actions (on/off engine control) but also supports continuous mode. The lander starts at the top center with random initial force, and the goal is to land quickly with minimal fuel consumption. Wind and turbulence can optionally affect the lander when not in ground contact.
+
+### Observations (8-dimensional vector):
+1. **x position**: Normalized horizontal position (0 = center, -1/+1 = edges of viewport)
+2. **y position**: Normalized vertical position (0 = helipad level, -1 = bottom, +1 = top)
+3. **x velocity**: Normalized horizontal velocity
+4. **y velocity**: Normalized vertical velocity
+5. **angle**: Lander's rotation angle in radians
+6. **angular velocity**: Normalized rotational velocity
+7. **left leg contact**: Boolean (0 or 1) indicating left leg ground contact
+8. **right leg contact**: Boolean (0 or 1) indicating right leg ground contact
+
+### Actions (discrete, 4 options):
+- **0**: Do nothing (no engine firing)
+- **1**: Fire left orientation engine (rotates lander)
+- **2**: Fire main engine (primary thrust downward)
+- **3**: Fire right orientation engine (rotates lander opposite direction)
+
+### Termination Conditions:
+1. **Crash**: Lander body contacts the moon surface (game_over flag)
+2. **Out of bounds**: x coordinate exceeds viewport bounds (|state[0]| >= 1.0)
+3. **Not awake**: Lander enters sleep state (physics engine inactivity)
+
+### Public Reward Design Variables:
+- **state**: 8-dimensional observation vector available in compute_reward
+- **m_power**: Main engine throttle (0.0 or 1.0 for discrete, 0.5-1.0 for continuous)
+- **s_power**: Side engine throttle (0.0 or 1.0 for discrete, 0.5-1.0 for continuous)
+- **terminated**: Boolean flag indicating episode end
+- **individual_reward**: Dictionary for storing reward components
+- **fitness_score**: Available via compute_fitness_score function
+
+### Risks & Considerations:
+- **Landing pad at (0,0)**: The target is fixed at the center, but the observation normalization makes this a coordinate transformation challenge
+- **Infinite fuel**: Agent can hover indefinitely, but efficiency is still important for reward shaping
+- **Wind/turbulence**: External forces applied when not in ground contact, creating unpredictable dynamics
+- **Engine dispersion**: Random noise in thrust application requires robust control
+- **Contact booleans**: Only indicate leg contact, not stable landing - a lander could tip over
+- **Crash detection**: Any body contact with ground terminates episode, not just leg contact
+- **Side engine asymmetry**: The side engine impulse position calculation uses different constants (17 vs SIDE_ENGINE_HEIGHT=14) creating orientation-dependent torque
+
+```json
+{
+  "task_goal": "Land the rocket safely on the landing pad at coordinates (0,0) as quickly as possible with minimal fuel consumption, starting from a random initial position at the top center of the viewport",
+  "observations": {
+    "x_position": "Normalized horizontal position (-1 to 1, where 0 is center)",
+    "y_position": "Normalized vertical position (0 at helipad level, -1 at bottom, +1 at top)",
+    "x_velocity": "Normalized horizontal velocity",
+    "y_velocity": "Normalized vertical velocity",
+    "angle": "Lander rotation angle in radians",
+    "angular_velocity": "Normalized rotational velocity (scaled by 20.0/FPS)",
+    "left_leg_contact": "Boolean (0 or 1) indicating left leg ground contact",
+    "right_leg_contact": "Boolean (0 or 1) indicating right leg ground contact"
+  },
+  "actions": {
+    "0": "Do nothing - no engine firing",
+    "1": "Fire left orientation engine - rotates lander clockwise",
+    "2": "Fire main engine - primary downward thrust",
+    "3": "Fire right orientation engine - rotates lander counterclockwise"
+  },
+  "termination": {
+    "crash": "Lander body contacts moon surface (game_over flag set)",
+    "out_of_bounds": "|normalized_x_position| >= 1.0 (lander exits viewport horizontally)",
+    "not_awake": "Lander enters physics sleep state"
+  },
+  "public_reward_design_variables": [
+    "state - 8-dimensional observation vector",
+    "m_power - main engine throttle level (0.0 or 1.0 for discrete)",
+    "s_power - side engine throttle level (0.0 or 1.0 for discrete)",
+    "terminated - boolean episode termination flag",
+    "individual_reward - dictionary for storing reward components",
+    "fitness_score - available via compute_fitness_score function"
+  ],
+  "risks": [
+    "Landing pad is at (0,0) but observations are normalized differently for x and y axes",
+    "Infinite fuel means agent can hover indefinitely, requiring careful shaping for efficiency",
+    "Wind and turbulence apply random forces when not in ground contact, creating unpredictable dynamics",
+    "Engine thrust has random dispersion component, requiring robust control strategies",
+    "Contact booleans only indicate leg contact, not stable landing - lander can tip over after landing",
+    "Crash detection triggers on any body contact with ground, making gentle touchdowns critical",
+    "Side engine impulse position uses inconsistent constants (17 vs 14) creating orientation-dependent torque",
+    "State normalization factors differ between position, velocity, and angular velocity components"
+  ]
+}
+```
+
+Return JSON with keys:
+{
+  "reward_schema": {
+    "components": [{"id": "...", "description": "...", "direction": "maximize", "required": true}],
+    "reward_abs_bound": 1000.0
+  },
+  "search_plan": "markdown string"
+}

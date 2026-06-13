@@ -61,9 +61,12 @@ class RewardEvolutionOrchestrator:
 
         private_task = get_private_task_spec(self.cfg.rl.env_id)
         env_alias = make_env_alias(private_task.env_id)
+        interface_mode = getattr(self.cfg.rl, "interface_mode", "eureka_clean")
+
         clean_interface = infer_clean_env_interface(
             private_task.env_id,
             env_alias,
+            interface_mode=interface_mode,
         )
 
         self._write_json(self.cfg.workspace / "clean_interface.txt", clean_interface)

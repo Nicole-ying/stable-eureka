@@ -1,0 +1,89 @@
+{
+  "schema_version": "eg_rsa_reward_schema_v1_f401f4f018",
+  "env_alias": "Env-90b964d9",
+  "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
+  "return_contract": "return float(total_reward), components_dict",
+  "allowed_inputs": [
+    "obs",
+    "action",
+    "next_obs",
+    "done",
+    "info"
+  ],
+  "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
+  "components": [
+    {
+      "id": "landing_bonus",
+      "description": "A large positive reward when the lander has both legs in contact with the ground (state[6]==1 and state[7]==1) and is near the landing pad (x close to 0, y close to 0) with low vertical and horizontal speeds and small angle. This encourages a safe landing.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "crash_penalty",
+      "description": "A large negative reward when the episode terminates due to crash (game_over) or going out of bounds (|state[0]| >= 1.0). This discourages unsafe behavior.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "distance_to_pad",
+      "description": "Negative reward proportional to the Euclidean distance from the lander to the landing pad (0,0). Using normalized coordinates: sqrt(state[0]^2 + state[1]^2). This guides the lander toward the target.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "vertical_velocity_penalty",
+      "description": "Penalty for high vertical speed, especially when close to the ground. Use state[3] (y velocity) to penalize fast descent or ascent. This encourages gentle landing.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "horizontal_velocity_penalty",
+      "description": "Penalty for high horizontal speed. Use state[2] (x velocity) to encourage stable approach without drifting sideways.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "angle_penalty",
+      "description": "Penalty for large tilt angle (state[4]) and high angular velocity (state[5]). This encourages upright orientation, especially near landing.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "fuel_efficiency_penalty",
+      "description": "Small negative reward each time the main engine (m_power>0) or side engines (s_power>0) are fired. This encourages fuel conservation and faster landing.",
+      "direction": "minimize",
+      "required": false
+    },
+    {
+      "id": "time_penalty",
+      "description": "Small negative reward per timestep (e.g., -0.1) to encourage faster landing. This is a common shaping technique.",
+      "direction": "minimize",
+      "required": false
+    },
+    {
+      "id": "progress",
+      "description": "dense task-progress shaping inferred from public task context",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "stability",
+      "description": "bounded shaping for stable/safe task-relevant behavior inferred from public task context",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "effort",
+      "description": "bounded penalty for unnecessary or costly actions",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "terminal",
+      "description": "bounded terminal shaping from public done signal",
+      "direction": "maximize",
+      "required": true
+    }
+  ],
+  "reward_abs_bound": 1000.0
+}

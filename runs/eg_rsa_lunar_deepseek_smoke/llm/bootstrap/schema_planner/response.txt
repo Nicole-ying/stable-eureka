@@ -1,0 +1,56 @@
+{
+  "reward_schema": {
+    "components": [
+      {
+        "id": "landing_bonus",
+        "description": "A large positive reward when the lander has both legs in contact with the ground (state[6]==1 and state[7]==1) and is near the landing pad (x close to 0, y close to 0) with low vertical and horizontal speeds and small angle. This encourages a safe landing.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "crash_penalty",
+        "description": "A large negative reward when the episode terminates due to crash (game_over) or going out of bounds (|state[0]| >= 1.0). This discourages unsafe behavior.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "distance_to_pad",
+        "description": "Negative reward proportional to the Euclidean distance from the lander to the landing pad (0,0). Using normalized coordinates: sqrt(state[0]^2 + state[1]^2). This guides the lander toward the target.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "vertical_velocity_penalty",
+        "description": "Penalty for high vertical speed, especially when close to the ground. Use state[3] (y velocity) to penalize fast descent or ascent. This encourages gentle landing.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "horizontal_velocity_penalty",
+        "description": "Penalty for high horizontal speed. Use state[2] (x velocity) to encourage stable approach without drifting sideways.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "angle_penalty",
+        "description": "Penalty for large tilt angle (state[4]) and high angular velocity (state[5]). This encourages upright orientation, especially near landing.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "fuel_efficiency_penalty",
+        "description": "Small negative reward each time the main engine (m_power>0) or side engines (s_power>0) are fired. This encourages fuel conservation and faster landing.",
+        "direction": "minimize",
+        "required": false
+      },
+      {
+        "id": "time_penalty",
+        "description": "Small negative reward per timestep (e.g., -0.1) to encourage faster landing. This is a common shaping technique.",
+        "direction": "minimize",
+        "required": false
+      }
+    ],
+    "reward_abs_bound": 1000.0
+  },
+  "search_plan": "# Search Plan for Lunar Lander Reward Design\n\n## Objective\nDesign a reward function for the Lunar Lander environment that encourages the agent to:\n- Land safely on the landing pad (0,0)\n- Land quickly\n- Use minimal fuel\n- Maintain stable orientation\n\n## Approach\nWe will use an iterative search over reward function components, starting from simple shaping and progressively adding complexity. The search will be guided by evaluating agent performance (e.g., success rate, fuel usage, landing precision) on a fixed set of random seeds.\n\n## Search Steps\n\n### Step 1: Define Base Reward Components\n- **Landing bonus**: Award when both legs contact ground AND position is near (0,0) with low velocities.\n- **Crash penalty**: Large negative reward on termination due to crash or out-of-bounds.\n- **Distance penalty**: Negative reward proportional to Euclidean distance from pad.\n- **Velocity penalties**: Penalize high vertical and horizontal speeds.\n- **Angle penalty**: Penalize large tilt and angular velocity.\n- **Fuel penalty**: Small penalty per engine firing.\n- **Time penalty**: Small negative reward per step.\n\n### Step 2: Parameterize Each Component\n- For each component, define a set of hyperparameters (weights, thresholds, scaling factors).\n- Example: distance_penalty = -w_dist * sqrt(state[0]^2 + state[1]^2)\n- Example: landing_bonus = +100 if both legs contact and |state[0]|<0.1 and |state[1]|<0.1 and |state[3]|<0.1 and |state[2]|<0.1 and |state[4]|<0.1\n\n### Step 3: Conduct Grid Search / Random Search\n- Vary weights and thresholds systematically.\n- For each configuration, train an agent (e.g., using PPO) for a fixed number of timesteps.\n- Evaluate the trained agent on a held-out set of episodes and record metrics: success rate, average fuel consumption, average landing distance from pad, average episode length.\n\n### Step 4: Analyze Results and Refine\n- Identify which components are most impactful.\n- Adjust weights to balance exploration and exploitation.\n- Possibly add new components (e.g., shaping for smooth descent profile).\n\n### Step 5: Finalize Reward Function\n- Select the configuration that yields the best trade-off between success rate, fuel efficiency, and landing precision.\n- Document the final reward function and its components.\n\n## Evaluation Metrics\n- Success rate (percentage of episodes ending with safe landing on pad)\n- Average fuel consumption per successful landing (sum of m_power and s_power over episode)\n- Average distance from pad at landing\n- Average episode length\n- Stability (variance of metrics across seeds)\n\n## Tools\n- Use the `compute_reward` function to evaluate candidate rewards.\n- Use `compute_fitness_score` as a proxy for overall performance.\n- Use `individual_reward` dictionary to track component contributions.\n- Train agents using a standard RL algorithm (e.g., PPO) with the Gymnasium environment.\n\n## Constraints\n- Do not use official reward formulas or expert templates.\n- Reward magnitude should be bounded within [-1000, 1000] (using reward_abs_bound).\n- All components must be derived from the public observation space and action variables.\n"
+}

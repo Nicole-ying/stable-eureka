@@ -1,0 +1,78 @@
+{
+  "generation": 0,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g0_c0",
+      "parent_ids": [],
+      "status": "ok",
+      "selection_score": -98.31830246133006,
+      "private_eval_return": -98.31830246133006,
+      "generated_return": -168.9968161643818,
+      "generated_minus_private": -70.67851370305175,
+      "repair_attempts": 2,
+      "repair_success": true,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": -70.67851370305175,
+        "action_mean": 0.0,
+        "action_std": 0.0,
+        "episode_length_mean": 70.0,
+        "component_returns": {
+          "landing_bonus": 0.0,
+          "crash_penalty": -30.0,
+          "distance_to_pad": -73.34260874505111,
+          "vertical_velocity_penalty": -30.620518026298235,
+          "horizontal_velocity_penalty": -12.453972865641113,
+          "angle_penalty": -13.12506931615062,
+          "fuel_efficiency_penalty": 0.0,
+          "time_penalty": -6.999999999999991,
+          "progress": 3.535280177440384,
+          "stability": -5.989927388681098,
+          "effort": 0.0,
+          "terminal": -30.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observations\n    x, y = obs[0], obs[1]\n    x_vel, y_vel = obs[2], obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_contact = obs[6]\n    right_contact = obs[7]\n    \n    # Next state for progress computation\n    next_x, next_y = next_obs[0], next_obs[1]\n    next_x_vel, next_y_vel = next_obs[2], next_obs[3]\n    next_angle = next_obs[4]\n    next_left_contact = next_obs[6]\n    next_right_contact = next_obs[7]\n    \n    # Extract m_power and s_power from info\n    m_power = info.get('m_power', 0.0)\n    s_power = info.get('s_power', 0.0)\n    \n    # ===== Component Computations =====\n    \n    # 1. Distance to pad penalty (required: distance_to_pad)\n    dist = (x**2 + y**2)**0.5\n    distance_penalty = -1.0 * dist\n    \n    # 2. Vertical velocity penalty (required: vertical_velocity_penalty)\n    vert_speed_penalty = -0.5 * abs(y_vel) - 2.0 * abs(y_vel) * max(0, 0.3 - y)\n    \n    # 3. Horizontal velocity penalty (required: horizontal_velocity_penalty)\n    horiz_speed_penalty = -0.3 * abs(x_vel)\n    \n    # 4. Angle penalty (required: angle_penalty)\n    angle_penalty = -0.5 * abs(angle) - 0.2 * abs(ang_vel)\n    if y < 0.2:\n        angle_penalty -= 2.0 * abs(angle)\n    \n    # 5. Fuel efficiency penalty (optional: fuel_efficiency_penalty)\n    fuel_penalty = -0.03 * m_power - 0.02 * s_power\n    \n    # 6. Time penalty (optional: time_penalty)\n    time_penalty = -0.1\n    \n    # 7. Progress shaping (required: progress)\n    prev_dist = dist\n    curr_dist = (next_x**2 + next_y**2)**0.5\n    dist_improvement = prev_dist - curr_dist\n    progress_reward = 2.0 * dist_improvement\n    \n    if y < 0.2 and y > -0.1:\n        vert_speed_improvement = abs(y_vel) - abs(next_y_vel)\n        progress_reward += 1.0 * vert_speed_improvement\n    \n    if y < 0.3:\n        angle_improvement = abs(angle) - abs(next_angle)\n        progress_reward += 0.5 * angle_improvement\n    \n    # 8. Stability shaping (required: stability)\n    stability_reward = -0.3 * abs(angle) - 0.1 * abs(ang_vel)\n    if left_contact and right_contact:\n        stability_reward += 0.5 * (1.0 - abs(angle))\n    \n    # 9. Effort shaping (required: effort)\n    effort_penalty = -0.02 * m_power - 0.01 * s_power\n    if abs(angle) > 0.2 and (action == 1 or action == 3):\n        effort_penalty += 0.1 * (abs(angle) - abs(next_angle))\n    \n    # 10. Terminal shaping (required: terminal)\n    terminal_reward = 0.0\n    if done:\n        both_legs_contact = (left_contact ==",
+      "llm_rationale": "This reward function implements all required components from the schema. It uses dense shaping to guide the lander toward the pad: distance penalty encourages approach, velocity penalties encourage gentle descent, angle penalty encourages upright orientation. Progress rewards improvements in distance and velocity reduction. Terminal shaping gives +100 for successful landing (both legs contact, near pad, low speeds, upright) and large negatives for crashes/out-of-bounds. Landing bonus provides additional signal when conditions are met. Fuel and time penalties encourage efficiency. All components are bounded and use only public observation/action/info signals.\n\nREPAIR_ATTEMPT_1: The only issue was an unsupported import statement. Removed `import numpy as np` and replaced all numpy functions with pure Python equivalents: `abs()` instead of `np.abs()`, `math.sqrt` not needed as we already use `**0.5` or just `sqrt` from math, but actually we can use `x**2 + y**2` and then use `**0.5` or `m"
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g0_c0",
+      "parent_ids": [],
+      "status": "ok",
+      "selection_score": -98.31830246133006,
+      "private_eval_return": -98.31830246133006,
+      "generated_return": -168.9968161643818,
+      "generated_minus_private": -70.67851370305175,
+      "repair_attempts": 2,
+      "repair_success": true,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": -70.67851370305175,
+        "action_mean": 0.0,
+        "action_std": 0.0,
+        "episode_length_mean": 70.0,
+        "component_returns": {
+          "landing_bonus": 0.0,
+          "crash_penalty": -30.0,
+          "distance_to_pad": -73.34260874505111,
+          "vertical_velocity_penalty": -30.620518026298235,
+          "horizontal_velocity_penalty": -12.453972865641113,
+          "angle_penalty": -13.12506931615062,
+          "fuel_efficiency_penalty": 0.0,
+          "time_penalty": -6.999999999999991,
+          "progress": 3.535280177440384,
+          "stability": -5.989927388681098,
+          "effort": 0.0,
+          "terminal": -30.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observations\n    x, y = obs[0], obs[1]\n    x_vel, y_vel = obs[2], obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_contact = obs[6]\n    right_contact = obs[7]\n    \n    # Next state for progress computation\n    next_x, next_y = next_obs[0], next_obs[1]\n    next_x_vel, next_y_vel = next_obs[2], next_obs[3]\n    next_angle = next_obs[4]\n    next_left_contact = next_obs[6]\n    next_right_contact = next_obs[7]\n    \n    # Extract m_power and s_power from info\n    m_power = info.get('m_power', 0.0)\n    s_power = info.get('s_power', 0.0)\n    \n    # ===== Component Computations =====\n    \n    # 1. Distance to pad penalty (required: distance_to_pad)\n    dist = (x**2 + y**2)**0.5\n    distance_penalty = -1.0 * dist\n    \n    # 2. Vertical velocity penalty (required: vertical_velocity_penalty)\n    vert_speed_penalty = -0.5 * abs(y_vel) - 2.0 * abs(y_vel) * max(0, 0.3 - y)\n    \n    # 3. Horizontal velocity penalty (required: horizontal_velocity_penalty)\n    horiz_speed_penalty = -0.3 * abs(x_vel)\n    \n    # 4. Angle penalty (required: angle_penalty)\n    angle_penalty = -0.5 * abs(angle) - 0.2 * abs(ang_vel)\n    if y < 0.2:\n        angle_penalty -= 2.0 * abs(angle)\n    \n    # 5. Fuel efficiency penalty (optional: fuel_efficiency_penalty)\n    fuel_penalty = -0.03 * m_power - 0.02 * s_power\n    \n    # 6. Time penalty (optional: time_penalty)\n    time_penalty = -0.1\n    \n    # 7. Progress shaping (required: progress)\n    prev_dist = dist\n    curr_dist = (next_x**2 + next_y**2)**0.5\n    dist_improvement = prev_dist - curr_dist\n    progress_reward = 2.0 * dist_improvement\n    \n    if y < 0.2 and y > -0.1:\n        vert_speed_improvement = abs(y_vel) - abs(next_y_vel)\n        progress_reward += 1.0 * vert_speed_improvement\n    \n    if y < 0.3:\n        angle_improvement = abs(angle) - abs(next_angle)\n        progress_reward += 0.5 * angle_improvement\n    \n    # 8. Stability shaping (required: stability)\n    stability_reward = -0.3 * abs(angle) - 0.1 * abs(ang_vel)\n    if left_contact and right_contact:\n        stability_reward += 0.5 * (1.0 - abs(angle))\n    \n    # 9. Effort shaping (required: effort)\n    effort_penalty = -0.02 * m_power - 0.01 * s_power\n    if abs(angle) > 0.2 and (action == 1 or action == 3):\n        effort_penalty += 0.1 * (abs(angle) - abs(next_angle))\n    \n    # 10. Terminal shaping (required: terminal)\n    terminal_reward = 0.0\n    if done:\n        both_legs_contact = (left_contact ==",
+      "llm_rationale": "This reward function implements all required components from the schema. It uses dense shaping to guide the lander toward the pad: distance penalty encourages approach, velocity penalties encourage gentle descent, angle penalty encourages upright orientation. Progress rewards improvements in distance and velocity reduction. Terminal shaping gives +100 for successful landing (both legs contact, near pad, low speeds, upright) and large negatives for crashes/out-of-bounds. Landing bonus provides additional signal when conditions are met. Fuel and time penalties encourage efficiency. All components are bounded and use only public observation/action/info signals.\n\nREPAIR_ATTEMPT_1: The only issue was an unsupported import statement. Removed `import numpy as np` and replaced all numpy functions with pure Python equivalents: `abs()` instead of `np.abs()`, `math.sqrt` not needed as we already use `**0.5` or just `sqrt` from math, but actually we can use `x**2 + y**2` and then use `**0.5` or `m"
+    }
+  ],
+  "failed_candidates": []
+}

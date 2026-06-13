@@ -4,87 +4,22 @@ import hashlib
 from dataclasses import dataclass
 
 
-# ============================================================
-# PublicTaskSpec
-# ============================================================
-#
-# 只允许进入 LLM prompt 的公开任务信息。
-#
-# 设计原则：
-#   1. 不写真实 env_id 的语义解释；
-#   2. 不写 observation 每一维的物理含义；
-#   3. 不写 action 每个编号/维度的真实含义；
-#   4. 不写官方 reward decomposition；
-#   5. 不写 benchmark / fitness / hidden reward 相关内容。
-#
-# 这样做的目的：
-#   避免 LLM 依靠已知 Gym 环境知识或官方奖励模板，
-#   而是基于 clean interface + 训练反馈搜索 reward。
-# ============================================================
-
-
-@dataclass(frozen=True)
-class PublicTaskSpec:
-    task_goal: str
-    task_style: str
-    forbidden_terms: tuple[str, ...]
-
-
 @dataclass(frozen=True)
 class PrivateTaskSpec:
+    """
+    Runtime-only task identity.
+
+    EG-RSA follows Eureka-style task input:
+      - task_description.txt
+      - step.py
+
+    The real env_id is used only by runtime to create Gym environments
+    and evaluate policies. It is not used to synthesize extra task
+    semantics beyond the Eureka task files.
+    """
     env_id: str
     hidden_eval_source: str = "env_reward"
     benchmark_id: str | None = None
-
-
-DEFAULT_FORBIDDEN_TERMS = (
-    "env_reward",
-    "fitness_score",
-    "benchmark_reward",
-    "official_reward",
-    "original_reward",
-    "compute_fitness_score",
-    "LunarLander",
-    "BipedalWalker",
-    "CartPole",
-    "gymnasium.envs",
-)
-
-
-PUBLIC_TASK_SPECS: dict[str, PublicTaskSpec] = {
-    "LunarLander-v3": PublicTaskSpec(
-        task_goal="Control the agent to complete the task successfully, stably, and efficiently.",
-        task_style=(
-            "Prefer dense, bounded shaping terms that encourage progress, stability, "
-            "low unnecessary control effort, and appropriate terminal behavior."
-        ),
-        forbidden_terms=DEFAULT_FORBIDDEN_TERMS,
-    ),
-    "LunarLander-v2": PublicTaskSpec(
-        task_goal="Control the agent to complete the task successfully, stably, and efficiently.",
-        task_style=(
-            "Prefer dense, bounded shaping terms that encourage progress, stability, "
-            "low unnecessary control effort, and appropriate terminal behavior."
-        ),
-        forbidden_terms=DEFAULT_FORBIDDEN_TERMS,
-    ),
-    "BipedalWalker-v3": PublicTaskSpec(
-        task_goal="Control the agent to complete the task successfully, stably, and efficiently.",
-        task_style=(
-            "Prefer dense, bounded shaping terms that encourage progress, stability, "
-            "smooth transitions, low unnecessary control effort, and robust completion."
-        ),
-        forbidden_terms=DEFAULT_FORBIDDEN_TERMS,
-    ),
-    "CartPole-v1": PublicTaskSpec(
-        task_goal="Control the agent to maintain task success for as long as possible.",
-        task_style=(
-            "Prefer bounded shaping terms that encourage stable observations, smooth transitions, "
-            "and appropriate terminal penalties."
-        ),
-        forbidden_terms=DEFAULT_FORBIDDEN_TERMS,
-    ),
-}
 
 
 PRIVATE_TASK_SPECS: dict[str, PrivateTaskSpec] = {
@@ -98,20 +33,6 @@ PRIVATE_TASK_SPECS: dict[str, PrivateTaskSpec] = {
 def make_env_alias(env_id: str) -> str:
     digest = hashlib.sha1(env_id.encode("utf-8")).hexdigest()[:8]
     return f"Env-{digest}"
-
-
-def get_public_task_spec(env_id: str) -> PublicTaskSpec:
-    return PUBLIC_TASK_SPECS.get(
-        env_id,
-        PublicTaskSpec(
-            task_goal="Control the agent to complete the task successfully, stably, and efficiently.",
-            task_style=(
-                "Use clean observation/action interface information and closed-loop feedback. "
-                "Do not assume any official reward template."
-            ),
-            forbidden_terms=DEFAULT_FORBIDDEN_TERMS,
-        ),
-    )
 
 
 def get_private_task_spec(env_id: str) -> PrivateTaskSpec:

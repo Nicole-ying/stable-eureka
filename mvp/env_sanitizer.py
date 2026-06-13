@@ -3,10 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import gymnasium as gym
-import numpy as np
-from gymnasium import spaces
-
 
 ENV_ID_TO_EUREKA_DIRS: dict[str, list[str]] = {
     "LunarLander-v3": ["lunar_lander"],
@@ -57,8 +53,8 @@ def _find_eureka_file(env_id: str, filename: str) -> Path:
     raise FileNotFoundError(
         f"Eureka-style file not found for env_id={env_id}: {filename}\n"
         f"Searched:\n{searched}\n\n"
-        "EG-RSA eureka_clean requires envs/<task>/task_description.txt and envs/<task>/step.py. "
-        "The framework will not synthesize extra task-interface fields silently."
+        "Final EG-RSA framework requires envs/<task>/task_description.txt and envs/<task>/step.py. "
+        "It does not synthesize extra observation/action range tables."
     )
 
 
@@ -66,89 +62,18 @@ def _read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _anonymous_space(space: spaces.Space) -> dict[str, Any]:
-    if isinstance(space, spaces.Box):
-        return {
-            "type": "Box",
-            "shape": list(space.shape),
-            "dtype": str(space.dtype),
-            "dimension_semantics": "not_available",
-        }
-    if isinstance(space, spaces.Discrete):
-        return {
-            "type": "Discrete",
-            "n": int(space.n),
-            "start": int(space.start),
-            "dimension_semantics": "not_available",
-        }
-    return {
-        "type": type(space).__name__,
-        "dimension_semantics": "not_available",
-    }
+def infer_clean_env_interface(env_id: str, env_alias: str) -> dict[str, Any]:
+    """
+    Final EG-RSA task input.
 
+    The LLM receives exactly Eureka-style task context:
+      1. task_description.txt
+      2. step.py
 
-class ObservationAnonymizer:
-    def __init__(self, observation_space: spaces.Space):
-        self.observation_space = observation_space
-
-        if isinstance(observation_space, spaces.Box):
-            low = np.asarray(observation_space.low, dtype=np.float32)
-            high = np.asarray(observation_space.high, dtype=np.float32)
-            finite = np.isfinite(low) & np.isfinite(high) & (high > low)
-
-            center = np.zeros_like(low, dtype=np.float32)
-            scale = np.ones_like(low, dtype=np.float32)
-
-            center[finite] = (low[finite] + high[finite]) / 2.0
-            scale[finite] = (high[finite] - low[finite]) / 2.0
-            scale = np.where(np.abs(scale) < 1e-6, 1.0, scale)
-
-            self.box_finite = finite
-            self.center = center
-            self.scale = scale
-        else:
-            self.box_finite = None
-            self.center = None
-            self.scale = None
-
-    def transform(self, obs):
-        arr = np.asarray(obs, dtype=np.float32)
-
-        if isinstance(self.observation_space, spaces.Box):
-            out = np.zeros_like(arr, dtype=np.float32)
-            finite = self.box_finite
-            out[finite] = (arr[finite] - self.center[finite]) / self.scale[finite]
-            out[~finite] = np.tanh(arr[~finite] / 5.0)
-            return np.clip(out, -5.0, 5.0).astype(np.float32)
-
-        return np.tanh(arr / 5.0).astype(np.float32)
-
-
-def infer_clean_env_interface(
-    env_id: str,
-    env_alias: str,
-    interface_mode: str = "eureka_clean",
-) -> dict[str, Any]:
-    if interface_mode == "anonymous_clean":
-        env = gym.make(env_id)
-        try:
-            return {
-                "interface_mode": "anonymous_clean",
-                "env_alias": env_alias,
-                "observation_space": _anonymous_space(env.observation_space),
-                "action_space": _anonymous_space(env.action_space),
-                "reward_function_contract": {
-                    "signature": "compute_reward(obs, action, next_obs, done, info)",
-                    "visible_inputs": ["obs", "action", "next_obs", "done", "info"],
-                    "return": "float(total_reward), components_dict",
-                },
-            }
-        finally:
-            env.close()
-
-    if interface_mode != "eureka_clean":
-        raise ValueError(f"Unsupported interface_mode={interface_mode}. Use eureka_clean or anonymous_clean.")
-
+    The framework may add memory, lessons, feedback, schema, and parent reward code
+    during iteration. It does not add a separate Gym-space-derived observation/action
+    range table.
+    """
     task_path = _find_eureka_file(env_id, "task_description.txt")
     step_path = _find_eureka_file(env_id, "step.py")
 
@@ -171,9 +96,11 @@ def infer_clean_env_interface(
                 "task_description.txt",
                 "step.py",
                 "LLM reasoning over observation/action semantics",
+                "environment understanding generated from task files",
+                "reward schema and search plan generated from task files",
                 "parent reward code",
                 "training feedback",
-                "lessons retrieved from memory",
+                "STM/MTM/LTM lessons retrieved from memory",
             ],
             "generated_code_forbidden": [
                 "env_reward",
