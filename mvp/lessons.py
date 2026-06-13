@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 
-
 UNSAFE_LESSON_PHRASES = (
     "hidden evaluator's likely structure",
     "hidden evaluator structure",
@@ -24,6 +23,17 @@ ACTION_SPACE_GUESS_PHRASES = (
     "common in lunarlender",
     "common in lunarlander",
     "if actions are continuous",
+    "if the action space is continuous",
+    "use action magnitude",
+    "continuous fuel consumption model",
+)
+
+POPULATION_GUESS_PHRASES = (
+    "increase the number of candidates",
+    "3-5 candidates",
+    "at least 3 candidates",
+    "at least 3-5 candidates",
+    "increase population size",
 )
 
 
@@ -32,7 +42,9 @@ def sanitize_lesson_text(row: dict[str, Any]) -> dict[str, Any]:
     Remove unsafe or misleading lesson wording before storing memory.
 
     Lessons may use private_eval_return as black-box feedback, but must not
-    recommend reconstructing hidden evaluator internals.
+    recommend reconstructing hidden evaluator internals. For single-chain
+    experiments, lessons should not tell the system to escape back to population
+    search; they should recommend conservative RewardSpec mutation instead.
     """
     out = dict(row)
 
@@ -55,6 +67,16 @@ def sanitize_lesson_text(row: dict[str, Any]) -> dict[str, Any]:
             "Do not guess continuous or discrete action structure beyond the task files."
         )
         out["confidence"] = min(float(out.get("confidence", 0.5)), 0.6)
+        out["lesson_type"] = "prompt_rule"
+
+    combined = " ".join(str(out.get(k, "")) for k in text_fields).lower()
+    if any(p.lower() in combined for p in POPULATION_GUESS_PHRASES):
+        out["recommendation"] = (
+            "For single-chain runs, do not increase population size. "
+            "Instead, use conservative RewardSpec mutation, roll back toward the best-so-far spec when a mutation degrades, "
+            "and change only one or two coefficients or thresholds at a time."
+        )
+        out["confidence"] = min(float(out.get("confidence", 0.5)), 0.65)
         out["lesson_type"] = "prompt_rule"
 
     return out
@@ -177,6 +199,13 @@ def retrieve_memory_context(
     return text
 
 
+def _spec_head(record: dict[str, Any], max_chars: int = 2500) -> str:
+    spec = record.get("reward_spec") or {}
+    if not spec:
+        return ""
+    return json.dumps(spec, ensure_ascii=False, indent=2)[:max_chars]
+
+
 def pack_generation_evidence(
     *,
     generation: int,
@@ -200,7 +229,8 @@ def pack_generation_evidence(
             "repair_success": r.get("repair_success", False),
             "validation_errors": r.get("validation_errors", []),
             "diagnostics": r.get("diagnostics", {}),
-            "reward_code_head": str(r.get("reward_code", ""))[:2500],
+            "reward_spec_head": _spec_head(r, 2500),
+            "reward_code_head": str(r.get("reward_code", ""))[:1500],
             "llm_rationale": str(r.get("llm_rationale", ""))[:1000],
         }
 
@@ -229,6 +259,7 @@ def pack_candidate_evidence(record: dict[str, Any]) -> dict[str, Any]:
         "repair_success": record.get("repair_success", False),
         "validation_errors": record.get("validation_errors", []),
         "diagnostics": record.get("diagnostics", {}),
-        "reward_code_head": str(record.get("reward_code", ""))[:3500],
+        "reward_spec_head": _spec_head(record, 3500),
+        "reward_code_head": str(record.get("reward_code", ""))[:2000],
         "llm_rationale": str(record.get("llm_rationale", ""))[:1500],
     }
