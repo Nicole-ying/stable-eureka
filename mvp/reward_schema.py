@@ -257,7 +257,7 @@ def validate_reward_code(
 
         out = fn(obs, action, next_obs, False, {})
         if not isinstance(out, tuple) or len(out) != 2:
-            errors.append("compute_reward must return (total_reward, components_dict)")
+            errors.append("compute_reward must return (total_reward, components_dict)
         else:
             total, components = out
             total = float(total)
@@ -268,6 +268,8 @@ def validate_reward_code(
             if not isinstance(components, dict):
                 errors.append("components must be a dict")
             else:
+                schema_ids = [c["id"] for c in schema.get("components", [])]
+                schema_id_set = set(schema_ids)
                 required_ids = [
                     c["id"]
                     for c in schema.get("components", [])
@@ -276,6 +278,15 @@ def validate_reward_code(
                 missing = [cid for cid in required_ids if cid not in components]
                 if missing:
                     errors.append(f"missing required components: {missing}")
+
+                extra = [cid for cid in components if cid not in schema_id_set]
+                if extra:
+                    errors.append(f"extra components not in reward schema: {extra}")
+
+                # Keep exact schema order for compiled RewardSpec code and stable diagnostics.
+                if list(components.keys()) != [cid for cid in schema_ids if cid in components]:
+                    errors.append("components keys must follow reward schema order")
+
                 for k, v in components.items():
                     try:
                         fv = float(v)
