@@ -257,7 +257,7 @@ def validate_reward_code(
 
         out = fn(obs, action, next_obs, False, {})
         if not isinstance(out, tuple) or len(out) != 2:
-            errors.append("compute_reward must return (total_reward, components_dict)
+            errors.append("compute_reward must return (total_reward, components_dict)")
         else:
             total, components = out
             total = float(total)
