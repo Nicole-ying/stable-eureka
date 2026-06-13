@@ -1,6 +1,7 @@
 Scope: environment
 Env alias: Env-90b964d9
 Generation: 1
+Candidate ID: N/A
 
 Structured evidence:
 {
@@ -11,182 +12,166 @@ Structured evidence:
     {
       "candidate_id": "g1_c0",
       "parent_ids": [
+        "g0_c0",
         "g0_c1"
       ],
       "status": "ok",
-      "selection_score": -191.8487483720269,
-      "private_eval_return": -191.8487483720269,
-      "generated_return": -92.40850160161744,
-      "generated_minus_private": 99.44024677040946,
+      "selection_score": -47.99154506341481,
+      "private_eval_return": -47.99154506341481,
+      "generated_return": -159.60337955301102,
+      "generated_minus_private": -111.61183448959622,
       "repair_attempts": 0,
       "repair_success": false,
       "validation_errors": [],
       "diagnostics": {
-        "generated_private_gap": 99.44024677040946,
-        "action_mean": 0.33,
-        "action_std": 0.9386692708297208,
-        "episode_length_mean": 66.66666666666667,
+        "generated_private_gap": -111.61183448959622,
+        "action_mean": 0.0,
+        "action_std": 0.0,
+        "episode_length_mean": 75.0,
         "component_returns": {
-          "landing_bonus": 0.0,
-          "distance_penalty": -6.409176424299658,
-          "velocity_penalty": -22.530195491729927,
-          "angle_penalty": -5.694880577128424,
-          "fuel_penalty": -0.07333333333333335,
-          "crash_penalty": -50.0,
-          "progress": 1.099084224873893,
-          "stability": 11.200000000000003,
-          "effort": 0.0,
-          "terminal": -20.0
+          "velocity_penalty": -113.03857617899779,
+          "angle_penalty": -43.81218312191777,
+          "distance_reward": 46.24737974790447,
+          "fuel_efficiency_penalty": 0.0,
+          "ground_contact_bonus": 1.0,
+          "terminal": -50.0
         }
       },
-      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg0 = obs[6]\n    leg1 = obs[7]\n    \n    # Unpack next observations for progress\n    nx = next_obs[0]\n    ny = next_obs[1]\n    nvel_y = next_obs[3]\n    nangle = next_obs[4]\n    nleg0 = next_obs[6]\n    nleg1 = next_obs[7]\n    \n    # Action interpretation (discrete)\n    main = 1.0 if action == 2 else 0.0\n    side = 1.0 if action in [1, 3] else 0.0\n    \n    # ---------- distance_penalty: linear, gentle ----------\n    dist = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * dist\n    \n    # ---------- velocity_penalty: focus on vertical ----------\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n    \n    # ---------- angle_penalty: encourage upright ----------\n    angle_penalty = -0.2 * abs(angle)\n    \n    # ---------- fuel_penalty: small discourage firing ----------\n    fuel_penalty = -0.01 * (main + side)\n    \n    # ---------- progress: positive shaping for moving downward and slowing ----------\n    next_dist = (nx * nx + ny * ny) ** 0.5\n    progress_reward = 0.0\n    # Reward for reducing distance to pad\n    if next_dist < dist:\n        progress_reward += 0.3 * (dist - next_dist)\n    # Reward for reducing vertical speed (soft landing)\n    if abs(nvel_y) < abs(vel_y):\n        progress_reward += 0.5 * (abs(vel_y) - abs(nvel_y))\n    # Reward for becoming more upright\n    if abs(nangle) < abs(angle):\n        progress_reward += 0.2 * (abs(angle) - abs(nangle))\n    \n    # ---------- stability: continuous reward for good posture ----------\n    stability_reward = 0.0\n    if abs(angle) < 0.15:\n        stability_reward += 0.2\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.1\n    # Reward ground contact only when gentle\n    if leg0 or leg1:\n        if abs(vel_y) < 0.3:\n            stability_reward += 0.3\n    \n    # ---------- effort: penalize firing only when already near pad ----------\n    effort_penalty = 0.0\n    if dist < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.02 * (main + side)\n    \n    # ---------- terminal: single consolidated terminal signal ----------\n    terminal_reward = 0.0\n    landing_bonus = 0.0\n    crash_penalty = 0.0\n    if done:\n        # Check for successful landing: both legs down, upright, low vertical speed\n        success = (nleg0 > 0.5 and nleg1 > 0.5) and abs(nangle) < 0.1 and abs(nvel_y) < 0.1\n        if",
-      "llm_rationale": "This reward function addresses the failure modes from the previous generation. The distance penalty is reduced from quadratic (-0.5*d²) to linear (-0.1*d) to avoid overwhelming other signals. The landing bonus is dramatically increased to +150, making successful landing the dominant objective. All terminal logic is consolidated into a single `if done:` block to avoid double-counting. Progress shaping provides positive rewards for moving toward the pad, reducing vertical speed, and becoming upright. The effort penalty uses a looser threshold (dist < 0.3) and is very small. No imports are used. Component magnitudes are balanced so no single component dominates except the landing bonus, which is intentional to prioritize landing."
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observation components (normalized)\n    x = obs[0]\n    y = obs[1]\n    vx = obs[2]\n    vy = obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_contact = obs[6]\n    right_contact = obs[7]\n    \n    # --- Component 1: velocity_penalty ---\n    # Penalize high speeds, especially vertical velocity (negative = moving down fast)\n    # Scale reduced from parent to avoid overwhelming other signals\n    vel_penalty = -1.5 * (abs(vy) + 0.3 * abs(vx))\n    \n    # --- Component 2: angle_penalty ---\n    # Penalize tilt and spin, moderate magnitude\n    angle_penalty = -2.0 * (abs(angle) + 0.5 * abs(ang_vel))\n    \n    # --- Component 3: distance_reward ---\n    # Exponential shaping: near-zero far away, increasingly positive as agent approaches pad\n    # This replaces the harsh linear negative distance with a smoother signal\n    dist = np.sqrt(x**2 + y**2)\n    # exp(-2*dist) gives ~1 when dist=0, ~0.14 when dist=1, ~0.02 when dist=2\n    # Scale by 3 to make it comparable with other components\n    distance_reward = 3.0 * np.exp(-2.0 * dist)\n    \n    # --- Component 4: fuel_efficiency_penalty ---\n    # Increased penalties to discourage wasteful engine firing\n    fuel_penalty = 0.0\n    if action == 2:  # main engine\n        fuel_penalty = -2.0\n    elif action == 1 or action == 3:  # side engines\n        fuel_penalty = -1.0\n    \n    # --- Component 5: ground_contact_bonus ---\n    # Relaxed conditions: at least one leg contact and near pad\n    # Also give smaller bonus for being near pad with one leg (partial progress)\n    near_pad = (abs(x) < 0.3) and (y < 0.2)\n    one_leg = (left_contact > 0.5) or (right_contact > 0.5)\n    both_legs = (left_contact > 0.5) and (right_contact > 0.5)\n    \n    ground_contact_bonus = 0.0\n    if both_legs and near_pad:\n        ground_contact_bonus = 8.0  # full success posture\n    elif one_leg and near_pad:\n        ground_contact_bonus = 3.0  # partial progress\n    \n    # --- Component 6: terminal ---\n    terminal_reward = 0.0\n    if done:\n        # Check for successful landing: both legs on ground, near pad, low speed, upright\n        success = (\n            both_legs and\n            near_pad and\n            abs(vy) < 0.15 and\n            abs(vx) < 0.15 and\n            abs(angle) < 0.15\n        )\n        if success:\n            terminal_reward = 100.0\n        else:\n            # Reduced failure penalty to avoid masking shaping signals\n            terminal_reward = -50.0\n    \n    ",
+      "llm_rationale": "This candidate addresses the main failure modes observed in generation 0. The key changes are:\n\n1. **Reduced shaping penalty magnitudes**: velocity_penalty and angle_penalty are scaled down (1.5 and 2.0 vs previous 2.0 and 3.0) to avoid overwhelming positive signals.\n\n2. **Exponential distance reward** (instead of linear negative): `3.0 * exp(-2*dist)` gives ~3 when at pad, ~0.4 when far away. This provides positive shaping for approaching the pad rather than harsh negative distance, which should help guide the agent toward the goal.\n\n3. **Increased fuel penalties**: main engine -2.0 (was -0.5), side engines -1.0 (was -0.2). This makes the agent more conservative with engine usage.\n\n4. **Relaxed ground_contact_bonus**: expanded near-pad region (|x|<0.3, y<0.2), added partial bonus (3.0) for one leg contact, and full bonus (8.0) for both legs. This makes landing bonuses more achievable.\n\n5. **Reduced failure terminal penalty**: -50 instead of -100, so the shaping signals are not complet"
     },
     {
       "candidate_id": "g1_c1",
       "parent_ids": [
+        "g0_c0",
         "g0_c1"
       ],
       "status": "ok",
-      "selection_score": -774.2276463071415,
-      "private_eval_return": -774.2276463071415,
-      "generated_return": -118.4650204239142,
-      "generated_minus_private": 655.7626258832273,
+      "selection_score": -127.70134255719263,
+      "private_eval_return": -127.70134255719263,
+      "generated_return": -452.44634700624664,
+      "generated_minus_private": -324.745004449054,
       "repair_attempts": 0,
       "repair_success": false,
       "validation_errors": [],
       "diagnostics": {
-        "generated_private_gap": 655.7626258832273,
-        "action_mean": 1.62557781201849,
-        "action_std": 0.8345536698862671,
-        "episode_length_mean": 216.33333333333334,
+        "generated_private_gap": -324.745004449054,
+        "action_mean": 0.0,
+        "action_std": 0.0,
+        "episode_length_mean": 58.666666666666664,
         "component_returns": {
-          "landing_bonus": 0.0,
-          "distance_penalty": -44.90307510640802,
-          "velocity_penalty": -49.04911365252142,
-          "angle_penalty": -14.525158151596164,
-          "fuel_penalty": -3.4533333333333354,
-          "crash_penalty": -10.0,
-          "progress": -1.4176735133885814,
-          "stability": 14.883333333333383,
-          "effort": 0.0,
-          "terminal": -10.0
+          "velocity_penalty": -141.0158936838309,
+          "angle_penalty": -40.52952601769939,
+          "distance_reward": -220.90092730471633,
+          "fuel_efficiency_penalty": 0.0,
+          "ground_contact_bonus": 0.0,
+          "terminal": -50.0
         }
       },
-      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg_contact_0 = obs[6]\n    leg_contact_1 = obs[7]\n\n    # Extract next observations for progress shaping\n    next_x = next_obs[0]\n    next_y = next_obs[1]\n    next_vel_y = next_obs[3]\n    next_angle = next_obs[4]\n\n    # Action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n\n    # ========== distance_penalty ==========\n    distance = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * distance\n\n    # ========== velocity_penalty ==========\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n\n    # ========== angle_penalty ==========\n    angle_penalty = -0.2 * abs(angle)\n\n    # ========== fuel_penalty ==========\n    fuel_penalty = -0.02 * (main_engine + side_engine)\n\n    # ========== progress ==========\n    next_distance = (next_x * next_x + next_y * next_y) ** 0.5\n    distance_improvement = distance - next_distance\n    progress_reward = 0.5 * distance_improvement\n    vel_improvement = abs(vel_y) - abs(next_vel_y)\n    progress_reward += 0.3 * vel_improvement\n\n    # ========== stability ==========\n    stability_reward = 0.0\n    if abs(angle) < 0.2:\n        stability_reward += 0.1\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.05\n    if leg_contact_0 or leg_contact_1:\n        stability_reward += 0.2\n\n    # ========== effort ==========\n    # Penalize engine use when close to pad and slow; reward inaction when stable\n    if distance < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.05 * (main_engine + side_engine)\n    else:\n        effort_penalty = 0.0\n\n    # ========== terminal shaping ==========\n    terminal_reward = 0.0\n    if done:\n        both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n        upright = abs(angle) < 0.1\n        low_speed = abs(vel_y) < 0.1\n        if both_legs and upright and low_speed:\n            terminal_reward = 100.0\n        elif abs(vel_y) > 0.5 or abs(angle) > 0.5:\n            terminal_reward = -10.0\n        else:\n            terminal_reward = -5.0\n\n    # ========== landing_bonus ==========\n    landing_bonus = 0.0\n    both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n    upright = abs(angle) < 0.1\n    low_speed = abs(vel_y) < 0.1\n    if both_legs and upright and low_speed:\n        landing_bonus = 100.0\n\n",
-      "llm_rationale": "reward_generation generated code"
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observation components (normalized)\n    x, y = obs[0], obs[1]\n    vx, vy = obs[2], obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_contact = obs[6]\n    right_contact = obs[7]\n\n    # ---------- 1. velocity_penalty ----------\n    # Penalize high speeds, especially vertical velocity.\n    # Scale: typical |vy| up to ~0.5, |vx| up to ~0.5, so penalty range ~0-3.\n    vel_penalty = -2.0 * (abs(vy) + 0.3 * abs(vx))\n\n    # ---------- 2. angle_penalty ----------\n    # Penalize tilt and spin.\n    # Scale: |angle| up to ~0.5 rad, |ang_vel| up to ~0.5, so penalty range ~0-3.\n    angle_penalty = -3.0 * (abs(angle) + 0.3 * abs(ang_vel))\n\n    # ---------- 3. distance_reward ----------\n    # Negative Euclidean distance from pad (0,0), scaled moderately.\n    # Typical distance range: 0 to ~1.5, so reward range ~0 to -6.\n    dist = np.sqrt(x**2 + y**2)\n    distance_reward = -4.0 * dist\n\n    # ---------- 4. fuel_efficiency_penalty ----------\n    # Penalize engine usage: main engine (action==2) and side engines (action==1 or 3).\n    fuel_penalty = 0.0\n    if action == 2:          # main engine\n        fuel_penalty = -2.0\n    elif action in [1, 3]:   # side engines\n        fuel_penalty = -1.0\n\n    # ---------- 5. ground_contact_bonus ----------\n    # Provide bonus when both legs are on ground and lander is near pad.\n    # Relaxed conditions: |x| < 0.3, y < 0.2 (near ground and near pad center).\n    near_pad = (abs(x) < 0.3) and (y < 0.2)\n    both_legs = (left_contact > 0.5) and (right_contact > 0.5)\n    ground_contact_bonus = 5.0 if (both_legs and near_pad) else 0.0\n\n    # ---------- 6. terminal ----------\n    # Apply only when episode ends (done == True).\n    # Successful landing: both legs on ground, near pad, low speed, upright.\n    terminal_reward = 0.0\n    if done:\n        success = (\n            both_legs and near_pad and\n            abs(vy) < 0.1 and abs(vx) < 0.1 and abs(angle) < 0.1\n        )\n        if success:\n            terminal_reward = 100.0\n        else:\n            # Moderate penalty for failure (crash or out-of-bounds)\n            terminal_reward = -50.0\n\n    # Sum all components\n    total_reward = (\n        vel_penalty +\n        angle_penalty +\n        distance_reward +\n        fuel_penalty +\n        ground_contact_bonus +\n        terminal_reward\n    )\n\n    # Clamp total reward to safe bounds\n    total_reward = np.clip(total_reward, -1000.0, 1000.0)\n\n    # Build components dictionary ",
+      "llm_rationale": "This reward function addresses the failure modes observed in Generation 0. Key changes:\n- Reduced shaping penalty magnitudes (velocity_penalty -2 vs -3, angle_penalty -3 vs -4) to avoid overwhelming positive signals.\n- Increased fuel penalties (-2 for main, -1 for side) to discourage wasteful engine firing while still allowing exploration.\n- Relaxed ground_contact_bonus conditions (|x|<0.3, y<0.2) to make the bonus more achievable.\n- Reduced terminal failure penalty from -100 to -50 to prevent it from dominating the total reward.\n- Used obs (not next_obs) for leg contacts and state, as the previous generation showed no clear benefit from next_obs.\n- Maintained the same success criteria for terminal bonus (+100) to incentivize proper landings.\n- All component IDs match the required schema."
     }
   ],
   "bottom_candidates": [
     {
       "candidate_id": "g1_c0",
       "parent_ids": [
+        "g0_c0",
         "g0_c1"
       ],
       "status": "ok",
-      "selection_score": -191.8487483720269,
-      "private_eval_return": -191.8487483720269,
-      "generated_return": -92.40850160161744,
-      "generated_minus_private": 99.44024677040946,
+      "selection_score": -47.99154506341481,
+      "private_eval_return": -47.99154506341481,
+      "generated_return": -159.60337955301102,
+      "generated_minus_private": -111.61183448959622,
       "repair_attempts": 0,
       "repair_success": false,
       "validation_errors": [],
       "diagnostics": {
-        "generated_private_gap": 99.44024677040946,
-        "action_mean": 0.33,
-        "action_std": 0.9386692708297208,
-        "episode_length_mean": 66.66666666666667,
+        "generated_private_gap": -111.61183448959622,
+        "action_mean": 0.0,
+        "action_std": 0.0,
+        "episode_length_mean": 75.0,
         "component_returns": {
-          "landing_bonus": 0.0,
-          "distance_penalty": -6.409176424299658,
-          "velocity_penalty": -22.530195491729927,
-          "angle_penalty": -5.694880577128424,
-          "fuel_penalty": -0.07333333333333335,
-          "crash_penalty": -50.0,
-          "progress": 1.099084224873893,
-          "stability": 11.200000000000003,
-          "effort": 0.0,
-          "terminal": -20.0
+          "velocity_penalty": -113.03857617899779,
+          "angle_penalty": -43.81218312191777,
+          "distance_reward": 46.24737974790447,
+          "fuel_efficiency_penalty": 0.0,
+          "ground_contact_bonus": 1.0,
+          "terminal": -50.0
         }
       },
-      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg0 = obs[6]\n    leg1 = obs[7]\n    \n    # Unpack next observations for progress\n    nx = next_obs[0]\n    ny = next_obs[1]\n    nvel_y = next_obs[3]\n    nangle = next_obs[4]\n    nleg0 = next_obs[6]\n    nleg1 = next_obs[7]\n    \n    # Action interpretation (discrete)\n    main = 1.0 if action == 2 else 0.0\n    side = 1.0 if action in [1, 3] else 0.0\n    \n    # ---------- distance_penalty: linear, gentle ----------\n    dist = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * dist\n    \n    # ---------- velocity_penalty: focus on vertical ----------\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n    \n    # ---------- angle_penalty: encourage upright ----------\n    angle_penalty = -0.2 * abs(angle)\n    \n    # ---------- fuel_penalty: small discourage firing ----------\n    fuel_penalty = -0.01 * (main + side)\n    \n    # ---------- progress: positive shaping for moving downward and slowing ----------\n    next_dist = (nx * nx + ny * ny) ** 0.5\n    progress_reward = 0.0\n    # Reward for reducing distance to pad\n    if next_dist < dist:\n        progress_reward += 0.3 * (dist - next_dist)\n    # Reward for reducing vertical speed (soft landing)\n    if abs(nvel_y) < abs(vel_y):\n        progress_reward += 0.5 * (abs(vel_y) - abs(nvel_y))\n    # Reward for becoming more upright\n    if abs(nangle) < abs(angle):\n        progress_reward += 0.2 * (abs(angle) - abs(nangle))\n    \n    # ---------- stability: continuous reward for good posture ----------\n    stability_reward = 0.0\n    if abs(angle) < 0.15:\n        stability_reward += 0.2\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.1\n    # Reward ground contact only when gentle\n    if leg0 or leg1:\n        if abs(vel_y) < 0.3:\n            stability_reward += 0.3\n    \n    # ---------- effort: penalize firing only when already near pad ----------\n    effort_penalty = 0.0\n    if dist < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.02 * (main + side)\n    \n    # ---------- terminal: single consolidated terminal signal ----------\n    terminal_reward = 0.0\n    landing_bonus = 0.0\n    crash_penalty = 0.0\n    if done:\n        # Check for successful landing: both legs down, upright, low vertical speed\n        success = (nleg0 > 0.5 and nleg1 > 0.5) and abs(nangle) < 0.1 and abs(nvel_y) < 0.1\n        if",
-      "llm_rationale": "This reward function addresses the failure modes from the previous generation. The distance penalty is reduced from quadratic (-0.5*d²) to linear (-0.1*d) to avoid overwhelming other signals. The landing bonus is dramatically increased to +150, making successful landing the dominant objective. All terminal logic is consolidated into a single `if done:` block to avoid double-counting. Progress shaping provides positive rewards for moving toward the pad, reducing vertical speed, and becoming upright. The effort penalty uses a looser threshold (dist < 0.3) and is very small. No imports are used. Component magnitudes are balanced so no single component dominates except the landing bonus, which is intentional to prioritize landing."
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observation components (normalized)\n    x = obs[0]\n    y = obs[1]\n    vx = obs[2]\n    vy = obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_contact = obs[6]\n    right_contact = obs[7]\n    \n    # --- Component 1: velocity_penalty ---\n    # Penalize high speeds, especially vertical velocity (negative = moving down fast)\n    # Scale reduced from parent to avoid overwhelming other signals\n    vel_penalty = -1.5 * (abs(vy) + 0.3 * abs(vx))\n    \n    # --- Component 2: angle_penalty ---\n    # Penalize tilt and spin, moderate magnitude\n    angle_penalty = -2.0 * (abs(angle) + 0.5 * abs(ang_vel))\n    \n    # --- Component 3: distance_reward ---\n    # Exponential shaping: near-zero far away, increasingly positive as agent approaches pad\n    # This replaces the harsh linear negative distance with a smoother signal\n    dist = np.sqrt(x**2 + y**2)\n    # exp(-2*dist) gives ~1 when dist=0, ~0.14 when dist=1, ~0.02 when dist=2\n    # Scale by 3 to make it comparable with other components\n    distance_reward = 3.0 * np.exp(-2.0 * dist)\n    \n    # --- Component 4: fuel_efficiency_penalty ---\n    # Increased penalties to discourage wasteful engine firing\n    fuel_penalty = 0.0\n    if action == 2:  # main engine\n        fuel_penalty = -2.0\n    elif action == 1 or action == 3:  # side engines\n        fuel_penalty = -1.0\n    \n    # --- Component 5: ground_contact_bonus ---\n    # Relaxed conditions: at least one leg contact and near pad\n    # Also give smaller bonus for being near pad with one leg (partial progress)\n    near_pad = (abs(x) < 0.3) and (y < 0.2)\n    one_leg = (left_contact > 0.5) or (right_contact > 0.5)\n    both_legs = (left_contact > 0.5) and (right_contact > 0.5)\n    \n    ground_contact_bonus = 0.0\n    if both_legs and near_pad:\n        ground_contact_bonus = 8.0  # full success posture\n    elif one_leg and near_pad:\n        ground_contact_bonus = 3.0  # partial progress\n    \n    # --- Component 6: terminal ---\n    terminal_reward = 0.0\n    if done:\n        # Check for successful landing: both legs on ground, near pad, low speed, upright\n        success = (\n            both_legs and\n            near_pad and\n            abs(vy) < 0.15 and\n            abs(vx) < 0.15 and\n            abs(angle) < 0.15\n        )\n        if success:\n            terminal_reward = 100.0\n        else:\n            # Reduced failure penalty to avoid masking shaping signals\n            terminal_reward = -50.0\n    \n    ",
+      "llm_rationale": "This candidate addresses the main failure modes observed in generation 0. The key changes are:\n\n1. **Reduced shaping penalty magnitudes**: velocity_penalty and angle_penalty are scaled down (1.5 and 2.0 vs previous 2.0 and 3.0) to avoid overwhelming positive signals.\n\n2. **Exponential distance reward** (instead of linear negative): `3.0 * exp(-2*dist)` gives ~3 when at pad, ~0.4 when far away. This provides positive shaping for approaching the pad rather than harsh negative distance, which should help guide the agent toward the goal.\n\n3. **Increased fuel penalties**: main engine -2.0 (was -0.5), side engines -1.0 (was -0.2). This makes the agent more conservative with engine usage.\n\n4. **Relaxed ground_contact_bonus**: expanded near-pad region (|x|<0.3, y<0.2), added partial bonus (3.0) for one leg contact, and full bonus (8.0) for both legs. This makes landing bonuses more achievable.\n\n5. **Reduced failure terminal penalty**: -50 instead of -100, so the shaping signals are not complet"
     },
     {
       "candidate_id": "g1_c1",
       "parent_ids": [
+        "g0_c0",
         "g0_c1"
       ],
       "status": "ok",
-      "selection_score": -774.2276463071415,
-      "private_eval_return": -774.2276463071415,
-      "generated_return": -118.4650204239142,
-      "generated_minus_private": 655.7626258832273,
+      "selection_score": -127.70134255719263,
+      "private_eval_return": -127.70134255719263,
+      "generated_return": -452.44634700624664,
+      "generated_minus_private": -324.745004449054,
       "repair_attempts": 0,
       "repair_success": false,
       "validation_errors": [],
       "diagnostics": {
-        "generated_private_gap": 655.7626258832273,
-        "action_mean": 1.62557781201849,
-        "action_std": 0.8345536698862671,
-        "episode_length_mean": 216.33333333333334,
+        "generated_private_gap": -324.745004449054,
+        "action_mean": 0.0,
+        "action_std": 0.0,
+        "episode_length_mean": 58.666666666666664,
         "component_returns": {
-          "landing_bonus": 0.0,
-          "distance_penalty": -44.90307510640802,
-          "velocity_penalty": -49.04911365252142,
-          "angle_penalty": -14.525158151596164,
-          "fuel_penalty": -3.4533333333333354,
-          "crash_penalty": -10.0,
-          "progress": -1.4176735133885814,
-          "stability": 14.883333333333383,
-          "effort": 0.0,
-          "terminal": -10.0
+          "velocity_penalty": -141.0158936838309,
+          "angle_penalty": -40.52952601769939,
+          "distance_reward": -220.90092730471633,
+          "fuel_efficiency_penalty": 0.0,
+          "ground_contact_bonus": 0.0,
+          "terminal": -50.0
         }
       },
-      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg_contact_0 = obs[6]\n    leg_contact_1 = obs[7]\n\n    # Extract next observations for progress shaping\n    next_x = next_obs[0]\n    next_y = next_obs[1]\n    next_vel_y = next_obs[3]\n    next_angle = next_obs[4]\n\n    # Action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n\n    # ========== distance_penalty ==========\n    distance = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * distance\n\n    # ========== velocity_penalty ==========\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n\n    # ========== angle_penalty ==========\n    angle_penalty = -0.2 * abs(angle)\n\n    # ========== fuel_penalty ==========\n    fuel_penalty = -0.02 * (main_engine + side_engine)\n\n    # ========== progress ==========\n    next_distance = (next_x * next_x + next_y * next_y) ** 0.5\n    distance_improvement = distance - next_distance\n    progress_reward = 0.5 * distance_improvement\n    vel_improvement = abs(vel_y) - abs(next_vel_y)\n    progress_reward += 0.3 * vel_improvement\n\n    # ========== stability ==========\n    stability_reward = 0.0\n    if abs(angle) < 0.2:\n        stability_reward += 0.1\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.05\n    if leg_contact_0 or leg_contact_1:\n        stability_reward += 0.2\n\n    # ========== effort ==========\n    # Penalize engine use when close to pad and slow; reward inaction when stable\n    if distance < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.05 * (main_engine + side_engine)\n    else:\n        effort_penalty = 0.0\n\n    # ========== terminal shaping ==========\n    terminal_reward = 0.0\n    if done:\n        both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n        upright = abs(angle) < 0.1\n        low_speed = abs(vel_y) < 0.1\n        if both_legs and upright and low_speed:\n            terminal_reward = 100.0\n        elif abs(vel_y) > 0.5 or abs(angle) > 0.5:\n            terminal_reward = -10.0\n        else:\n            terminal_reward = -5.0\n\n    # ========== landing_bonus ==========\n    landing_bonus = 0.0\n    both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n    upright = abs(angle) < 0.1\n    low_speed = abs(vel_y) < 0.1\n    if both_legs and upright and low_speed:\n        landing_bonus = 100.0\n\n",
-      "llm_rationale": "reward_generation generated code"
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observation components (normalized)\n    x, y = obs[0], obs[1]\n    vx, vy = obs[2], obs[3]\n    angle = obs[4]\n    ang_vel = obs[5]\n    left_contact = obs[6]\n    right_contact = obs[7]\n\n    # ---------- 1. velocity_penalty ----------\n    # Penalize high speeds, especially vertical velocity.\n    # Scale: typical |vy| up to ~0.5, |vx| up to ~0.5, so penalty range ~0-3.\n    vel_penalty = -2.0 * (abs(vy) + 0.3 * abs(vx))\n\n    # ---------- 2. angle_penalty ----------\n    # Penalize tilt and spin.\n    # Scale: |angle| up to ~0.5 rad, |ang_vel| up to ~0.5, so penalty range ~0-3.\n    angle_penalty = -3.0 * (abs(angle) + 0.3 * abs(ang_vel))\n\n    # ---------- 3. distance_reward ----------\n    # Negative Euclidean distance from pad (0,0), scaled moderately.\n    # Typical distance range: 0 to ~1.5, so reward range ~0 to -6.\n    dist = np.sqrt(x**2 + y**2)\n    distance_reward = -4.0 * dist\n\n    # ---------- 4. fuel_efficiency_penalty ----------\n    # Penalize engine usage: main engine (action==2) and side engines (action==1 or 3).\n    fuel_penalty = 0.0\n    if action == 2:          # main engine\n        fuel_penalty = -2.0\n    elif action in [1, 3]:   # side engines\n        fuel_penalty = -1.0\n\n    # ---------- 5. ground_contact_bonus ----------\n    # Provide bonus when both legs are on ground and lander is near pad.\n    # Relaxed conditions: |x| < 0.3, y < 0.2 (near ground and near pad center).\n    near_pad = (abs(x) < 0.3) and (y < 0.2)\n    both_legs = (left_contact > 0.5) and (right_contact > 0.5)\n    ground_contact_bonus = 5.0 if (both_legs and near_pad) else 0.0\n\n    # ---------- 6. terminal ----------\n    # Apply only when episode ends (done == True).\n    # Successful landing: both legs on ground, near pad, low speed, upright.\n    terminal_reward = 0.0\n    if done:\n        success = (\n            both_legs and near_pad and\n            abs(vy) < 0.1 and abs(vx) < 0.1 and abs(angle) < 0.1\n        )\n        if success:\n            terminal_reward = 100.0\n        else:\n            # Moderate penalty for failure (crash or out-of-bounds)\n            terminal_reward = -50.0\n\n    # Sum all components\n    total_reward = (\n        vel_penalty +\n        angle_penalty +\n        distance_reward +\n        fuel_penalty +\n        ground_contact_bonus +\n        terminal_reward\n    )\n\n    # Clamp total reward to safe bounds\n    total_reward = np.clip(total_reward, -1000.0, 1000.0)\n\n    # Build components dictionary ",
+      "llm_rationale": "This reward function addresses the failure modes observed in Generation 0. Key changes:\n- Reduced shaping penalty magnitudes (velocity_penalty -2 vs -3, angle_penalty -3 vs -4) to avoid overwhelming positive signals.\n- Increased fuel penalties (-2 for main, -1 for side) to discourage wasteful engine firing while still allowing exploration.\n- Relaxed ground_contact_bonus conditions (|x|<0.3, y<0.2) to make the bonus more achievable.\n- Reduced terminal failure penalty from -100 to -50 to prevent it from dominating the total reward.\n- Used obs (not next_obs) for leg contacts and state, as the previous generation showed no clear benefit from next_obs.\n- Maintained the same success criteria for terminal bonus (+100) to incentivize proper landings.\n- All component IDs match the required schema."
     }
   ],
   "failed_candidates": []
 }
 
 Reflection report:
-## Reflection on Generation 1
+**Reflection on Generation 1**
 
-### 1. What Worked
-- **Significant improvement in selection score**: The best candidate (g1_c0) improved from -684.8 to -191.85 — a ~3.5x improvement. The generated return also improved from -92.4 to -191.85, but more importantly, the gap between generated and private return shrank from 288 to 99.4.
-- **Action diversity achieved**: Action_mean = 0.33 with std = 0.94 for g1_c0, showing the agent now explores different actions (main engine, side engines, no action) instead of the previous single-action policy. This is a dramatic improvement from action_mean=2.0, std=0.0.
-- **Component balance improved**: Distance penalty dropped from -306 to -6.4 — the linear penalty successfully prevented dominance. Velocity penalty (-22.5) and angle penalty (-5.7) are now in a reasonable range.
-- **Positive progress shaping working**: Progress component gave +1.1 reward, indicating the agent is moving toward the pad and reducing speed.
-- **Stability reward meaningful**: +11.2 from stability, suggesting the agent maintains upright posture.
-- **Shorter episodes**: Episode length dropped from 105 to 66.7 — the agent is terminating faster, which could indicate more decisive behavior.
-- **No import errors**: Both candidates passed validation successfully.
+**1. What worked:**
+- Candidate g1_c0 achieved a significantly better private_eval_return (-47.99) compared to g1_c1 (-127.70), and both improved dramatically over the best from Generation 0 (-357.7). This is a ~7x improvement in just one generation.
+- **Exponential distance reward** (g1_c0) was a clear success: distance_reward = +46.25 (positive!) vs -220.90 for g1_c1 which used linear negative distance. This confirms that positive shaping for proximity works much better than negative shaping for distance.
+- **Reduced shaping penalties** in g1_c0 (velocity_penalty -1.5, angle_penalty -2.0) produced much lower cumulative penalties (-113.0 and -43.8) compared to g1_c1 (-141.0 and -40.5), allowing the positive signals to dominate.
+- **Relaxed ground_contact_bonus** in g1_c0 (partial bonus for one leg, expanded near_pad region) yielded +1.0 total bonus, while g1_c1 got 0.0. This is a small but meaningful improvement.
+- **Reduced terminal failure penalty** (-50 instead of -100) helped both candidates avoid the massive negative terminal signal that dominated Generation 0.
+- **Episode length increased** to 75 steps for g1_c0 (up from ~74 in g0_c0), suggesting the agent is surviving longer, which is a positive sign.
 
-### 2. What Failed
-- **Still no successful landing**: Landing bonus = 0.0, crash penalty = -50.0, terminal = -20.0. The agent crashes or times out without achieving a proper landing.
-- **Generated-private gap still significant**: 99.4 points gap for g1_c0. While improved, the reward function still doesn't fully align with the hidden evaluator.
-- **Candidate g1_c1 regressed severely**: -774.2 selection score, with a massive 655.7 gap. This candidate had action_mean = 1.63 (mostly main engine) and episode length 216 (very long episodes). The progress component was actually negative (-1.4), meaning the agent moved away from the pad.
-- **Crash penalty dominates terminal outcomes**: -50 crash + -20 terminal = -70 total for non-landing terminations. This is still double-counting terminal outcomes despite the lesson about consolidation.
-- **Effort penalty never triggered**: effort = 0.0 for both candidates. The threshold `dist < 0.3 and abs(vel_y) < 0.2` is still too strict — the agent never reaches this state.
-- **Fuel penalty negligible**: -0.07 for g1_c0, -3.45 for g1_c1. The g1_c1 candidate fired engines much more (action_mean=1.63 vs 0.33) but the penalty was still small compared to other components.
+**2. What failed:**
+- Neither candidate achieved a successful landing (both terminal rewards = -50). The private_eval_return is still negative, meaning the hidden evaluator does not consider the behavior successful.
+- g1_c0's **generated_private_gap is -111.6**, still large and negative. This means the reward function significantly underestimates the true return. The shaping rewards are still too pessimistic or mis-scaled relative to the hidden evaluator.
+- **Fuel penalty had zero impact**: both candidates show fuel_efficiency_penalty = 0.0, meaning the engine usage penalties are never triggered, or they are triggered but exactly offset by other components. This is suspicious and may indicate the fuel penalty code is not firing as intended (e.g., action values may be continuous floats, not discrete integers 0-3).
+- **Action_mean = 0.0 for both candidates**: This is unusual - it suggests the agent is taking no actions at all (action 0 = do nothing), or the action logging is broken. If the agent is indeed doing nothing, it would explain why it never lands (just drifts until timeout/crash) and why fuel penalty is zero.
+- **g1_c1 still performed poorly** (-127.70) despite similar changes. Its linear distance penalty (-4.0*dist) was too harsh, and its stricter success criteria (abs(vy)<0.1 vs 0.15) made landing even harder. This shows that small parameter differences matter greatly.
 
-### 3. What to Try Next
-- **Fix terminal double-counting**: The code for g1_c0 still has separate `terminal_reward`, `landing_bonus`, and `crash_penalty` variables that all activate on `done`. Consolidate into a single terminal value: e.g., +200 for perfect landing, -10 for crash, -5 for timeout/other.
-- **Increase landing bonus further**: The previous generation had +10, this one aimed for +150 but the code was truncated. Ensure the landing bonus is truly large (e.g., +200 to +500) and is the *only* terminal component.
-- **Make crash penalty less punishing**: -50 crash penalty may be discouraging the agent from attempting risky maneuvers that could lead to learning. Reduce to -10 or consolidate into a single terminal value of -10 for non-landing.
-- **Fix effort threshold**: Use a continuous function instead of hard thresholds. For example: `effort_penalty = -0.1 * (main + side) * exp(-distance/0.5) * exp(-abs(vel_y)/0.3)` — this smoothly penalizes engine use when close and slow, without a hard cutoff.
-- **Strengthen progress shaping**: The current progress gives positive rewards for moving toward pad, reducing speed, and becoming upright. Increase the coefficients: try 0.5 for distance improvement, 0.8 for speed reduction, 0.3 for angle correction.
-- **Add explicit reward for using side engines to correct angle**: The agent still doesn't use side engines effectively. Add a component like: `angle_correction_reward = 0.2 * (abs(angle) - abs(next_angle))` when side engine is fired — this directly rewards using side engines to improve posture.
-- **Reduce episode length penalty**: The agent terminates at 66 steps on average. If the environment has a max step limit, the agent may be timing out rather than crashing. Consider adding a small per-step survival penalty (e.g., -0.1 per step) to encourage faster landing.
-- **Apply lessons more aggressively**: The gap is still 99.4. The landing bonus needs to be large enough to overcome the cumulative negative reward over an episode. If expected non-terminal reward is -50 per episode, landing bonus should be +200 or more.
+**3. What to try next:**
+- **Investigate the action_mean=0.0 issue**: If the agent is truly taking no actions, the reward function may be too punitive for engine usage, or the fuel penalty implementation is buggy. Verify whether actions are continuous (e.g., [main, side]) or discrete (0,1,2,3). If continuous, the current `if action == 2` logic will never trigger, making fuel penalty always zero. This is a critical bug to fix.
+- **Further reduce or eliminate the terminal failure penalty**: The -50 for failure still dominates. Try -20 or even 0, relying solely on shaping to guide the agent. The hidden evaluator likely rewards successful landings, not punishes failures.
+- **Make distance reward more generous**: g1_c0's exponential distance reward (3.0 * exp(-2*dist)) worked well. Try increasing the scaling factor (e.g., 5.0) to give more positive signal, or use a slower decay (exp(-1.5*dist)) to provide positive shaping over a wider range.
+- **Add a positive reward for low velocity near pad**: The current velocity_penalty is always negative. Consider a small positive reward when the agent is both near the pad and moving slowly (e.g., +2.0 if dist<0.3 and |vy|<0.1), to explicitly incentivize the pre-landing state.
+- **Ensure fuel penalty actually applies**: If actions are continuous, change the fuel penalty to use action magnitude: `fuel_penalty = -2.0 * abs(action[1])` for main engine, or similar. Match the expected action space of the environment.
+- **Consider removing the angle_penalty or making it very small**: The angle penalty may be counterproductive if the agent needs to tilt to fire side engines. Try -0.5*abs(angle) or even 0, and let the terminal success condition handle uprightness.
 
-### 4. Lesson Support/Contradiction
-- **Supported**: "Normalize component magnitudes" — Switching from quadratic (-0.5*d²) to linear (-0.1*d) distance penalty dramatically improved balance. Distance penalty went from -306 to -6.4.
-- **Supported**: "Ensure different actions produce measurably different rewards" — Action diversity improved from std=0.0 to std=0.94, and the agent now uses multiple action types.
-- **Supported**: "Consolidate terminal logic into a single component" — g1_c0 still has separate landing_bonus, crash_penalty, and terminal_reward. The -70 total for non-landing termination is likely suboptimal. This lesson was partially followed but needs full implementation.
-- **Partially contradicted**: "Set landing bonus to at least 10x expected cumulative penalty" — The landing bonus was increased (aimed for +150), but the cumulative penalty was also reduced significantly (-53 total for g1_c0 vs -684 for g0_c1). The ratio improved but still no landing occurred. The lesson needs refinement: the bonus must be high enough relative to the *actual* path taken, not just the expected total.
-- **Supported**: "Use progressive thresholds or continuous functions instead of hard thresholds" — The effort penalty threshold (dist < 0.3) was loosened from dist < 0.2, but still never triggered. This confirms hard thresholds are fragile.
-- **New insight**: The g1_c1 candidate shows that simply copying the same structure with minor tweaks can produce wildly different results. The difference between g1_c0 and g1_c1 was subtle (mostly coefficient differences), yet g1_c1 regressed severely. This suggests the reward landscape is highly sensitive to parameter choices.
-- **Emerging lesson**: When improving a reward function, make changes one at a time and verify each change improves the score. The jump from g0_c1 (-684) to g1_c0 (-191) was a big improvement, but the landing bonus is still not being achieved. The next iteration should focus specifically on making landing achievable.
+**4. Lessons supported or contradicted:**
+- **Supported**: "Exponential distance reward works better than linear negative distance" - g1_c0 (exponential) vastly outperformed g1_c1 (linear). Strong confirmation.
+- **Supported**: "Relax ground contact conditions with partial bonuses helps" - g1_c0's partial bonus (one leg) yielded some bonus, while g1_c1's strict both-legs requirement yielded zero.
+- **Supported**: "Reduce terminal failure penalty from -100 to -50 improves results" - both candidates improved dramatically over Generation 0.
+- **Supported**: "Scale down shaping penalties to avoid overwhelming positive signals" - g1_c0's lower penalties (-1.5, -2.0) outperformed g1_c1's higher penalties (-2.0, -3.0).
+- **Contradicted**: "Increase fuel penalties to discourage engine firing" - both candidates had increased fuel penalties (-2 main, -1 side) but showed zero fuel penalty impact. This suggests the fuel penalty mechanism is broken (likely due to action space mismatch), not that the penalty magnitude is wrong.
+- **Contradicted (or needs investigation)**: "Action-dependent discrete fuel penalties work" - the evidence shows fuel_penalty=0.0 despite the code having discrete checks. This strongly suggests the action space is continuous, not discrete, making the current implementation ineffective.
+- **Needs investigation**: The action_mean=0.0 anomaly. If the agent is truly taking no actions, the reward function may be inadvertently punishing all action-taking, leading to a do-nothing policy. This could explain why no landings occur despite improved shaping.
 
 Return JSON array of lessons. Do not include code blocks.

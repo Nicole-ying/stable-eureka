@@ -1,1 +1,13 @@
-This reward function addresses the failure modes from the previous generation. The distance penalty is reduced from quadratic (-0.5*d²) to linear (-0.1*d) to avoid overwhelming other signals. The landing bonus is dramatically increased to +150, making successful landing the dominant objective. All terminal logic is consolidated into a single `if done:` block to avoid double-counting. Progress shaping provides positive rewards for moving toward the pad, reducing vertical speed, and becoming upright. The effort penalty uses a looser threshold (dist < 0.3) and is very small. No imports are used. Component magnitudes are balanced so no single component dominates except the landing bonus, which is intentional to prioritize landing.
+This candidate addresses the main failure modes observed in generation 0. The key changes are:
+
+1. **Reduced shaping penalty magnitudes**: velocity_penalty and angle_penalty are scaled down (1.5 and 2.0 vs previous 2.0 and 3.0) to avoid overwhelming positive signals.
+
+2. **Exponential distance reward** (instead of linear negative): `3.0 * exp(-2*dist)` gives ~3 when at pad, ~0.4 when far away. This provides positive shaping for approaching the pad rather than harsh negative distance, which should help guide the agent toward the goal.
+
+3. **Increased fuel penalties**: main engine -2.0 (was -0.5), side engines -1.0 (was -0.2). This makes the agent more conservative with engine usage.
+
+4. **Relaxed ground_contact_bonus**: expanded near-pad region (|x|<0.3, y<0.2), added partial bonus (3.0) for one leg contact, and full bonus (8.0) for both legs. This makes landing bonuses more achievable.
+
+5. **Reduced failure terminal penalty**: -50 instead of -100, so the shaping signals are not completely masked by the terminal outcome.
+
+6. **Used obs (not next_obs)** for consistency and simplicity, as supported by memory lessons.

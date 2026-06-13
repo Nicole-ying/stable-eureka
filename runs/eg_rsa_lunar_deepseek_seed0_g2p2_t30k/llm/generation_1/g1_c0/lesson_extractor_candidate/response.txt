@@ -1,0 +1,49 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Positive exponential distance reward is used without sufficient negative shaping to prevent the agent from exploiting the reward by hovering at a moderate distance",
+    "observation": "The exponential distance reward (3.0 * exp(-2*dist)) provides positive shaping that peaks at the pad, but the velocity and angle penalties are too weak to prevent the agent from hovering at a distance where it can collect moderate distance reward without risking landing penalties.",
+    "explanation": "The candidate's generated_private_gap of -111.61 and action_mean/std of 0.0 indicate the agent is not moving effectively. The exponential distance reward gives ~0.4 at dist=1, which may be sufficient for the agent to hover far from the pad rather than approach it, especially when combined with weak velocity penalties and a -50 terminal failure penalty that discourages attempting landing.",
+    "recommendation": "Either strengthen the velocity/angle penalties to force approach behavior, or modify the distance reward to be negative at large distances (e.g., -dist + exp(-2*dist)) so the agent is pushed toward the pad. Also consider increasing the success terminal reward relative to the failure penalty to incentivize landing attempts.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "Fuel penalty is binary (0, -1, -2) while other components are continuous and scaled differently",
+    "observation": "The fuel_efficiency_penalty component is 0.0 for the entire episode, meaning the agent never fired its engines. This suggests the binary fuel penalties are too harsh relative to other reward components.",
+    "explanation": "With fuel penalties of -2.0 for main engine and -1.0 for side engines, the agent learns to never fire engines to avoid these penalties. This leads to zero action (hovering/falling) and prevents the agent from reaching the landing pad. The binary nature of fuel penalties creates a cliff edge that discourages any engine use.",
+    "recommendation": "Replace binary fuel penalties with a continuous penalty proportional to action magnitude (e.g., -0.5 * |action|) or remove fuel penalty entirely and rely on velocity penalties to discourage excessive engine use. Alternatively, reduce fuel penalty magnitudes significantly (e.g., -0.1 for any engine use) so that firing engines is still beneficial for reaching the pad.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Candidate has zero repair attempts and repair_success is false despite validation_errors being empty",
+    "observation": "The candidate was marked as 'ok' with no validation errors, but had zero repair attempts and repair_success false. This suggests the candidate was generated but never went through repair, possibly due to being selected directly from generation.",
+    "explanation": "The empty validation_errors and 'ok' status indicate the reward function passed basic validation (correct syntax, returns tuple of float and dict). However, the poor performance (selection_score -47.99, generated_return -159.60) shows that validation alone is insufficient to ensure good reward design. Repair should be triggered based on performance metrics, not just validation errors.",
+    "recommendation": "Implement a repair trigger based on generated_return or generated_private_gap thresholds in addition to validation errors. For example, if generated_return < -100 or generated_private_gap < -50, trigger repair even if validation passes.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Parent candidate used next_obs for distance calculation, child candidate switched to obs",
+    "observation": "The candidate switched from using next_obs (as in parent g0_c0/g0_c1) to using obs for all calculations, citing 'consistency and simplicity' based on memory lessons. This change did not improve performance.",
+    "explanation": "Using obs vs next_obs for distance and state calculations affects the temporal alignment of the reward. Using obs means the reward is based on the state before the action, while next_obs reflects the state after the action. For shaping rewards that guide the agent, using next_obs (post-action state) is often more appropriate as it rewards the outcome of the action. The switch to obs may have contributed to poor performance by rewarding the agent for states it has already achieved rather than progress made.",
+    "recommendation": "When designing shaping rewards, use next_obs to reward the agent for the state transition resulting from its action, not the current state. Only use obs for penalties based on current action (e.g., fuel_penalty). Ensure the reward signal is temporally aligned with the agent's actions.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "All reward components are present but their relative scaling leads to action collapse (action_mean=0, action_std=0)",
+    "observation": "Despite having 6 reward components, the agent learns to do nothing (action is always 0). The component returns show velocity_penalty (-113.04) and angle_penalty (-43.81) dominate, while distance_reward (+46.25) and ground_contact_bonus (+1.0) are insufficient to motivate movement.",
+    "explanation": "The action collapse occurs because the net reward for taking any action is negative: any engine firing incurs fuel penalty, and moving increases velocity/angle penalties. The agent finds that staying still (action=0) results in lower cumulative penalty than attempting to move toward the pad. This is a classic reward shaping failure where negative components dominate positive ones.",
+    "recommendation": "Ensure that the sum of all non-terminal reward components is positive for desirable behaviors and negative only for truly undesirable ones. Consider normalizing component ranges or using adaptive scaling. A practical heuristic: the maximum possible positive shaping reward should be at least 2x the maximum possible negative shaping reward to encourage exploration.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]
+```

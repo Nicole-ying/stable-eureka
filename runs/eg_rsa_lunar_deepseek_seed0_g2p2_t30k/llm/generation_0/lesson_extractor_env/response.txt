@@ -1,74 +1,56 @@
 [
   {
     "lesson_type": "failure_mode",
-    "condition": "When a single reward component (e.g., distance penalty) has a much larger magnitude than all other components combined",
-    "observation": "Distance penalty of -306.45 dominated the total reward of -684.82, overwhelming velocity, angle, and terminal signals. The agent learned to only fire the main engine (action=2, std=0) because all other action differences were negligible compared to position-based penalties.",
-    "explanation": "A dominant component creates a reward landscape that is essentially a function of that single variable. The agent cannot learn nuanced behaviors because the gradient from other components is insignificant. This leads to degenerate policies like always firing the main engine.",
-    "recommendation": "Normalize component magnitudes so that the maximum possible contribution of any single component is at most 2-3x the others. Use linear penalties (e.g., -0.1*distance) instead of quadratic (-0.5*distance²) to avoid exponential dominance. Verify balance by computing expected ranges for each component.",
-    "confidence": 0.95,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "When the generated reward function has a large gap between generated_return and private_eval_return (gap > 100)",
-    "observation": "Generated return was -396.36 but private eval return was -684.82, a gap of 288.45. The reward function is not aligned with the hidden evaluator's true objective.",
-    "explanation": "The private evaluator measures something fundamentally different from the designed reward components. Large gaps indicate that the reward function is optimizing for proxy metrics that do not match the actual task success criteria (likely a successful landing).",
-    "recommendation": "Increase the terminal landing bonus dramatically (e.g., +100 or more) to make landing the dominant objective. Reduce or remove continuous penalties that don't directly relate to landing success. Test that the reward function's optimal policy would also score well on the private evaluator.",
+    "condition": "Large negative shaping rewards (e.g., distance_reward, velocity_penalty) dominate the total reward, overwhelming positive signals.",
+    "observation": "Both candidates have very negative private_eval_returns (-357.7, -581.7) and large negative generated_private_gaps (-479.3, -920.3). Component returns show distance_reward and velocity_penalty are highly negative.",
+    "explanation": "When shaping penalties are too large, the agent receives a strong negative signal at every step, making it hard to learn desirable behaviors. The cumulative negative reward masks any positive progress, and the terminal failure penalty further entrenches the negative return.",
+    "recommendation": "Scale down shaping penalties by 2-3x to allow the agent to explore and receive positive feedback. Use moderate magnitudes (e.g., -1.0 for velocity, -1.5 for distance) and consider adding positive shaping near the goal.",
     "confidence": 0.9,
     "reuse_policy": "global"
   },
   {
     "lesson_type": "failure_mode",
-    "condition": "When action_mean is a single discrete value with zero standard deviation across an entire episode",
-    "observation": "Action mean = 2.0, action std = 0.0. The agent fired only the main engine every step (action=2) for all 105 steps. No exploration or use of side engines.",
-    "explanation": "A deterministic single-action policy indicates the reward function has no discriminative gradient between different actions. The agent found a local optimum where any deviation from the single action yields no improvement or worse reward. This often happens when one component (distance penalty) dominates and all actions affect it equally.",
-    "recommendation": "Ensure that different actions produce measurably different rewards. Add action-dependent shaping: e.g., reward using side engines to reduce angular velocity, penalize firing main engine when far from landing zone. Remove or reduce components that don't depend on action choice.",
-    "confidence": 0.95,
+    "condition": "Terminal reward of -100 for failure dominates the total episode reward, masking all shaping signals.",
+    "observation": "Both candidates have terminal_reward = -100.0 for non-landing episodes, and no successful landings occurred. The total return is heavily negative regardless of partial progress.",
+    "explanation": "A large fixed penalty for failure overwhelms any shaping rewards accumulated during the episode. The agent cannot distinguish between episodes where it made partial progress and those where it did not, hindering learning.",
+    "recommendation": "Reduce the failure penalty (e.g., -50 for crash, -20 for timeout) or make it proportional to distance from pad at termination. Consider using a success bonus (e.g., +100) without a large failure penalty.",
+    "confidence": 0.9,
     "reuse_policy": "global"
   },
   {
     "lesson_type": "failure_mode",
-    "condition": "When a conditional reward component uses a threshold that the agent never reaches (e.g., distance < 0.2)",
-    "observation": "Effort penalty condition `distance < 0.2 and abs(vel_y) < 0.1` was never met, so effort_penalty was always 0.0. The agent never got close enough to the landing pad to trigger this shaping.",
-    "explanation": "Thresholds set too aggressively can make entire reward components non-functional. If the agent cannot reach the condition, it receives no signal from that component, wasting its potential shaping benefit.",
-    "recommendation": "Set thresholds based on empirical observation of the agent's trajectory. Use progressive thresholds that start loose and tighten as the agent improves. Alternatively, use continuous functions (e.g., exp(-distance)) instead of hard thresholds. Monitor component activation rates during training.",
+    "condition": "Strict landing conditions (both legs contacting ground and near pad) are rarely achieved, resulting in very low ground contact bonus.",
+    "observation": "g0_c0 achieved only 3.33 total ground_contact_bonus across the episode, and g0_c1 got 0.0. Neither candidate achieved a successful landing.",
+    "explanation": "Requiring both legs to contact the ground simultaneously while also being near the pad is a very specific condition that the agent struggles to meet without proper shaping. The bonus is rarely given, providing little learning signal.",
+    "recommendation": "Relax the conditions: allow bonus for at least one leg contact, expand the near-pad region (e.g., |x|<0.3, y<0.2), or give partial bonuses for progress (e.g., small bonus for being near pad, larger for both legs).",
     "confidence": 0.85,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "When a reward function includes both terminal_reward and crash_penalty as separate components that both activate on done",
-    "observation": "Terminal reward component gave -10.0 on crash, and crash_penalty component also gave -10.0 on crash. This double-counts the same terminal outcome.",
-    "explanation": "Having overlapping terminal conditions creates double-counting of penalties/rewards. In this case, both `terminal_reward` and `crash_penalty` penalize the same crash event, making the total crash penalty -20.0 instead of -10.0. This can distort learning and make terminal states overly punitive.",
-    "recommendation": "Consolidate all terminal logic into a single component. Use a single `if done:` block that assigns one terminal value based on the landing quality. Avoid multiple components that each check `done`.",
-    "confidence": 0.8,
     "reuse_policy": "global"
   },
   {
     "lesson_type": "reward_pattern",
-    "condition": "When a landing bonus is set too low (e.g., +10) compared to cumulative penalties (e.g., -684 total)",
-    "observation": "Landing bonus was +10.0 for a perfect landing, but cumulative penalties over 105 steps were -684. The agent never achieved a landing bonus, and even if it did, +10 would be negligible.",
-    "explanation": "The terminal reward for success must be large enough to overcome all accumulated penalties from exploration. If the agent must endure hundreds of points of negative reward to reach a successful landing, the landing bonus must be proportionally large to make the journey worthwhile.",
-    "recommendation": "Set terminal landing bonus to at least 10x the expected cumulative penalty over an episode. For example, if expected total penalty is -500, set landing bonus to +500 or more. Alternatively, reduce cumulative penalties so that the net reward for a successful landing is clearly positive.",
-    "confidence": 0.9,
+    "condition": "Fuel efficiency penalty is small relative to other components, yet the agent fires engines frequently.",
+    "observation": "g0_c0 has fuel_penalty of -0.5/-0.2 and action_mean 1.03; g0_c1 has fuel_penalty of -0.5/-0.3 and action_mean 1.55. Both fire engines often despite penalties.",
+    "explanation": "When fuel penalties are negligible compared to other shaping costs (e.g., distance penalty of -3 to -4 per step), the agent will fire engines to reduce other penalties even if it incurs fuel cost. The penalty does not effectively discourage wasteful firing.",
+    "recommendation": "Increase fuel penalties significantly (e.g., -2.0 for main, -1.0 for side) to make the agent more conservative with engine usage, or tie fuel penalty to the magnitude of velocity change to encourage efficient control.",
+    "confidence": 0.8,
     "reuse_policy": "global"
   },
   {
-    "lesson_type": "mutation_rule",
-    "condition": "When repairing code that uses unsupported imports (like numpy or math)",
-    "observation": "Initial candidate g0_c0 failed with 'unsupported syntax: Import' error. The repair successfully removed imports and replaced math.sqrt with **0.5, but the LLM still attempted to use imports in the first place.",
-    "explanation": "The LLM often defaults to using standard library imports like math or numpy without considering environment constraints. The repair mechanism can fix this, but it wastes an attempt and may introduce bugs in the replacement logic.",
-    "recommendation": "In the prompt, explicitly state 'Do not use any import statements. All math operations must use built-in Python operators (e.g., **0.5 for sqrt).' Add a validation check before generation that rejects any code with import statements.",
-    "confidence": 0.95,
-    "reuse_policy": "global"
+    "lesson_type": "repair_rule",
+    "condition": "Large negative generated_private_gap indicates structural misalignment between the reward function and the hidden evaluator.",
+    "observation": "Both candidates have large negative gaps (-479.3, -920.3), meaning the reward function significantly underestimates the true return.",
+    "explanation": "The hidden evaluator likely uses different scaling, component weights, or additional factors not captured by the candidate. The reward function may be too pessimistic or missing key positive signals that the evaluator includes.",
+    "recommendation": "Investigate the hidden evaluator's likely structure by analyzing successful reward functions from other envs or tasks. Consider adding positive shaping for proximity to pad and low speed, and ensure all components are scaled to be comparable in magnitude.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "general",
-    "condition": "When designing reward functions for Lunar Lander or similar sparse-reward environments",
-    "observation": "The generated reward function had 10 components, but only distance_penalty dominated learning. The agent learned a degenerate policy of always firing main engine, never attempting to land properly.",
-    "explanation": "Complex reward functions with many components are not automatically better. They require careful balancing of component magnitudes, thresholds, and terminal rewards. A simpler reward function with 3-4 well-tuned components often outperforms a complex one with poor balance.",
-    "recommendation": "Start with a minimal reward function: 1) Large terminal bonus for successful landing, 2) Small penalty for distance from pad, 3) Small penalty for high velocity. Add complexity only after observing the agent's behavior. Use the private eval return as the primary metric for success.",
-    "confidence": 0.85,
-    "reuse_policy": "global"
+    "condition": "Using next_obs for ground contact vs. obs did not clearly improve performance in this generation.",
+    "observation": "g0_c1 used next_obs for ground contact and landing conditions, but achieved worse private_eval_return (-581.7) than g0_c0 which used obs (-357.7).",
+    "explanation": "While using next_obs can provide more current state information, the difference in results is likely due to other factors (e.g., different scaling, component weights) rather than the choice of obs vs. next_obs. The effect of this choice may be environment-specific.",
+    "recommendation": "Prefer using obs for simplicity and consistency, unless there is clear evidence that next_obs provides a meaningful advantage (e.g., for contact states that change after the step).",
+    "confidence": 0.5,
+    "reuse_policy": "similar_env"
   }
 ]

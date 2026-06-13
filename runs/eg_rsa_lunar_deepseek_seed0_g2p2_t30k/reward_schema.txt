@@ -1,5 +1,5 @@
 {
-  "schema_version": "eg_rsa_reward_schema_v1_f401f4f018",
+  "schema_version": "eg_rsa_reward_schema_v1_8c07c5a7b5",
   "env_alias": "Env-90b964d9",
   "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
   "return_contract": "return float(total_reward), components_dict",
@@ -13,62 +13,38 @@
   "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
   "components": [
     {
-      "id": "landing_bonus",
-      "description": "Award a large positive reward when both legs are in contact with the ground (leg_contact_0 and leg_contact_1 are both 1) and the episode terminates. This encourages a stable landing. Must ensure the agent is not rewarded for crashing, so also check that the lander is upright (|angle| < 0.1) and has low velocity (|vel_y| < 0.1).",
-      "direction": "maximize",
-      "required": true
-    },
-    {
-      "id": "distance_penalty",
-      "description": "Penalize the agent for being far from the landing pad. Use the Euclidean distance from the lander's position (x, y) to (0,0). Since observations are normalized, distance = sqrt(x^2 + y^2). The penalty should be proportional to distance to encourage the agent to move toward the pad.",
-      "direction": "minimize",
-      "required": true
-    },
-    {
       "id": "velocity_penalty",
-      "description": "Penalize high velocities, especially vertical velocity, to encourage a soft landing. Use a weighted sum of |vel_x| and |vel_y|, with higher weight on vertical velocity. This helps prevent crashes due to high speed.",
+      "description": "Penalize high vertical and horizontal speeds, especially near the ground. Use a weighted sum of |vy| and |vx|, scaled to encourage soft landing.",
       "direction": "minimize",
       "required": true
     },
     {
       "id": "angle_penalty",
-      "description": "Penalize the lander's tilt away from upright. Use |angle| as a penalty to encourage the agent to keep the lander level. This is important for a stable landing.",
+      "description": "Penalize deviation from upright orientation (angle=0) and high angular velocity. Use a weighted sum of |angle| and |angular_velocity|.",
       "direction": "minimize",
       "required": true
     },
     {
-      "id": "fuel_penalty",
-      "description": "Penalize fuel usage each time an engine is fired. Since m_power and s_power are binary (0 or 1), add a small negative reward proportional to (m_power + s_power) to discourage unnecessary fuel consumption.",
-      "direction": "minimize",
-      "required": true
-    },
-    {
-      "id": "crash_penalty",
-      "description": "Apply a large negative reward if the episode terminates due to a crash. The termination flag alone is ambiguous (it could be a successful landing). To detect a crash, check if the lander has high velocity or tilt at termination. For example, if terminated and (|vel_y| > 0.5 or |angle| > 0.5), then apply a large penalty.",
-      "direction": "minimize",
-      "required": true
-    },
-    {
-      "id": "progress",
-      "description": "dense task-progress shaping inferred from public task context",
+      "id": "distance_reward",
+      "description": "Reward proximity to the landing pad (0,0). Use negative Euclidean distance from (x,y) to (0,0) as a shaping signal, scaled to be comparable with other components.",
       "direction": "maximize",
       "required": true
     },
     {
-      "id": "stability",
-      "description": "bounded shaping for stable/safe task-relevant behavior inferred from public task context",
-      "direction": "maximize",
+      "id": "fuel_efficiency_penalty",
+      "description": "Penalize fuel usage by applying a small negative reward each time the main engine (action==2) or side engines (action==1 or 3) are fired. This encourages minimal thruster use.",
+      "direction": "minimize",
       "required": true
     },
     {
-      "id": "effort",
-      "description": "bounded penalty for unnecessary or costly actions",
+      "id": "ground_contact_bonus",
+      "description": "Provide a moderate positive reward when both legs are in ground contact (leg_contact booleans both 1), indicating a successful landing posture. This component is only active when the lander is near the pad (|x|<0.2, y close to 0) to avoid rewarding crashes.",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "terminal",
-      "description": "bounded terminal shaping from public done signal",
+      "description": "Apply a large positive reward (+100) if the lander is terminated with both legs on ground and near the pad (soft landing success). Apply a large negative penalty (-100) if terminated due to crash or out-of-bounds. If not terminated, component is 0.",
       "direction": "maximize",
       "required": true
     }

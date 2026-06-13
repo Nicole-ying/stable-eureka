@@ -1,0 +1,78 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "distance_reward uses Euclidean distance from origin with negative scaling but the landing target is a specific pad near the origin, not the origin itself",
+    "observation": "distance_reward = -4.0 * sqrt(x^2 + y^2) penalizes distance from (0,0), but in the LunarLander environment the landing pad is centered at x=0 but y is around -0.5 to 0.5, so a lander near the pad may still have a large negative distance reward if y is not near 0.",
+    "explanation": "The distance reward component is misaligned with the actual goal of landing on the pad. The pad is not at (0,0) in y; it is at y ≈ -0.5. Using Euclidean distance from origin creates a conflict where the agent is penalized for being at the correct landing y-coordinate, leading to high negative distance_reward even on successful landings.",
+    "recommendation": "Replace Euclidean distance from origin with a reward that encourages proximity to the pad center (e.g., negative distance from (0, -0.5) or a clipped exponential reward near the pad). Alternatively, use x-distance and y-distance penalties separately with appropriate thresholds.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "ground_contact_bonus requires near_pad condition with next_obs[1] < 0.1, but the pad y-coordinate is around -0.5, making this condition almost impossible to satisfy",
+    "observation": "ground_bonus = 5.0 only if (next_leg_left > 0.5) and (next_leg_right > 0.5) and (abs(next_obs[0]) < 0.2) and (next_obs[1] < 0.1). The y-threshold 0.1 is far above the pad y (~-0.5), so the bonus is never triggered during normal landing attempts.",
+    "explanation": "The near_pad condition incorrectly assumes the pad is near y=0, but the LunarLander pad is at y ≈ -0.5. This makes the ground_contact_bonus component effectively zero throughout training, wasting a reward component that could guide the agent.",
+    "recommendation": "Use a y-threshold that matches the pad location, e.g., abs(next_obs[1] - (-0.5)) < 0.3, or use a more robust proximity check based on the pad's actual coordinates.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "terminal_reward uses next_obs[1] < 0.1 as a success condition for y, which is inconsistent with the pad location and may cause false negatives",
+    "observation": "Terminal success requires (next_obs[1] < 0.1), but the pad is at y ≈ -0.5. A successful landing on the pad will have y ≈ -0.5, which is < 0.1, so it passes this check, but the threshold is too loose and does not penalize being too high. However, the real issue is that the condition (next_obs[1] < 0.1) is not restrictive enough to ensure the lander is at the pad; it could be anywhere below y=0.1 and still count as successful.",
+    "explanation": "The y-threshold for terminal success is too permissive and misaligned with the pad location. A lander that crashes below y=0.1 but not on the pad could be incorrectly classified as successful, while a lander that lands softly on the pad but slightly above y=0.1 (unlikely given pad y=-0.5) would fail. This misalignment reduces the effectiveness of the terminal reward.",
+    "recommendation": "Use a y-condition that checks proximity to the pad y-coordinate, e.g., abs(next_obs[1] - (-0.5)) < 0.3, combined with x-proximity and low speed, to correctly identify successful landings.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "fuel_efficiency_penalty uses action values 1, 2, 3 directly, but the LunarLander action space is discrete with actions 0 (do nothing), 1 (left engine), 2 (main engine), 3 (right engine)",
+    "observation": "fuel_penalty = 0.5 for action==2 and 0.3 for action in [1,3]. This correctly maps to the standard LunarLander action space, but the penalty is constant regardless of how long the engine fires (since actions are per timestep). This is acceptable but may not be optimal.",
+    "explanation": "The fuel penalty implementation is correct for the environment's action space. However, the constant penalty per engine firing may not effectively discourage excessive engine use because the penalty is small relative to other components. The component return shows fuel_efficiency_penalty = -36.33 over 94 steps, which is about -0.39 per step, indicating it is a minor factor.",
+    "recommendation": "Consider increasing the fuel penalty to make it more impactful, or use a dynamic penalty that scales with the number of consecutive engine firings. However, the current implementation is functionally correct.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "velocity_penalty uses abs(vy) and abs(vx) with coefficients 3.0 and 1.0, but does not differentiate between moving toward or away from the pad",
+    "observation": "vel_penalty = 3.0*abs(vy) + 1.0*abs(vx) penalizes all velocity equally, but moving toward the pad (e.g., negative vy when above pad) should be encouraged, not penalized. This creates a conflict where the agent is punished for necessary downward movement.",
+    "explanation": "The velocity penalty is direction-agnostic, which discourages the agent from moving at all. In a landing task, vertical velocity toward the ground is necessary and should be penalized less or rewarded, while horizontal velocity away from the pad should be heavily penalized. The current design forces the agent to choose between moving (and being penalized) or staying still (and not progressing).",
+    "recommendation": "Use signed velocity penalties: reward negative vy (moving down) when above the pad, and penalize positive vy (moving up) and horizontal velocity away from the pad. For example, reward = -abs(vx) - max(0, vy) + min(0, vy)*some_factor.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "large generated_private_gap of -920.3 indicates severe mismatch between the reward function and the environment's true reward structure",
+    "observation": "generated_return = -1501.97, private_eval_return = -581.67, gap = -920.31. The generated reward is much lower than the private evaluator, suggesting the reward function is overly punitive or misaligned with the task objectives.",
+    "explanation": "The generated reward function produces returns that are nearly 3x more negative than the private evaluator. This could be due to the distance_reward being too negative (component -875.27) and the terminal reward being -100 for non-successful episodes, which together dominate the total reward. The private evaluator likely has a different reward structure that is more lenient or better shaped.",
+    "recommendation": "Reduce the magnitude of negative components, especially distance_reward and terminal_reward. Consider normalizing components so that their scales are comparable. Use the private evaluator's behavior as a reference (e.g., if private return is around -500 to -600, aim for similar scale in generated reward).",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "component returns show distance_reward is the most negative component at -875.27, dominating the total reward and likely causing the agent to prioritize staying near origin over landing",
+    "observation": "distance_reward = -875.27, velocity_penalty = -440.23, terminal = -100.0, angle_penalty = -50.15, fuel_penalty = -36.33, ground_bonus = 0.0. The distance_reward is by far the largest negative component, overwhelming all other signals.",
+    "explanation": "The distance_reward component is scaled by -4.0, and with typical distances of 0.5-1.0, it ranges from -2 to -4 per step. Over 94 steps, this accumulates to -188 to -376, but the actual value is -875, suggesting the lander was far from origin (distance > 2) for many steps. This component dominates the learning signal, making the agent focus on staying near origin rather than landing on the pad.",
+    "recommendation": "Reduce the coefficient of distance_reward (e.g., -1.0 instead of -4.0) or use a non-linear function that plateaus at large distances. Alternatively, use a reward that only penalizes distance when the lander is near the ground, not throughout the entire episode.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "ground_contact_bonus is zero throughout the episode, indicating the condition for the bonus is never met",
+    "observation": "ground_contact_bonus = 0.0 in the component returns, meaning the agent never satisfied the conditions for the bonus. This is likely due to the incorrect y-threshold as noted above.",
+    "explanation": "A reward component that never activates is wasted and can mislead the agent if it expects a reward for certain behaviors. In this case, the ground_contact_bonus is designed to encourage landing, but the conditions are too strict and misaligned with the environment, so it never fires.",
+    "recommendation": "Either fix the conditions to match the environment's pad location, or remove the component if it cannot be properly calibrated. A bonus that never activates can cause the agent to ignore that part of the reward structure.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "the reward function uses next_obs for ground contact and terminal conditions, but the validator may use a smoke-test observation where next_obs is valid",
+    "observation": "The code uses next_obs[6], next_obs[7], next_obs[0], next_obs[1], next_obs[3] in the ground_contact_bonus and terminal_reward components. This is valid per the reward contract, but if the observation space changes or the indices are incorrect, it could cause errors.",
+    "explanation": "Using next_obs is allowed and correct for checking post-step states. However,

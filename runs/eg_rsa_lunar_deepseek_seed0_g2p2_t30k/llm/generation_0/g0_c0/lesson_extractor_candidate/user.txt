@@ -1,0 +1,40 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 0
+Candidate ID: g0_c0
+
+Structured evidence:
+{
+  "generation": 0,
+  "candidate_id": "g0_c0",
+  "parent_ids": [],
+  "status": "ok",
+  "selection_score": -357.71201937699334,
+  "private_eval_return": -357.71201937699334,
+  "generated_return": -837.0606547687572,
+  "generated_minus_private": -479.3486353917639,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": -479.3486353917639,
+    "action_mean": 1.031390134529148,
+    "action_std": 0.9995072083052937,
+    "episode_length_mean": 74.33333333333333,
+    "component_returns": {
+      "velocity_penalty": -236.70328149901857,
+      "angle_penalty": -48.68809541763039,
+      "distance_reward": -435.8359445187751,
+      "fuel_efficiency_penalty": -19.166666666666668,
+      "ground_contact_bonus": 3.3333333333333335,
+      "terminal": -100.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observation components\n    x = obs[0]                # normalized x position\n    y = obs[1]                # normalized y position\n    vx = obs[2]               # normalized x velocity\n    vy = obs[3]               # normalized y velocity\n    angle = obs[4]            # angle in radians\n    ang_vel = obs[5]          # scaled angular velocity\n    left_contact = obs[6]     # left leg ground contact (0 or 1)\n    right_contact = obs[7]    # right leg ground contact (0 or 1)\n    \n    # --- Component 1: velocity_penalty ---\n    # Penalize high speeds, especially vertical velocity near ground\n    # Scale: each term ~0-1, combined ~0-2, multiplied by 2 = 0-4 range\n    vel_penalty = -2.0 * (abs(vy) + 0.5 * abs(vx))\n    \n    # --- Component 2: angle_penalty ---\n    # Penalize tilt and spin\n    # Scale: angle up to ~0.5 rad (common max), ang_vel up to ~0.5, combined ~1.0, multiplied by 3 = 0-3 range\n    angle_penalty = -3.0 * (abs(angle) + 0.5 * abs(ang_vel))\n    \n    # --- Component 3: distance_reward ---\n    # Negative Euclidean distance from pad (0,0) as shaping signal\n    # Scale: max distance ~1.4, so -1.4 * 3 = -4.2, we add constant offset to keep it near 0 when close\n    dist = np.sqrt(x**2 + y**2)\n    # Use negative distance scaled, plus a small offset to avoid large negative when far\n    # When dist=0, reward = 0; when dist=1, reward = -3\n    distance_reward = -3.0 * dist\n    \n    # --- Component 4: fuel_efficiency_penalty ---\n    # Penalize engine usage: main engine (action==2) and side engines (action==1 or 3)\n    # Action 0: no penalty\n    fuel_penalty = 0.0\n    if action == 2:  # main engine\n        fuel_penalty = -0.5\n    elif action == 1 or action == 3:  # side engines\n        fuel_penalty = -0.2\n    \n    # --- Component 5: ground_contact_bonus ---\n    # Bonus when both legs contact ground AND lander is near pad\n    # Near pad: |x| < 0.2 and y close to 0 (y < 0.1 means near ground)\n    near_pad = (abs(x) < 0.2) and (y < 0.1)\n    both_legs = (left_contact > 0.5) and (right_contact > 0.5)\n    ground_contact_bonus = 5.0 if (both_legs and near_pad) else 0.0\n    \n    # --- Component 6: terminal ---\n    # Evaluate only when episode ends (done==True)\n    terminal_reward = 0.0\n    if done:\n        # Check if it's a successful landing: both legs on ground, near pad, low speed, upright\n        # Use conditions from ground_contact_bonus plus velocity and angle checks\n        success = (both_legs and near_pad and abs(vy) < 0.1 and abs(vx) < 0.1 and abs(angle) < 0.1)\n        if success:\n            terminal_reward = 100.0\n        else:\n            # Crash or out-of-bounds: large penalty\n            terminal_reward = -100.0\n    \n    # Sum all components\n    total_reward = vel_penalty + angle_penalty + distance_reward + fuel_penalty + ground_contact_bonus + terminal_reward\n    \n    # Clamp total reward to avoid extreme values (optional, but safe)\n    total_reward = np.clip(total_reward, -1000.0, 1000.0)\n    \n    # Build components dict\n    components_dict = {\n        \"velocity_penalty\": vel_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"distance_reward\": distance_reward,\n        \"fuel_efficiency_penalty\": fuel_penalty,\n        \"ground_contact_bonus\": ground_contact_bonus,\n        \"terminal\": terminal_reward\n    }\n    \n    return float(total_reward), components_dict\n",
+  "llm_rationale": "The reward function is designed to shape the agent toward soft, upright landings at the pad while minimizing fuel usage. Each component is directly computed from the normalized observation vector and discrete action, avoiding any hidden evaluator details. The velocity and angle penalties encourage slow, stable descent. The distance reward provides a smooth gradient toward the pad. Fuel efficiency penalizes engine firings to reduce waste. Ground contact bonus rewards successful landing posture only when near the pad to avoid false positives. The terminal component gives a large positive reward for a successful landing (both legs down, low speed, upright, near pad) and a large penalty for crashes or out-of-bounds, dominating the total reward at episode end to clearly signal success/failure. All components are scaled to be comparable and within the absolute bound of 1000."
+}
+
+Reflection report:
+The reward function is designed to shape the agent toward soft, upright landings at the pad while minimizing fuel usage. Each component is directly computed from the normalized observation vector and discrete action, avoiding any hidden evaluator details. The velocity and angle penalties encourage slow, stable descent. The distance reward provides a smooth gradient toward the pad. Fuel efficiency penalizes engine firings to reduce waste. Ground contact bonus rewards successful landing posture only when near the pad to avoid false positives. The terminal component gives a large positive reward for a successful landing (both legs down, low speed, upright, near pad) and a large penalty for crashes or out-of-bounds, dominating the total reward at episode end to clearly signal success/failure. All components are scaled to be comparable and within the absolute bound of 1000.
+
+Return JSON array of lessons. Do not include code blocks.

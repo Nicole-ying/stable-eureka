@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Generated reward return (-452.45) is much lower than private eval return (-127.70), with a gap of -324.75",
+    "observation": "The generated reward function produces a large negative total reward in training, while the private evaluator gives a less negative score, indicating that the reward shaping is overly punitive in the training environment.",
+    "explanation": "The combined penalties (velocity, angle, distance, fuel, and terminal failure) sum to a large negative value, overwhelming any positive signals like ground_contact_bonus or terminal success. The private evaluator likely uses a different or simpler reward structure, so the gap reflects excessive shaping.",
+    "recommendation": "Reduce the magnitude of shaping penalties further, especially distance_reward (-4.0) and angle_penalty (-3.0), and consider softening fuel_efficiency_penalty. Increase the ground_contact_bonus to provide a stronger positive signal during exploration.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "Component returns show distance_reward = -220.9, velocity_penalty = -141.0, angle_penalty = -40.5, terminal = -50.0, while fuel_efficiency_penalty and ground_contact_bonus are 0.0",
+    "observation": "Distance_reward and velocity_penalty dominate the total reward, while fuel_efficiency_penalty and ground_contact_bonus contribute nothing (zero). This indicates the agent never fires engines and never achieves ground contact near the pad.",
+    "explanation": "The large negative distance and velocity penalties discourage movement and exploration, causing the agent to stay idle (action_mean=0.0, action_std=0.0). Without engine firing, fuel penalty is zero, and without reaching the pad, ground_contact_bonus is zero. The reward structure creates a deadlock.",
+    "recommendation": "Reduce distance_reward magnitude and velocity_penalty, and add a small positive reward for any engine usage to encourage exploration. Also, lower the threshold for ground_contact_bonus to make it easier to achieve.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "action_collapse",
+    "condition": "action_mean = 0.0, action_std = 0.0, episode_length_mean = 58.67",
+    "observation": "The agent outputs zero actions throughout all episodes, indicating action collapse. The episode length is far from the maximum (likely 1000), suggesting early termination due to failure conditions.",
+    "explanation": "The reward function's heavy penalties for movement (velocity, distance, angle) and fuel usage discourage any action, leading the agent to learn a do-nothing policy. The terminal failure penalty (-50) then dominates when the episode ends.",
+    "recommendation": "Redesign the reward to provide positive incentives for movement and exploration, such as a small per-step survival bonus or a reward for decreasing distance to the pad. Avoid large penalties for natural dynamics like velocity and angle.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Repair attempts = 0, repair_success = false, but validation_errors = []",
+    "observation": "The reward function passed validation without errors, yet it performed poorly. This shows that validation only checks syntax and structure, not reward quality.",
+    "explanation": "Validation errors were empty, meaning the code is syntactically correct and matches the required schema. However, the reward design itself is flawed, causing action collapse and poor performance. Repair was not attempted because no error was flagged.",
+    "recommendation": "Implement automated reward quality checks beyond validation, such as simulating a few episodes or checking action statistics. For manual design, test the reward function in a quick rollout before full training.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The reward function uses obs[6] and obs[7] for left_contact and right_contact",
+    "observation": "The code unpacks left_contact and right_contact from obs[6] and obs[7], which is consistent with typical LunarLander observation order. No validation errors occurred, so the indexing is correct.",
+    "explanation": "The observation space for LunarLander includes leg contact booleans at indices 6 and 7. Using obs for these values is appropriate and avoids potential issues with next_obs.",
+    "recommendation": "Continue using obs for state-dependent components like contacts. Only use next_obs if there is a clear benefit, such as for predicting future states or computing deltas.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  }
+]

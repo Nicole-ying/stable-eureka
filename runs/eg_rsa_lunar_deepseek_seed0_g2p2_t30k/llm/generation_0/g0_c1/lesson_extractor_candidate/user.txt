@@ -1,0 +1,40 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 0
+Candidate ID: g0_c1
+
+Structured evidence:
+{
+  "generation": 0,
+  "candidate_id": "g0_c1",
+  "parent_ids": [],
+  "status": "ok",
+  "selection_score": -581.6661968663843,
+  "private_eval_return": -581.6661968663843,
+  "generated_return": -1501.9717404631972,
+  "generated_minus_private": -920.3055435968129,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": -920.3055435968129,
+    "action_mean": 1.5460992907801419,
+    "action_std": 0.8377204573182072,
+    "episode_length_mean": 94.0,
+    "component_returns": {
+      "velocity_penalty": -440.22541291515034,
+      "angle_penalty": -50.14624595052252,
+      "distance_reward": -875.266748264191,
+      "fuel_efficiency_penalty": -36.333333333333336,
+      "ground_contact_bonus": 0.0,
+      "terminal": -100.0
+    }
+  },
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack observation components (normalized)\n    x, y = obs[0], obs[1]\n    vx, vy = obs[2], obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg_left = obs[6]\n    leg_right = obs[7]\n\n    # ---------- 1. Velocity Penalty ----------\n    # Penalize high vertical speed (especially negative = moving down) and horizontal speed.\n    # Scale: 0-10 range roughly.\n    vel_penalty = 3.0 * abs(vy) + 1.0 * abs(vx)\n\n    # ---------- 2. Angle Penalty ----------\n    # Penalize tilt and spin. Angle is in radians, angular_vel is scaled by 20/FPS.\n    angle_penalty = 2.0 * abs(angle) + 1.0 * abs(angular_vel)\n\n    # ---------- 3. Distance Reward ----------\n    # Negative Euclidean distance from (x,y) to (0,0).\n    # The space is roughly [-1,1] in x and [-0.5,1.5] in y, so typical distances < 2.\n    dist = np.sqrt(x**2 + y**2)\n    distance_reward = -4.0 * dist  # negative, so maximizing means closer to pad\n\n    # ---------- 4. Fuel Efficiency Penalty ----------\n    # Penalize each engine firing.\n    fuel_penalty = 0.0\n    if action == 2:  # main engine\n        fuel_penalty += 0.5\n    if action in [1, 3]:  # side engines\n        fuel_penalty += 0.3\n\n    # ---------- 5. Ground Contact Bonus ----------\n    # Only give bonus if both legs contact ground AND lander is near the pad (|x|<0.2, y near 0).\n    # Use next_obs for contact status after step.\n    next_leg_left = next_obs[6]\n    next_leg_right = next_obs[7]\n    near_pad = (abs(next_obs[0]) < 0.2) and (next_obs[1] < 0.1)\n    ground_bonus = 0.0\n    if (next_leg_left > 0.5) and (next_leg_right > 0.5) and near_pad:\n        ground_bonus = 5.0\n\n    # ---------- 6. Terminal Component ----------\n    terminal_reward = 0.0\n    if done:\n        # Check if it's a successful landing: both legs on ground, near pad, low speed\n        successful = (\n            (next_leg_left > 0.5) and (next_leg_right > 0.5) and\n            (abs(next_obs[0]) < 0.2) and (next_obs[1] < 0.1) and\n            (abs(next_obs[3]) < 0.1)  # vertical speed low\n        )\n        if successful:\n            terminal_reward = 100.0\n        else:\n            # Crash or out-of-bounds\n            terminal_reward = -100.0\n\n    # ---------- Total Reward ----------\n    total_reward = (\n        -vel_penalty\n        - angle_penalty\n        + distance_reward\n        - fuel_penalty\n        + ground_bonus\n        + terminal_reward\n    )\n\n    # Clamp total to absolute bound\n    total_reward = np.clip(total_reward, -1000.0, 1000.0)\n\n    components = {\n        \"velocity_penalty\": -vel_penalty,\n        \"angle_penalty\": -angle_penalty,\n        \"distance_reward\": distance_reward,\n        \"fuel_efficiency_penalty\": -fuel_penalty,\n        \"ground_contact_bonus\": ground_bonus,\n        \"terminal\": terminal_reward,\n    }\n\n    return float(total_reward), components\n",
+  "llm_rationale": "reward_generation generated code"
+}
+
+Reflection report:
+reward_generation generated code
+
+Return JSON array of lessons. Do not include code blocks.

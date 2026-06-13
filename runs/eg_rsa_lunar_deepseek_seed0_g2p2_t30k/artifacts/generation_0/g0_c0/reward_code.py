@@ -1,108 +1,75 @@
-import math
-import numpy as np
-
 def compute_reward(obs, action, next_obs, done, info):
-    # Extract observations
-    x, y, vel_x, vel_y, angle, angular_vel, leg_0, leg_1 = obs
+    # Unpack observation components
+    x = obs[0]                # normalized x position
+    y = obs[1]                # normalized y position
+    vx = obs[2]               # normalized x velocity
+    vy = obs[3]               # normalized y velocity
+    angle = obs[4]            # angle in radians
+    ang_vel = obs[5]          # scaled angular velocity
+    left_contact = obs[6]     # left leg ground contact (0 or 1)
+    right_contact = obs[7]    # right leg ground contact (0 or 1)
     
-    # Extract next observations for terminal checks
-    if next_obs is not None:
-        nx, ny, nvel_x, nvel_y, nangle, nangular_vel, nleg_0, nleg_1 = next_obs
-    else:
-        nx, ny, nvel_x, nvel_y, nangle, nangular_vel, nleg_0, nleg_1 = obs
+    # --- Component 1: velocity_penalty ---
+    # Penalize high speeds, especially vertical velocity near ground
+    # Scale: each term ~0-1, combined ~0-2, multiplied by 2 = 0-4 range
+    vel_penalty = -2.0 * (abs(vy) + 0.5 * abs(vx))
     
-    # Extract action info from info dict if available (m_power, s_power)
-    m_power = info.get('m_power', 0.0) if isinstance(info, dict) else 0.0
-    s_power = info.get('s_power', 0.0) if isinstance(info, dict) else 0.0
+    # --- Component 2: angle_penalty ---
+    # Penalize tilt and spin
+    # Scale: angle up to ~0.5 rad (common max), ang_vel up to ~0.5, combined ~1.0, multiplied by 3 = 0-3 range
+    angle_penalty = -3.0 * (abs(angle) + 0.5 * abs(ang_vel))
     
-    # If info is not a dict or missing keys, infer from action
-    if m_power == 0.0 and s_power == 0.0:
-        if action == 2:
-            m_power = 1.0
-        elif action in [1, 3]:
-            s_power = 1.0
+    # --- Component 3: distance_reward ---
+    # Negative Euclidean distance from pad (0,0) as shaping signal
+    # Scale: max distance ~1.4, so -1.4 * 3 = -4.2, we add constant offset to keep it near 0 when close
+    dist = np.sqrt(x**2 + y**2)
+    # Use negative distance scaled, plus a small offset to avoid large negative when far
+    # When dist=0, reward = 0; when dist=1, reward = -3
+    distance_reward = -3.0 * dist
     
-    # ---- Component Calculations ----
+    # --- Component 4: fuel_efficiency_penalty ---
+    # Penalize engine usage: main engine (action==2) and side engines (action==1 or 3)
+    # Action 0: no penalty
+    fuel_penalty = 0.0
+    if action == 2:  # main engine
+        fuel_penalty = -0.5
+    elif action == 1 or action == 3:  # side engines
+        fuel_penalty = -0.2
     
-    # 1. landing_bonus: large positive if both legs contact, upright, low velocity, and done
-    landing_bonus = 0.0
-    if done and nleg_0 == 1.0 and nleg_1 == 1.0:
-        if abs(nangle) < 0.1 and abs(nvel_y) < 0.1:
-            landing_bonus = 100.0
-        else:
-            # Not a perfect landing, but legs are down - could be a crash or tilted landing
-            landing_bonus = -50.0  # Penalize bad landings
+    # --- Component 5: ground_contact_bonus ---
+    # Bonus when both legs contact ground AND lander is near pad
+    # Near pad: |x| < 0.2 and y close to 0 (y < 0.1 means near ground)
+    near_pad = (abs(x) < 0.2) and (y < 0.1)
+    both_legs = (left_contact > 0.5) and (right_contact > 0.5)
+    ground_contact_bonus = 5.0 if (both_legs and near_pad) else 0.0
     
-    # 2. distance_penalty: penalize distance from pad (0,0)
-    dist = math.sqrt(x*x + y*y)
-    distance_penalty = -2.0 * dist
-    
-    # 3. velocity_penalty: penalize high velocities, especially vertical
-    vel_pen = -1.0 * abs(vel_x) - 3.0 * abs(vel_y)
-    
-    # 4. angle_penalty: penalize tilt
-    angle_pen = -2.0 * abs(angle)
-    
-    # 5. fuel_penalty: penalize engine usage
-    fuel_pen = -0.5 * (m_power + s_power)
-    
-    # 6. crash_penalty: large negative if terminated with high velocity or angle (crash)
-    crash_penalty = 0.0
+    # --- Component 6: terminal ---
+    # Evaluate only when episode ends (done==True)
+    terminal_reward = 0.0
     if done:
-        # Check if it's a crash (not a good landing)
-        is_good_landing = (nleg_0 == 1.0 and nleg_1 == 1.0 and abs(nangle) < 0.1 and abs(nvel_y) < 0.1)
-        if not is_good_landing:
-            # Check for clear crash indicators
-            if abs(nvel_y) > 0.5 or abs(nangle) > 0.5 or abs(nx) >= 1.0:
-                crash_penalty = -200.0
-            else:
-                # Early termination without crash (e.g., asleep)
-                crash_penalty = -50.0
-    
-    # 7. progress: dense shaping for moving toward pad and reducing speed
-    # Reward reduction in distance and velocity
-    progress = 0.0
-    if next_obs is not None:
-        next_dist = math.sqrt(nx*nx + ny*ny)
-        dist_change = dist - next_dist  # positive if moving closer
-        progress = 5.0 * dist_change
-    
-    # 8. stability: reward for being upright and having low angular velocity
-    stability = -0.5 * abs(angular_vel)  # penalize spinning
-    
-    # 9. effort: bounded penalty for unnecessary actions (fuel usage already penalized)
-    # Also penalize doing nothing when far and high (should act)
-    effort = 0.0
-    if action == 0 and dist > 0.5:
-        effort = -0.2  # small penalty for inaction when far
-    
-    # 10. terminal: bounded terminal shaping from done signal
-    terminal = 0.0
-    if done:
-        if nleg_0 == 1.0 and nleg_1 == 1.0 and abs(nangle) < 0.1 and abs(nvel_y) < 0.1:
-            terminal = 50.0  # extra bonus for successful landing
+        # Check if it's a successful landing: both legs on ground, near pad, low speed, upright
+        # Use conditions from ground_contact_bonus plus velocity and angle checks
+        success = (both_legs and near_pad and abs(vy) < 0.1 and abs(vx) < 0.1 and abs(angle) < 0.1)
+        if success:
+            terminal_reward = 100.0
         else:
-            terminal = -10.0  # penalty for termination without success
+            # Crash or out-of-bounds: large penalty
+            terminal_reward = -100.0
     
-    # Total reward
-    total_reward = (landing_bonus + distance_penalty + vel_pen + angle_pen + 
-                    fuel_pen + crash_penalty + progress + stability + effort + terminal)
+    # Sum all components
+    total_reward = vel_penalty + angle_penalty + distance_reward + fuel_penalty + ground_contact_bonus + terminal_reward
     
-    # Clamp total reward to [-1000, 1000] as per schema
-    total_reward = max(-1000.0, min(1000.0, total_reward))
+    # Clamp total reward to avoid extreme values (optional, but safe)
+    total_reward = np.clip(total_reward, -1000.0, 1000.0)
     
-    # Components dict
-    components = {
-        'landing_bonus': landing_bonus,
-        'distance_penalty': distance_penalty,
-        'velocity_penalty': vel_pen,
-        'angle_penalty': angle_pen,
-        'fuel_penalty': fuel_pen,
-        'crash_penalty': crash_penalty,
-        'progress': progress,
-        'stability': stability,
-        'effort': effort,
-        'terminal': terminal
+    # Build components dict
+    components_dict = {
+        "velocity_penalty": vel_penalty,
+        "angle_penalty": angle_penalty,
+        "distance_reward": distance_reward,
+        "fuel_efficiency_penalty": fuel_penalty,
+        "ground_contact_bonus": ground_contact_bonus,
+        "terminal": terminal_reward
     }
     
-    return float(total_reward), components
+    return float(total_reward), components_dict

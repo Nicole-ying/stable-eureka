@@ -1,0 +1,58 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Generated reward function uses a large negative terminal reward (-100) for non-success episodes",
+    "observation": "The generated reward function returns -100 for terminal non-success, but the private evaluation return (-357.7) is much more negative than the generated return (-837.1), indicating the private evaluator imposes even harsher penalties or different success criteria.",
+    "explanation": "The large gap (-479.3) suggests the private evaluator's terminal reward or shaping differs significantly from the generated function, likely penalizing behaviors the generated function considers acceptable.",
+    "recommendation": "Avoid hard-coded terminal penalties; instead, let the private evaluator handle terminal conditions or match its reward scale more closely by analyzing the private return distribution.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Distance reward is a linear function of Euclidean distance from pad",
+    "observation": "Distance reward = -3.0 * sqrt(x^2 + y^2) gives a negative reward that increases linearly with distance, but the private evaluator's distance_reward component is -435.8, far more negative than expected from this formula alone.",
+    "explanation": "The linear distance penalty may be too weak or misaligned with the private evaluator's distance shaping, causing the agent to receive much higher penalties than anticipated.",
+    "recommendation": "Use a quadratic or exponential distance penalty to better match typical landing task reward scales, or normalize distance to a smaller range.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Action-dependent fuel penalty uses discrete action values (0,1,2,3) without considering continuous action magnitudes",
+    "observation": "The fuel penalty applies fixed values (-0.5 for main engine, -0.2 for side engines) regardless of action magnitude, but the private evaluator's fuel_efficiency_penalty is -19.17, much larger in magnitude.",
+    "explanation": "The private evaluator likely scales fuel penalty with action magnitude or duration, not just discrete type, leading to a large mismatch.",
+    "recommendation": "If actions are continuous (common in LunarLander), use action magnitude (e.g., abs(action[1]) for main engine) to scale fuel penalty, and match the private evaluator's penalty scale.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Ground contact bonus only activates when both legs contact ground AND near pad",
+    "observation": "Ground contact bonus = 5.0 when conditions met, but private evaluator's ground_contact_bonus is 3.33, suggesting the private evaluator gives smaller or differently structured bonuses.",
+    "explanation": "The bonus magnitude (5.0) may be too high relative to other components, but the private evaluator's lower value indicates it may reward partial contact or different proximity conditions.",
+    "recommendation": "Reduce ground contact bonus magnitude or make it proportional to contact duration and proximity, rather than a binary threshold.",
+    "confidence": 0.6,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal reward is binary (+100 for success, -100 for failure) with no intermediate shaping",
+    "observation": "The terminal reward dominates the total reward, but the private evaluator's terminal component is -100, matching the failure case, yet the total private return is -357.7, indicating other components also contribute significantly.",
+    "explanation": "Binary terminal rewards can cause sparse learning signals; the private evaluator likely has more nuanced terminal shaping or combines terminal with ongoing penalties.",
+    "recommendation": "Instead of a large binary terminal reward, use smaller shaping rewards throughout the episode and let the private evaluator's terminal signal dominate naturally.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "All components are summed with fixed weights (velocity_penalty=-2, angle_penalty=-3, distance_reward=-3, etc.)",
+    "observation": "The fixed weights may not align with the private evaluator's implicit weighting, as seen by the large generated_private_gap (-479.3).",
+    "explanation": "Without tuning weights to match the private evaluator's scale, the generated reward function produces a very different total reward, leading to poor selection scores.",
+    "recommendation": "Use a small set of adaptive weights (e.g., learnable parameters) or normalize each component to a common scale based on observed private return statistics.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  }
+]
+```
