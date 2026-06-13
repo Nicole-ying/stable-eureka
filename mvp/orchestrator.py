@@ -232,17 +232,22 @@ class RewardEvolutionOrchestrator:
                         status = "ok"
                         self._write_json(candidate_artifact_dir / "train_result.json", train_result)
 
-                        try:
-                            self.worker.render_rollout_video(ckpt, video)
-                            judge_score, judge_reason, judge_details = self.judge.judge(
-                                clean_interface,
-                                train_result,
-                                video,
-                            )
-                        except Exception as e:
+                        if self.cfg.rl.render_video:
+                            try:
+                                self.worker.render_rollout_video(ckpt, video)
+                                judge_score, judge_reason, judge_details = self.judge.judge(
+                                    clean_interface,
+                                    train_result,
+                                    video,
+                                )
+                            except Exception as e:
+                                judge_score = 0.0
+                                judge_reason = f"visual_judge_error: {type(e).__name__}: {e}"
+                                judge_details = {"error": str(e)}
+                        else:
                             judge_score = 0.0
-                            judge_reason = f"visual_judge_error: {type(e).__name__}: {e}"
-                            judge_details = {"error": str(e)}
+                            judge_reason = "video_render_skipped"
+                            judge_details = {"render_video": False}
 
                 except Exception as e:
                     status = "pipeline_error"
