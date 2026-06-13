@@ -1,0 +1,88 @@
+{
+  "generation": 2,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g2_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": -115.27432737399424,
+      "private_eval_return": -115.27432737399424,
+      "generated_return": -83.0888201355818,
+      "generated_minus_private": 32.18550723841244,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 32.18550723841244,
+        "action_mean": 1.9043478260869566,
+        "action_std": 1.0589076655848726,
+        "episode_length_mean": 69.0,
+        "component_returns": {
+          "distance_penalty": -130.86446156868115,
+          "velocity_penalty": -71.01762864841058,
+          "angle_penalty": -7.498989041765162,
+          "shaping_bonus": 1.2922591232750613,
+          "engine_usage_penalty": 0.0,
+          "terminal": 150.0,
+          "crash_penalty": -25.0
+        },
+        "n_envs": 16,
+        "vec_env_type": "dummy",
+        "n_steps": 1024,
+        "batch_size": 64,
+        "n_epochs": 4,
+        "gae_lambda": 0.98,
+        "gamma": 0.999,
+        "ent_coef": 0.01
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # --- Distance penalty: moderate linear penalty ---\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -2.0 * distance\n    \n    # --- Velocity penalty: gentle linear penalty ---\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -1.0 * velocity\n    \n    # --- Angle penalty: encourage upright orientation ---\n    angle_penalty = -2.0 * abs(angle)\n    \n    # --- Progress shaping: reward reductions in distance and velocity ---\n    # Estimate previous distance using obs (if available) or default to 0\n    prev_x, prev_y = obs[0], obs[1]\n    prev_distance = np.sqrt(prev_x**2 + prev_y**2)\n    distance_progress = prev_distance - distance  # positive if getting closer\n    prev_vx, prev_vy = obs[2], obs[3]\n    prev_velocity = np.sqrt(prev_vx**2 + prev_vy**2)\n    velocity_progress = prev_velocity - velocity  # positive if slowing down\n    shaping_bonus = 1.0 * distance_progress + 0.5 * velocity_progress\n    \n    # --- Engine usage penalty: small penalty for main engine ---\n    engine_usage_penalty = -0.1 if action == 2 else 0.0\n    \n    # --- Terminal reward: successful landing with relaxed conditions ---\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.2 and \n        abs(angle) < 0.2 and \n        abs(vy) < 0.2\n    )\n    terminal = 300.0 if landing_condition else 0.0\n    \n    # --- Crash penalty: moderate negative for failure ---\n    crash_penalty = -50.0 if (done and not landing_condition) else 0.0\n    \n    # Sum up all components\n    total_reward = (distance_penalty + velocity_penalty + angle_penalty +\n                    shaping_bonus + engine_usage_penalty + terminal + crash_penalty)\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"shaping_bonus\": shaping_bonus,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal,\n        \"crash_penalty\": crash_penalty,\n    }\n    \n    return float(total_reward), components\n",
+      "llm_rationale": "This candidate addresses the critical failures from previous generations. It uses moderate linear penalties (-2*distance, -1*velocity) to avoid overwhelming the reward landscape. A progress shaping bonus rewards reductions in distance and velocity, providing a smooth gradient toward the pad and reducing the generated-private gap. The terminal reward is increased to +300 with relaxed thresholds (0.2), and the crash penalty is reduced to -50. Engine penalty is minimal (-0.1) to avoid discouraging necessary thrust. This balanced structure should guide the agent toward successful landings without freezing exploration."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g2_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": -115.27432737399424,
+      "private_eval_return": -115.27432737399424,
+      "generated_return": -83.0888201355818,
+      "generated_minus_private": 32.18550723841244,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 32.18550723841244,
+        "action_mean": 1.9043478260869566,
+        "action_std": 1.0589076655848726,
+        "episode_length_mean": 69.0,
+        "component_returns": {
+          "distance_penalty": -130.86446156868115,
+          "velocity_penalty": -71.01762864841058,
+          "angle_penalty": -7.498989041765162,
+          "shaping_bonus": 1.2922591232750613,
+          "engine_usage_penalty": 0.0,
+          "terminal": 150.0,
+          "crash_penalty": -25.0
+        },
+        "n_envs": 16,
+        "vec_env_type": "dummy",
+        "n_steps": 1024,
+        "batch_size": 64,
+        "n_epochs": 4,
+        "gae_lambda": 0.98,
+        "gamma": 0.999,
+        "ent_coef": 0.01
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # --- Distance penalty: moderate linear penalty ---\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -2.0 * distance\n    \n    # --- Velocity penalty: gentle linear penalty ---\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -1.0 * velocity\n    \n    # --- Angle penalty: encourage upright orientation ---\n    angle_penalty = -2.0 * abs(angle)\n    \n    # --- Progress shaping: reward reductions in distance and velocity ---\n    # Estimate previous distance using obs (if available) or default to 0\n    prev_x, prev_y = obs[0], obs[1]\n    prev_distance = np.sqrt(prev_x**2 + prev_y**2)\n    distance_progress = prev_distance - distance  # positive if getting closer\n    prev_vx, prev_vy = obs[2], obs[3]\n    prev_velocity = np.sqrt(prev_vx**2 + prev_vy**2)\n    velocity_progress = prev_velocity - velocity  # positive if slowing down\n    shaping_bonus = 1.0 * distance_progress + 0.5 * velocity_progress\n    \n    # --- Engine usage penalty: small penalty for main engine ---\n    engine_usage_penalty = -0.1 if action == 2 else 0.0\n    \n    # --- Terminal reward: successful landing with relaxed conditions ---\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.2 and \n        abs(angle) < 0.2 and \n        abs(vy) < 0.2\n    )\n    terminal = 300.0 if landing_condition else 0.0\n    \n    # --- Crash penalty: moderate negative for failure ---\n    crash_penalty = -50.0 if (done and not landing_condition) else 0.0\n    \n    # Sum up all components\n    total_reward = (distance_penalty + velocity_penalty + angle_penalty +\n                    shaping_bonus + engine_usage_penalty + terminal + crash_penalty)\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"shaping_bonus\": shaping_bonus,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal,\n        \"crash_penalty\": crash_penalty,\n    }\n    \n    return float(total_reward), components\n",
+      "llm_rationale": "This candidate addresses the critical failures from previous generations. It uses moderate linear penalties (-2*distance, -1*velocity) to avoid overwhelming the reward landscape. A progress shaping bonus rewards reductions in distance and velocity, providing a smooth gradient toward the pad and reducing the generated-private gap. The terminal reward is increased to +300 with relaxed thresholds (0.2), and the crash penalty is reduced to -50. Engine penalty is minimal (-0.1) to avoid discouraging necessary thrust. This balanced structure should guide the agent toward successful landings without freezing exploration."
+    }
+  ],
+  "failed_candidates": []
+}

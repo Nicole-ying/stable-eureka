@@ -1,0 +1,41 @@
+## Search Plan for Reward Generation
+
+### 1. Initial Prototype Generation
+- **Objective**: Produce 3-5 distinct reward function candidates based on the schema.
+- **Method**: For each candidate, instantiate the six components with specific coefficient values and optional shaping functions (e.g., exponential decay for distance, quadratic for velocity).
+- **Key considerations**:
+  - Normalize each component to have comparable magnitudes (e.g., distance ~[-1,0], velocity ~[-1,0], angle ~[-0.5,0]).
+  - Ensure landing_bonus and crash_penalty are mutually exclusive and dominate the reward magnitude.
+  - Test edge cases: near-pad hovering, fast sideways movement, upside-down landing attempts.
+
+### 2. Local Mutation and Refinement
+- **Objective**: Iteratively improve the best-performing candidates.
+- **Method**: Apply small random perturbations to component coefficients (±10-20%), or replace linear functions with sigmoid/clipped variants.
+- **Evaluation criteria**:
+  - Average episodic return (higher is better).
+  - Landing success rate (percentage of episodes with landing_bonus triggered).
+  - Fuel efficiency (average number of main engine firings per episode).
+  - Stability of training curve (low variance across seeds).
+
+### 3. Dynamic Reward Shaping (Optional)
+- **Objective**: Introduce time-dependent or adaptive components if static rewards plateau.
+- **Examples**:
+  - Add a small time penalty (-0.01 per step) to encourage faster landing.
+  - Scale distance reward by (1 - step/max_steps) to emphasize early navigation.
+  - Use a curriculum: start with lenient angle tolerance, gradually tighten.
+
+### 4. Validation and Selection
+- **Objective**: Choose the final reward function for training.
+- **Method**: Train each candidate for 500k steps across 3 random seeds. Compare:
+  - Mean final reward (last 100 episodes).
+  - Landing success rate.
+  - Robustness to wind and turbulence (test with enable_wind=True).
+- **Selection**: Pick the candidate with highest success rate and lowest variance.
+
+### 5. Ablation Studies
+- **Objective**: Understand contribution of each component.
+- **Method**: Remove one component at a time and retrain. Measure drop in performance.
+- **Expected outcome**: landing_bonus and crash_penalty will be critical; angle_penalty may be less important if velocity control is sufficient.
+
+### 6. Final Documentation
+- **Output**: Final reward function code with clear comments, recommended hyperparameters, and known failure modes (e.g., wind causes oscillation near pad).

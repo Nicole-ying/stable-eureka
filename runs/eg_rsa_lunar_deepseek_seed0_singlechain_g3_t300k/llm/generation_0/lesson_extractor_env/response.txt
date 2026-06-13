@@ -1,0 +1,49 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Linear penalty components (e.g., -distance, -velocity) are used without scaling in a sparse-terminal-reward environment",
+    "observation": "Distance penalty (-66.8) and velocity penalty (-72.7) dominate total return, but their gradients are too weak to guide the agent toward landing; terminal reward (40.0) is achieved occasionally but insufficient to overcome the penalties.",
+    "explanation": "Linear penalties produce a constant gradient of -1, which is too weak relative to the magnitude of the terminal reward (100). The agent cannot learn to trade off penalized states for eventual terminal success because the penalty per step never diminishes as the agent improves.",
+    "recommendation": "Use nonlinear scaling such as -10*distance^2 or -5*velocity^2 to create stronger gradients near the goal and weaker gradients far away, making it easier for the agent to learn to approach the pad and slow down.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "No explicit crash penalty is included in the reward function",
+    "observation": "Episode length mean is 69.3 out of 1024 steps, indicating early termination from crashes, yet there is no negative reward for crashing. The agent is not penalized for failing to land.",
+    "explanation": "Without a crash penalty, the agent is indifferent between crashing and surviving, so it may learn to crash quickly to end episodes and avoid accumulating ongoing penalties. This leads to short episodes and poor overall performance.",
+    "recommendation": "Add a large negative reward (e.g., -100) when done is true and landing conditions are not met, to strongly discourage crashing.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Generated return and private eval return show a large gap (e.g., >5)",
+    "observation": "generated_minus_private is 6.33, indicating the agent's own reward calculation differs significantly from the hidden evaluator's assessment.",
+    "explanation": "A large generated-private gap means the reward function does not align with what the evaluator considers good behavior. The agent may optimize for quantities the evaluator ignores or undervalues.",
+    "recommendation": "Use black-box selection feedback to iteratively reduce the generated/private mismatch. Adjust component weights or add missing signals (e.g., progress shaping) that better match the evaluator's criteria.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Action mean is far from 1.0 (idle) in a discrete-action environment with engine penalty",
+    "observation": "Action mean is 2.01 (main engine) with std ~1.0, indicating near-random action selection and no learning to use engines appropriately.",
+    "explanation": "A fixed per-use penalty of -0.3 for action==2 is too small to discourage main engine firing compared to the scale of other penalties. The agent does not learn to prefer idle (action==1) or to use engines only when beneficial.",
+    "recommendation": "Either increase the engine penalty significantly (e.g., -1.0 per main engine use) or use a continuous fuel consumption model based on action magnitude to create a stronger disincentive for wasteful engine use.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Only one candidate is generated in a generation and it fails to produce a good policy",
+    "observation": "Only 1 candidate was generated, it passed validation but had poor performance (-107.3 private return), and no repair attempts were made.",
+    "explanation": "With a single candidate, there is no diversity to explore different reward designs. If that candidate has fundamental flaws, the generation produces no useful learning signal.",
+    "recommendation": "Increase the number of candidates per generation to at least 3-5 to encourage exploration of different reward structures and provide a basis for selection and mutation.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  }
+]
+```

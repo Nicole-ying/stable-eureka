@@ -1,0 +1,568 @@
+Candidate ID: g2_c0
+
+Eureka task_description.txt:
+This environment is a classic rocket trajectory optimization problem. It is optimal to fire the engine at full throttle or turn it off. This is the reason why this environment has discrete actions: engine on or off.
+The landing pad is always at coordinates (0,0). The coordinates are the first two numbers in the state vector. Landing outside of the landing pad is possible. Fuel is infinite, so an agent can learn to fly and then land on its first attempt.
+The goal is to land at the pad in the middle of the two flags, as fast as possible, with the least fuel spent. The lander starts at the top center of the viewport with a random initial force applied to its center of mass.
+Action Space: There are four discrete actions available:
+    0: do nothing
+    1: fire left orientation engine
+    2: fire main engine
+    3: fire right orientation engine
+Observation Space: The state is an 8-dimensional vector: the coordinates of the lander in x & y, its linear velocities in x & y, its angle, its angular velocity, and two booleans that represent whether each leg is in contact with the ground or not.
+The episode finishes if:
+    1) the lander crashes (the lander body gets in contact with the moon);
+    2) the lander gets outside of the viewport (`x` coordinate is greater than 1);
+    3) the lander is not awake.
+
+Eureka step.py:
+def step(self, action):
+    assert self.lander is not None
+
+    # Update wind and apply to the lander
+    assert self.lander is not None, "You forgot to call reset()"
+    if self.enable_wind and not (
+            self.legs[0].ground_contact or self.legs[1].ground_contact
+    ):
+        # the function used for wind is tanh(sin(2 k x) + sin(pi k x)),
+        # which is proven to never be periodic, k = 0.01
+        wind_mag = (
+                math.tanh(
+                    math.sin(0.02 * self.wind_idx)
+                    + (math.sin(math.pi * 0.01 * self.wind_idx))
+                )
+                * self.wind_power
+        )
+        self.wind_idx += 1
+        self.lander.ApplyForceToCenter(
+            (wind_mag, 0.0),
+            True,
+        )
+
+        # the function used for torque is tanh(sin(2 k x) + sin(pi k x)),
+        # which is proven to never be periodic, k = 0.01
+        torque_mag = math.tanh(
+            math.sin(0.02 * self.torque_idx)
+            + (math.sin(math.pi * 0.01 * self.torque_idx))
+        ) * (self.turbulence_power)
+        self.torque_idx += 1
+        self.lander.ApplyTorque(
+            (torque_mag),
+            True,
+        )
+
+    if self.continuous:
+        action = np.clip(action, -1, +1).astype(np.float32)
+    else:
+        assert self.action_space.contains(
+            action
+        ), f"{action!r} ({type(action)}) invalid "
+
+    # Apply Engine Impulses
+
+    # Tip is a the (X and Y) components of the rotation of the lander.
+    tip = (math.sin(self.lander.angle), math.cos(self.lander.angle))
+
+    # Side is the (-Y and X) components of the rotation of the lander.
+    side = (-tip[1], tip[0])
+
+    # Generate two random numbers between -1/SCALE and 1/SCALE.
+    dispersion = [self.np_random.uniform(-1.0, +1.0) / SCALE for _ in range(2)]
+
+    m_power = 0.0
+    if (self.continuous and action[0] > 0.0) or (
+            not self.continuous and action == 2
+    ):
+        # Main engine
+        if self.continuous:
+            m_power = (np.clip(action[0], 0.0, 1.0) + 1.0) * 0.5  # 0.5..1.0
+            assert m_power >= 0.5 and m_power <= 1.0
+        else:
+            m_power = 1.0
+
+        # 4 is move a bit downwards, +-2 for randomness
+        # The components of the impulse to be applied by the main engine.
+        ox = (
+                tip[0] * (MAIN_ENGINE_Y_LOCATION / SCALE + 2 * dispersion[0])
+                + side[0] * dispersion[1]
+        )
+        oy = (
+                -tip[1] * (MAIN_ENGINE_Y_LOCATION / SCALE + 2 * dispersion[0])
+                - side[1] * dispersion[1]
+        )
+
+        impulse_pos = (self.lander.position[0] + ox, self.lander.position[1] + oy)
+        if self.render_mode is not None:
+            # particles are just a decoration, with no impact on the physics, so don't add them when not rendering
+            p = self._create_particle(
+                3.5,  # 3.5 is here to make particle speed adequate
+                impulse_pos[0],
+                impulse_pos[1],
+                m_power,
+            )
+            p.ApplyLinearImpulse(
+                (
+                    ox * MAIN_ENGINE_POWER * m_power,
+                    oy * MAIN_ENGINE_POWER * m_power,
+                ),
+                impulse_pos,
+                True,
+            )
+        self.lander.ApplyLinearImpulse(
+            (-ox * MAIN_ENGINE_POWER * m_power, -oy * MAIN_ENGINE_POWER * m_power),
+            impulse_pos,
+            True,
+        )
+
+    s_power = 0.0
+    if (self.continuous and np.abs(action[1]) > 0.5) or (
+            not self.continuous and action in [1, 3]
+    ):
+        # Orientation/Side engines
+        if self.continuous:
+            direction = np.sign(action[1])
+            s_power = np.clip(np.abs(action[1]), 0.5, 1.0)
+            assert s_power >= 0.5 and s_power <= 1.0
+        else:
+            # action = 1 is left, action = 3 is right
+            direction = action - 2
+            s_power = 1.0
+
+        # The components of the impulse to be applied by the side engines.
+        ox = tip[0] * dispersion[0] + side[0] * (
+                3 * dispersion[1] + direction * SIDE_ENGINE_AWAY / SCALE
+        )
+        oy = -tip[1] * dispersion[0] - side[1] * (
+                3 * dispersion[1] + direction * SIDE_ENGINE_AWAY / SCALE
+        )
+
+        # The constant 17 is a constant, that is presumably meant to be SIDE_ENGINE_HEIGHT.
+        # However, SIDE_ENGINE_HEIGHT is defined as 14
+        # This casuses the position of the thurst on the body of the lander to change, depending on the orientation of the lander.
+        # This in turn results in an orientation depentant torque being applied to the lander.
+        impulse_pos = (
+            self.lander.position[0] + ox - tip[0] * 17 / SCALE,
+            self.lander.position[1] + oy + tip[1] * SIDE_ENGINE_HEIGHT / SCALE,
+        )
+        if self.render_mode is not None:
+            # particles are just a decoration, with no impact on the physics, so don't add them when not rendering
+            p = self._create_particle(0.7, impulse_pos[0], impulse_pos[1], s_power)
+            p.ApplyLinearImpulse(
+                (
+                    ox * SIDE_ENGINE_POWER * s_power,
+                    oy * SIDE_ENGINE_POWER * s_power,
+                ),
+                impulse_pos,
+                True,
+            )
+        self.lander.ApplyLinearImpulse(
+            (-ox * SIDE_ENGINE_POWER * s_power, -oy * SIDE_ENGINE_POWER * s_power),
+            impulse_pos,
+            True,
+        )
+
+    self.world.Step(1.0 / FPS, 6 * 30, 2 * 30)
+
+    pos = self.lander.position
+    vel = self.lander.linearVelocity
+
+    state = [
+        (pos.x - VIEWPORT_W / SCALE / 2) / (VIEWPORT_W / SCALE / 2),
+        (pos.y - (self.helipad_y + LEG_DOWN / SCALE)) / (VIEWPORT_H / SCALE / 2),
+        vel.x * (VIEWPORT_W / SCALE / 2) / FPS,
+        vel.y * (VIEWPORT_H / SCALE / 2) / FPS,
+        self.lander.angle,
+        20.0 * self.lander.angularVelocity / FPS,
+        1.0 if self.legs[0].ground_contact else 0.0,
+        1.0 if self.legs[1].ground_contact else 0.0,
+    ]
+    assert len(state) == 8
+
+    terminated = False
+    if self.game_over or abs(state[0]) >= 1.0:
+        terminated = True
+    if not self.lander.awake:
+        terminated = True
+
+    reward, individual_reward = self.compute_reward(state, m_power, s_power, terminated)
+
+    if self.render_mode == "human":
+        self.render()
+
+    fitness_score = self.compute_fitness_score(state, m_power, s_power, terminated)
+    individual_reward.update({'fitness_score': fitness_score})
+
+    return np.array(state, dtype=np.float32), reward, terminated, False, individual_reward
+
+
+Environment understanding:
+## Environment Understanding Report
+
+### Task Goal
+The lander must land safely on the landing pad at coordinates (0,0) as fast as possible while minimizing fuel consumption. The lander starts at the top center with random initial force. The optimal policy is to use discrete engine controls (on/off).
+
+### Observations (8-dimensional vector)
+1. **x-coordinate**: Normalized position (-1 to 1, where 0 is center)
+2. **y-coordinate**: Normalized position (relative to helipad)
+3. **x-velocity**: Normalized linear velocity in x direction
+4. **y-velocity**: Normalized linear velocity in y direction
+5. **angle**: Lander's rotation angle
+6. **angular velocity**: Scaled angular velocity
+7. **left leg contact**: Boolean (1.0 if ground contact, else 0.0)
+8. **right leg contact**: Boolean (1.0 if ground contact, else 0.0)
+
+### Actions (Discrete)
+- **0**: Do nothing
+- **1**: Fire left orientation engine (side engine)
+- **2**: Fire main engine (downward thrust)
+- **3**: Fire right orientation engine (side engine)
+
+### Termination Conditions
+1. **Crash**: Lander body contacts the moon surface
+2. **Out of bounds**: |x-coordinate| >= 1.0 (outside viewport)
+3. **Not awake**: Lander enters sleep state
+
+### Reward Function Visible Inputs
+The reward function receives: `obs`, `action`, `next_obs`, `done`, `info`
+- `obs`/`next_obs`: The 8-dimensional state vector
+- `action`: Discrete action (0-3)
+- `done`: Boolean termination flag
+- `info`: Dictionary (may contain additional information)
+
+### Inferable Public Quantities
+- **Main engine power (m_power)**: 1.0 when action=2, 0.0 otherwise
+- **Side engine power (s_power)**: 1.0 when action=1 or 3, 0.0 otherwise
+- **Ground contact**: From obs[6] and obs[7] (leg contact booleans)
+- **Velocity magnitude**: Computable from obs[2] and obs[3]
+- **Distance to pad**: Computable from obs[0] and obs[1] (target is 0,0)
+- **Angle deviation**: From obs[4] (ideal angle is 0 for landing)
+
+### Risks
+1. **Wind and turbulence**: Random forces applied when not in ground contact (not directly observable in state)
+2. **Engine dispersion**: Random impulse variations (±1/SCALE) affect actual thrust direction
+3. **Infinite fuel**: No fuel constraints, but fuel efficiency is part of the goal
+4. **The state is normalized**: Raw physics values are scaled, so reward design must account for normalized ranges
+5. **Termination on crash**: Any body contact with ground ends episode, not just leg contact
+6. **Side engine torque**: Position of side engine thrust depends on lander orientation, creating orientation-dependent torque
+
+```json
+{
+  "task_goal": "Land the rocket safely on the landing pad at coordinates (0,0) as fast as possible with minimal fuel consumption",
+  "observations": {
+    "dimension": 8,
+    "elements": [
+      "x_coordinate_normalized",
+      "y_coordinate_normalized",
+      "x_velocity_normalized",
+      "y_velocity_normalized",
+      "angle",
+      "angular_velocity_scaled",
+      "left_leg_contact_boolean",
+      "right_leg_contact_boolean"
+    ]
+  },
+  "actions": {
+    "type": "discrete",
+    "space_size": 4,
+    "mapping": {
+      "0": "do_nothing",
+      "1": "fire_left_orientation_engine",
+      "2": "fire_main_engine",
+      "3": "fire_right_orientation_engine"
+    }
+  },
+  "termination": {
+    "conditions": [
+      "lander_crashes_body_contacts_moon",
+      "x_coordinate_outside_viewport_abs_greater_than_1",
+      "lander_not_awake"
+    ]
+  },
+  "reward_function_visible_inputs": [
+    "obs_8_dim_state_vector",
+    "action_0_to_3",
+    "next_obs_8_dim_state_vector",
+    "done_boolean",
+    "info_dict"
+  ],
+  "inferable_public_quantities": {
+    "main_engine_power": "1.0_when_action_2_else_0.0",
+    "side_engine_power": "1.0_when_action_1_or_3_else_0.0",
+    "ground_contact": "from_obs_index_6_and_7",
+    "velocity_magnitude": "sqrt(obs[2]^2_+_obs[3]^2)",
+    "distance_to_pad": "sqrt(obs[0]^2_+_obs[1]^2)",
+    "angle_deviation": "abs(obs[4])"
+  },
+  "risks": [
+    "Wind_and_turbulence_random_forces_not_directly_observable",
+    "Engine_dispersion_causes_random_thrust_variations",
+    "Infinite_fuel_but_fuel_efficiency_is_reward_goal",
+    "Normalized_state_requires_careful_reward_scaling",
+    "Crash_termination_on_any_body_contact_not_just_legs",
+    "Side_engine_torque_depends_on_lander_orientation"
+  ]
+}
+```
+
+Reward schema:
+{
+  "schema_version": "eg_rsa_reward_schema_v1_05ce8b7470",
+  "env_alias": "Env-90b964d9",
+  "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
+  "return_contract": "return float(total_reward), components_dict",
+  "allowed_inputs": [
+    "obs",
+    "action",
+    "next_obs",
+    "done",
+    "info"
+  ],
+  "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
+  "components": [
+    {
+      "id": "distance_penalty",
+      "description": "Negative reward proportional to Euclidean distance from the landing pad (0,0). Computed as -sqrt(next_obs[0]^2 + next_obs[1]^2). Encourages moving toward the pad.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "velocity_penalty",
+      "description": "Negative reward proportional to the magnitude of linear velocity. Computed as -sqrt(next_obs[2]^2 + next_obs[3]^2). Encourages gentle landing speed.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "angle_penalty",
+      "description": "Negative reward proportional to the absolute angle deviation from vertical. Computed as -abs(next_obs[4]). Encourages upright orientation.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "engine_usage_penalty",
+      "description": "Small negative reward for firing the main engine (action==2) to encourage fuel efficiency. Computed as -0.3 if action==2 else 0.0.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "terminal",
+      "description": "Large positive reward when the lander successfully lands on the pad. Condition: both legs contact ground (next_obs[6]==1 and next_obs[7]==1) and distance to pad < 0.1 and |angle| < 0.1 and |y_velocity| < 0.1. Value: +100.",
+      "direction": "maximize",
+      "required": true
+    }
+  ],
+  "reward_abs_bound": 1000.0
+}
+
+Search plan:
+## Search Plan for Reward Generation
+
+### 1. Initial Prototype Generation
+- **Objective**: Produce 3-5 distinct reward function candidates based on the schema.
+- **Method**: For each candidate, instantiate the six components with specific coefficient values and optional shaping functions (e.g., exponential decay for distance, quadratic for velocity).
+- **Key considerations**:
+  - Normalize each component to have comparable magnitudes (e.g., distance ~[-1,0], velocity ~[-1,0], angle ~[-0.5,0]).
+  - Ensure landing_bonus and crash_penalty are mutually exclusive and dominate the reward magnitude.
+  - Test edge cases: near-pad hovering, fast sideways movement, upside-down landing attempts.
+
+### 2. Local Mutation and Refinement
+- **Objective**: Iteratively improve the best-performing candidates.
+- **Method**: Apply small random perturbations to component coefficients (±10-20%), or replace linear functions with sigmoid/clipped variants.
+- **Evaluation criteria**:
+  - Average episodic return (higher is better).
+  - Landing success rate (percentage of episodes with landing_bonus triggered).
+  - Fuel efficiency (average number of main engine firings per episode).
+  - Stability of training curve (low variance across seeds).
+
+### 3. Dynamic Reward Shaping (Optional)
+- **Objective**: Introduce time-dependent or adaptive components if static rewards plateau.
+- **Examples**:
+  - Add a small time penalty (-0.01 per step) to encourage faster landing.
+  - Scale distance reward by (1 - step/max_steps) to emphasize early navigation.
+  - Use a curriculum: start with lenient angle tolerance, gradually tighten.
+
+### 4. Validation and Selection
+- **Objective**: Choose the final reward function for training.
+- **Method**: Train each candidate for 500k steps across 3 random seeds. Compare:
+  - Mean final reward (last 100 episodes).
+  - Landing success rate.
+  - Robustness to wind and turbulence (test with enable_wind=True).
+- **Selection**: Pick the candidate with highest success rate and lowest variance.
+
+### 5. Ablation Studies
+- **Objective**: Understand contribution of each component.
+- **Method**: Remove one component at a time and retrain. Measure drop in performance.
+- **Expected outcome**: landing_bonus and crash_penalty will be critical; angle_penalty may be less important if velocity control is sufficient.
+
+### 6. Final Documentation
+- **Output**: Final reward function code with clear comments, recommended hyperparameters, and known failure modes (e.g., wind causes oscillation near pad).
+
+Feedback context:
+## Reflection on Generation 1
+
+### 1. What Worked
+
+- **Nonlinear scaling implemented**: The candidate successfully applied squared distance and velocity penalties (-10*distance², -5*velocity²) as recommended, creating stronger gradients near the pad
+- **Crash penalty added**: Explicit -100 penalty for terminal states without successful landing, addressing the key failure mode from Gen 0
+- **Differentiated engine penalties**: Main engine (-0.5) vs side engines (-0.1) creates a more nuanced fuel efficiency signal
+- **Relaxed landing thresholds**: Increased tolerances to 0.15 (from 0.1) should make terminal reward more achievable
+- **Increased terminal reward**: Raised to 150 to better balance against penalties
+- **Action distribution improved slightly**: Action std = 1.29 (was ~1.0), suggesting slightly less random policy, though still poor
+- **Component structure is clean**: Single terminal component combining landing bonus and crash penalty avoids double-counting
+
+### 2. What Failed
+
+- **Private eval return still very negative (-188.84)**: Worse than Gen 0 (-107.3), indicating the changes actually hurt performance
+- **Massive generated-private gap (-1056.43)**: The agent's reward calculation is wildly different from the hidden evaluator, suggesting fundamental misalignment
+- **Distance penalty dominates (-649.76)**: The squared distance penalty is now too aggressive, overwhelming all other signals
+- **Velocity penalty also excessive (-450.68)**: Combined with distance, these two penalties create a reward landscape where any movement is heavily punished, likely freezing the agent
+- **Terminal reward negative (-100.0)**: The crash penalty fires in every episode, meaning **no successful landings occurred** - the agent crashes every time
+- **Episode length 63.5**: Slightly shorter than Gen 0 (69.3), suggesting even faster crashing
+- **Action mean still 2.02**: Main engine firing dominates, agent hasn't learned to use idle (action 1) or side engines effectively
+- **Only 1 candidate**: No exploration of alternative reward structures, making it impossible to compare or select better approaches
+
+### 3. What to Try Next
+
+**Critical issues to address:**
+
+1. **Reduce distance/velocity penalty magnitudes**: -10*distance² and -5*velocity² are too strong. Try -1*distance² and -0.5*velocity², or use linear penalties with moderate scaling like -2*distance and -1*velocity. The squared terms create enormous gradients far from the pad that prevent the agent from even attempting to approach.
+
+2. **Fix the terminal reward / crash penalty balance**: With -100 crash penalty and only +150 landing bonus, the net benefit of landing is only +50. But the massive distance/velocity penalties mean the agent accumulates hundreds of negative reward before reaching the pad. Try:
+   - Reduce crash penalty to -50
+   - Increase landing bonus to +200 or +300
+   - Add a small positive shaping reward for reducing distance over time (progress bonus)
+
+3. **Add progress-based shaping**: The huge generated-private gap (-1056) suggests the evaluator rewards something the reward function doesn't capture. Add a dense shaping reward:
+   - `delta_distance = previous_distance - current_distance` → small positive reward for getting closer
+   - `delta_velocity = previous_velocity - current_velocity` → small reward for slowing down
+   - This creates a smoother gradient toward the goal
+
+4. **Remove or reduce engine penalty**: The engine penalty (-0.5 for main, -0.1 for side) is negligible compared to the massive distance/velocity penalties, and may be counterproductive. Consider removing it entirely and letting distance/velocity shaping guide engine use.
+
+5. **Soften the landing condition**: Current thresholds (distance<0.15, angle<0.15, vy<0.15) may still be too strict. Try:
+   - distance < 0.2
+   - angle < 0.2  
+   - abs(vy) < 0.2
+   - Or use a continuous landing bonus that increases as the agent gets closer to the ideal state
+
+6. **Generate at least 3-5 candidates**: Explore different coefficient combinations (e.g., low/medium/high penalty scales) to find a better balance point.
+
+**Suggested new approach:**
+```python
+# Gentle shaping with progress bonus
+distance = sqrt(x² + y²)
+distance_penalty = -2.0 * distance  # Linear, moderate
+
+velocity = sqrt(vx² + vy²)  
+velocity_penalty = -1.0 * velocity  # Linear, moderate
+
+angle_penalty = -2.0 * abs(angle)  # Keep as is
+
+# Progress bonus (requires storing previous state)
+progress_bonus = 0.0  # Would need to track previous distance/velocity
+
+# Landing reward with relaxed conditions
+landing = (left_contact > 0.5 and right_contact > 0.5 and 
+           distance < 0.2 and abs(angle) < 0.2 and abs(vy) < 0.2)
+terminal = 300.0 if landing else 0.0
+crash = -50.0 if (done and not landing) else 0.0
+
+# No engine penalty - let distance/velocity shaping guide behavior
+```
+
+### 4. Lessons Analysis
+
+**Supported lessons:**
+- **[environment_6ea50438ba] Add crash penalty**: Implemented (-100) but magnitude may be too high relative to other components
+- **[environment_0dad1c6fae] Nonlinear scaling**: Implemented but coefficients too aggressive (-10*d², -5*v²)
+- **[environment_7b978e6fa5] Reduce generated-private gap**: Not achieved - gap increased dramatically, confirming this is a critical issue
+- **[candidate_119e5f5c5d] Normalize component scales**: Violated - distance/velocity penalties now completely dominate terminal reward
+- **[environment_13dad86244] Generate multiple candidates**: Violated - only 1 candidate produced
+
+**Contradicted lessons:**
+- **None explicitly contradicted** - the lessons about nonlinear scaling and crash penalties were applied but with incorrect magnitudes, confirming the need for careful coefficient tuning
+
+**Emerging lessons from this generation:**
+- **L5**: Squared distance/velocity penalties with coefficients >5 can create reward landscapes that prevent any exploration, causing the agent to crash immediately rather than attempt to approach the pad
+- **L6**: The generated-private gap >1000 suggests fundamental misalignment - likely the evaluator uses a different state representation or success metric that the reward function doesn't capture at all
+- **L7**: A single candidate generation cannot diagnose coefficient sensitivity - need multiple candidates with different scales to find the right balance
+
+Memory context:
+Relevant candidate-level lessons:
+- [candidate_1c0f250335] type=component_imbalance, confidence=0.8, condition=engine_usage_penalty is 0.0 in diagnostics, indicating the agent almost never fires the main engine (action==2), recommendation=Redesign the reward to encourage engine use for maneuvering, e.g., give a small positive reward for reducing distance or velocity when the engine fires, or remove the engine penalty and instead rely on distance/velocity shaping.
+- [candidate_450a2db44f] type=reward_pattern, confidence=0.75, condition=generated_return (-100.99) is higher than private_eval_return (-107.31) by 6.33, indicating a mismatch between the reward function and the hidden evaluator, recommendation=Use black-box selection feedback to adjust component weights or add shaping rewards that better match the private evaluator's implicit priorities, e.g., reward reducing distance and velocity simultaneously.
+- [candidate_77ab076dcc] type=mutation_rule, confidence=0.7, condition=action is discrete (value 2 for main engine) and engine_usage_penalty is tied to a specific action value, recommendation=When mutating, replace action==2 with a more general condition like 'action > threshold' if the action space is continuous, or use action magnitude if discrete actions represent throttle levels.
+- [candidate_282d0159d0] type=reward_pattern, confidence=0.9, condition=Candidate uses squared penalties with high coefficients (distance: -10*distance^2, velocity: -5*velocity^2) and a large terminal reward (150) plus a crash penalty (-100), recommendation=Reduce the coefficients of distance and velocity penalties (e.g., -1.0*distance instead of -10.0*distance^2) and increase the terminal reward to at least 200 to better balance the reward components and reduce the generated/private gap.
+- [candidate_90432d7a8c] type=failure_mode, confidence=0.85, condition=Candidate uses squared penalties with high coefficients, recommendation=Use linear penalties with moderate coefficients (e.g., -1.0*distance) to provide smoother gradients and avoid overwhelming other reward components.
+- [candidate_a302e47ed4] type=repair_rule, confidence=0.8, condition=Candidate has a large generated_private_gap (-1056.43) due to component imbalance, recommendation=Adjust component weights so that the terminal reward (or penalty) has a comparable magnitude to the sum of other penalties, reducing the generated/private mismatch.
+- [candidate_8540493b63] type=general, confidence=0.95, condition=Candidate uses next_obs to extract x, y, vx, vy, angle, left_contact, right_contact, recommendation=Continue using next_obs for state extraction in future candidates, as this approach is valid and does not cause issues.
+- [candidate_8fd12e7af1] type=failure_mode, confidence=0.75, condition=Candidate has a crash penalty (-100) and terminal reward (150) combined into one component, recommendation=Increase the terminal reward significantly (e.g., to 500) or reduce the continuous penalties to ensure the landing signal is strong enough to guide learning.
+
+Relevant environment-level lessons:
+- [environment_6ea50438ba] type=failure_mode, confidence=0.95, condition=No explicit crash penalty is included in the reward function, recommendation=Add a large negative reward (e.g., -100) when done is true and landing conditions are not met, to strongly discourage crashing.
+- [environment_7b978e6fa5] type=failure_mode, confidence=0.85, condition=Generated return and private eval return show a large gap (e.g., >5), recommendation=Use black-box selection feedback to iteratively reduce the generated/private mismatch. Adjust component weights or add missing signals (e.g., progress shaping) that better match the evaluator's criteria.
+- [environment_93a5b27099] type=failure_mode, confidence=0.8, condition=Action mean is far from 1.0 (idle) in a discrete-action environment with engine penalty, recommendation=Either increase the engine penalty significantly (e.g., -1.0 per main engine use) or use a continuous fuel consumption model based on action magnitude to create a stronger disincentive for wasteful engine use.
+- [environment_13dad86244] type=general, confidence=0.7, condition=Only one candidate is generated in a generation and it fails to produce a good policy, recommendation=Increase the number of candidates per generation to at least 3-5 to encourage exploration of different reward structures and provide a basis for selection and mutation.
+- [environment_40bed20b05] type=failure_mode, confidence=0.9, condition=Squared distance/velocity penalties with coefficients >5 are applied in a lunar-lander-like environment where the agent must navigate to a landing pad, recommendation=Use linear penalties (e.g., -2*distance, -1*velocity) or squared penalties with coefficients ≤1 to avoid dominating the reward landscape. Combine with a progress bonus to create a smooth gradient toward the goal.
+- [environment_976251321b] type=failure_mode, confidence=0.85, condition=A crash penalty of -100 and a landing bonus of +150 are used alongside large per-step negative penalties, recommendation=Increase the landing bonus to at least +300 and reduce the crash penalty to -50 or lower. Better yet, use a continuous landing bonus that scales with proximity to the ideal landing state, and ensure the total positive reward for a successful landing outweighs the accumulated negative per-step penalties.
+- [environment_e3e69d60e6] type=failure_mode, confidence=0.9, condition=The generated-private return gap exceeds 1000 (-1056.43) in a lunar-lander-like environment, recommendation=Add dense shaping rewards that track progress toward the goal: reward reductions in distance to the pad, reductions in velocity magnitude, and maintaining upright orientation. Remove or drastically reduce per-step penalties that are not aligned with the evaluator's criteria. Use black-box selection feedback to iteratively reduce the gap.
+- [environment_c8134b2eee] type=mutation_rule, confidence=0.95, condition=Only one candidate is generated from a parent reward function that already has poor performance, recommendation=Generate at least 3-5 candidates per generation, systematically varying key coefficients (penalty scales, terminal reward magnitudes, threshold values) to explore the reward design space and identify effective parameter ranges.
+- [environment_e241a7f901] type=general, confidence=0.85, condition=A reward function includes a crash penalty that fires in every episode and a terminal bonus that is never achieved, recommendation=Ensure that terminal penalties and bonuses provide differential feedback across episodes. If the agent always crashes, reduce the crash penalty magnitude and focus on improving the per-step shaping to guide the agent toward successful landings. A terminal signal that never fires positively is not useful for learning.
+- [environment_11fc29d972] type=general, confidence=0.9, condition=Component returns show one or two components dominating the total reward by an order of magnitude or more, recommendation=Normalize component scales so that no single component dominates. Use diagnostic component returns to identify imbalances, and adjust coefficients so that each component contributes meaningfully to the total reward (within roughly the same order of magnitude).
+
+Relevant cross-environment lessons:
+- none
+
+Parent reward codes:
+Parent 1:
+```python
+def compute_reward(obs, action, next_obs, done, info):
+    # Extract relevant quantities from next_obs
+    x, y = next_obs[0], next_obs[1]
+    vx, vy = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+    
+    # Distance penalty: encourage moving toward the pad at (0,0)
+    distance = np.sqrt(x**2 + y**2)
+    distance_penalty = -distance
+    
+    # Velocity penalty: encourage gentle landing speed
+    velocity = np.sqrt(vx**2 + vy**2)
+    velocity_penalty = -velocity
+    
+    # Angle penalty: encourage upright orientation
+    angle_penalty = -abs(angle)
+    
+    # Engine usage penalty: discourage fuel consumption
+    # Main engine (action==2) costs fuel
+    engine_usage_penalty = -0.3 if action == 2 else 0.0
+    
+    # Terminal reward: successful landing
+    # Conditions: both legs on ground, close to pad, upright, low vertical speed
+    landing_condition = (
+        left_contact > 0.5 and 
+        right_contact > 0.5 and 
+        distance < 0.1 and 
+        abs(angle) < 0.1 and 
+        abs(vy) < 0.1
+    )
+    terminal = 100.0 if landing_condition else 0.0
+    
+    # Sum up all components
+    total_reward = distance_penalty + velocity_penalty + angle_penalty + engine_usage_penalty + terminal
+    
+    # Build components dictionary
+    components = {
+        "distance_penalty": distance_penalty,
+        "velocity_penalty": velocity_penalty,
+        "angle_penalty": angle_penalty,
+        "engine_usage_penalty": engine_usage_penalty,
+        "terminal": terminal,
+    }
+    
+    return float(total_reward), components
+
+```
+
+Generate one reward candidate. You may use task semantics from task_description.txt and step.py. The only hard output contract is compute_reward(obs, action, next_obs, done, info) returning float reward and components dict. Do not use env_reward, fitness_score, compute_fitness_score, official reward formulas, or hidden evaluator details.

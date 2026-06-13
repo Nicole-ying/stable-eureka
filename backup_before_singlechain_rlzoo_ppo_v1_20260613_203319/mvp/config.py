@@ -33,31 +33,11 @@ class ModelConfig:
 class RLConfig:
     env_id: str = "LunarLander-v3"
 
-    # Training / evaluation budget
+
     total_timesteps: int = 30_000
     eval_episodes: int = 3
-
-    # PPO hyperparameters.
-    # For LunarLander-v3 long runs we use RL-Baselines3-Zoo style values:
-    #   n_steps=1024, batch_size=64, gae_lambda=0.98,
-    #   gamma=0.999, n_epochs=4, ent_coef=0.01.
-    n_envs: int = 1
-    vec_env_type: str = "dummy"  # dummy | subproc
-    n_steps: int = 2048
-    batch_size: int = 64
-    n_epochs: int = 10
-    gae_lambda: float = 0.95
     learning_rate: float = 3e-4
     gamma: float = 0.99
-    ent_coef: float = 0.0
-    clip_range: float = 0.2
-    vf_coef: float = 0.5
-    max_grad_norm: float = 0.5
-
-    # Artifact controls.
-    # Rendering videos is useful for debugging but should be disabled
-    # for long single-chain runs unless visual inspection is needed.
-    render_video: bool = True
 
 
 @dataclass

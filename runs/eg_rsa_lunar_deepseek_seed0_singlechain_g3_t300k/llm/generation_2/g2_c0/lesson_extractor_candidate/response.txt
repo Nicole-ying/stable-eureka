@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The reward function uses moderate linear penalties for distance and velocity.",
+    "observation": "Despite moderate scaling, the distance_penalty component dominates at -130.86, overwhelming other signals and yielding a large generated-private gap of 32.19.",
+    "explanation": "Linear penalties on distance and velocity accumulate over the episode, creating a large negative baseline that overshadows the terminal and shaping bonuses. The shaping bonus only provides positive increments when progress is made, but the persistent negative penalties keep the total reward low and may discourage exploration.",
+    "recommendation": "Reduce the magnitude of distance and velocity penalties further, or clip their contributions to prevent them from dominating the total reward. Alternatively, rebalance by increasing the shaping bonus scaling or terminal reward to compensate.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The shaping bonus uses a subtraction of current quantity from previous quantity (prev_distance - distance) to compute progress.",
+    "observation": "The shaping bonus (1.29) is very small compared to the distance penalty (-130.86), indicating that the progress signal is weak and does not effectively guide the agent.",
+    "explanation": "The progress calculation relies on a single-step difference, which may be noisy and small in magnitude, especially when the agent is far from the goal. This weak signal fails to counteract the large penalties and does not provide a strong gradient toward the landing pad.",
+    "recommendation": "Consider using a non-linear shaping bonus, such as a potential-based function that scales with the change in a transformed state variable (e.g., exponential decay of distance), to amplify the progress signal and provide a clearer gradient.",
+    "confidence": 0.80,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The terminal reward is set to +300 with relaxed thresholds, and the crash penalty is -50.",
+    "observation": "The terminal component contributed +150.0 on average, while crash penalty contributed -25.0, indicating that the agent achieved landing in some episodes but also crashed in others. The generated-private gap remains large.",
+    "explanation": "The terminal reward and crash penalty are asymmetric and may not align well with the hidden evaluator's scoring. The high terminal reward can cause the agent to focus on achieving the landing condition at the expense of other behavior, while the crash penalty may not sufficiently penalize failures, leading to a mismatch between generated and private returns.",
+    "recommendation": "Reduce the terminal reward magnitude and increase the crash penalty to better balance success and failure outcomes. Validate the component weights against the private evaluator's return to minimize the generated-private gap.",
+    "confidence": 0.75,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "The candidate was mutated from g0_c0 with adjusted penalties, shaping, terminal reward, and crash penalty.",
+    "observation": "The mutation improved the private return from a likely lower value to -115.27, but the generated-private gap is still positive (32.19), indicating that the changes did not fully align with the private evaluator.",
+    "explanation": "The mutation adjusted several components simultaneously, which can make it difficult to isolate which change was effective. While some improvements were made, the remaining gap suggests that further targeted adjustments are needed.",
+    "recommendation": "In future mutations, change only one or two components at a time to better understand their individual impact on the generated-private gap. Prioritize adjustments that reduce the dominance of distance_penalty and strengthen the shaping bonus.",
+    "confidence": 0.70,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The reward function has multiple components with widely different magnitudes.",
+    "observation": "The component returns show large imbalance: distance_penalty (-130.86), velocity_penalty (-71.02), angle_penalty (-7.50), shaping_bonus (1.29), terminal (150.0), crash_penalty (-25.0). The total reward is dominated by a few components.",
+    "explanation": "When reward components have vastly different scales, the gradient from smaller components is effectively ignored, causing the agent to optimize only the dominant ones. This reduces the effectiveness of the shaping and penalty signals.",
+    "recommendation": "Normalize or clip each component to a similar range (e.g., -1 to 1 or -10 to 10) to ensure all components contribute meaningfully to the learning signal. Use adaptive scaling or manual tuning based on observed component returns.",
+    "confidence": 0.90,
+    "reuse_policy": "global"
+  }
+]

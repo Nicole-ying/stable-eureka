@@ -1,0 +1,58 @@
+```json
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When using progress shaping with distance and velocity deltas",
+    "observation": "Shaping bonus was only 1.29 despite coefficients of 1.0 and 0.5, providing negligible guidance to the agent",
+    "explanation": "The shaping bonus is computed as a small delta between successive steps, so even moderate coefficients produce tiny values that are easily overwhelmed by other penalties",
+    "recommendation": "Use coefficients 5-10x larger (e.g., 5.0 for distance progress, 2.0 for velocity progress) so the shaping bonus meaningfully contributes to total reward",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When action mean is ~1.9 but engine_usage_penalty is 0.0",
+    "observation": "The agent uses non-idle actions extensively but the engine penalty only targets action==2 (main engine), resulting in zero penalty despite fuel consumption",
+    "explanation": "The action space has multiple engine actions (left, main, right), but the reward only penalizes the main engine, leaving other fuel-consuming actions unpenalized",
+    "recommendation": "Penalize all non-idle actions (action != 1) rather than just the main engine, or use action magnitude to penalize any engine fire proportionally",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When switching from aggressive squared penalties to moderate linear penalties combined with progress shaping",
+    "observation": "Generated-private gap dropped from -1056 to 32.19, a dramatic improvement in alignment with the hidden evaluator",
+    "explanation": "Linear penalties avoid the explosive negative values of squared terms, while progress shaping provides dense gradient toward the goal, reducing mismatch between generated and private reward",
+    "recommendation": "Use moderate linear coefficients (e.g., -2*distance, -1*velocity) paired with progress shaping to reduce generated-private gap",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "When terminal reward is +300 and landing thresholds are relaxed (distance<0.2, angle<0.2, vy<0.2)",
+    "observation": "Terminal reward reached 150.0 and crash penalty was -25.0, indicating some successful landings occurred for the first time",
+    "explanation": "Relaxed landing conditions make the goal achievable, and a high terminal reward (+300) provides strong incentive while balanced crash penalty (-50) prevents excessive risk-taking",
+    "recommendation": "Set landing bonus to at least +300 with relaxed thresholds (distance<0.2, angle<0.2, vy<0.2) and crash penalty around -50 to enable first successful landings",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When only 1 candidate is generated despite recommendations for 3-5",
+    "observation": "Only one candidate was produced, limiting the ability to explore different parameter combinations and find better solutions",
+    "explanation": "With a single candidate, there is no opportunity to compare variations in component weights, thresholds, or structure, reducing the chance of discovering an optimal reward",
+    "recommendation": "Always generate at least 3-5 candidates with systematic variation of key parameters (terminal reward, penalty coefficients, shaping weights, engine penalty scope) to enable effective exploration",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When component returns are well-balanced (distance:-131, velocity:-71, terminal:+150, crash:-25)",
+    "observation": "No single component dominates the total reward, enabling the agent to learn from multiple signals simultaneously",
+    "explanation": "Balanced component scales prevent one penalty from overwhelming the gradient, allowing the agent to respond to distance, velocity, orientation, and terminal outcomes",
+    "recommendation": "Normalize component scales so that each contributes meaningfully (within roughly an order of magnitude) to total reward",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]
+```

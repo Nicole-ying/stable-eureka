@@ -1,0 +1,46 @@
+```json
+{
+  "reward_schema": {
+    "components": [
+      {
+        "id": "distance_penalty",
+        "description": "Negative reward proportional to Euclidean distance from the landing pad (0,0). Computed as -sqrt(next_obs[0]^2 + next_obs[1]^2). Encourages moving toward the pad.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "velocity_penalty",
+        "description": "Negative reward proportional to the magnitude of linear velocity. Computed as -sqrt(next_obs[2]^2 + next_obs[3]^2). Encourages gentle landing speed.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "angle_penalty",
+        "description": "Negative reward proportional to the absolute angle deviation from vertical. Computed as -abs(next_obs[4]). Encourages upright orientation.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "engine_usage_penalty",
+        "description": "Small negative reward for firing the main engine (action==2) to encourage fuel efficiency. Computed as -0.3 if action==2 else 0.0.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "landing_bonus",
+        "description": "Large positive reward when the lander successfully lands on the pad. Condition: both legs contact ground (next_obs[6]==1 and next_obs[7]==1) and distance to pad < 0.1 and |angle| < 0.1 and |y_velocity| < 0.1. Value: +100.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "crash_penalty",
+        "description": "Large negative penalty when the episode terminates due to crash (done=True without successful landing). Value: -100.",
+        "direction": "maximize",
+        "required": true
+      }
+    ],
+    "reward_abs_bound": 1000.0
+  },
+  "search_plan": "## Search Plan for Reward Generation\n\n### 1. Initial Prototype Generation\n- **Objective**: Produce 3-5 distinct reward function candidates based on the schema.\n- **Method**: For each candidate, instantiate the six components with specific coefficient values and optional shaping functions (e.g., exponential decay for distance, quadratic for velocity).\n- **Key considerations**:\n  - Normalize each component to have comparable magnitudes (e.g., distance ~[-1,0], velocity ~[-1,0], angle ~[-0.5,0]).\n  - Ensure landing_bonus and crash_penalty are mutually exclusive and dominate the reward magnitude.\n  - Test edge cases: near-pad hovering, fast sideways movement, upside-down landing attempts.\n\n### 2. Local Mutation and Refinement\n- **Objective**: Iteratively improve the best-performing candidates.\n- **Method**: Apply small random perturbations to component coefficients (±10-20%), or replace linear functions with sigmoid/clipped variants.\n- **Evaluation criteria**:\n  - Average episodic return (higher is better).\n  - Landing success rate (percentage of episodes with landing_bonus triggered).\n  - Fuel efficiency (average number of main engine firings per episode).\n  - Stability of training curve (low variance across seeds).\n\n### 3. Dynamic Reward Shaping (Optional)\n- **Objective**: Introduce time-dependent or adaptive components if static rewards plateau.\n- **Examples**:\n  - Add a small time penalty (-0.01 per step) to encourage faster landing.\n  - Scale distance reward by (1 - step/max_steps) to emphasize early navigation.\n  - Use a curriculum: start with lenient angle tolerance, gradually tighten.\n\n### 4. Validation and Selection\n- **Objective**: Choose the final reward function for training.\n- **Method**: Train each candidate for 500k steps across 3 random seeds. Compare:\n  - Mean final reward (last 100 episodes).\n  - Landing success rate.\n  - Robustness to wind and turbulence (test with enable_wind=True).\n- **Selection**: Pick the candidate with highest success rate and lowest variance.\n\n### 5. Ablation Studies\n- **Objective**: Understand contribution of each component.\n- **Method**: Remove one component at a time and retrain. Measure drop in performance.\n- **Expected outcome**: landing_bonus and crash_penalty will be critical; angle_penalty may be less important if velocity control is sufficient.\n\n### 6. Final Documentation\n- **Output**: Final reward function code with clear comments, recommended hyperparameters, and known failure modes (e.g., wind causes oscillation near pad)."
+}
+```

@@ -1,0 +1,56 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Squared distance/velocity penalties with coefficients >5 are applied in a lunar-lander-like environment where the agent must navigate to a landing pad",
+    "observation": "Distance penalty of -10*distance² (-649.76) and velocity penalty of -5*velocity² (-450.68) completely dominate the total reward, overwhelming all other components and preventing the agent from exploring toward the pad.",
+    "explanation": "Squared penalties with high coefficients create extremely steep reward gradients far from the goal state, making any movement away from the origin (or toward the pad with high speed) massively negative. This freezes the agent or causes it to crash immediately rather than attempt to approach the landing zone.",
+    "recommendation": "Use linear penalties (e.g., -2*distance, -1*velocity) or squared penalties with coefficients ≤1 to avoid dominating the reward landscape. Combine with a progress bonus to create a smooth gradient toward the goal.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A crash penalty of -100 and a landing bonus of +150 are used alongside large per-step negative penalties",
+    "observation": "Terminal reward component was -100.0, meaning no successful landings occurred in any episode; the agent crashed every time with episode length 63.5 (slightly shorter than prior generation).",
+    "explanation": "When per-step penalties accumulate hundreds of negative reward before reaching the goal, a net landing benefit of only +50 (150 - 100) is insufficient to incentivize the agent to overcome the penalty barrier and attempt landings. The crash penalty fires every episode, providing no differential signal.",
+    "recommendation": "Increase the landing bonus to at least +300 and reduce the crash penalty to -50 or lower. Better yet, use a continuous landing bonus that scales with proximity to the ideal landing state, and ensure the total positive reward for a successful landing outweighs the accumulated negative per-step penalties.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The generated-private return gap exceeds 1000 (-1056.43) in a lunar-lander-like environment",
+    "observation": "Generated return was -1245.27 while private eval return was -188.84, creating a massive gap. The agent's internal reward function is fundamentally misaligned with the hidden evaluator's success metric.",
+    "explanation": "A gap >1000 indicates the reward function does not capture what the evaluator considers important. The evaluator likely rewards behaviors (e.g., smooth descent, fuel efficiency, stable approach) that the reward function either ignores or actively punishes. Per-step penalties that dominate the signal can mask any terminal success signal.",
+    "recommendation": "Add dense shaping rewards that track progress toward the goal: reward reductions in distance to the pad, reductions in velocity magnitude, and maintaining upright orientation. Remove or drastically reduce per-step penalties that are not aligned with the evaluator's criteria. Use black-box selection feedback to iteratively reduce the gap.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Only one candidate is generated from a parent reward function that already has poor performance",
+    "observation": "Generation 1 produced exactly 1 candidate (g1_c0), which performed worse than its parent (private eval -188.84 vs -107.3). No alternative reward structures were explored or compared.",
+    "explanation": "With a single candidate, there is no ability to compare different coefficient scales, component weightings, or shaping approaches. The search process cannot diagnose whether the failure is due to incorrect magnitudes, missing components, or fundamental misalignment.",
+    "recommendation": "Generate at least 3-5 candidates per generation, systematically varying key coefficients (penalty scales, terminal reward magnitudes, threshold values) to explore the reward design space and identify effective parameter ranges.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "A reward function includes a crash penalty that fires in every episode and a terminal bonus that is never achieved",
+    "observation": "The terminal component value was -100.0 (crash penalty) across all episodes, with zero landing bonuses achieved. The crash penalty provides no differential learning signal since it always fires identically.",
+    "explanation": "When a crash penalty or terminal condition fires uniformly across all episodes, it becomes a constant offset that does not help the agent distinguish good trajectories from bad ones. It only adds a uniform negative bias to the reward signal, which can destabilize value estimation.",
+    "recommendation": "Ensure that terminal penalties and bonuses provide differential feedback across episodes. If the agent always crashes, reduce the crash penalty magnitude and focus on improving the per-step shaping to guide the agent toward successful landings. A terminal signal that never fires positively is not useful for learning.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Component returns show one or two components dominating the total reward by an order of magnitude or more",
+    "observation": "Distance penalty (-649.76) and velocity penalty (-450.68) together account for -1100.44 out of -1245.27 total generated return, while the terminal component is -100.0 and other components are negligible.",
+    "explanation": "When component scales differ by an order of magnitude, the dominant components overwhelm the learning signal from smaller components. The agent cannot learn to balance multiple objectives because the gradient from the largest penalty drowns out all other feedback.",
+    "recommendation": "Normalize component scales so that no single component dominates. Use diagnostic component returns to identify imbalances, and adjust coefficients so that each component contributes meaningfully to the total reward (within roughly the same order of magnitude).",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

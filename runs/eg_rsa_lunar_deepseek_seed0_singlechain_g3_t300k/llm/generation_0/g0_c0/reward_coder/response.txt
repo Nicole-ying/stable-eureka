@@ -1,0 +1,51 @@
+```python
+def compute_reward(obs, action, next_obs, done, info):
+    # Extract relevant quantities from next_obs
+    x, y = next_obs[0], next_obs[1]
+    vx, vy = next_obs[2], next_obs[3]
+    angle = next_obs[4]
+    left_contact = next_obs[6]
+    right_contact = next_obs[7]
+    
+    # Distance penalty: encourage moving toward the pad at (0,0)
+    distance = np.sqrt(x**2 + y**2)
+    distance_penalty = -distance
+    
+    # Velocity penalty: encourage gentle landing speed
+    velocity = np.sqrt(vx**2 + vy**2)
+    velocity_penalty = -velocity
+    
+    # Angle penalty: encourage upright orientation
+    angle_penalty = -abs(angle)
+    
+    # Engine usage penalty: discourage fuel consumption
+    # Main engine (action==2) costs fuel
+    engine_usage_penalty = -0.3 if action == 2 else 0.0
+    
+    # Terminal reward: successful landing
+    # Conditions: both legs on ground, close to pad, upright, low vertical speed
+    landing_condition = (
+        left_contact > 0.5 and 
+        right_contact > 0.5 and 
+        distance < 0.1 and 
+        abs(angle) < 0.1 and 
+        abs(vy) < 0.1
+    )
+    terminal = 100.0 if landing_condition else 0.0
+    
+    # Sum up all components
+    total_reward = distance_penalty + velocity_penalty + angle_penalty + engine_usage_penalty + terminal
+    
+    # Build components dictionary
+    components = {
+        "distance_penalty": distance_penalty,
+        "velocity_penalty": velocity_penalty,
+        "angle_penalty": angle_penalty,
+        "engine_usage_penalty": engine_usage_penalty,
+        "terminal": terminal,
+    }
+    
+    return float(total_reward), components
+```
+
+RATIONALE: This reward function implements the required schema components exactly as specified. Each component is computed from the observable next_obs and action inputs without using any hidden implementation details. The distance, velocity, and angle penalties are simple negative magnitudes that guide the lander toward the pad with gentle speed and upright orientation. The engine usage penalty discourages unnecessary main engine firing (-0.3 per use) to promote fuel efficiency. The terminal reward (+100) is triggered only when the lander achieves a successful landing: both legs grounded, close to pad (<0.1), upright (<0.1 rad), and low vertical speed (<0.1 normalized). The components are linearly combined and the total is bounded well under 1000 for typical episodes.

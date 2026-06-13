@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Candidate uses squared penalties with high coefficients (distance: -10*distance^2, velocity: -5*velocity^2) and a large terminal reward (150) plus a crash penalty (-100)",
+    "observation": "Generated return (-1245.27) is much lower than private_eval_return (-188.84), with a gap of -1056.43. The distance_penalty (-649.76) and velocity_penalty (-450.68) dominate the total reward, overwhelming the terminal reward and crash penalty.",
+    "explanation": "The squared penalties are too aggressive, producing large negative values at moderate distances and velocities, which dominate the reward signal. The terminal reward and crash penalty are too small to compensate, causing the agent to learn strong avoidance behaviors rather than aiming for the landing pad.",
+    "recommendation": "Reduce the coefficients of distance and velocity penalties (e.g., -1.0*distance instead of -10.0*distance^2) and increase the terminal reward to at least 200 to better balance the reward components and reduce the generated/private gap.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Candidate uses squared penalties with high coefficients",
+    "observation": "Distance and velocity penalties are disproportionately large (-649.76 and -450.68) compared to other components (angle: -39.91, engine: -4.92, terminal: -100+150=50), causing reward imbalance.",
+    "explanation": "The squared scaling with high coefficients creates a steep gradient that penalizes the agent excessively for being far from the pad or moving fast, preventing it from exploring landing strategies.",
+    "recommendation": "Use linear penalties with moderate coefficients (e.g., -1.0*distance) to provide smoother gradients and avoid overwhelming other reward components.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Candidate has a large generated_private_gap (-1056.43) due to component imbalance",
+    "observation": "The gap indicates the reward function misaligns with the hidden evaluator. The distance and velocity penalties are too dominant.",
+    "explanation": "The hidden evaluator likely expects a more balanced reward structure where the terminal reward is the primary signal. The current penalties overshadow the landing incentive.",
+    "recommendation": "Adjust component weights so that the terminal reward (or penalty) has a comparable magnitude to the sum of other penalties, reducing the generated/private mismatch.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Candidate uses next_obs to extract x, y, vx, vy, angle, left_contact, right_contact",
+    "observation": "The code correctly uses next_obs for state extraction, no indexing errors or private-signal leakage.",
+    "explanation": "The reward function adheres to the contract by using valid observation fields from next_obs without accessing hidden information.",
+    "recommendation": "Continue using next_obs for state extraction in future candidates, as this approach is valid and does not cause issues.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Candidate has a crash penalty (-100) and terminal reward (150) combined into one component",
+    "observation": "The combined terminal component value is 50 (150-100), which is small compared to distance and velocity penalties. The crash penalty only applies when done is True, which may be rare in early episodes.",
+    "explanation": "The crash penalty and terminal reward are infrequent events (only at episode end), so they have limited influence during training compared to the continuous distance and velocity penalties that affect every step.",
+    "recommendation": "Increase the terminal reward significantly (e.g., to 500) or reduce the continuous penalties to ensure the landing signal is strong enough to guide learning.",
+    "confidence": 0.75,
+    "reuse_policy": "same_env"
+  }
+]

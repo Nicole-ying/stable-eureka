@@ -1,0 +1,230 @@
+Structured evidence for this generation:
+{
+  "generation": 2,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g2_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": -115.27432737399424,
+      "private_eval_return": -115.27432737399424,
+      "generated_return": -83.0888201355818,
+      "generated_minus_private": 32.18550723841244,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 32.18550723841244,
+        "action_mean": 1.9043478260869566,
+        "action_std": 1.0589076655848726,
+        "episode_length_mean": 69.0,
+        "component_returns": {
+          "distance_penalty": -130.86446156868115,
+          "velocity_penalty": -71.01762864841058,
+          "angle_penalty": -7.498989041765162,
+          "shaping_bonus": 1.2922591232750613,
+          "engine_usage_penalty": 0.0,
+          "terminal": 150.0,
+          "crash_penalty": -25.0
+        },
+        "n_envs": 16,
+        "vec_env_type": "dummy",
+        "n_steps": 1024,
+        "batch_size": 64,
+        "n_epochs": 4,
+        "gae_lambda": 0.98,
+        "gamma": 0.999,
+        "ent_coef": 0.01
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # --- Distance penalty: moderate linear penalty ---\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -2.0 * distance\n    \n    # --- Velocity penalty: gentle linear penalty ---\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -1.0 * velocity\n    \n    # --- Angle penalty: encourage upright orientation ---\n    angle_penalty = -2.0 * abs(angle)\n    \n    # --- Progress shaping: reward reductions in distance and velocity ---\n    # Estimate previous distance using obs (if available) or default to 0\n    prev_x, prev_y = obs[0], obs[1]\n    prev_distance = np.sqrt(prev_x**2 + prev_y**2)\n    distance_progress = prev_distance - distance  # positive if getting closer\n    prev_vx, prev_vy = obs[2], obs[3]\n    prev_velocity = np.sqrt(prev_vx**2 + prev_vy**2)\n    velocity_progress = prev_velocity - velocity  # positive if slowing down\n    shaping_bonus = 1.0 * distance_progress + 0.5 * velocity_progress\n    \n    # --- Engine usage penalty: small penalty for main engine ---\n    engine_usage_penalty = -0.1 if action == 2 else 0.0\n    \n    # --- Terminal reward: successful landing with relaxed conditions ---\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.2 and \n        abs(angle) < 0.2 and \n        abs(vy) < 0.2\n    )\n    terminal = 300.0 if landing_condition else 0.0\n    \n    # --- Crash penalty: moderate negative for failure ---\n    crash_penalty = -50.0 if (done and not landing_condition) else 0.0\n    \n    # Sum up all components\n    total_reward = (distance_penalty + velocity_penalty + angle_penalty +\n                    shaping_bonus + engine_usage_penalty + terminal + crash_penalty)\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"shaping_bonus\": shaping_bonus,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal,\n        \"crash_penalty\": crash_penalty,\n    }\n    \n    return float(total_reward), components\n",
+      "llm_rationale": "This candidate addresses the critical failures from previous generations. It uses moderate linear penalties (-2*distance, -1*velocity) to avoid overwhelming the reward landscape. A progress shaping bonus rewards reductions in distance and velocity, providing a smooth gradient toward the pad and reducing the generated-private gap. The terminal reward is increased to +300 with relaxed thresholds (0.2), and the crash penalty is reduced to -50. Engine penalty is minimal (-0.1) to avoid discouraging necessary thrust. This balanced structure should guide the agent toward successful landings without freezing exploration."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g2_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": -115.27432737399424,
+      "private_eval_return": -115.27432737399424,
+      "generated_return": -83.0888201355818,
+      "generated_minus_private": 32.18550723841244,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 32.18550723841244,
+        "action_mean": 1.9043478260869566,
+        "action_std": 1.0589076655848726,
+        "episode_length_mean": 69.0,
+        "component_returns": {
+          "distance_penalty": -130.86446156868115,
+          "velocity_penalty": -71.01762864841058,
+          "angle_penalty": -7.498989041765162,
+          "shaping_bonus": 1.2922591232750613,
+          "engine_usage_penalty": 0.0,
+          "terminal": 150.0,
+          "crash_penalty": -25.0
+        },
+        "n_envs": 16,
+        "vec_env_type": "dummy",
+        "n_steps": 1024,
+        "batch_size": 64,
+        "n_epochs": 4,
+        "gae_lambda": 0.98,
+        "gamma": 0.999,
+        "ent_coef": 0.01
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract relevant quantities from next_obs\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_contact = next_obs[6]\n    right_contact = next_obs[7]\n    \n    # --- Distance penalty: moderate linear penalty ---\n    distance = np.sqrt(x**2 + y**2)\n    distance_penalty = -2.0 * distance\n    \n    # --- Velocity penalty: gentle linear penalty ---\n    velocity = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -1.0 * velocity\n    \n    # --- Angle penalty: encourage upright orientation ---\n    angle_penalty = -2.0 * abs(angle)\n    \n    # --- Progress shaping: reward reductions in distance and velocity ---\n    # Estimate previous distance using obs (if available) or default to 0\n    prev_x, prev_y = obs[0], obs[1]\n    prev_distance = np.sqrt(prev_x**2 + prev_y**2)\n    distance_progress = prev_distance - distance  # positive if getting closer\n    prev_vx, prev_vy = obs[2], obs[3]\n    prev_velocity = np.sqrt(prev_vx**2 + prev_vy**2)\n    velocity_progress = prev_velocity - velocity  # positive if slowing down\n    shaping_bonus = 1.0 * distance_progress + 0.5 * velocity_progress\n    \n    # --- Engine usage penalty: small penalty for main engine ---\n    engine_usage_penalty = -0.1 if action == 2 else 0.0\n    \n    # --- Terminal reward: successful landing with relaxed conditions ---\n    landing_condition = (\n        left_contact > 0.5 and \n        right_contact > 0.5 and \n        distance < 0.2 and \n        abs(angle) < 0.2 and \n        abs(vy) < 0.2\n    )\n    terminal = 300.0 if landing_condition else 0.0\n    \n    # --- Crash penalty: moderate negative for failure ---\n    crash_penalty = -50.0 if (done and not landing_condition) else 0.0\n    \n    # Sum up all components\n    total_reward = (distance_penalty + velocity_penalty + angle_penalty +\n                    shaping_bonus + engine_usage_penalty + terminal + crash_penalty)\n    \n    # Build components dictionary\n    components = {\n        \"distance_penalty\": distance_penalty,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"shaping_bonus\": shaping_bonus,\n        \"engine_usage_penalty\": engine_usage_penalty,\n        \"terminal\": terminal,\n        \"crash_penalty\": crash_penalty,\n    }\n    \n    return float(total_reward), components\n",
+      "llm_rationale": "This candidate addresses the critical failures from previous generations. It uses moderate linear penalties (-2*distance, -1*velocity) to avoid overwhelming the reward landscape. A progress shaping bonus rewards reductions in distance and velocity, providing a smooth gradient toward the pad and reducing the generated-private gap. The terminal reward is increased to +300 with relaxed thresholds (0.2), and the crash penalty is reduced to -50. Engine penalty is minimal (-0.1) to avoid discouraging necessary thrust. This balanced structure should guide the agent toward successful landings without freezing exploration."
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 1
+
+## Latest reflection
+## Reflection on Generation 1
+
+### 1. What Worked
+
+- **Nonlinear scaling implemented**: The candidate successfully applied squared distance and velocity penalties (-10*distance², -5*velocity²) as recommended, creating stronger gradients near the pad
+- **Crash penalty added**: Explicit -100 penalty for terminal states without successful landing, addressing the key failure mode from Gen 0
+- **Differentiated engine penalties**: Main engine (-0.5) vs side engines (-0.1) creates a more nuanced fuel efficiency signal
+- **Relaxed landing thresholds**: Increased tolerances to 0.15 (from 0.1) should make terminal reward more achievable
+- **Increased terminal reward**: Raised to 150 to better balance against penalties
+- **Action distribution improved slightly**: Action std = 1.29 (was ~1.0), suggesting slightly less random policy, though still poor
+- **Component structure is clean**: Single terminal component combining landing bonus and crash penalty avoids double-counting
+
+### 2. What Failed
+
+- **Private eval return still very negative (-188.84)**: Worse than Gen 0 (-107.3), indicating the changes actually hurt performance
+- **Massive generated-private gap (-1056.43)**: The agent's reward calculation is wildly different from the hidden evaluator, suggesting fundamental misalignment
+- **Distance penalty dominates (-649.76)**: The squared distance penalty is now too aggressive, overwhelming all other signals
+- **Velocity penalty also excessive (-450.68)**: Combined with distance, these two penalties create a reward landscape where any movement is heavily punished, likely freezing the agent
+- **Terminal reward negative (-100.0)**: The crash penalty fires in every episode, meaning **no successful landings occurred** - the agent crashes every time
+- **Episode length 63.5**: Slightly shorter than Gen 0 (69.3), suggesting even faster crashing
+- **Action mean still 2.02**: Main engine firing dominates, agent hasn't learned to use idle (action 1) or side engines effectively
+- **Only 1 candidate**: No exploration of alternative reward structures, making it impossible to compare or select better approaches
+
+### 3. What to Try Next
+
+**Critical issues to address:**
+
+1. **Reduce distance/velocity penalty magnitudes**: -10*distance² and -5*velocity² are too strong. Try -1*distance² and -0.5*velocity², or use linear penalties with moderate scaling like -2*distance and -1*velocity. The squared terms create enormous gradients far from the pad that prevent the agent from even attempting to approach.
+
+2. **Fix the terminal reward / crash penalty balance**: With -100 crash penalty and only +150 landing bonus, the net benefit of landing is only +50. But the massive distance/velocity penalties mean the agent accumulates hundreds of negative reward before reaching the pad. Try:
+   - Reduce crash penalty to -50
+   - Increase landing bonus to +200 or +300
+   - Add a small positive shaping reward for reducing distance over time (progress bonus)
+
+3. **Add progress-based shaping**: The huge generated-private gap (-1056) suggests the evaluator rewards something the reward function doesn't capture. Add a dense shaping reward:
+   - `delta_distance = previous_distance - current_distance` → small positive reward for getting closer
+   - `delta_velocity = previous_velocity - current_velocity` → small reward for slowing down
+   - This creates a smoother gradient toward the goal
+
+4. **Remove or reduce engine penalty**: The engine penalty (-0.5 for main, -0.1 for side) is negligible compared to the massive distance/velocity penalties, and may be counterproductive. Consider removing it entirely and letting distance/velocity shaping guide engine use.
+
+5. **Soften the landing condition**: Current thresholds (distance<0.15, angle<0.15, vy<0.15) may still be too strict. Try:
+   - distance < 0.2
+   - angle < 0.2  
+   - abs(vy) < 0.2
+   - Or use a continuous landing bonus that increases as the agent gets closer to the ideal state
+
+6. **Generate at least 3-5 candidates**: Explore different coefficient combinations (e.g., low/medium/high penalty scales) to find a better balance point.
+
+**Suggested new approach:**
+```python
+# Gentle shaping with progress bonus
+distance = sqrt(x² + y²)
+distance_penalty = -2.0 * distance  # Linear, moderate
+
+velocity = sqrt(vx² + vy²)  
+velocity_penalty = -1.0 * velocity  # Linear, moderate
+
+angle_penalty = -2.0 * abs(angle)  # Keep as is
+
+# Progress bonus (requires storing previous state)
+progress_bonus = 0.0  # Would need to track previous distance/velocity
+
+# Landing reward with relaxed conditions
+landing = (left_contact > 0.5 and right_contact > 0.5 and 
+           distance < 0.2 and abs(angle) < 0.2 and abs(vy) < 0.2)
+terminal = 300.0 if landing else 0.0
+crash = -50.0 if (done and not landing) else 0.0
+
+# No engine penalty - let distance/velocity shaping guide behavior
+```
+
+### 4. Lessons Analysis
+
+**Supported lessons:**
+- **[environment_6ea50438ba] Add crash penalty**: Implemented (-100) but magnitude may be too high relative to other components
+- **[environment_0dad1c6fae] Nonlinear scaling**: Implemented but coefficients too aggressive (-10*d², -5*v²)
+- **[environment_7b978e6fa5] Reduce generated-private gap**: Not achieved - gap increased dramatically, confirming this is a critical issue
+- **[candidate_119e5f5c5d] Normalize component scales**: Violated - distance/velocity penalties now completely dominate terminal reward
+- **[environment_13dad86244] Generate multiple candidates**: Violated - only 1 candidate produced
+
+**Contradicted lessons:**
+- **None explicitly contradicted** - the lessons about nonlinear scaling and crash penalties were applied but with incorrect magnitudes, confirming the need for careful coefficient tuning
+
+**Emerging lessons from this generation:**
+- **L5**: Squared distance/velocity penalties with coefficients >5 can create reward landscapes that prevent any exploration, causing the agent to crash immediately rather than attempt to approach the pad
+- **L6**: The generated-private gap >1000 suggests fundamental misalignment - likely the evaluator uses a different state representation or success metric that the reward function doesn't capture at all
+- **L7**: A single candidate generation cannot diagnose coefficient sensitivity - need multiple candidates with different scales to find the right balance
+
+## Recent environment lessons
+- failure_mode: Use nonlinear scaling such as -10*distance^2 or -5*velocity^2 to create stronger gradients near the goal and weaker gradients far away, making it easier for the agent to learn to approach the pad and slow down.
+- failure_mode: Add a large negative reward (e.g., -100) when done is true and landing conditions are not met, to strongly discourage crashing.
+- failure_mode: Use black-box selection feedback to iteratively reduce the generated/private mismatch. Adjust component weights or add missing signals (e.g., progress shaping) that better match the evaluator's criteria.
+- failure_mode: Either increase the engine penalty significantly (e.g., -1.0 per main engine use) or use a continuous fuel consumption model based on action magnitude to create a stronger disincentive for wasteful engine use.
+- general: Increase the number of candidates per generation to at least 3-5 to encourage exploration of different reward structures and provide a basis for selection and mutation.
+- failure_mode: Use linear penalties (e.g., -2*distance, -1*velocity) or squared penalties with coefficients ≤1 to avoid dominating the reward landscape. Combine with a progress bonus to create a smooth gradient toward the goal.
+- failure_mode: Increase the landing bonus to at least +300 and reduce the crash penalty to -50 or lower. Better yet, use a continuous landing bonus that scales with proximity to the ideal landing state, and ensure the total positive reward for a successful landing outweighs the accumulated negative per-step penalties.
+- failure_mode: Add dense shaping rewards that track progress toward the goal: reward reductions in distance to the pad, reductions in velocity magnitude, and maintaining upright orientation. Remove or drastically reduce per-step penalties that are not aligned with the evaluator's criteria. Use black-box selection feedback to iteratively reduce the gap.
+- mutation_rule: Generate at least 3-5 candidates per generation, systematically varying key coefficients (penalty scales, terminal reward magnitudes, threshold values) to explore the reward design space and identify effective parameter ranges.
+- general: Ensure that terminal penalties and bonuses provide differential feedback across episodes. If the agent always crashes, reduce the crash penalty magnitude and focus on improving the per-step shaping to guide the agent toward successful landings. A terminal signal that never fires positively is not useful for learning.
+- general: Normalize component scales so that no single component dominates. Use diagnostic component returns to identify imbalances, and adjust coefficients so that each component contributes meaningfully to the total reward (within roughly the same order of magnitude).
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_1c0f250335] type=component_imbalance, confidence=0.8, condition=engine_usage_penalty is 0.0 in diagnostics, indicating the agent almost never fires the main engine (action==2), recommendation=Redesign the reward to encourage engine use for maneuvering, e.g., give a small positive reward for reducing distance or velocity when the engine fires, or remove the engine penalty and instead rely on distance/velocity shaping.
+- [candidate_450a2db44f] type=reward_pattern, confidence=0.75, condition=generated_return (-100.99) is higher than private_eval_return (-107.31) by 6.33, indicating a mismatch between the reward function and the hidden evaluator, recommendation=Use black-box selection feedback to adjust component weights or add shaping rewards that better match the private evaluator's implicit priorities, e.g., reward reducing distance and velocity simultaneously.
+- [candidate_77ab076dcc] type=mutation_rule, confidence=0.7, condition=action is discrete (value 2 for main engine) and engine_usage_penalty is tied to a specific action value, recommendation=When mutating, replace action==2 with a more general condition like 'action > threshold' if the action space is continuous, or use action magnitude if discrete actions represent throttle levels.
+- [candidate_282d0159d0] type=reward_pattern, confidence=0.9, condition=Candidate uses squared penalties with high coefficients (distance: -10*distance^2, velocity: -5*velocity^2) and a large terminal reward (150) plus a crash penalty (-100), recommendation=Reduce the coefficients of distance and velocity penalties (e.g., -1.0*distance instead of -10.0*distance^2) and increase the terminal reward to at least 200 to better balance the reward components and reduce the generated/private gap.
+- [candidate_90432d7a8c] type=failure_mode, confidence=0.85, condition=Candidate uses squared penalties with high coefficients, recommendation=Use linear penalties with moderate coefficients (e.g., -1.0*distance) to provide smoother gradients and avoid overwhelming other reward components.
+- [candidate_a302e47ed4] type=repair_rule, confidence=0.8, condition=Candidate has a large generated_private_gap (-1056.43) due to component imbalance, recommendation=Adjust component weights so that the terminal reward (or penalty) has a comparable magnitude to the sum of other penalties, reducing the generated/private mismatch.
+- [candidate_8540493b63] type=general, confidence=0.95, condition=Candidate uses next_obs to extract x, y, vx, vy, angle, left_contact, right_contact, recommendation=Continue using next_obs for state extraction in future candidates, as this approach is valid and does not cause issues.
+- [candidate_8fd12e7af1] type=failure_mode, confidence=0.75, condition=Candidate has a crash penalty (-100) and terminal reward (150) combined into one component, recommendation=Increase the terminal reward significantly (e.g., to 500) or reduce the continuous penalties to ensure the landing signal is strong enough to guide learning.
+
+Relevant environment-level lessons:
+- [environment_6ea50438ba] type=failure_mode, confidence=0.95, condition=No explicit crash penalty is included in the reward function, recommendation=Add a large negative reward (e.g., -100) when done is true and landing conditions are not met, to strongly discourage crashing.
+- [environment_7b978e6fa5] type=failure_mode, confidence=0.85, condition=Generated return and private eval return show a large gap (e.g., >5), recommendation=Use black-box selection feedback to iteratively reduce the generated/private mismatch. Adjust component weights or add missing signals (e.g., progress shaping) that better match the evaluator's criteria.
+- [environment_93a5b27099] type=failure_mode, confidence=0.8, condition=Action mean is far from 1.0 (idle) in a discrete-action environment with engine penalty, recommendation=Either increase the engine penalty significantly (e.g., -1.0 per main engine use) or use a continuous fuel consumption model based on action magnitude to create a stronger disincentive for wasteful engine use.
+- [environment_13dad86244] type=general, confidence=0.7, condition=Only one candidate is generated in a generation and it fails to produce a good policy, recommendation=Increase the number of candidates per generation to at least 3-5 to encourage exploration of different reward structures and provide a basis for selection and mutation.
+- [environment_40bed20b05] type=failure_mode, confidence=0.9, condition=Squared distance/velocity penalties with coefficients >5 are applied in a lunar-lander-like environment where the agent must navigate to a landing pad, recommendation=Use linear penalties (e.g., -2*distance, -1*velocity) or squared penalties with coefficients ≤1 to avoid dominating the reward landscape. Combine with a progress bonus to create a smooth gradient toward the goal.
+- [environment_976251321b] type=failure_mode, confidence=0.85, condition=A crash penalty of -100 and a landing bonus of +150 are used alongside large per-step negative penalties, recommendation=Increase the landing bonus to at least +300 and reduce the crash penalty to -50 or lower. Better yet, use a continuous landing bonus that scales with proximity to the ideal landing state, and ensure the total positive reward for a successful landing outweighs the accumulated negative per-step penalties.
+- [environment_e3e69d60e6] type=failure_mode, confidence=0.9, condition=The generated-private return gap exceeds 1000 (-1056.43) in a lunar-lander-like environment, recommendation=Add dense shaping rewards that track progress toward the goal: reward reductions in distance to the pad, reductions in velocity magnitude, and maintaining upright orientation. Remove or drastically reduce per-step penalties that are not aligned with the evaluator's criteria. Use black-box selection feedback to iteratively reduce the gap.
+- [environment_c8134b2eee] type=mutation_rule, confidence=0.95, condition=Only one candidate is generated from a parent reward function that already has poor performance, recommendation=Generate at least 3-5 candidates per generation, systematically varying key coefficients (penalty scales, terminal reward magnitudes, threshold values) to explore the reward design space and identify effective parameter ranges.
+- [environment_e241a7f901] type=general, confidence=0.85, condition=A reward function includes a crash penalty that fires in every episode and a terminal bonus that is never achieved, recommendation=Ensure that terminal penalties and bonuses provide differential feedback across episodes. If the agent always crashes, reduce the crash penalty magnitude and focus on improving the per-step shaping to guide the agent toward successful landings. A terminal signal that never fires positively is not useful for learning.
+- [environment_11fc29d972] type=general, confidence=0.9, condition=Component returns show one or two components dominating the total reward by an order of magnitude or more, recommendation=Normalize component scales so that no single component dominates. Use diagnostic component returns to identify imbalances, and adjust coefficients so that each component contributes meaningfully to the total reward (within roughly the same order of magnitude).
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

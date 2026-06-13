@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "component_returns show distance_penalty (-66.8) and velocity_penalty (-72.7) dominate the total reward while terminal reward is only 40.0 on average",
+    "observation": "The distance and velocity penalties are large negative values that overwhelm the terminal reward, producing a very negative total reward (-107.3) and a large generated/private gap.",
+    "explanation": "The linear combination of unnormalized penalties creates a reward landscape where the agent is heavily penalized for being far from the pad or moving, which discourages exploration and makes the rare terminal reward insufficient to compensate.",
+    "recommendation": "Normalize each component to a similar scale (e.g., using tanh or dividing by expected max values) so that distance and velocity penalties do not dominate the terminal reward, and consider increasing the terminal reward magnitude.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "terminal reward is only triggered in 40% of episodes (component_return 40.0 vs max 100.0)",
+    "observation": "The terminal reward condition is too strict (requires both legs contact, distance<0.1, angle<0.1, vy<0.1), so it is rarely achieved, providing sparse positive feedback.",
+    "explanation": "Stringent landing conditions reduce the frequency of terminal rewards, making learning slow because the agent receives little positive reinforcement for approaching the goal.",
+    "recommendation": "Relax the terminal condition, e.g., use a smaller terminal reward for partial success (like one leg contact or low speed) or use a shaping reward that gives smaller positive increments as the agent gets closer to landing.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "engine_usage_penalty is 0.0 in diagnostics, indicating the agent almost never fires the main engine (action==2)",
+    "observation": "The engine usage penalty is too low (-0.3) and the action mean is 2.01, suggesting the agent avoids the main engine entirely, likely because the distance/velocity penalties dominate.",
+    "explanation": "When penalties for being far or moving fast are very high, the agent learns to do nothing (hold position) rather than fire the engine to move toward the pad, as firing increases velocity and thus incurs larger penalties.",
+    "recommendation": "Redesign the reward to encourage engine use for maneuvering, e.g., give a small positive reward for reducing distance or velocity when the engine fires, or remove the engine penalty and instead rely on distance/velocity shaping.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "generated_return (-100.99) is higher than private_eval_return (-107.31) by 6.33, indicating a mismatch between the reward function and the hidden evaluator",
+    "observation": "The generated reward overestimates performance relative to the private evaluator, suggesting the reward components do not align with the true objective.",
+    "explanation": "The linear combination of penalties and a sparse terminal reward may reward behaviors that the private evaluator penalizes, such as staying still (low distance/velocity change but no landing) or not using the engine.",
+    "recommendation": "Use black-box selection feedback to adjust component weights or add shaping rewards that better match the private evaluator's implicit priorities, e.g., reward reducing distance and velocity simultaneously.",
+    "confidence": 0.75,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "action is discrete (value 2 for main engine) and engine_usage_penalty is tied to a specific action value",
+    "observation": "The engine usage penalty is applied only when action==2, which may not generalize if the action space interpretation changes across environments.",
+    "explanation": "Hardcoding rewards based on specific action indices makes the reward fragile to action-space changes and may not transfer to similar environments with different action mappings.",
+    "recommendation": "When mutating, replace action==2 with a more general condition like 'action > threshold' if the action space is continuous, or use action magnitude if discrete actions represent throttle levels.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  }
+]

@@ -10,7 +10,6 @@ import gymnasium as gym
 import imageio.v2 as imageio
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv
 
 from .config import RLConfig
 
@@ -57,7 +56,7 @@ def compile_reward_function(reward_code: str) -> RewardFn:
 
 class RewardFunctionWrapper(gym.Wrapper):
     """
-    EG-RSA wrapper.
+    Final EG-RSA wrapper.
 
     Policy sees the original Gym observation.
     Reward function sees public transition inputs:
@@ -106,34 +105,6 @@ class RewardFunctionWrapper(gym.Wrapper):
         return next_obs, reward, terminated, truncated, safe_info
 
 
-def _make_train_env(env_id: str, reward_code: str, rank: int):
-    """
-    Build env thunk for DummyVecEnv/SubprocVecEnv.
-
-    The reward code is compiled inside each worker process. This avoids
-    pickling dynamically exec-created function objects across processes.
-    """
-    def _init():
-        reward_fn = compile_reward_function(reward_code)
-        env = gym.make(env_id)
-        env = RewardFunctionWrapper(env, reward_fn)
-        # Avoid forcing exact seeding here; orchestrator already controls Python/NumPy seeds.
-        # For long experiments, stochasticity across vector envs is desirable.
-        return env
-
-    return _init
-
-
-def _make_vec_env(cfg: RLConfig, reward_code: str) -> VecEnv:
-    n_envs = max(1, int(cfg.n_envs))
-    env_fns = [_make_train_env(cfg.env_id, reward_code, rank=i) for i in range(n_envs)]
-
-    vec_type = str(cfg.vec_env_type).lower().strip()
-    if vec_type == "subproc" and n_envs > 1:
-        return SubprocVecEnv(env_fns, start_method="fork")
-    return DummyVecEnv(env_fns)
-
-
 class RLWorker:
     def __init__(self, cfg: RLConfig):
         self.cfg = cfg
@@ -141,21 +112,13 @@ class RLWorker:
     def train_and_eval(self, reward_code: str, ckpt_path: Path) -> dict[str, object]:
         reward_fn = compile_reward_function(reward_code)
 
-        train_env = _make_vec_env(self.cfg, reward_code)
+        train_env = RewardFunctionWrapper(gym.make(self.cfg.env_id), reward_fn)
         model = PPO(
             "MlpPolicy",
             train_env,
             verbose=0,
             learning_rate=self.cfg.learning_rate,
             gamma=self.cfg.gamma,
-            n_steps=self.cfg.n_steps,
-            batch_size=self.cfg.batch_size,
-            n_epochs=self.cfg.n_epochs,
-            gae_lambda=self.cfg.gae_lambda,
-            ent_coef=self.cfg.ent_coef,
-            clip_range=self.cfg.clip_range,
-            vf_coef=self.cfg.vf_coef,
-            max_grad_norm=self.cfg.max_grad_norm,
         )
         model.learn(total_timesteps=self.cfg.total_timesteps)
         ckpt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -215,19 +178,6 @@ class RLWorker:
                 "action_std": float(np.std(action_arr)),
                 "episode_length_mean": float(np.mean(episode_lengths)),
                 "component_returns": component_mean,
-                "ppo_n_envs": int(self.cfg.n_envs),
-                "ppo_vec_env_type": str(self.cfg.vec_env_type),
-                "ppo_total_timesteps": int(self.cfg.total_timesteps),
-                "ppo_n_steps": int(self.cfg.n_steps),
-                "ppo_batch_size": int(self.cfg.batch_size),
-                "ppo_n_epochs": int(self.cfg.n_epochs),
-                "ppo_gae_lambda": float(self.cfg.gae_lambda),
-                "ppo_gamma": float(self.cfg.gamma),
-                "ppo_ent_coef": float(self.cfg.ent_coef),
-                "ppo_learning_rate": float(self.cfg.learning_rate),
-                "ppo_clip_range": float(self.cfg.clip_range),
-                "ppo_vf_coef": float(self.cfg.vf_coef),
-                "ppo_max_grad_norm": float(self.cfg.max_grad_norm),
             },
         }
 
