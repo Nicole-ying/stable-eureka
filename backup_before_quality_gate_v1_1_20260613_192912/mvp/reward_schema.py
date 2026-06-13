@@ -170,12 +170,9 @@ def normalize_schema(raw: dict[str, Any] | None, clean_interface: dict[str, Any]
         "task_head": clean_interface.get("eureka_task_description", "")[:1000],
     }
     schema_hash = hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:10]
-
-    # Quality-gate v1.1:
-    # Schema version must reflect the final normalized component set.
-    # Do not preserve a default schema_version after LLM components are normalized,
-    # otherwise different schemas can share the same version and contaminate memory retrieval.
-    schema["schema_version"] = f"eg_rsa_reward_schema_v1_{schema_hash}"
+    schema["schema_version"] = str(schema.get("schema_version") or f"eg_rsa_reward_schema_v1_{schema_hash}")
+    if not schema["schema_version"].startswith("eg_rsa_reward_schema"):
+        schema["schema_version"] = f"eg_rsa_reward_schema_v1_{schema_hash}"
 
     return schema
 

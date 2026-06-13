@@ -4,43 +4,41 @@ env_alias: Env-90b964d9
 latest_generation: 0
 
 ## Latest reflection
-**1. What worked.**  
-- The code structure is clear and modular, breaking reward into interpretable components (distance, velocity, angle, fuel, ground contact, terminal).  
-- The agent survives for 56 steps on average (episode_length_mean=56), meaning it can hover or move without immediate crash.  
-- The generated return (−87.21) is far higher than the private eval return (−480.57), suggesting the reward function is *more optimistic* than the true hidden metric. This indicates the shaping terms are providing positive feedback that the private evaluator does not share.  
-- The terminal component correctly distinguishes success (20.0) from failure (−10.0), and the ground contact bonus (1.0) is a reasonable sparse signal.
+**Reflection for Generation 0**
 
-**2. What failed.**  
-- **Massive private eval gap**: `generated_minus_private = +393.36` means the reward function severely overestimates performance relative to the hidden evaluator. The private return is −480.57, which is extremely low.  
-- **Action mean = 3.0, action std = 0.0**: The agent always selects action 3 (likely "do nothing" or "hover" depending on action space). It never fires main engine (action 2) or uses other actions. This suggests the shaping terms discourage any movement and the agent learns a trivial policy (stay still, collect small negative rewards, avoid terminal penalties).  
-- **All component returns are negative except zero-value ones**: distance_shaping −24.9, velocity_penalty −20.2, angle_penalty −32.0, terminal −10.0. Fuel efficiency and ground contact bonus are 0 (agent never fires main engine, never both legs touch). The agent is penalized for being far from origin, moving, and being angled, but receives no positive reinforcement.  
-- **Ground contact bonus never triggers**: Both legs never contact simultaneously (left_leg, right_leg likely 0 or low). The reward for landing is sparse and conditional on a tight success check (distance < 0.15, speed < 0.1, angle < 0.1, both legs). The agent never achieves this.  
-- **Fuel penalty only applies to action 2**: Since the agent never takes action 2, fuel penalty is always 0, but the agent also never uses the engine to correct trajectory.
+**1. What worked.**
+- The reward function passed validation (no errors), compiled, and ran successfully for 76 steps per episode on average.
+- The repair attempt fixed the observation unpacking and removed non-schema components from the dictionary, which resolved the previous crash.
+- The agent used action 2 (main engine) exclusively (action_mean=2.0, action_std=0.0), suggesting the reward signal consistently favored firing the main engine rather than exploring other actions.
 
-**3. What to try next.**  
-- **Fix the action starvation**: The reward function is too punitive for movement. Reduce velocity penalty magnitude (e.g., from 0.3 to 0.05) and angle penalty magnitude (e.g., from 0.4 to 0.1). The agent must be allowed to move and correct without immediate heavy penalty.  
-- **Add positive shaping for progress**: Instead of only negative penalties, reward *reduction* in distance or angle compared to previous step. Use `next_obs` to compute delta distance and delta angle, giving small positive reward when the agent moves closer to the pad or upright.  
-- **Redesign terminal condition**: The success criteria (distance < 0.15, speed < 0.1, angle < 0.1, both legs) is too strict for early learning. Relax the success threshold (e.g., distance < 0.5, speed < 0.5, angle < 0.3) or provide intermediate rewards for partial success (e.g., both legs contact = +5 regardless of position).  
-- **Make ground contact bonus easier to achieve**: Lower leg threshold from 0.5 to 0.1 or use continuous leg contact signal (e.g., `left_leg + right_leg`). Reward any leg contact, not just both.  
-- **Encourage engine use**: Remove or reduce fuel penalty, or replace with a small positive reward for firing main engine when it helps (e.g., when moving toward pad or slowing descent).  
-- **Scale all components down**: The sum of negative components (−87) plus terminal (−10) gives −97 before clipping. The private return is −480, meaning the hidden evaluator penalizes much more harshly. Try making all shaping terms 10× smaller (e.g., distance_shaping = −0.05 * distance) to match the private scale better.
+**2. What failed.**
+- **Very poor selection score:** −504.75 indicates the agent performed far worse than random. The private eval return shows the true environment score is extremely negative.
+- **Terminal reward never achieved:** terminal component = 0.0. The landing conditions were never met (likely because the agent didn't reach the pad with low speed and upright orientation).
+- **Massive velocity penalty:** −318.56 from velocity penalty suggests the agent was moving very fast (likely accelerating downward with main engine firing constantly).
+- **Constant action policy:** action_std=0.0 means the agent always chose the same action (main engine), implying no exploration or differentiation between states. The reward function may be too flat or misleading.
+- **Fuel penalty dominated:** −38.0 from fuel efficiency (≈0.5 per step × 76 steps) shows the main engine was firing every step, which is inefficient.
+- **Distance progress penalty:** −76.4 suggests the agent drifted far from the pad over time.
+- **Generated-minus-private gap:** +57.0 indicates the reward function gave a higher (less negative) score than the true environment, meaning the shaping rewards were overly optimistic and misaligned with the true objective.
 
-**4. Which lessons seem supported or contradicted.**  
-- **Supported**:  
-  - *Sparse terminal-only rewards fail to guide exploration.* The agent never reaches the success state and learns a do-nothing policy.  
-  - *Overly aggressive negative shaping can paralyze the agent.* High velocity/angle penalties caused action std=0.  
-  - *Large gap between generated and private return indicates misaligned reward components.* The shaping terms are not valued by the hidden evaluator.
+**3. What to try next.**
+- **Redesign the reward to incentivize gentle, controlled descent** rather than constant thrust:
+  - Give positive reward for reducing velocity toward zero (especially vertical velocity) or being within a safe speed range.
+  - Reward being near the pad with low speed, not just binary terminal condition.
+- **Introduce state-dependent action shaping:** penalize main engine when already at low altitude/speed, reward side engine usage for stabilization.
+- **Soften or remove the binary terminal condition** during early training — use a dense shaping reward that smoothly increases as the agent approaches a good landing state.
+- **Reduce the magnitude of penalties** relative to positive shaping to avoid overwhelming the agent with negative signals.
+- **Add an alive bonus** or small positive reward per step to encourage longer episodes and exploration.
+- **Consider a different action representation:** currently action is a discrete scalar (0-3). The agent might benefit from a more continuous or structured action interpretation.
 
-- **Contradicted**:  
-  - *"Add ground contact bonus to encourage landing"* – In this case, the bonus threshold (both legs > 0.5) was never reached, so it provided zero guidance. The lesson should specify *easy-to-achieve* bonuses.  
-  - *"Fuel penalty prevents wasteful engine use"* – Here it prevented all engine use, which is worse. The lesson should include *careful scaling* and *conditional reward* (e.g., penalize only if engine use doesn't improve state).
-
-**Summary**: The agent is stuck in a local minimum of doing nothing. The reward function must be restructured to provide *positive* feedback for progress, reduce negative penalties, and make success conditions reachable. The private evaluator likely rewards final state quality (landing success) much more than per-step shaping, so the terminal reward should be the dominant signal, with shaping serving only as gentle guidance.
+**4. Which lessons seem supported or contradicted.**
+- **Supported:** A reward function that is purely negative with a sparse terminal bonus can cause the agent to learn a single, suboptimal action (here, constant main engine). Dense, balanced shaping is critical.
+- **Supported:** Large negative velocity penalties can dominate the reward and prevent the agent from learning to move at all (or cause it to just fire engines constantly).
+- **Contradicted (tentatively):** The idea that "any reward shaping is better than none" is contradicted here — poorly tuned shaping can be worse than a simple sparse reward because it misleads the agent.
+- **New lesson suggested:** When the agent converges to a constant action with zero variance, the reward function likely lacks discriminative power across states — it fails to differentiate good and bad behavior meaningfully.
 
 ## Recent environment lessons
-- failure_mode: Restructure reward to include positive shaping for progress (e.g., reduction in distance or angle), reduce penalty magnitudes, and relax success thresholds to be achievable during early learning.
-- reward_pattern: Ensure shaping terms are small relative to the terminal reward and directly correlate with the hidden metric; consider using delta-based positive rewards instead of static penalties.
-- failure_mode: Lower leg contact thresholds (e.g., > 0.1) or use a continuous signal (e.g., sum of leg values) to make the bonus easier to achieve; reward any leg contact initially.
-- failure_mode: Avoid penalties that implicitly discourage exploration; instead, provide small positive rewards for engine use when it improves the state (e.g., reduces distance to pad or slows descent).
-- failure_mode: Use relaxed success thresholds initially (e.g., distance<0.5, speed<0.5, angle<0.3) and gradually tighten as training progresses; or provide intermediate rewards for partial success.
-- general: Ensure at least one component provides positive reward for desirable behavior (e.g., progress toward goal, leg contact, successful steps); balance positive and negative signals to drive exploration.
+- failure_mode: Redesign reward to include dense, balanced shaping signals that smoothly guide the agent toward desired behavior: positive rewards for reducing velocity, approaching the pad, and maintaining stability. Avoid large-magnitude penalties that dominate the total reward. Use state-dependent shaping to differentiate good and bad actions across different states.
+- failure_mode: Replace or supplement the binary terminal condition with a dense shaping reward that smoothly increases as the agent approaches a good landing state. For example, use a continuous function of distance to pad, velocity magnitude, and angle that gives partial credit for improvement. Only add a small terminal bonus as an extra incentive once the agent can consistently reach near-landing states.
+- reward_pattern: Validate shaping rewards against the private evaluator's signal. Ensure that actions that improve the shaping reward also improve the true objective. Consider using the private evaluator's reward as a reference to calibrate shaping components, or reduce reliance on complex shaping in favor of simpler, more aligned signals.
+- prompt_rule: Ensure the reward function provides distinct, informative feedback for different actions in different states. Introduce state-dependent shaping that penalizes main engine use when the agent is already at low altitude or high speed, and rewards side engine use for stabilization. Consider adding exploration bonuses or noise to the action selection process. The reward should clearly differentiate between good and bad behaviors across the state space.
+- general: Include at least one positive per-step reward component (e.g., alive bonus, progress reward, stability bonus) to provide a baseline positive signal. Balance positive and negative components so that good behavior yields net positive reward while bad behavior yields net negative reward. This gives the agent a clear optimization target and encourages exploration.

@@ -1,61 +1,50 @@
 def compute_reward(obs, action, next_obs, done, info):
-    # Extract observations
-    x, y = obs[0], obs[1]
-    x_vel, y_vel = obs[2], obs[3]
-    angle = obs[4]
-    ang_vel = obs[5]
-    left_leg = obs[6]
-    right_leg = obs[7]
-
-    # Extract next_obs for terminal check
-    nx, ny = next_obs[0], next_obs[1]
-    nx_vel, ny_vel = next_obs[2], next_obs[3]
-    nleft_leg = next_obs[6]
-    nright_leg = next_obs[7]
-
-    # 1. Distance shaping: encourage moving closer to pad (0,0)
-    distance = np.sqrt(x**2 + y**2)
-    distance_shaping = -0.5 * distance  # linear penalty, scaled modestly
-
-    # 2. Velocity penalty: penalize high speed, especially vertical
-    speed = np.sqrt(x_vel**2 + y_vel**2)
-    vel_penalty = -0.3 * speed - 0.8 * max(y_vel, 0.0)  # extra penalty for upward velocity
-
-    # 3. Angle penalty: penalize deviation from upright
-    angle_penalty = -0.4 * abs(angle) - 0.1 * abs(ang_vel)
-
-    # 4. Fuel efficiency: penalize main engine use (action == 2)
-    fuel_penalty = -0.2 if action == 2 else 0.0
-
-    # 5. Ground contact bonus: reward when both legs touch
-    ground_bonus = 1.0 if (left_leg > 0.5 and right_leg > 0.5) else 0.0
-
-    # 6. Terminal component: large reward for success, large penalty for failure
-    terminal = 0.0
-    if done:
-        # Check if landing was successful: both legs contact, near pad, low velocity
-        both_legs = (nleft_leg > 0.5 and nright_leg > 0.5)
-        near_pad = np.sqrt(nx**2 + ny**2) < 0.15
-        low_speed = np.sqrt(nx_vel**2 + ny_vel**2) < 0.1
-        good_angle = abs(angle) < 0.1
-        if both_legs and near_pad and low_speed and good_angle:
-            terminal = 20.0  # successful landing
-        else:
-            terminal = -10.0  # crash or out-of-bounds
-
-    # Sum all components
-    total_reward = distance_shaping + vel_penalty + angle_penalty + fuel_penalty + ground_bonus + terminal
-
-    # Clip to reasonable bounds
-    total_reward = max(min(total_reward, 100.0), -100.0)
-
+    # Unpack observations
+    x, y, vx, vy, angle, angular_vel, left_leg, right_leg = next_obs
+    
+    # Extract engine usage from action
+    main_engine = 1.0 if action == 2 else 0.0
+    side_engine = 1.0 if action in [1, 3] else 0.0
+    
+    # Terminal component: safe landing at pad
+    at_pad_x = abs(x) < 0.1
+    at_pad_y = abs(y) < 0.1
+    both_legs_grounded = (left_leg > 0.5) and (right_leg > 0.5)
+    low_speed = (abs(vx) < 0.1) and (abs(vy) < 0.1)
+    stable_angle = abs(angle) < 0.1
+    landing_conditions = at_pad_x and at_pad_y and both_legs_grounded and low_speed and stable_angle
+    
+    terminal_reward = 100.0 if landing_conditions else 0.0
+    
+    # Velocity penalty: penalize high speeds, especially vertical
+    vel_penalty = -1.5 * (vx**2 + vy**2)
+    
+    # Angle penalty: penalize tilt and spin
+    angle_penalty = -2.0 * (angle**2 + angular_vel**2)
+    
+    # Fuel efficiency: penalize engine usage
+    fuel_penalty = -0.5 * main_engine - 0.2 * side_engine
+    
+    # Distance progress: guide toward pad (x=0, y=0)
+    # y is already normalized relative to helipad, so target y is 0
+    dist_to_pad = np.sqrt(x**2 + y**2)
+    distance_penalty = -0.5 * dist_to_pad
+    
+    # Additional shaping: encourage being close to pad with legs down
+    # Small bonus for having legs grounded near pad
+    near_pad = dist_to_pad < 0.3
+    legs_bonus = 0.5 * (left_leg + right_leg) if near_pad else 0.0
+    
+    # Combine all components
+    total_reward = terminal_reward + vel_penalty + angle_penalty + fuel_penalty + distance_penalty + legs_bonus
+    
     components = {
-        "distance_shaping": distance_shaping,
-        "velocity_penalty": vel_penalty,
-        "angle_penalty": angle_penalty,
-        "fuel_efficiency": fuel_penalty,
-        "ground_contact_bonus": ground_bonus,
-        "terminal": terminal,
+        'terminal': terminal_reward,
+        'velocity_penalty': vel_penalty,
+        'angle_penalty': angle_penalty,
+        'fuel_efficiency': fuel_penalty,
+        'distance_progress': distance_penalty,
+        'legs_bonus': legs_bonus
     }
-
+    
     return float(total_reward), components

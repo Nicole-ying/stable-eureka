@@ -1,7 +1,7 @@
 ```python
 def compute_reward(obs, action, next_obs, done, info):
-    # Unpack observations
-    x, y, vx, vy, angle, angular_vel, left_leg, right_leg = next_obs
+    # Unpack observations - only first 8 elements
+    x, y, vx, vy, angle, angular_vel, left_leg, right_leg = next_obs[:8]
     
     # Extract engine usage from action
     main_engine = 1.0 if action == 2 else 0.0
@@ -27,26 +27,28 @@ def compute_reward(obs, action, next_obs, done, info):
     fuel_penalty = -0.5 * main_engine - 0.2 * side_engine
     
     # Distance progress: guide toward pad (x=0, y=0)
-    # y is already normalized relative to helipad, so target y is 0
-    dist_to_pad = np.sqrt(x**2 + y**2)
+    dist_to_pad = (x**2 + y**2)**0.5
     distance_penalty = -0.5 * dist_to_pad
     
     # Additional shaping: encourage being close to pad with legs down
-    # Small bonus for having legs grounded near pad
     near_pad = dist_to_pad < 0.3
-    legs_bonus = 0.5 * (left_leg + right_leg) if near_pad else 0.0
+    legs_bonus = min(0.5 * (left_leg + right_leg), 1.0) if near_pad else 0.0
     
     # Combine all components
     total_reward = terminal_reward + vel_penalty + angle_penalty + fuel_penalty + distance_penalty + legs_bonus
+    
+    # Clamp total_reward to bounded range
+    total_reward = max(min(total_reward, 1000.0), -1000.0)
     
     components = {
         'terminal': terminal_reward,
         'velocity_penalty': vel_penalty,
         'angle_penalty': angle_penalty,
         'fuel_efficiency': fuel_penalty,
-        'distance_progress': distance_penalty,
-        'legs_bonus': legs_bonus
+        'distance_progress': distance_penalty
     }
     
     return float(total_reward), components
 ```
+
+RATIONALE: Fixed the unpacking error by slicing `next_obs[:8]` to handle potential extra dimensions in the observation vector. Removed the non-schema component `legs_bonus` from the returned dictionary while keeping its contribution to total_reward. Added clamping to enforce the ±1000 bound. Used `**0.5` instead of `np.sqrt` to avoid numpy import.

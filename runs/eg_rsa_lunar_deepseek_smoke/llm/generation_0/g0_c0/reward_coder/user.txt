@@ -196,73 +196,67 @@ def step(self, action):
 
 
 Environment understanding:
-Here is the environment understanding report based on the provided files.
-
 ## Environment Understanding Report
 
 ### Task Goal
-The agent must land a lunar lander on a designated landing pad at coordinates (0,0) as quickly as possible while minimizing fuel consumption. The lander starts at the top center of the viewport with random initial forces.
+The lander must land safely on the landing pad at coordinates (0,0) as quickly as possible while minimizing fuel consumption. The lander starts at the top center of the viewport with random initial force.
 
-### Observations (8-dimensional)
-The observation vector `state` contains:
-1. x-coordinate (normalized)
-2. y-coordinate (normalized)
-3. x-velocity (normalized)
-4. y-velocity (normalized)
-5. Angle of the lander
-6. Angular velocity (scaled)
-7. Left leg ground contact (1.0 if contact, else 0.0)
-8. Right leg ground contact (1.0 if contact, else 0.0)
+### Observations (8-dimensional vector)
+1. **x-coordinate**: Normalized horizontal position of lander center
+2. **y-coordinate**: Normalized vertical position relative to helipad
+3. **x-velocity**: Normalized horizontal velocity
+4. **y-velocity**: Normalized vertical velocity
+5. **angle**: Current angle of the lander
+6. **angular velocity**: Scaled angular velocity
+7. **left leg contact**: Boolean (1.0 if left leg touches ground)
+8. **right leg contact**: Boolean (1.0 if right leg touches ground)
 
-### Actions (Discrete)
-- 0: Do nothing
-- 1: Fire left orientation engine
-- 2: Fire main engine
-- 3: Fire right orientation engine
+### Actions (Discrete, 4 options)
+- **0**: Do nothing
+- **1**: Fire left orientation engine
+- **2**: Fire main engine (full throttle)
+- **3**: Fire right orientation engine
 
 ### Termination Conditions
-The episode ends if:
-1. The lander crashes (body contacts the moon surface)
-2. The lander goes outside the viewport (x-coordinate absolute value >= 1.0)
-3. The lander is not awake
+1. Lander crashes (body contacts moon surface)
+2. Lander goes outside viewport (|x-coordinate| >= 1.0)
+3. Lander is not awake (physics simulation stops)
 
 ### Reward Function Visible Inputs
-The reward function will receive:
-- `obs`: The 8-dimensional state vector
-- `action`: The discrete action taken (0-3)
-- `next_obs`: The resulting state (if available)
-- `done`: Boolean termination flag
-- `info`: Dictionary containing additional information
+The reward function receives only: `state`, `m_power`, `s_power`, `terminated`
+
+Where:
+- `state` = 8-dimensional observation vector described above
+- `m_power` = main engine power (0.0 or 1.0 for discrete)
+- `s_power` = side engine power (0.0 or 1.0 for discrete)
+- `terminated` = boolean termination flag
 
 ### Inferable Public Quantities
-From the observations alone, you can infer:
-- Position relative to landing pad (from x,y coordinates)
-- Velocity magnitude and direction
-- Angular orientation and spin
-- Ground contact status (both legs)
-- Whether the lander is upright or tilted
-- Whether the lander is moving toward or away from the pad
+- Fuel usage can be inferred from `m_power` and `s_power` values
+- Landing success can be inferred from leg contact booleans and position near (0,0)
+- Speed/velocity components are directly observable
+- Angle and angular velocity are directly observable
 
 ### Risks
-- The reward function should not access internal variables like `m_power`, `s_power`, or engine-specific parameters that are not part of the observation/action interface
-- Fuel is infinite, so fuel minimization must be inferred from action patterns (firing main engine = action 2)
-- Wind and turbulence effects are present but not directly observable in the state vector
-- The dispersion/randomness in engine impulses means exact physics outcomes are stochastic
+1. **Hardware-specific constants**: The reward uses internal physics constants (SCALE, FPS, engine locations) that may not be directly accessible
+2. **Wind/turbulence**: Applied randomly when not in ground contact, affecting trajectory unpredictably
+3. **Engine dispersion**: Random noise in engine impulse direction (±1/SCALE) makes precise control challenging
+4. **Normalized coordinates**: The state is normalized differently from raw physics coordinates, requiring careful interpretation
 
 ```json
 {
-  "task_goal": "Land the lunar lander on the landing pad at coordinates (0,0) as quickly as possible with minimal fuel usage",
-  "observations": "8-dimensional vector: [x_pos, y_pos, x_vel, y_vel, angle, angular_vel, left_leg_contact, right_leg_contact]",
-  "actions": "Discrete: 0=do nothing, 1=fire left orientation engine, 2=fire main engine, 3=fire right orientation engine",
-  "termination": "Crashes (body contacts ground), goes outside viewport (|x|>=1.0), or lander becomes not awake",
-  "public_reward_design_variables": "obs, action, next_obs, done, info (all available from step function output)",
-  "risks": "Cannot access internal engine power variables (m_power, s_power) or physics simulation internals; fuel minimization must be inferred from action patterns; wind/turbulence effects are not directly observable"
+  "task_goal": "Land the rocket safely on the landing pad at coordinates (0,0) as quickly as possible while minimizing fuel consumption",
+  "observations": "8-dimensional vector: [x_position, y_position, x_velocity, y_velocity, angle, angular_velocity, left_leg_contact, right_leg_contact]",
+  "actions": "Discrete 0-3: 0=do nothing, 1=fire left orientation engine, 2=fire main engine, 3=fire right orientation engine",
+  "termination": "1) Lander crashes (body contacts moon), 2) |x-coordinate| >= 1.0 (outside viewport), 3) Lander not awake",
+  "public_reward_design_variables": "state (8-dim observation), m_power (main engine power 0.0 or 1.0), s_power (side engine power 0.0 or 1.0), terminated (boolean)",
+  "risks": "1) Internal physics constants not directly accessible, 2) Random wind/turbulence when airborne, 3) Random engine dispersion (±1/SCALE), 4) Normalized state coordinates differ from raw physics coordinates"
 }
 ```
 
 Reward schema:
 {
-  "schema_version": "eg_rsa_reward_schema_v1_f401f4f018",
+  "schema_version": "eg_rsa_reward_schema_v1_3e115df94a",
   "env_alias": "Env-90b964d9",
   "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
   "return_contract": "return float(total_reward), components_dict",
@@ -276,39 +270,33 @@ Reward schema:
   "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
   "components": [
     {
-      "id": "distance_shaping",
-      "description": "Negative distance from the lander's position (x,y) to the landing pad (0,0). Encourage moving closer to the pad.",
+      "id": "terminal",
+      "description": "A large positive reward when the lander is at the pad (|x|<0.1, y near 0) with both legs grounded and low velocity. Encourages safe landing.",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "velocity_penalty",
-      "description": "Penalize high absolute velocity (especially vertical velocity) to encourage soft landing.",
-      "direction": "maximize",
+      "description": "Penalizes high horizontal and vertical velocities, especially near ground. Helps prevent crashes.",
+      "direction": "minimize",
       "required": true
     },
     {
       "id": "angle_penalty",
-      "description": "Penalize deviation from upright orientation (angle close to 0) to encourage stable landing.",
-      "direction": "maximize",
+      "description": "Penalizes large tilt angles and high angular velocity. Encourages upright orientation.",
+      "direction": "minimize",
       "required": true
     },
     {
       "id": "fuel_efficiency",
-      "description": "Penalize firing the main engine (action==2) to encourage fuel-efficient trajectories.",
-      "direction": "maximize",
+      "description": "Penalizes use of main engine (action==2) and side engines (action==1 or 3) to minimize fuel consumption.",
+      "direction": "minimize",
       "required": true
     },
     {
-      "id": "ground_contact_bonus",
-      "description": "Reward both legs touching the ground (leg contact booleans) to indicate successful landing posture.",
-      "direction": "maximize",
-      "required": true
-    },
-    {
-      "id": "terminal",
-      "description": "Large positive reward for successful landing (both legs contact, low velocity, near pad) and large negative penalty for crashing or out-of-bounds.",
-      "direction": "maximize",
+      "id": "distance_progress",
+      "description": "Shaped reward that decreases as the lander gets closer to the pad (x=0, y=0). Guides the lander toward the target.",
+      "direction": "minimize",
       "required": true
     }
   ],
@@ -318,24 +306,24 @@ Reward schema:
 Search plan:
 ## Search Plan for Reward Generation
 
-1. **Initialize with baseline components**: Use the six components defined in the schema. For each component, define candidate functional forms (linear, quadratic, exponential, clipped) and scaling factors.
+### Objective
+Design a reward function for the LunarLander environment that encourages fast, fuel-efficient, and stable landings at the pad (0,0). The reward must be computed solely from `state`, `m_power`, `s_power`, and `terminated`.
 
-2. **Generate variations**: For each component, create 3-5 variants by:
-   - Adjusting the functional form (e.g., `-distance`, `-distance^2`, `-exp(distance)`)
-   - Tuning the coefficient magnitude to balance component scales (target: each component contributes roughly 0.1 to 10 per step)
-   - Adding clipping or thresholds (e.g., only penalize velocity above a threshold)
+### Approach
+1. **Component Design**: Use the five components defined in the schema: landing_bonus, velocity_penalty, angle_penalty, fuel_efficiency, and distance_progress. Each component will be a function of the observable variables.
+2. **Initial Coefficients**: Start with simple linear or quadratic penalties with hand-tuned weights. For example:
+   - landing_bonus: +100 if conditions met, else 0.
+   - velocity_penalty: -k1*|vx| - k2*|vy|.
+   - angle_penalty: -k3*|angle| - k4*|angular_vel|.
+   - fuel_efficiency: -k5*(m_power + s_power).
+   - distance_progress: -k6*sqrt(x^2 + y^2).
+3. **Iterative Tuning**: Run simulations to observe behavior and adjust weights to balance trade-offs (e.g., prevent hovering vs. crashing).
+4. **Normalization**: Scale components to have comparable magnitudes (order of 1-10) to avoid dominance.
+5. **Terminal Condition**: The landing_bonus is the terminal-shaping component; no separate terminal penalty is needed.
+6. **Testing**: Evaluate on multiple random seeds to ensure robustness to wind and initial conditions.
 
-3. **Combine components**: Assemble full reward functions by selecting one variant per component. Use additive combination with optional multiplicative gating (e.g., only apply angle penalty when in air).
-
-4. **Evaluate candidate rewards**: For each candidate reward function, run a short training (e.g., 50k steps) with a simple RL algorithm (e.g., PPO). Track:
-   - Episodic return
-   - Landing success rate
-   - Average fuel consumption
-   - Crash rate
-
-5. **Iterate**: Based on evaluation, refine component forms and coefficients. Re-run top candidates with longer training (e.g., 200k steps). Select the best-performing reward function.
-
-6. **Final validation**: Test the chosen reward on multiple random seeds to ensure robustness. Report the final reward function and its performance metrics.
+### Expected Outcome
+A reward function that yields stable landings with low fuel usage and minimal episode length.
 
 Feedback context:
 No prior generation feedback.

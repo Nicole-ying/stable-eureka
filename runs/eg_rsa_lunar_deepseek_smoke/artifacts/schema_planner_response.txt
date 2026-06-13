@@ -2,43 +2,37 @@
   "reward_schema": {
     "components": [
       {
-        "id": "distance_shaping",
-        "description": "Negative distance from the lander's position (x,y) to the landing pad (0,0). Encourage moving closer to the pad.",
+        "id": "landing_bonus",
+        "description": "A large positive reward when the lander is at the pad (|x|<0.1, y near 0) with both legs grounded and low velocity. Encourages safe landing.",
         "direction": "maximize",
         "required": true
       },
       {
         "id": "velocity_penalty",
-        "description": "Penalize high absolute velocity (especially vertical velocity) to encourage soft landing.",
-        "direction": "maximize",
+        "description": "Penalizes high horizontal and vertical velocities, especially near ground. Helps prevent crashes.",
+        "direction": "minimize",
         "required": true
       },
       {
         "id": "angle_penalty",
-        "description": "Penalize deviation from upright orientation (angle close to 0) to encourage stable landing.",
-        "direction": "maximize",
+        "description": "Penalizes large tilt angles and high angular velocity. Encourages upright orientation.",
+        "direction": "minimize",
         "required": true
       },
       {
         "id": "fuel_efficiency",
-        "description": "Penalize firing the main engine (action==2) to encourage fuel-efficient trajectories.",
-        "direction": "maximize",
+        "description": "Penalizes use of main engine (action==2) and side engines (action==1 or 3) to minimize fuel consumption.",
+        "direction": "minimize",
         "required": true
       },
       {
-        "id": "ground_contact_bonus",
-        "description": "Reward both legs touching the ground (leg contact booleans) to indicate successful landing posture.",
-        "direction": "maximize",
-        "required": true
-      },
-      {
-        "id": "terminal_outcome",
-        "description": "Large positive reward for successful landing (both legs contact, low velocity, near pad) and large negative penalty for crashing or out-of-bounds.",
-        "direction": "maximize",
+        "id": "distance_progress",
+        "description": "Shaped reward that decreases as the lander gets closer to the pad (x=0, y=0). Guides the lander toward the target.",
+        "direction": "minimize",
         "required": true
       }
     ],
     "reward_abs_bound": 1000.0
   },
-  "search_plan": "## Search Plan for Reward Generation\n\n1. **Initialize with baseline components**: Use the six components defined in the schema. For each component, define candidate functional forms (linear, quadratic, exponential, clipped) and scaling factors.\n\n2. **Generate variations**: For each component, create 3-5 variants by:\n   - Adjusting the functional form (e.g., `-distance`, `-distance^2`, `-exp(distance)`)\n   - Tuning the coefficient magnitude to balance component scales (target: each component contributes roughly 0.1 to 10 per step)\n   - Adding clipping or thresholds (e.g., only penalize velocity above a threshold)\n\n3. **Combine components**: Assemble full reward functions by selecting one variant per component. Use additive combination with optional multiplicative gating (e.g., only apply angle penalty when in air).\n\n4. **Evaluate candidate rewards**: For each candidate reward function, run a short training (e.g., 50k steps) with a simple RL algorithm (e.g., PPO). Track:\n   - Episodic return\n   - Landing success rate\n   - Average fuel consumption\n   - Crash rate\n\n5. **Iterate**: Based on evaluation, refine component forms and coefficients. Re-run top candidates with longer training (e.g., 200k steps). Select the best-performing reward function.\n\n6. **Final validation**: Test the chosen reward on multiple random seeds to ensure robustness. Report the final reward function and its performance metrics."
+  "search_plan": "## Search Plan for Reward Generation\n\n### Objective\nDesign a reward function for the LunarLander environment that encourages fast, fuel-efficient, and stable landings at the pad (0,0). The reward must be computed solely from `state`, `m_power`, `s_power`, and `terminated`.\n\n### Approach\n1. **Component Design**: Use the five components defined in the schema: landing_bonus, velocity_penalty, angle_penalty, fuel_efficiency, and distance_progress. Each component will be a function of the observable variables.\n2. **Initial Coefficients**: Start with simple linear or quadratic penalties with hand-tuned weights. For example:\n   - landing_bonus: +100 if conditions met, else 0.\n   - velocity_penalty: -k1*|vx| - k2*|vy|.\n   - angle_penalty: -k3*|angle| - k4*|angular_vel|.\n   - fuel_efficiency: -k5*(m_power + s_power).\n   - distance_progress: -k6*sqrt(x^2 + y^2).\n3. **Iterative Tuning**: Run simulations to observe behavior and adjust weights to balance trade-offs (e.g., prevent hovering vs. crashing).\n4. **Normalization**: Scale components to have comparable magnitudes (order of 1-10) to avoid dominance.\n5. **Terminal Condition**: The landing_bonus is the terminal-shaping component; no separate terminal penalty is needed.\n6. **Testing**: Evaluate on multiple random seeds to ensure robustness to wind and initial conditions.\n\n### Expected Outcome\nA reward function that yields stable landings with low fuel usage and minimal episode length."
 }

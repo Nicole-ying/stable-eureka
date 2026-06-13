@@ -1,20 +1,20 @@
 ## Search Plan for Reward Generation
 
-1. **Initialize with baseline components**: Use the six components defined in the schema. For each component, define candidate functional forms (linear, quadratic, exponential, clipped) and scaling factors.
+### Objective
+Design a reward function for the LunarLander environment that encourages fast, fuel-efficient, and stable landings at the pad (0,0). The reward must be computed solely from `state`, `m_power`, `s_power`, and `terminated`.
 
-2. **Generate variations**: For each component, create 3-5 variants by:
-   - Adjusting the functional form (e.g., `-distance`, `-distance^2`, `-exp(distance)`)
-   - Tuning the coefficient magnitude to balance component scales (target: each component contributes roughly 0.1 to 10 per step)
-   - Adding clipping or thresholds (e.g., only penalize velocity above a threshold)
+### Approach
+1. **Component Design**: Use the five components defined in the schema: landing_bonus, velocity_penalty, angle_penalty, fuel_efficiency, and distance_progress. Each component will be a function of the observable variables.
+2. **Initial Coefficients**: Start with simple linear or quadratic penalties with hand-tuned weights. For example:
+   - landing_bonus: +100 if conditions met, else 0.
+   - velocity_penalty: -k1*|vx| - k2*|vy|.
+   - angle_penalty: -k3*|angle| - k4*|angular_vel|.
+   - fuel_efficiency: -k5*(m_power + s_power).
+   - distance_progress: -k6*sqrt(x^2 + y^2).
+3. **Iterative Tuning**: Run simulations to observe behavior and adjust weights to balance trade-offs (e.g., prevent hovering vs. crashing).
+4. **Normalization**: Scale components to have comparable magnitudes (order of 1-10) to avoid dominance.
+5. **Terminal Condition**: The landing_bonus is the terminal-shaping component; no separate terminal penalty is needed.
+6. **Testing**: Evaluate on multiple random seeds to ensure robustness to wind and initial conditions.
 
-3. **Combine components**: Assemble full reward functions by selecting one variant per component. Use additive combination with optional multiplicative gating (e.g., only apply angle penalty when in air).
-
-4. **Evaluate candidate rewards**: For each candidate reward function, run a short training (e.g., 50k steps) with a simple RL algorithm (e.g., PPO). Track:
-   - Episodic return
-   - Landing success rate
-   - Average fuel consumption
-   - Crash rate
-
-5. **Iterate**: Based on evaluation, refine component forms and coefficients. Re-run top candidates with longer training (e.g., 200k steps). Select the best-performing reward function.
-
-6. **Final validation**: Test the chosen reward on multiple random seeds to ensure robustness. Report the final reward function and its performance metrics.
+### Expected Outcome
+A reward function that yields stable landings with low fuel usage and minimal episode length.

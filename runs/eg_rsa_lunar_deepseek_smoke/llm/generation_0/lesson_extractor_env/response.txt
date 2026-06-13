@@ -1,57 +1,49 @@
+```json
 [
   {
     "lesson_type": "failure_mode",
-    "condition": "All shaping terms are negative penalties and terminal reward is sparse and hard to achieve",
-    "observation": "Agent action mean=3.0, std=0.0; it never fires the main engine, never achieves ground contact, and all component returns are negative; episode length 56 steps, private return -480.57.",
-    "explanation": "The reward function punished movement (velocity, angle, distance) and offered no positive reinforcement for progress; the only positive rewards (ground contact +1, terminal +20) were never reached. The agent learned a trivial do-nothing policy to minimize penalties.",
-    "recommendation": "Restructure reward to include positive shaping for progress (e.g., reduction in distance or angle), reduce penalty magnitudes, and relax success thresholds to be achievable during early learning.",
+    "condition": "Reward function has large negative penalties (velocity, distance) combined with a sparse terminal bonus",
+    "observation": "Agent converged to constant action (main engine only) with zero variance, terminal reward never achieved, total reward extremely negative (-504.75), velocity penalty dominated (-318.56), fuel penalty high (-38.0), and distance penalty large (-76.41).",
+    "explanation": "The reward function's large negative penalties overwhelmed any positive signal, and the sparse terminal bonus was never reached. This created a flat reward landscape where the agent found a single suboptimal action (constant main engine) that minimized immediate penalties without any incentive to explore more beneficial behaviors.",
+    "recommendation": "Redesign reward to include dense, balanced shaping signals that smoothly guide the agent toward desired behavior: positive rewards for reducing velocity, approaching the pad, and maintaining stability. Avoid large-magnitude penalties that dominate the total reward. Use state-dependent shaping to differentiate good and bad actions across different states.",
     "confidence": 0.95,
-    "reuse_policy": "global"
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Reward function contains a binary terminal condition with strict thresholds for landing",
+    "observation": "Terminal reward component was 0.0 throughout the episode, indicating landing conditions (at pad, low speed, stable angle, legs grounded) were never met, despite the agent surviving 76 steps.",
+    "explanation": "The terminal condition required simultaneous satisfaction of multiple strict thresholds (position <0.1, velocity <0.1, angle <0.1, legs >0.5). This sparse, all-or-nothing reward provides no intermediate feedback, making it nearly impossible for a randomly initialized policy to discover the correct landing behavior.",
+    "recommendation": "Replace or supplement the binary terminal condition with a dense shaping reward that smoothly increases as the agent approaches a good landing state. For example, use a continuous function of distance to pad, velocity magnitude, and angle that gives partial credit for improvement. Only add a small terminal bonus as an extra incentive once the agent can consistently reach near-landing states.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "reward_pattern",
-    "condition": "Large generated-minus-private gap (>100) observed in a single candidate",
-    "observation": "Generated return -87.21, private return -480.57, gap +393.36; agent learned a policy that looks good under the shaping terms but performs terribly on the hidden evaluator.",
-    "observation": "The shaping components (distance, velocity, angle penalties) provided a reward signal that was not aligned with the true objective; the agent exploited the mismatch by doing nothing.",
-    "explanation": "The shaping components (distance, velocity, angle penalties) provided a reward signal that was not aligned with the true objective; the agent exploited the mismatch by doing nothing.",
-    "recommendation": "Ensure shaping terms are small relative to the terminal reward and directly correlate with the hidden metric; consider using delta-based positive rewards instead of static penalties.",
-    "confidence": 0.9,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "Ground contact bonus requires both legs > 0.5 threshold and is never triggered",
-    "observation": "ground_contact_bonus component return = 0.0 across all episodes; agent never achieved both-leg contact.",
-    "explanation": "The threshold (both legs > 0.5) was too strict for the agent's initial behavior; the bonus provided no learning signal and was effectively absent from the reward.",
-    "recommendation": "Lower leg contact thresholds (e.g., > 0.1) or use a continuous signal (e.g., sum of leg values) to make the bonus easier to achieve; reward any leg contact initially.",
-    "confidence": 0.9,
-    "reuse_policy": "global"
-  },
-  {
-    "lesson_type": "failure_mode",
-    "condition": "Fuel penalty only applied to main engine use (action == 2)",
-    "observation": "Agent never takes action 2 (fuel penalty always 0), but also never uses engine to correct trajectory; action std=0.",
-    "explanation": "The penalty was narrowly defined and did not discourage engine use per se, but combined with other movement penalties it discouraged any action that changes state; the agent defaulted to a no-op action.",
-    "recommendation": "Avoid penalties that implicitly discourage exploration; instead, provide small positive rewards for engine use when it improves the state (e.g., reduces distance to pad or slows descent).",
+    "condition": "Reward function has a positive generated-minus-private gap (+57.0) and the agent converges to a constant action",
+    "observation": "The generated reward was 57.0 points higher (less negative) than the private evaluator's reward, indicating the shaping rewards were overly optimistic and misaligned with the true objective. The agent learned to exploit the shaping signal rather than the true task.",
+    "explanation": "When shaping rewards are not well-calibrated to the true objective, the agent can learn to maximize the shaping signal in ways that don't actually solve the task. Here, the constant main engine action produced a less negative generated reward than the private evaluator's assessment, suggesting the shaping components (velocity penalty, distance penalty) didn't properly penalize the undesired behavior.",
+    "recommendation": "Validate shaping rewards against the private evaluator's signal. Ensure that actions that improve the shaping reward also improve the true objective. Consider using the private evaluator's reward as a reference to calibrate shaping components, or reduce reliance on complex shaping in favor of simpler, more aligned signals.",
     "confidence": 0.85,
-    "reuse_policy": "global"
+    "reuse_policy": "similar_env"
   },
   {
-    "lesson_type": "failure_mode",
-    "condition": "Terminal success criteria are too strict for early learning",
-    "observation": "Terminal component return = -10.0 (failure) in all episodes; success condition (distance<0.15, speed<0.1, angle<0.1, both legs) never met.",
-    "explanation": "The agent never achieved the precise landing conditions required for the +20 reward, so the terminal signal was always a large penalty (-10), reinforcing avoidance of terminal states and encouraging the do-nothing policy.",
-    "recommendation": "Use relaxed success thresholds initially (e.g., distance<0.5, speed<0.5, angle<0.3) and gradually tighten as training progresses; or provide intermediate rewards for partial success.",
-    "confidence": 0.95,
-    "reuse_policy": "global"
+    "lesson_type": "prompt_rule",
+    "condition": "Agent exhibits action collapse (action_mean=2.0, action_std=0.0) meaning it always selects the same action",
+    "observation": "The agent always chose action 2 (main engine) with zero variance across all 76 steps, indicating a complete lack of exploration and state-dependent decision-making.",
+    "explanation": "Action collapse occurs when the reward function lacks discriminative power across different states and actions. The agent finds a single action that produces a relatively stable (though poor) reward and never deviates because any alternative action would likely produce a worse immediate penalty. This is a strong signal that the reward function is not providing meaningful gradients to guide learning.",
+    "recommendation": "Ensure the reward function provides distinct, informative feedback for different actions in different states. Introduce state-dependent shaping that penalizes main engine use when the agent is already at low altitude or high speed, and rewards side engine use for stabilization. Consider adding exploration bonuses or noise to the action selection process. The reward should clearly differentiate between good and bad behaviors across the state space.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
   },
   {
     "lesson_type": "general",
-    "condition": "All reward components are negative or zero and agent learns a do-nothing policy",
-    "observation": "Action std=0.0, episode length 56 (not truncated early), all component returns negative except zero-value ones.",
-    "explanation": "When all shaping terms are penalties and no positive reinforcement exists for progress, the optimal policy is to minimize the sum of penalties by doing nothing; this is a local minimum that blocks exploration.",
-    "recommendation": "Ensure at least one component provides positive reward for desirable behavior (e.g., progress toward goal, leg contact, successful steps); balance positive and negative signals to drive exploration.",
+    "condition": "Reward function uses only negative penalties and a sparse positive terminal bonus, with no per-step positive signal",
+    "observation": "All non-terminal components were negative penalties (velocity, angle, fuel, distance), and the terminal bonus was never achieved. The agent received only negative rewards throughout the episode, resulting in a total reward of -504.75.",
+    "explanation": "A reward function composed entirely of negative penalties with a sparse positive bonus creates a 'learned helplessness' scenario where the agent cannot distinguish between 'bad' and 'very bad' states. Without any positive reinforcement for intermediate progress, the agent has no incentive to explore or improve.",
+    "recommendation": "Include at least one positive per-step reward component (e.g., alive bonus, progress reward, stability bonus) to provide a baseline positive signal. Balance positive and negative components so that good behavior yields net positive reward while bad behavior yields net negative reward. This gives the agent a clear optimization target and encourages exploration.",
     "confidence": 0.95,
     "reuse_policy": "global"
   }
 ]
+```
