@@ -14,27 +14,31 @@ class ModelConfig:
     llm_model: str = "gpt-4.1"
     vlm_model: str = "gpt-4.1-mini"
 
-    # OpenAI-compatible settings.
     openai_base_url: str | None = None
     openai_api_key_env: str = "OPENAI_API_KEY"
 
-    # DeepSeek API settings.
-    # DeepSeek is OpenAI-compatible, but should use its own base_url and key env.
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_api_key_env: str = "DEEPSEEK_API_KEY"
-    deepseek_thinking: str = "disabled"  # disabled | enabled
+    deepseek_thinking: str = "disabled"
     deepseek_reasoning_effort: str | None = None
 
-    # Ollama settings.
     ollama_host: str = "http://localhost:11434"
+    ollama_num_ctx: int | None = 16384
 
     temperature: float = 0.7
-    max_tokens: int = 1200
+    max_tokens: int = 2500
 
 
 @dataclass
 class RLConfig:
     env_id: str = "LunarLander-v3"
+
+    # eureka_clean:
+    #   Main EG-RSA setting. The LLM sees Eureka-style task_description.txt + step.py.
+    # anonymous_clean:
+    #   Optional ablation. The reward function sees anonymized observations.
+    interface_mode: str = "eureka_clean"
+
     total_timesteps: int = 30_000
     eval_episodes: int = 3
     learning_rate: float = 3e-4
@@ -52,16 +56,54 @@ class EvolutionConfig:
 
 
 @dataclass
+class MemoryConfig:
+    candidate_lesson_top_k: int = 5
+    env_lesson_top_k: int = 8
+    ltm_lesson_top_k: int = 5
+    parent_code_top_k: int = 2
+    parent_code_max_chars: int = 12000
+    feedback_max_chars: int = 12000
+    memory_context_max_chars: int = 12000
+
+
+@dataclass
 class MVPConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     rl: RLConfig = field(default_factory=RLConfig)
     evolution: EvolutionConfig = field(default_factory=EvolutionConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
+
     workspace: Path = Path("runs/mvp")
     seed: int = 42
 
     @property
     def memory_path(self) -> Path:
         return self.workspace / "memory.jsonl"
+
+    @property
+    def candidate_lessons_path(self) -> Path:
+        return self.workspace / "candidate_lessons.jsonl"
+
+    @property
+    def env_lessons_path(self) -> Path:
+        return self.workspace / "env_lessons.jsonl"
+
+    @property
+    def env_memory_path(self) -> Path:
+        return self.workspace / "env_memory.md"
+
+    @property
+    def ltm_lessons_path(self) -> Path:
+        # Cross-run / cross-environment memory under runs/.
+        return self.workspace.parent / "ltm_lessons.jsonl"
+
+    @property
+    def llm_dir(self) -> Path:
+        return self.workspace / "llm"
+
+    @property
+    def artifacts_dir(self) -> Path:
+        return self.workspace / "artifacts"
 
     @property
     def videos_dir(self) -> Path:
@@ -91,6 +133,7 @@ def load_config(path: str | Path | None = None) -> MVPConfig:
         "model": cfg.model.__dict__.copy(),
         "rl": cfg.rl.__dict__.copy(),
         "evolution": cfg.evolution.__dict__.copy(),
+        "memory": cfg.memory.__dict__.copy(),
         "workspace": str(cfg.workspace),
         "seed": cfg.seed,
     }
@@ -100,6 +143,7 @@ def load_config(path: str | Path | None = None) -> MVPConfig:
         model=ModelConfig(**merged["model"]),
         rl=RLConfig(**merged["rl"]),
         evolution=EvolutionConfig(**merged["evolution"]),
+        memory=MemoryConfig(**merged.get("memory", {})),
         workspace=Path(merged["workspace"]),
         seed=int(merged["seed"]),
     )

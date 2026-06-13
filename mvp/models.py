@@ -103,7 +103,11 @@ class ModelGateway:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                options={"temperature": self.config.temperature},
+                options={
+                    "temperature": self.config.temperature,
+                    "num_predict": self.config.max_tokens,
+                    **({"num_ctx": self.config.ollama_num_ctx} if getattr(self.config, "ollama_num_ctx", None) else {}),
+                },
             )
             content = response["message"]["content"] or ""
             if not content.strip():

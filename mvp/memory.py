@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Optional
 
@@ -22,13 +22,6 @@ class CandidateRecord:
     validation_errors_before_repair: list[str]
     validation_errors_after_repair: list[str]
 
-    identity_warning_count: int
-    identity_warnings: dict[str, Any]
-    semantic_term_warning_count: int
-    semantic_term_warnings: dict[str, Any]
-    semantic_warning_count: int
-    semantic_warnings: dict[str, Any]
-
     reflection_summary: str
     reward_code: str
     llm_rationale: str
@@ -41,6 +34,21 @@ class CandidateRecord:
     judge_reason: str
     judge_details: dict[str, Any]
     video_path: str
+
+    # Backward-compatible warning fields.
+    identity_warning_count: int = 0
+    identity_warnings: dict[str, Any] = field(default_factory=dict)
+    semantic_term_warning_count: int = 0
+    semantic_term_warnings: dict[str, Any] = field(default_factory=dict)
+    semantic_warning_count: int = 0
+    semantic_warnings: dict[str, Any] = field(default_factory=dict)
+
+    # New EG-RSA fields.
+    prompt_paths: dict[str, Any] = field(default_factory=dict)
+    prompt_budgets: dict[str, Any] = field(default_factory=dict)
+    artifact_paths: dict[str, Any] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+    lesson_ids: list[str] = field(default_factory=list)
 
 
 class JsonlMemory:
@@ -72,7 +80,6 @@ class JsonlMemory:
     ) -> list[dict[str, Any]]:
         rows = self.load_all()
 
-        # 关键：旧泄露 memory 没有 schema_version/env_alias/status 字段，自动被过滤。
         if schema_version is not None:
             rows = [r for r in rows if r.get("schema_version") == schema_version]
         if env_alias is not None:

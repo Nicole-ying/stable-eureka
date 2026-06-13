@@ -1,0 +1,146 @@
+{
+  "generation": 1,
+  "num_candidates": 2,
+  "num_ok": 2,
+  "top_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c1"
+      ],
+      "status": "ok",
+      "selection_score": -191.8487483720269,
+      "private_eval_return": -191.8487483720269,
+      "generated_return": -92.40850160161744,
+      "generated_minus_private": 99.44024677040946,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 99.44024677040946,
+        "action_mean": 0.33,
+        "action_std": 0.9386692708297208,
+        "episode_length_mean": 66.66666666666667,
+        "component_returns": {
+          "landing_bonus": 0.0,
+          "distance_penalty": -6.409176424299658,
+          "velocity_penalty": -22.530195491729927,
+          "angle_penalty": -5.694880577128424,
+          "fuel_penalty": -0.07333333333333335,
+          "crash_penalty": -50.0,
+          "progress": 1.099084224873893,
+          "stability": 11.200000000000003,
+          "effort": 0.0,
+          "terminal": -20.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg0 = obs[6]\n    leg1 = obs[7]\n    \n    # Unpack next observations for progress\n    nx = next_obs[0]\n    ny = next_obs[1]\n    nvel_y = next_obs[3]\n    nangle = next_obs[4]\n    nleg0 = next_obs[6]\n    nleg1 = next_obs[7]\n    \n    # Action interpretation (discrete)\n    main = 1.0 if action == 2 else 0.0\n    side = 1.0 if action in [1, 3] else 0.0\n    \n    # ---------- distance_penalty: linear, gentle ----------\n    dist = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * dist\n    \n    # ---------- velocity_penalty: focus on vertical ----------\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n    \n    # ---------- angle_penalty: encourage upright ----------\n    angle_penalty = -0.2 * abs(angle)\n    \n    # ---------- fuel_penalty: small discourage firing ----------\n    fuel_penalty = -0.01 * (main + side)\n    \n    # ---------- progress: positive shaping for moving downward and slowing ----------\n    next_dist = (nx * nx + ny * ny) ** 0.5\n    progress_reward = 0.0\n    # Reward for reducing distance to pad\n    if next_dist < dist:\n        progress_reward += 0.3 * (dist - next_dist)\n    # Reward for reducing vertical speed (soft landing)\n    if abs(nvel_y) < abs(vel_y):\n        progress_reward += 0.5 * (abs(vel_y) - abs(nvel_y))\n    # Reward for becoming more upright\n    if abs(nangle) < abs(angle):\n        progress_reward += 0.2 * (abs(angle) - abs(nangle))\n    \n    # ---------- stability: continuous reward for good posture ----------\n    stability_reward = 0.0\n    if abs(angle) < 0.15:\n        stability_reward += 0.2\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.1\n    # Reward ground contact only when gentle\n    if leg0 or leg1:\n        if abs(vel_y) < 0.3:\n            stability_reward += 0.3\n    \n    # ---------- effort: penalize firing only when already near pad ----------\n    effort_penalty = 0.0\n    if dist < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.02 * (main + side)\n    \n    # ---------- terminal: single consolidated terminal signal ----------\n    terminal_reward = 0.0\n    landing_bonus = 0.0\n    crash_penalty = 0.0\n    if done:\n        # Check for successful landing: both legs down, upright, low vertical speed\n        success = (nleg0 > 0.5 and nleg1 > 0.5) and abs(nangle) < 0.1 and abs(nvel_y) < 0.1\n        if",
+      "llm_rationale": "This reward function addresses the failure modes from the previous generation. The distance penalty is reduced from quadratic (-0.5*d²) to linear (-0.1*d) to avoid overwhelming other signals. The landing bonus is dramatically increased to +150, making successful landing the dominant objective. All terminal logic is consolidated into a single `if done:` block to avoid double-counting. Progress shaping provides positive rewards for moving toward the pad, reducing vertical speed, and becoming upright. The effort penalty uses a looser threshold (dist < 0.3) and is very small. No imports are used. Component magnitudes are balanced so no single component dominates except the landing bonus, which is intentional to prioritize landing."
+    },
+    {
+      "candidate_id": "g1_c1",
+      "parent_ids": [
+        "g0_c1"
+      ],
+      "status": "ok",
+      "selection_score": -774.2276463071415,
+      "private_eval_return": -774.2276463071415,
+      "generated_return": -118.4650204239142,
+      "generated_minus_private": 655.7626258832273,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 655.7626258832273,
+        "action_mean": 1.62557781201849,
+        "action_std": 0.8345536698862671,
+        "episode_length_mean": 216.33333333333334,
+        "component_returns": {
+          "landing_bonus": 0.0,
+          "distance_penalty": -44.90307510640802,
+          "velocity_penalty": -49.04911365252142,
+          "angle_penalty": -14.525158151596164,
+          "fuel_penalty": -3.4533333333333354,
+          "crash_penalty": -10.0,
+          "progress": -1.4176735133885814,
+          "stability": 14.883333333333383,
+          "effort": 0.0,
+          "terminal": -10.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg_contact_0 = obs[6]\n    leg_contact_1 = obs[7]\n\n    # Extract next observations for progress shaping\n    next_x = next_obs[0]\n    next_y = next_obs[1]\n    next_vel_y = next_obs[3]\n    next_angle = next_obs[4]\n\n    # Action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n\n    # ========== distance_penalty ==========\n    distance = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * distance\n\n    # ========== velocity_penalty ==========\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n\n    # ========== angle_penalty ==========\n    angle_penalty = -0.2 * abs(angle)\n\n    # ========== fuel_penalty ==========\n    fuel_penalty = -0.02 * (main_engine + side_engine)\n\n    # ========== progress ==========\n    next_distance = (next_x * next_x + next_y * next_y) ** 0.5\n    distance_improvement = distance - next_distance\n    progress_reward = 0.5 * distance_improvement\n    vel_improvement = abs(vel_y) - abs(next_vel_y)\n    progress_reward += 0.3 * vel_improvement\n\n    # ========== stability ==========\n    stability_reward = 0.0\n    if abs(angle) < 0.2:\n        stability_reward += 0.1\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.05\n    if leg_contact_0 or leg_contact_1:\n        stability_reward += 0.2\n\n    # ========== effort ==========\n    # Penalize engine use when close to pad and slow; reward inaction when stable\n    if distance < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.05 * (main_engine + side_engine)\n    else:\n        effort_penalty = 0.0\n\n    # ========== terminal shaping ==========\n    terminal_reward = 0.0\n    if done:\n        both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n        upright = abs(angle) < 0.1\n        low_speed = abs(vel_y) < 0.1\n        if both_legs and upright and low_speed:\n            terminal_reward = 100.0\n        elif abs(vel_y) > 0.5 or abs(angle) > 0.5:\n            terminal_reward = -10.0\n        else:\n            terminal_reward = -5.0\n\n    # ========== landing_bonus ==========\n    landing_bonus = 0.0\n    both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n    upright = abs(angle) < 0.1\n    low_speed = abs(vel_y) < 0.1\n    if both_legs and upright and low_speed:\n        landing_bonus = 100.0\n\n",
+      "llm_rationale": "reward_generation generated code"
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c1"
+      ],
+      "status": "ok",
+      "selection_score": -191.8487483720269,
+      "private_eval_return": -191.8487483720269,
+      "generated_return": -92.40850160161744,
+      "generated_minus_private": 99.44024677040946,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 99.44024677040946,
+        "action_mean": 0.33,
+        "action_std": 0.9386692708297208,
+        "episode_length_mean": 66.66666666666667,
+        "component_returns": {
+          "landing_bonus": 0.0,
+          "distance_penalty": -6.409176424299658,
+          "velocity_penalty": -22.530195491729927,
+          "angle_penalty": -5.694880577128424,
+          "fuel_penalty": -0.07333333333333335,
+          "crash_penalty": -50.0,
+          "progress": 1.099084224873893,
+          "stability": 11.200000000000003,
+          "effort": 0.0,
+          "terminal": -20.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Unpack current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg0 = obs[6]\n    leg1 = obs[7]\n    \n    # Unpack next observations for progress\n    nx = next_obs[0]\n    ny = next_obs[1]\n    nvel_y = next_obs[3]\n    nangle = next_obs[4]\n    nleg0 = next_obs[6]\n    nleg1 = next_obs[7]\n    \n    # Action interpretation (discrete)\n    main = 1.0 if action == 2 else 0.0\n    side = 1.0 if action in [1, 3] else 0.0\n    \n    # ---------- distance_penalty: linear, gentle ----------\n    dist = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * dist\n    \n    # ---------- velocity_penalty: focus on vertical ----------\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n    \n    # ---------- angle_penalty: encourage upright ----------\n    angle_penalty = -0.2 * abs(angle)\n    \n    # ---------- fuel_penalty: small discourage firing ----------\n    fuel_penalty = -0.01 * (main + side)\n    \n    # ---------- progress: positive shaping for moving downward and slowing ----------\n    next_dist = (nx * nx + ny * ny) ** 0.5\n    progress_reward = 0.0\n    # Reward for reducing distance to pad\n    if next_dist < dist:\n        progress_reward += 0.3 * (dist - next_dist)\n    # Reward for reducing vertical speed (soft landing)\n    if abs(nvel_y) < abs(vel_y):\n        progress_reward += 0.5 * (abs(vel_y) - abs(nvel_y))\n    # Reward for becoming more upright\n    if abs(nangle) < abs(angle):\n        progress_reward += 0.2 * (abs(angle) - abs(nangle))\n    \n    # ---------- stability: continuous reward for good posture ----------\n    stability_reward = 0.0\n    if abs(angle) < 0.15:\n        stability_reward += 0.2\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.1\n    # Reward ground contact only when gentle\n    if leg0 or leg1:\n        if abs(vel_y) < 0.3:\n            stability_reward += 0.3\n    \n    # ---------- effort: penalize firing only when already near pad ----------\n    effort_penalty = 0.0\n    if dist < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.02 * (main + side)\n    \n    # ---------- terminal: single consolidated terminal signal ----------\n    terminal_reward = 0.0\n    landing_bonus = 0.0\n    crash_penalty = 0.0\n    if done:\n        # Check for successful landing: both legs down, upright, low vertical speed\n        success = (nleg0 > 0.5 and nleg1 > 0.5) and abs(nangle) < 0.1 and abs(nvel_y) < 0.1\n        if",
+      "llm_rationale": "This reward function addresses the failure modes from the previous generation. The distance penalty is reduced from quadratic (-0.5*d²) to linear (-0.1*d) to avoid overwhelming other signals. The landing bonus is dramatically increased to +150, making successful landing the dominant objective. All terminal logic is consolidated into a single `if done:` block to avoid double-counting. Progress shaping provides positive rewards for moving toward the pad, reducing vertical speed, and becoming upright. The effort penalty uses a looser threshold (dist < 0.3) and is very small. No imports are used. Component magnitudes are balanced so no single component dominates except the landing bonus, which is intentional to prioritize landing."
+    },
+    {
+      "candidate_id": "g1_c1",
+      "parent_ids": [
+        "g0_c1"
+      ],
+      "status": "ok",
+      "selection_score": -774.2276463071415,
+      "private_eval_return": -774.2276463071415,
+      "generated_return": -118.4650204239142,
+      "generated_minus_private": 655.7626258832273,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 655.7626258832273,
+        "action_mean": 1.62557781201849,
+        "action_std": 0.8345536698862671,
+        "episode_length_mean": 216.33333333333334,
+        "component_returns": {
+          "landing_bonus": 0.0,
+          "distance_penalty": -44.90307510640802,
+          "velocity_penalty": -49.04911365252142,
+          "angle_penalty": -14.525158151596164,
+          "fuel_penalty": -3.4533333333333354,
+          "crash_penalty": -10.0,
+          "progress": -1.4176735133885814,
+          "stability": 14.883333333333383,
+          "effort": 0.0,
+          "terminal": -10.0
+        }
+      },
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    # Extract current observations\n    x = obs[0]\n    y = obs[1]\n    vel_x = obs[2]\n    vel_y = obs[3]\n    angle = obs[4]\n    angular_vel = obs[5]\n    leg_contact_0 = obs[6]\n    leg_contact_1 = obs[7]\n\n    # Extract next observations for progress shaping\n    next_x = next_obs[0]\n    next_y = next_obs[1]\n    next_vel_y = next_obs[3]\n    next_angle = next_obs[4]\n\n    # Action: 0=do nothing, 1=left, 2=main, 3=right\n    main_engine = 1.0 if action == 2 else 0.0\n    side_engine = 1.0 if action in [1, 3] else 0.0\n\n    # ========== distance_penalty ==========\n    distance = (x * x + y * y) ** 0.5\n    distance_penalty = -0.1 * distance\n\n    # ========== velocity_penalty ==========\n    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)\n\n    # ========== angle_penalty ==========\n    angle_penalty = -0.2 * abs(angle)\n\n    # ========== fuel_penalty ==========\n    fuel_penalty = -0.02 * (main_engine + side_engine)\n\n    # ========== progress ==========\n    next_distance = (next_x * next_x + next_y * next_y) ** 0.5\n    distance_improvement = distance - next_distance\n    progress_reward = 0.5 * distance_improvement\n    vel_improvement = abs(vel_y) - abs(next_vel_y)\n    progress_reward += 0.3 * vel_improvement\n\n    # ========== stability ==========\n    stability_reward = 0.0\n    if abs(angle) < 0.2:\n        stability_reward += 0.1\n    if abs(angular_vel) < 0.1:\n        stability_reward += 0.05\n    if leg_contact_0 or leg_contact_1:\n        stability_reward += 0.2\n\n    # ========== effort ==========\n    # Penalize engine use when close to pad and slow; reward inaction when stable\n    if distance < 0.3 and abs(vel_y) < 0.2:\n        effort_penalty = -0.05 * (main_engine + side_engine)\n    else:\n        effort_penalty = 0.0\n\n    # ========== terminal shaping ==========\n    terminal_reward = 0.0\n    if done:\n        both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n        upright = abs(angle) < 0.1\n        low_speed = abs(vel_y) < 0.1\n        if both_legs and upright and low_speed:\n            terminal_reward = 100.0\n        elif abs(vel_y) > 0.5 or abs(angle) > 0.5:\n            terminal_reward = -10.0\n        else:\n            terminal_reward = -5.0\n\n    # ========== landing_bonus ==========\n    landing_bonus = 0.0\n    both_legs = bool(leg_contact_0) and bool(leg_contact_1)\n    upright = abs(angle) < 0.1\n    low_speed = abs(vel_y) < 0.1\n    if both_legs and upright and low_speed:\n        landing_bonus = 100.0\n\n",
+      "llm_rationale": "reward_generation generated code"
+    }
+  ],
+  "failed_candidates": []
+}

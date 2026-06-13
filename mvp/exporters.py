@@ -25,7 +25,6 @@ def export_memory_csv(memory_jsonl: Path, output_csv: Path) -> Path:
                 line = line.strip()
                 if not line:
                     continue
-
                 row = json.loads(line)
                 rows.append(
                     {
@@ -34,30 +33,19 @@ def export_memory_csv(memory_jsonl: Path, output_csv: Path) -> Path:
                         "schema_version": row.get("schema_version"),
                         "env_alias": row.get("env_alias"),
                         "status": row.get("status"),
-
                         "selection_score": row.get("selection_score"),
                         "private_eval_return": row.get("hidden_eval_return"),
                         "generated_return": row.get("train_mean_return"),
-
+                        "generated_private_gap": row.get("diagnostics", {}).get("generated_private_gap"),
+                        "episode_length_mean": row.get("diagnostics", {}).get("episode_length_mean"),
+                        "component_returns": row.get("diagnostics", {}).get("component_returns", {}),
                         "repair_attempts": row.get("repair_attempts", 0),
                         "repair_success": row.get("repair_success", False),
-
                         "judge_score": row.get("judge_score"),
                         "error_type": _error_type_from_reason(str(row.get("judge_reason", ""))),
-
                         "validation_errors": row.get("validation_errors", []),
-                        "validation_errors_before_repair": row.get("validation_errors_before_repair", []),
-                        "validation_errors_after_repair": row.get("validation_errors_after_repair", []),
-
-                        "identity_warning_count": row.get("identity_warning_count", 0),
-                        "identity_warnings": row.get("identity_warnings", {}),
-                        "semantic_term_warning_count": row.get("semantic_term_warning_count", 0),
-                        "semantic_term_warnings": row.get("semantic_term_warnings", {}),
-
-                        # Backward-compatible total semantic warning fields.
-                        "semantic_warning_count": row.get("semantic_warning_count", 0),
-                        "semantic_warnings": row.get("semantic_warnings", {}),
-
+                        "prompt_paths": row.get("prompt_paths", {}),
+                        "artifact_paths": row.get("artifact_paths", {}),
                         "judge_reason": row.get("judge_reason", ""),
                         "video_path": row.get("video_path", ""),
                     }
@@ -69,28 +57,19 @@ def export_memory_csv(memory_jsonl: Path, output_csv: Path) -> Path:
         "schema_version",
         "env_alias",
         "status",
-
         "selection_score",
         "private_eval_return",
         "generated_return",
-
+        "generated_private_gap",
+        "episode_length_mean",
+        "component_returns",
         "repair_attempts",
         "repair_success",
-
         "judge_score",
         "error_type",
-
         "validation_errors",
-        "validation_errors_before_repair",
-        "validation_errors_after_repair",
-
-        "identity_warning_count",
-        "identity_warnings",
-        "semantic_term_warning_count",
-        "semantic_term_warnings",
-        "semantic_warning_count",
-        "semantic_warnings",
-
+        "prompt_paths",
+        "artifact_paths",
         "judge_reason",
         "video_path",
     ]

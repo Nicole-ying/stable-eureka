@@ -1,14 +1,25 @@
-Environment alias: Env-90b964d9
-Task goal: Control the agent to complete the task successfully, stably, and efficiently.
-Task style: Prefer dense, bounded shaping terms that encourage progress, stability, low unnecessary control effort, and appropriate terminal behavior.
+## Search Plan for Reward Generation
 
-Clean interface:
-- observation_space: {'type': 'Box', 'shape': [8], 'dtype': 'float32', 'range_category': 'fully_bounded', 'value_view': 'normalized_anonymous_values', 'normalization': 'finite Box dimensions are scaled approximately into [-1, 1]; non-finite dimensions are clipped by a generic scale.', 'dimension_semantics': 'not_available'}
-- action_space: {'type': 'Discrete', 'n': 4, 'start': 0, 'dimension_semantics': 'not_available'}
-- reward_signature: compute_reward(obs, action, next_obs, done, info)
-- required_components: ['progress', 'stability', 'effort', 'terminal']
+### Objective
+We aim to generate a reward function that guides the agent to land the lunar lander stably, upright, and quickly on the landing pad, while minimizing fuel consumption. The reward function should be composed of the components defined in the schema. We will perform a search over possible weightings and formulations of these components to find an effective reward.
 
-Boundary:
-- Use only public observations, actions, transitions, done flag, info, and feedback summaries.
-- Do not infer the real environment identity.
-- Do not rely on private runtime signals or implementation internals.
+### Search Space
+- **Weights**: For each component, we will search over a range of possible weights (e.g., from 0 to 10, with step 0.5 or 1.0). Some components may have negative weights (penalties) or positive weights (bonuses).
+- **Formulations**: For distance, velocity, and angle penalties, we can use linear, quadratic, or exponential functions. For example, distance penalty could be `-w1 * sqrt(x^2 + y^2)` or `-w2 * (x^2 + y^2)`.
+- **Thresholds**: For the landing bonus and crash penalty, we need to define thresholds for what constitutes a successful landing vs. a crash. These thresholds can be tuned (e.g., angle < 0.1 rad, vel_y < 0.1).
+- **Combination**: The total reward will be a weighted sum of all components. We must ensure the total reward is bounded within [-1000, 1000] as per the schema.
+
+### Search Algorithm
+We will use a random search or grid search over the weight space. For each candidate reward function, we will evaluate its performance by training a reinforcement learning agent (e.g., PPO or DQN) for a fixed number of episodes and measuring the average return, success rate, and fuel efficiency. We will iterate over multiple candidates to find the best-performing reward.
+
+### Evaluation Metrics
+- **Success Rate**: Percentage of episodes where the lander lands successfully (both legs on ground, upright, low velocity).
+- **Average Return**: Mean cumulative reward per episode.
+- **Fuel Efficiency**: Average fuel consumption per successful landing.
+- **Time to Land**: Average number of steps to land.
+
+### Iteration Plan
+1. **Initial Seed**: Start with a hand-tuned set of weights based on domain knowledge (e.g., high weight on landing bonus, moderate on distance and velocity, low on fuel).
+2. **Random Search**: Generate 100 random weight combinations and evaluate each.
+3. **Refine**: Based on results, narrow the search space around promising regions.
+4. **Final Selection**: Choose the reward function that maximizes success rate and fuel efficiency.

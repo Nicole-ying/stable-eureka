@@ -1,5 +1,5 @@
 {
-  "schema_version": "clean_reward_schema_v1_633ab10d3a",
+  "schema_version": "eg_rsa_reward_schema_v1_f401f4f018",
   "env_alias": "Env-90b964d9",
   "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
   "return_contract": "return float(total_reward), components_dict",
@@ -10,29 +10,65 @@
     "done",
     "info"
   ],
-  "private_signal_policy": "Only public transition inputs are available to the reward function.",
+  "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
   "components": [
     {
+      "id": "landing_bonus",
+      "description": "Award a large positive reward when both legs are in contact with the ground (leg_contact_0 and leg_contact_1 are both 1) and the episode terminates. This encourages a stable landing. Must ensure the agent is not rewarded for crashing, so also check that the lander is upright (|angle| < 0.1) and has low velocity (|vel_y| < 0.1).",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "distance_penalty",
+      "description": "Penalize the agent for being far from the landing pad. Use the Euclidean distance from the lander's position (x, y) to (0,0). Since observations are normalized, distance = sqrt(x^2 + y^2). The penalty should be proportional to distance to encourage the agent to move toward the pad.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "velocity_penalty",
+      "description": "Penalize high velocities, especially vertical velocity, to encourage a soft landing. Use a weighted sum of |vel_x| and |vel_y|, with higher weight on vertical velocity. This helps prevent crashes due to high speed.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "angle_penalty",
+      "description": "Penalize the lander's tilt away from upright. Use |angle| as a penalty to encourage the agent to keep the lander level. This is important for a stable landing.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "fuel_penalty",
+      "description": "Penalize fuel usage each time an engine is fired. Since m_power and s_power are binary (0 or 1), add a small negative reward proportional to (m_power + s_power) to discourage unnecessary fuel consumption.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
+      "id": "crash_penalty",
+      "description": "Apply a large negative reward if the episode terminates due to a crash. The termination flag alone is ambiguous (it could be a successful landing). To detect a crash, check if the lander has high velocity or tilt at termination. For example, if terminated and (|vel_y| > 0.5 or |angle| > 0.5), then apply a large penalty.",
+      "direction": "minimize",
+      "required": true
+    },
+    {
       "id": "progress",
-      "description": "dense progress proxy over anonymous normalized transition features",
+      "description": "dense task-progress shaping inferred from public task context",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "stability",
-      "description": "bounded penalty for abrupt changes in anonymous normalized transition features",
+      "description": "bounded shaping for stable/safe task-relevant behavior inferred from public task context",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "effort",
-      "description": "bounded penalty for unnecessary action magnitude or action changes when observable",
+      "description": "bounded penalty for unnecessary or costly actions",
       "direction": "maximize",
       "required": true
     },
     {
       "id": "terminal",
-      "description": "bounded terminal shaping from public termination signals only",
+      "description": "bounded terminal shaping from public done signal",
       "direction": "maximize",
       "required": true
     }

@@ -1,0 +1,111 @@
+def compute_reward(obs, action, next_obs, done, info):
+    # Unpack current observations
+    x = obs[0]
+    y = obs[1]
+    vel_x = obs[2]
+    vel_y = obs[3]
+    angle = obs[4]
+    angular_vel = obs[5]
+    leg0 = obs[6]
+    leg1 = obs[7]
+    
+    # Unpack next observations for progress
+    nx = next_obs[0]
+    ny = next_obs[1]
+    nvel_y = next_obs[3]
+    nangle = next_obs[4]
+    nleg0 = next_obs[6]
+    nleg1 = next_obs[7]
+    
+    # Action interpretation (discrete)
+    main = 1.0 if action == 2 else 0.0
+    side = 1.0 if action in [1, 3] else 0.0
+    
+    # ---------- distance_penalty: linear, gentle ----------
+    dist = (x * x + y * y) ** 0.5
+    distance_penalty = -0.1 * dist
+    
+    # ---------- velocity_penalty: focus on vertical ----------
+    velocity_penalty = -0.3 * abs(vel_y) - 0.1 * abs(vel_x)
+    
+    # ---------- angle_penalty: encourage upright ----------
+    angle_penalty = -0.2 * abs(angle)
+    
+    # ---------- fuel_penalty: small discourage firing ----------
+    fuel_penalty = -0.01 * (main + side)
+    
+    # ---------- progress: positive shaping for moving downward and slowing ----------
+    next_dist = (nx * nx + ny * ny) ** 0.5
+    progress_reward = 0.0
+    # Reward for reducing distance to pad
+    if next_dist < dist:
+        progress_reward += 0.3 * (dist - next_dist)
+    # Reward for reducing vertical speed (soft landing)
+    if abs(nvel_y) < abs(vel_y):
+        progress_reward += 0.5 * (abs(vel_y) - abs(nvel_y))
+    # Reward for becoming more upright
+    if abs(nangle) < abs(angle):
+        progress_reward += 0.2 * (abs(angle) - abs(nangle))
+    
+    # ---------- stability: continuous reward for good posture ----------
+    stability_reward = 0.0
+    if abs(angle) < 0.15:
+        stability_reward += 0.2
+    if abs(angular_vel) < 0.1:
+        stability_reward += 0.1
+    # Reward ground contact only when gentle
+    if leg0 or leg1:
+        if abs(vel_y) < 0.3:
+            stability_reward += 0.3
+    
+    # ---------- effort: penalize firing only when already near pad ----------
+    effort_penalty = 0.0
+    if dist < 0.3 and abs(vel_y) < 0.2:
+        effort_penalty = -0.02 * (main + side)
+    
+    # ---------- terminal: single consolidated terminal signal ----------
+    terminal_reward = 0.0
+    landing_bonus = 0.0
+    crash_penalty = 0.0
+    if done:
+        # Check for successful landing: both legs down, upright, low vertical speed
+        success = (nleg0 > 0.5 and nleg1 > 0.5) and abs(nangle) < 0.1 and abs(nvel_y) < 0.1
+        if success:
+            landing_bonus = 150.0
+            terminal_reward = 50.0
+        else:
+            # Crash or out-of-bounds: penalize heavily
+            crash_penalty = -50.0
+            terminal_reward = -20.0
+    
+    # ---------- Sum all components ----------
+    total_reward = (
+        distance_penalty +
+        velocity_penalty +
+        angle_penalty +
+        fuel_penalty +
+        progress_reward +
+        stability_reward +
+        effort_penalty +
+        terminal_reward +
+        landing_bonus +
+        crash_penalty
+    )
+    
+    # Bounded as per schema
+    total_reward = max(-1000.0, min(1000.0, total_reward))
+    
+    components = {
+        "landing_bonus": landing_bonus,
+        "distance_penalty": distance_penalty,
+        "velocity_penalty": velocity_penalty,
+        "angle_penalty": angle_penalty,
+        "fuel_penalty": fuel_penalty,
+        "crash_penalty": crash_penalty,
+        "progress": progress_reward,
+        "stability": stability_reward,
+        "effort": effort_penalty,
+        "terminal": terminal_reward
+    }
+    
+    return float(total_reward), components

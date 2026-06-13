@@ -1,0 +1,74 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a single reward component (e.g., distance penalty) has a much larger magnitude than all other components combined",
+    "observation": "Distance penalty of -306.45 dominated the total reward of -684.82, overwhelming velocity, angle, and terminal signals. The agent learned to only fire the main engine (action=2, std=0) because all other action differences were negligible compared to position-based penalties.",
+    "explanation": "A dominant component creates a reward landscape that is essentially a function of that single variable. The agent cannot learn nuanced behaviors because the gradient from other components is insignificant. This leads to degenerate policies like always firing the main engine.",
+    "recommendation": "Normalize component magnitudes so that the maximum possible contribution of any single component is at most 2-3x the others. Use linear penalties (e.g., -0.1*distance) instead of quadratic (-0.5*distance²) to avoid exponential dominance. Verify balance by computing expected ranges for each component.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the generated reward function has a large gap between generated_return and private_eval_return (gap > 100)",
+    "observation": "Generated return was -396.36 but private eval return was -684.82, a gap of 288.45. The reward function is not aligned with the hidden evaluator's true objective.",
+    "explanation": "The private evaluator measures something fundamentally different from the designed reward components. Large gaps indicate that the reward function is optimizing for proxy metrics that do not match the actual task success criteria (likely a successful landing).",
+    "recommendation": "Increase the terminal landing bonus dramatically (e.g., +100 or more) to make landing the dominant objective. Reduce or remove continuous penalties that don't directly relate to landing success. Test that the reward function's optimal policy would also score well on the private evaluator.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When action_mean is a single discrete value with zero standard deviation across an entire episode",
+    "observation": "Action mean = 2.0, action std = 0.0. The agent fired only the main engine every step (action=2) for all 105 steps. No exploration or use of side engines.",
+    "explanation": "A deterministic single-action policy indicates the reward function has no discriminative gradient between different actions. The agent found a local optimum where any deviation from the single action yields no improvement or worse reward. This often happens when one component (distance penalty) dominates and all actions affect it equally.",
+    "recommendation": "Ensure that different actions produce measurably different rewards. Add action-dependent shaping: e.g., reward using side engines to reduce angular velocity, penalize firing main engine when far from landing zone. Remove or reduce components that don't depend on action choice.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a conditional reward component uses a threshold that the agent never reaches (e.g., distance < 0.2)",
+    "observation": "Effort penalty condition `distance < 0.2 and abs(vel_y) < 0.1` was never met, so effort_penalty was always 0.0. The agent never got close enough to the landing pad to trigger this shaping.",
+    "explanation": "Thresholds set too aggressively can make entire reward components non-functional. If the agent cannot reach the condition, it receives no signal from that component, wasting its potential shaping benefit.",
+    "recommendation": "Set thresholds based on empirical observation of the agent's trajectory. Use progressive thresholds that start loose and tighten as the agent improves. Alternatively, use continuous functions (e.g., exp(-distance)) instead of hard thresholds. Monitor component activation rates during training.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a reward function includes both terminal_reward and crash_penalty as separate components that both activate on done",
+    "observation": "Terminal reward component gave -10.0 on crash, and crash_penalty component also gave -10.0 on crash. This double-counts the same terminal outcome.",
+    "explanation": "Having overlapping terminal conditions creates double-counting of penalties/rewards. In this case, both `terminal_reward` and `crash_penalty` penalize the same crash event, making the total crash penalty -20.0 instead of -10.0. This can distort learning and make terminal states overly punitive.",
+    "recommendation": "Consolidate all terminal logic into a single component. Use a single `if done:` block that assigns one terminal value based on the landing quality. Avoid multiple components that each check `done`.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When a landing bonus is set too low (e.g., +10) compared to cumulative penalties (e.g., -684 total)",
+    "observation": "Landing bonus was +10.0 for a perfect landing, but cumulative penalties over 105 steps were -684. The agent never achieved a landing bonus, and even if it did, +10 would be negligible.",
+    "explanation": "The terminal reward for success must be large enough to overcome all accumulated penalties from exploration. If the agent must endure hundreds of points of negative reward to reach a successful landing, the landing bonus must be proportionally large to make the journey worthwhile.",
+    "recommendation": "Set terminal landing bonus to at least 10x the expected cumulative penalty over an episode. For example, if expected total penalty is -500, set landing bonus to +500 or more. Alternatively, reduce cumulative penalties so that the net reward for a successful landing is clearly positive.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "When repairing code that uses unsupported imports (like numpy or math)",
+    "observation": "Initial candidate g0_c0 failed with 'unsupported syntax: Import' error. The repair successfully removed imports and replaced math.sqrt with **0.5, but the LLM still attempted to use imports in the first place.",
+    "explanation": "The LLM often defaults to using standard library imports like math or numpy without considering environment constraints. The repair mechanism can fix this, but it wastes an attempt and may introduce bugs in the replacement logic.",
+    "recommendation": "In the prompt, explicitly state 'Do not use any import statements. All math operations must use built-in Python operators (e.g., **0.5 for sqrt).' Add a validation check before generation that rejects any code with import statements.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When designing reward functions for Lunar Lander or similar sparse-reward environments",
+    "observation": "The generated reward function had 10 components, but only distance_penalty dominated learning. The agent learned a degenerate policy of always firing main engine, never attempting to land properly.",
+    "explanation": "Complex reward functions with many components are not automatically better. They require careful balancing of component magnitudes, thresholds, and terminal rewards. A simpler reward function with 3-4 well-tuned components often outperforms a complex one with poor balance.",
+    "recommendation": "Start with a minimal reward function: 1) Large terminal bonus for successful landing, 2) Small penalty for distance from pad, 3) Small penalty for high velocity. Add complexity only after observing the agent's behavior. Use the private eval return as the primary metric for success.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  }
+]

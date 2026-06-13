@@ -1,0 +1,44 @@
+{
+  "reward_schema": {
+    "components": [
+      {
+        "id": "landing_bonus",
+        "description": "Award a large positive reward when both legs are in contact with the ground (leg_contact_0 and leg_contact_1 are both 1) and the episode terminates. This encourages a stable landing. Must ensure the agent is not rewarded for crashing, so also check that the lander is upright (|angle| < 0.1) and has low velocity (|vel_y| < 0.1).",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "distance_penalty",
+        "description": "Penalize the agent for being far from the landing pad. Use the Euclidean distance from the lander's position (x, y) to (0,0). Since observations are normalized, distance = sqrt(x^2 + y^2). The penalty should be proportional to distance to encourage the agent to move toward the pad.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "velocity_penalty",
+        "description": "Penalize high velocities, especially vertical velocity, to encourage a soft landing. Use a weighted sum of |vel_x| and |vel_y|, with higher weight on vertical velocity. This helps prevent crashes due to high speed.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "angle_penalty",
+        "description": "Penalize the lander's tilt away from upright. Use |angle| as a penalty to encourage the agent to keep the lander level. This is important for a stable landing.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "fuel_penalty",
+        "description": "Penalize fuel usage each time an engine is fired. Since m_power and s_power are binary (0 or 1), add a small negative reward proportional to (m_power + s_power) to discourage unnecessary fuel consumption.",
+        "direction": "minimize",
+        "required": true
+      },
+      {
+        "id": "crash_penalty",
+        "description": "Apply a large negative reward if the episode terminates due to a crash. The termination flag alone is ambiguous (it could be a successful landing). To detect a crash, check if the lander has high velocity or tilt at termination. For example, if terminated and (|vel_y| > 0.5 or |angle| > 0.5), then apply a large penalty.",
+        "direction": "minimize",
+        "required": true
+      }
+    ],
+    "reward_abs_bound": 1000.0
+  },
+  "search_plan": "## Search Plan for Reward Generation\n\n### Objective\nWe aim to generate a reward function that guides the agent to land the lunar lander stably, upright, and quickly on the landing pad, while minimizing fuel consumption. The reward function should be composed of the components defined in the schema. We will perform a search over possible weightings and formulations of these components to find an effective reward.\n\n### Search Space\n- **Weights**: For each component, we will search over a range of possible weights (e.g., from 0 to 10, with step 0.5 or 1.0). Some components may have negative weights (penalties) or positive weights (bonuses).\n- **Formulations**: For distance, velocity, and angle penalties, we can use linear, quadratic, or exponential functions. For example, distance penalty could be `-w1 * sqrt(x^2 + y^2)` or `-w2 * (x^2 + y^2)`.\n- **Thresholds**: For the landing bonus and crash penalty, we need to define thresholds for what constitutes a successful landing vs. a crash. These thresholds can be tuned (e.g., angle < 0.1 rad, vel_y < 0.1).\n- **Combination**: The total reward will be a weighted sum of all components. We must ensure the total reward is bounded within [-1000, 1000] as per the schema.\n\n### Search Algorithm\nWe will use a random search or grid search over the weight space. For each candidate reward function, we will evaluate its performance by training a reinforcement learning agent (e.g., PPO or DQN) for a fixed number of episodes and measuring the average return, success rate, and fuel efficiency. We will iterate over multiple candidates to find the best-performing reward.\n\n### Evaluation Metrics\n- **Success Rate**: Percentage of episodes where the lander lands successfully (both legs on ground, upright, low velocity).\n- **Average Return**: Mean cumulative reward per episode.\n- **Fuel Efficiency**: Average fuel consumption per successful landing.\n- **Time to Land**: Average number of steps to land.\n\n### Iteration Plan\n1. **Initial Seed**: Start with a hand-tuned set of weights based on domain knowledge (e.g., high weight on landing bonus, moderate on distance and velocity, low on fuel).\n2. **Random Search**: Generate 100 random weight combinations and evaluate each.\n3. **Refine**: Based on results, narrow the search space around promising regions.\n4. **Final Selection**: Choose the reward function that maximizes success rate and fuel efficiency."
+}

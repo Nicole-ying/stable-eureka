@@ -9,10 +9,10 @@ from typing import Callable
 import gymnasium as gym
 import imageio.v2 as imageio
 import numpy as np
-from gymnasium import spaces
 from stable_baselines3 import PPO
 
 from .config import RLConfig
+from .env_sanitizer import ObservationAnonymizer
 
 
 RewardFn = Callable[[np.ndarray, np.ndarray, np.ndarray, bool, dict], tuple[float, dict]]
@@ -31,15 +31,6 @@ FORBIDDEN_NAMES = {
 
 
 def compile_reward_function(reward_code: str) -> RewardFn:
-    """
-    Compile LLM reward code into compute_reward(obs, action, next_obs, done, info).
-
-    关键边界：
-      - 不允许 env_reward 参数；
-      - 不允许 import；
-      - 不允许读取 hidden evaluator / benchmark / fitness；
-      - 只能使用 np、math、python builtins。
-    """
     raw_lower = reward_code.lower()
     for name in FORBIDDEN_NAMES:
         if name.lower() in raw_lower:
@@ -61,85 +52,31 @@ def compile_reward_function(reward_code: str) -> RewardFn:
 
     if "compute_reward" not in module.__dict__:
         raise ValueError("reward code must define compute_reward(obs, action, next_obs, done, info)")
-
-    fn = module.__dict__["compute_reward"]
-    return fn
-
-
-class ObservationAnonymizer:
-    """
-    Generic observation anonymizer for reward computation.
-
-    策略：
-      - policy 仍然看 raw obs；
-      - reward function 只看 normalized anonymous obs；
-      - 对 Box 空间：有限 bounds 用中心/半径归一化到约 [-1,1]；
-        非有限维度用通用尺度 tanh 压缩；
-      - 对非 Box 空间：转成 float array，做通用尺度压缩；
-      - 不包含任何环境专属逻辑。
-    """
-
-    def __init__(self, observation_space: spaces.Space):
-        self.observation_space = observation_space
-
-        if isinstance(observation_space, spaces.Box):
-            low = np.asarray(observation_space.low, dtype=np.float32)
-            high = np.asarray(observation_space.high, dtype=np.float32)
-            finite = np.isfinite(low) & np.isfinite(high) & (high > low)
-
-            center = np.zeros_like(low, dtype=np.float32)
-            scale = np.ones_like(low, dtype=np.float32)
-
-            center[finite] = (low[finite] + high[finite]) / 2.0
-            scale[finite] = (high[finite] - low[finite]) / 2.0
-            scale = np.where(np.abs(scale) < 1e-6, 1.0, scale)
-
-            self.box_finite = finite
-            self.center = center
-            self.scale = scale
-        else:
-            self.box_finite = None
-            self.center = None
-            self.scale = None
-
-    def transform(self, obs):
-        arr = np.asarray(obs, dtype=np.float32)
-
-        if isinstance(self.observation_space, spaces.Box):
-            out = np.zeros_like(arr, dtype=np.float32)
-
-            finite = self.box_finite
-            out[finite] = (arr[finite] - self.center[finite]) / self.scale[finite]
-
-            # 非有限 bound 维度不暴露原始尺度，用 generic tanh 压缩。
-            nonfinite = ~finite
-            out[nonfinite] = np.tanh(arr[nonfinite] / 5.0)
-
-            out = np.clip(out, -5.0, 5.0)
-            return out.astype(np.float32)
-
-        return np.tanh(arr / 5.0).astype(np.float32)
+    return module.__dict__["compute_reward"]
 
 
 class RewardFunctionWrapper(gym.Wrapper):
-    def __init__(self, env: gym.Env, reward_fn: RewardFn):
+    def __init__(self, env: gym.Env, reward_fn: RewardFn, interface_mode: str = "eureka_clean"):
         super().__init__(env)
         self.reward_fn = reward_fn
-        self._prev_obs = None
+        self.interface_mode = interface_mode
         self._prev_obs_reward_view = None
         self._anonymizer = ObservationAnonymizer(env.observation_space)
 
+    def _reward_view(self, obs):
+        if self.interface_mode == "anonymous_clean":
+            return self._anonymizer.transform(obs)
+        return obs
+
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
-        self._prev_obs = obs
-        self._prev_obs_reward_view = self._anonymizer.transform(obs)
+        self._prev_obs_reward_view = self._reward_view(obs)
         return obs, info
 
     def step(self, action):
         next_obs, hidden_env_reward, terminated, truncated, info = self.env.step(action)
         done = bool(terminated or truncated)
-
-        next_obs_reward_view = self._anonymizer.transform(next_obs)
+        next_obs_reward_view = self._reward_view(next_obs)
 
         out = self.reward_fn(
             self._prev_obs_reward_view,
@@ -162,7 +99,6 @@ class RewardFunctionWrapper(gym.Wrapper):
         safe_info["_hidden_env_reward"] = float(hidden_env_reward)
         safe_info["_reward_components"] = {str(k): float(v) for k, v in components.items()}
 
-        self._prev_obs = next_obs
         self._prev_obs_reward_view = next_obs_reward_view
         return next_obs, reward, terminated, truncated, safe_info
 
@@ -170,11 +106,16 @@ class RewardFunctionWrapper(gym.Wrapper):
 class RLWorker:
     def __init__(self, cfg: RLConfig):
         self.cfg = cfg
+        self.interface_mode = getattr(cfg, "interface_mode", "eureka_clean")
 
-    def train_and_eval(self, reward_code: str, ckpt_path: Path) -> dict[str, float]:
+    def train_and_eval(self, reward_code: str, ckpt_path: Path) -> dict[str, object]:
         reward_fn = compile_reward_function(reward_code)
 
-        train_env = RewardFunctionWrapper(gym.make(self.cfg.env_id), reward_fn)
+        train_env = RewardFunctionWrapper(
+            gym.make(self.cfg.env_id),
+            reward_fn,
+            interface_mode=self.interface_mode,
+        )
         model = PPO(
             "MlpPolicy",
             train_env,
@@ -187,10 +128,17 @@ class RLWorker:
         model.save(str(ckpt_path))
         train_env.close()
 
-        eval_env = RewardFunctionWrapper(gym.make(self.cfg.env_id), reward_fn)
+        eval_env = RewardFunctionWrapper(
+            gym.make(self.cfg.env_id),
+            reward_fn,
+            interface_mode=self.interface_mode,
+        )
+
         generated_returns = []
         hidden_returns = []
         episode_lengths = []
+        component_returns: dict[str, list[float]] = {}
+        action_values = []
 
         for _ in range(self.cfg.eval_episodes):
             obs, _ = eval_env.reset()
@@ -198,25 +146,45 @@ class RLWorker:
             gen_ret = 0.0
             hid_ret = 0.0
             ep_len = 0
+            comp_sum: dict[str, float] = {}
 
             while not done:
                 action, _ = model.predict(obs, deterministic=True)
+                action_values.append(np.asarray(action, dtype=float).reshape(-1))
                 obs, reward, terminated, truncated, info = eval_env.step(action)
                 done = bool(terminated or truncated)
+
                 gen_ret += float(reward)
                 hid_ret += float(info.get("_hidden_env_reward", 0.0))
                 ep_len += 1
+
+                for k, v in info.get("_reward_components", {}).items():
+                    comp_sum[k] = comp_sum.get(k, 0.0) + float(v)
 
             generated_returns.append(gen_ret)
             hidden_returns.append(hid_ret)
             episode_lengths.append(ep_len)
 
+            for k, v in comp_sum.items():
+                component_returns.setdefault(k, []).append(v)
+
         eval_env.close()
+
+        action_arr = np.concatenate(action_values) if action_values else np.zeros((1,), dtype=float)
+        component_mean = {k: float(np.mean(v)) for k, v in component_returns.items()}
 
         return {
             "eval_generated_return": float(np.mean(generated_returns)),
             "eval_hidden_return": float(np.mean(hidden_returns)),
             "eval_episode_length": float(np.mean(episode_lengths)),
+            "component_returns": component_mean,
+            "diagnostics": {
+                "generated_private_gap": float(np.mean(generated_returns) - np.mean(hidden_returns)),
+                "action_mean": float(np.mean(action_arr)),
+                "action_std": float(np.std(action_arr)),
+                "episode_length_mean": float(np.mean(episode_lengths)),
+                "component_returns": component_mean,
+            },
         }
 
     def render_rollout_video(self, ckpt_path: Path, video_path: Path) -> Path:

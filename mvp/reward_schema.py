@@ -22,7 +22,6 @@ FORBIDDEN_NAMES = {
     "compute_fitness_score",
 }
 
-
 FORBIDDEN_SYNTAX = (
     ast.Import,
     ast.ImportFrom,
@@ -34,58 +33,46 @@ FORBIDDEN_SYNTAX = (
     ast.Nonlocal,
 )
 
-
 REQUIRED_SIGNATURE = ["obs", "action", "next_obs", "done", "info"]
 
 
-def build_default_schema(public_task: dict[str, Any], clean_interface: dict[str, Any]) -> dict[str, Any]:
-    """
-    BootstrapAgent 生成初始 schema。
-
-    这里故意用通用组件，不写任务专属物理语义：
-      progress  : 泛化的任务进展代理；
-      stability : 状态变化/姿态/数值稳定性代理；
-      effort    : 动作幅值或动作切换成本；
-      terminal  : done 时的终端 shaping。
-    """
+def build_default_schema(clean_interface: dict[str, Any]) -> dict[str, Any]:
     payload = {
-        "env_alias": clean_interface["env_alias"],
-        "observation_space": clean_interface["observation_space"],
-        "action_space": clean_interface["action_space"],
-        "task_goal": public_task["task_goal"],
-        "task_style": public_task["task_style"],
+        "env_alias": clean_interface.get("env_alias"),
+        "task_description": clean_interface.get("eureka_task_description", "")[:2000],
+        "step_code": clean_interface.get("eureka_step_code", "")[:2000],
     }
     schema_hash = hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:10]
 
     return {
-        "schema_version": f"clean_reward_schema_v1_{schema_hash}",
-        "env_alias": clean_interface["env_alias"],
+        "schema_version": f"eg_rsa_reward_schema_v1_{schema_hash}",
+        "env_alias": clean_interface.get("env_alias", "Env-unknown"),
         "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
         "return_contract": "return float(total_reward), components_dict",
         "allowed_inputs": REQUIRED_SIGNATURE,
-        "private_signal_policy": "Only public transition inputs are available to the reward function.",
+        "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
         "components": [
             {
                 "id": "progress",
-                "description": "dense progress proxy over anonymous normalized transition features",
+                "description": "dense task-progress shaping inferred from public task context",
                 "direction": "maximize",
                 "required": True,
             },
             {
                 "id": "stability",
-                "description": "bounded penalty for abrupt changes in anonymous normalized transition features",
+                "description": "bounded shaping for stable/safe task-relevant behavior inferred from public task context",
                 "direction": "maximize",
                 "required": True,
             },
             {
                 "id": "effort",
-                "description": "bounded penalty for unnecessary action magnitude or action changes when observable",
+                "description": "bounded penalty for unnecessary or costly actions",
                 "direction": "maximize",
                 "required": True,
             },
             {
                 "id": "terminal",
-                "description": "bounded terminal shaping from public termination signals only",
+                "description": "bounded terminal shaping from public done signal",
                 "direction": "maximize",
                 "required": True,
             },
@@ -94,29 +81,73 @@ def build_default_schema(public_task: dict[str, Any], clean_interface: dict[str,
     }
 
 
-def _sample_obs(space_dict: dict[str, Any]):
-    if space_dict.get("type") == "Box":
-        shape = tuple(space_dict.get("shape", []))
-        return np.zeros(shape, dtype=np.float32)
-    if space_dict.get("type") == "Discrete":
-        return int(space_dict.get("start", 0))
-    if space_dict.get("type") == "MultiDiscrete":
-        return np.zeros(len(space_dict.get("nvec", [])), dtype=np.int64)
-    if space_dict.get("type") == "MultiBinary":
-        return np.zeros(space_dict.get("n", 1), dtype=np.int8)
-    return np.zeros((1,), dtype=np.float32)
+def normalize_schema(raw: dict[str, Any] | None, clean_interface: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raw = {}
+
+    default = build_default_schema(clean_interface)
+
+    schema = dict(default)
+    schema.update({k: v for k, v in raw.items() if v is not None})
+
+    components = raw.get("components")
+    if not isinstance(components, list) or not components:
+        components = default["components"]
+
+    normalized_components = []
+    seen = set()
+    for c in components:
+        if not isinstance(c, dict):
+            continue
+        cid = str(c.get("id", "")).strip()
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        normalized_components.append(
+            {
+                "id": cid,
+                "description": str(c.get("description", f"{cid} component")),
+                "direction": str(c.get("direction", "maximize")),
+                "required": bool(c.get("required", True)),
+            }
+        )
+
+    required_ids = {c["id"] for c in normalized_components if c.get("required")}
+    for c in default["components"]:
+        if c["id"] not in seen:
+            normalized_components.append(c)
+            required_ids.add(c["id"])
+
+    schema["components"] = normalized_components
+    schema["reward_signature"] = "compute_reward(obs, action, next_obs, done, info)"
+    schema["return_contract"] = "return float(total_reward), components_dict"
+    schema["allowed_inputs"] = REQUIRED_SIGNATURE
+    schema["reward_abs_bound"] = float(schema.get("reward_abs_bound", 1000.0))
+
+    payload = {
+        "env_alias": clean_interface.get("env_alias"),
+        "components": schema["components"],
+        "task_head": clean_interface.get("eureka_task_description", "")[:1000],
+    }
+    schema_hash = hashlib.sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:10]
+    schema["schema_version"] = str(schema.get("schema_version") or f"eg_rsa_reward_schema_v1_{schema_hash}")
+    if not schema["schema_version"].startswith("eg_rsa_reward_schema"):
+        schema["schema_version"] = f"eg_rsa_reward_schema_v1_{schema_hash}"
+
+    return schema
 
 
-def _sample_action(space_dict: dict[str, Any]):
-    if space_dict.get("type") == "Box":
-        shape = tuple(space_dict.get("shape", []))
-        return np.zeros(shape, dtype=np.float32)
-    if space_dict.get("type") == "Discrete":
-        return int(space_dict.get("start", 0))
-    if space_dict.get("type") == "MultiDiscrete":
-        return np.zeros(len(space_dict.get("nvec", [])), dtype=np.int64)
-    if space_dict.get("type") == "MultiBinary":
-        return np.zeros(space_dict.get("n", 1), dtype=np.int8)
+def _sample_obs(clean_interface: dict[str, Any]):
+    if clean_interface.get("interface_mode") == "anonymous_clean":
+        space = clean_interface.get("observation_space", {})
+        if space.get("type") == "Box":
+            shape = tuple(space.get("shape", [64]))
+            return np.zeros(shape, dtype=np.float32)
+    # Eureka step code commonly uses vector observations. Use a long generic vector for smoke test.
+    return np.zeros((64,), dtype=np.float32)
+
+
+def _sample_action(clean_interface: dict[str, Any]):
     return 0
 
 
@@ -177,9 +208,9 @@ def validate_reward_code(
         if fn is None:
             return False, ["compute_reward not found after compilation"]
 
-        obs = _sample_obs(clean_interface["observation_space"])
+        obs = _sample_obs(clean_interface)
         next_obs = copy.deepcopy(obs)
-        action = _sample_action(clean_interface["action_space"])
+        action = _sample_action(clean_interface)
 
         out = fn(obs, action, next_obs, False, {})
         if not isinstance(out, tuple) or len(out) != 2:
