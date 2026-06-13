@@ -1,0 +1,787 @@
+[
+  {
+    "iteration": 0,
+    "task_score": 0.9562795413168249,
+    "semantic_score": 1.956279541316825,
+    "selection_score": 2.71255908263365,
+    "hack_score": 0.2,
+    "failure_modes": [
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "attitude_stability",
+    "dominant_component_ratio": 0.33761358627865734,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 10,
+      "semantic_score": 1.956279541316825,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "terminal_reward_payment_count_mean": 1.0,
+      "terminal_reward_payment_count_max": 1,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.9980395413168249,
+      "progress_score_std": 0.0015412177232922398,
+      "episode_length_mean": 417.6,
+      "episode_length_std": 194.88571009696938,
+      "contact_toggle_mean": 180.1,
+      "contact_toggle_max": 799.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": true,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "landing_bonus": {
+          "episode_payment_counts": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "episode_paid_rate": 1.0,
+          "payment_count_mean": 1.0,
+          "payment_count_max": 1,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "landing_bonus"
+      ],
+      "one_time_rule_names": [
+        "landing_bonus"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior",
+        "terminal_goal_evidence_present"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 10,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 417.6,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 180.1,
+      "contact_toggle_max": 799,
+      "worst_episodes": [
+        {
+          "episode": 9,
+          "success": 0.0,
+          "progress_score": 0.9954934648128502,
+          "episode_length": 338,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 93,
+          "episode_reward": 892.5271789885202,
+          "oracle_reward_posthoc": 251.78780401273002
+        },
+        {
+          "episode": 3,
+          "success": 0.0,
+          "progress_score": 0.9955022130467799,
+          "episode_length": 384,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 90,
+          "episode_reward": 999.8681886556209,
+          "oracle_reward_posthoc": 251.5488142683842
+        },
+        {
+          "episode": 7,
+          "success": 0.0,
+          "progress_score": 0.9971836368723962,
+          "episode_length": 350,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 73,
+          "episode_reward": 883.4198949826459,
+          "oracle_reward_posthoc": 252.9372329269172
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "active": false,
+      "action": "disabled",
+      "raw_action": "disabled",
+      "normalized_action": "disabled",
+      "confidence": 0.0,
+      "reason_summary": "Slim V2 pipeline disables rule-backed AgentActionController by default. ReflectionAgent decides strategy.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "active": false
+      }
+    },
+    "retrieved_outcome_lessons": [],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "atomic",
+      "why_atomic_or_separable": "Modifying terminal condition to require sustained contact will make landing_bonus harder to trigger; to maintain a useful learning signal, its weight must be increased. Applying only one change risks either continued exploitation (if condition unchanged) or vanishing terminal signal (if weight not adjusted).",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Landing_bonus condition must require sustained leg contact (e.g., both legs >0.5 for at least 10 consecutive steps).",
+        "Increase weight of landing_bonus by at least a factor of 10 (e.g., from 1.0 to 10.0) to balance with accumulating dense rewards.",
+        "Do not remove existing dense components; they provide essential approach guidance.",
+        "Avoid adding new components unless they directly penalize post-contact instability in a simple way.",
+        "Preserve the one-time property of the landing bonus."
+      ],
+      "must_preserve": [
+        "All existing dense components (horizontal_approach, vertical_approach, descent_rate, attitude_stability, control_cost) with their current formulas and weights.",
+        "The one-time payment nature of landing_bonus."
+      ],
+      "must_avoid": [
+        "Removing any existing component.",
+        "Changing the logic of the dense components that currently work well for approach.",
+        "Introducing a condition that makes the terminal reward impossible to achieve.",
+        "Adding controls that discourage any leg contact entirely (e.g., a penalty for leg contact)."
+      ],
+      "expected_effect": "Agent should learn to achieve stable landing, as the terminal reward becomes both more valuable and harder to trigger, aligning shaping with task completion. Dense rewards will still guide approach, but the agent will work to maintain leg contact for the required duration. Hack risk low if condition is well-designed.",
+      "risk_analysis": "If duration_steps is set too high, learning may become too sparse, leading to no progress. If weight increase is insufficient, dense rewards may still dominate and the agent may never reliably trigger the new bonus. Need to monitor success rate and leg contact duration over episodes."
+    },
+    "edit_plan": [
+      {
+        "operator": "add_duration_condition",
+        "target": "landing_bonus",
+        "duration_steps": 10
+      },
+      {
+        "operator": "increase_weight",
+        "target": "landing_bonus",
+        "factor": 10.0
+      }
+    ],
+    "committed_edits": [
+      {
+        "operator": "add_duration_condition",
+        "target": "landing_bonus",
+        "duration_steps": 10
+      },
+      {
+        "operator": "increase_weight",
+        "target": "landing_bonus",
+        "factor": 10.0
+      }
+    ],
+    "transition_decision": "commit",
+    "schema_transition": {
+      "decision": "commit",
+      "next_action": "apply_edit",
+      "requested_next_action": "apply_edit",
+      "schema_changed": true,
+      "committed_edits": [
+        {
+          "operator": "add_duration_condition",
+          "target": "landing_bonus",
+          "duration_steps": 10
+        },
+        {
+          "operator": "increase_weight",
+          "target": "landing_bonus",
+          "factor": 10.0
+        }
+      ],
+      "rejected_edits": [],
+      "blocked_candidate_edits": [],
+      "blocked_gate_edits": [],
+      "reason": "Final edit plan committed to next schema.",
+      "trace": {
+        "validation_errors": [],
+        "validation_warnings": [],
+        "candidate_accepted_count": 2,
+        "candidate_rejected_count": 0,
+        "gate_accepted_count": 2,
+        "gate_rejected_count": 0,
+        "final_edit_plan_count": 2,
+        "operator_constraints_enabled": true,
+        "source_of_truth": "committed_edits",
+        "notes": [],
+        "schema_canonicalization_report": {
+          "ok": true,
+          "notes": [],
+          "errors": [],
+          "component_count": 5,
+          "event_rule_count": 1,
+          "formula_ir": "ast"
+        }
+      },
+      "next_schema_version": 3
+    },
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "requested_next_action": "apply_edit",
+    "structural_search_used": false,
+    "edit_diagnosis": "Landing bonus is triggered by any brief leg contact, leading to reward hacking without stable landings. Requires sustained contact (10 steps) and higher weight to incentivize controlled touchdown.",
+    "edit_validation_errors": [],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "add_duration_condition",
+          "target": "landing_bonus",
+          "duration_steps": 10
+        },
+        {
+          "operator": "increase_weight",
+          "target": "landing_bonus",
+          "factor": 10.0
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "add_duration_condition",
+          "target": "landing_bonus",
+          "duration_steps": 10
+        },
+        {
+          "operator": "increase_weight",
+          "target": "landing_bonus",
+          "factor": 10.0
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [
+        "Terminal target landing_bonus has low step evidence but episode semantic evidence is present; warning only.",
+        "Terminal target landing_bonus has low step evidence but episode semantic evidence is present; warning only.",
+        "Accepted atomic package with 2 edits."
+      ],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "atomic",
+        "max_reasonable_edits": 2,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "atomic",
+          "why_atomic_or_separable": "Modifying terminal condition to require sustained contact will make landing_bonus harder to trigger; to maintain a useful learning signal, its weight must be increased. Applying only one change risks either continued exploitation (if condition unchanged) or vanishing terminal signal (if weight not adjusted).",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Landing_bonus condition must require sustained leg contact (e.g., both legs >0.5 for at least 10 consecutive steps).",
+            "Increase weight of landing_bonus by at least a factor of 10 (e.g., from 1.0 to 10.0) to balance with accumulating dense rewards.",
+            "Do not remove existing dense components; they provide essential approach guidance.",
+            "Avoid adding new components unless they directly penalize post-contact instability in a simple way.",
+            "Preserve the one-time property of the landing bonus."
+          ],
+          "must_preserve": [
+            "All existing dense components (horizontal_approach, vertical_approach, descent_rate, attitude_stability, control_cost) with their current formulas and weights.",
+            "The one-time payment nature of landing_bonus."
+          ],
+          "must_avoid": [
+            "Removing any existing component.",
+            "Changing the logic of the dense components that currently work well for approach.",
+            "Introducing a condition that makes the terminal reward impossible to achieve.",
+            "Adding controls that discourage any leg contact entirely (e.g., a penalty for leg contact)."
+          ],
+          "expected_effect": "Agent should learn to achieve stable landing, as the terminal reward becomes both more valuable and harder to trigger, aligning shaping with task completion. Dense rewards will still guide approach, but the agent will work to maintain leg contact for the required duration. Hack risk low if condition is well-designed.",
+          "risk_analysis": "If duration_steps is set too high, learning may become too sparse, leading to no progress. If weight increase is insufficient, dense rewards may still dominate and the agent may never reliably trigger the new bonus. Need to monitor success rate and leg contact duration over episodes."
+        }
+      }
+    },
+    "outcome_decision": {},
+    "rollback_applied": false,
+    "best_score": 2.71255908263365,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  },
+  {
+    "iteration": 1,
+    "task_score": 0.9594568809575998,
+    "semantic_score": 1.9594568809575998,
+    "selection_score": 2.7189137619151995,
+    "hack_score": 0.2,
+    "failure_modes": [
+      "shaping_goal_mismatch"
+    ],
+    "dominant_component": "horizontal_approach",
+    "dominant_component_ratio": 0.34413779947336914,
+    "benign_terminal_dominance": false,
+    "semantic_outcome": {
+      "episode_count": 10,
+      "semantic_score": 1.9594568809575998,
+      "success_episode_rate": 0.0,
+      "terminal_reward_paid_episode_rate": 1.0,
+      "terminal_reward_payment_count_mean": 1.0,
+      "terminal_reward_payment_count_max": 1,
+      "safe_contact_episode_rate": 0.0,
+      "stable_landing_episode_rate": 0.0,
+      "progress_score_mean": 0.9980768809575998,
+      "progress_score_std": 0.0012054967554920727,
+      "episode_length_mean": 386.2,
+      "episode_length_std": 26.003076741032014,
+      "contact_toggle_mean": 203.6,
+      "contact_toggle_max": 239.0,
+      "reward_repetition_risk": false,
+      "one_time_repeat_violations": [],
+      "terminal_goal_evidence": true,
+      "unstable_contact_behavior": true,
+      "event_rule_payment_stats": {
+        "landing_bonus": {
+          "episode_payment_counts": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "episode_paid_rate": 1.0,
+          "payment_count_mean": 1.0,
+          "payment_count_max": 1,
+          "one_time": true
+        }
+      },
+      "terminal_rule_names": [
+        "landing_bonus"
+      ],
+      "one_time_rule_names": [
+        "landing_bonus"
+      ],
+      "semantic_risks": [
+        "unstable_contact_behavior",
+        "terminal_goal_evidence_present"
+      ]
+    },
+    "trajectory_inspection": {
+      "tool": "trajectory_inspector",
+      "num_episodes": 10,
+      "success_count": 0,
+      "success_rate": 0.0,
+      "episode_length_mean": 386.2,
+      "safe_contact_rate_mean": 0.0,
+      "stable_landing_rate_mean": 0.0,
+      "contact_toggle_mean": 203.6,
+      "contact_toggle_max": 239,
+      "worst_episodes": [
+        {
+          "episode": 9,
+          "success": 0.0,
+          "progress_score": 0.9960513856929349,
+          "episode_length": 366,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 199,
+          "episode_reward": 976.2228382884342,
+          "oracle_reward_posthoc": 248.8480631182373
+        },
+        {
+          "episode": 5,
+          "success": 0.0,
+          "progress_score": 0.9960609896568147,
+          "episode_length": 353,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 187,
+          "episode_reward": 942.7789714061163,
+          "oracle_reward_posthoc": 229.24609542618288
+        },
+        {
+          "episode": 7,
+          "success": 0.0,
+          "progress_score": 0.9973207900324697,
+          "episode_length": 387,
+          "safe_contact_rate": 0.0,
+          "stable_landing_rate": 0.0,
+          "contact_rate": 0.0,
+          "both_contact_rate": 0.0,
+          "contact_toggle_count": 199,
+          "episode_reward": 989.1909759503354,
+          "oracle_reward_posthoc": 249.0412880430399
+        }
+      ],
+      "best_episodes": []
+    },
+    "agent_action_decision": {
+      "active": false,
+      "action": "disabled",
+      "raw_action": "disabled",
+      "normalized_action": "disabled",
+      "confidence": 0.0,
+      "reason_summary": "Slim V2 pipeline disables rule-backed AgentActionController by default. ReflectionAgent decides strategy.",
+      "tools_to_call": [],
+      "edit_intent": {},
+      "safety_requirements": [],
+      "memory_items_to_write": [],
+      "fallback_action": "continue_training",
+      "metadata": {
+        "active": false
+      }
+    },
+    "retrieved_outcome_lessons": [
+      {
+        "tool": "outcome_lesson_builder",
+        "lesson_type": "regression_lesson",
+        "quality": {
+          "reuse_confidence": 0.75,
+          "evidence_strength": 0.85
+        },
+        "edit_plan": [
+          {
+            "operator": "add_duration_condition",
+            "target": "landing_bonus",
+            "duration_steps": 10
+          },
+          {
+            "operator": "increase_weight",
+            "target": "landing_bonus",
+            "factor": 10.0
+          }
+        ],
+        "schema_diff": {
+          "components": {
+            "added": [],
+            "removed": [],
+            "changed": []
+          },
+          "event_rules": {
+            "added": [],
+            "removed": [],
+            "changed": [
+              {
+                "name": "landing_bonus",
+                "changed_fields": [
+                  {
+                    "field": "condition",
+                    "before": {
+                      "expr_ast": {
+                        "op": "and",
+                        "args": [
+                          {
+                            "op": "gt",
+                            "left": {
+                              "var": "left_leg"
+                            },
+                            "right": {
+                              "const": 0.5
+                            }
+                          },
+                          {
+                            "op": "gt",
+                            "left": {
+                              "var": "right_leg"
+                            },
+                            "right": {
+                              "const": 0.5
+                            }
+                          }
+                        ]
+                      },
+                      "duration_steps": 1
+                    },
+                    "after": {
+                      "expr_ast": {
+                        "op": "and",
+                        "args": [
+                          {
+                            "op": "gt",
+                            "left": {
+                              "var": "left_leg"
+                            },
+                            "right": {
+                              "const": 0.5
+                            }
+                          },
+                          {
+                            "op": "gt",
+                            "left": {
+                              "var": "right_leg"
+                            },
+                            "right": {
+                              "const": 0.5
+                            }
+                          }
+                        ]
+                      },
+                      "duration_steps": 10
+                    }
+                  },
+                  {
+                    "field": "weight",
+                    "before": 1.0,
+                    "after": 10.0
+                  }
+                ]
+              }
+            ]
+          },
+          "summary": {
+            "num_component_changes": 0,
+            "num_event_rule_changes": 1
+          }
+        },
+        "metrics_before": {
+          "task_score": 0.9562795413168249,
+          "semantic_score": 1.956279541316825,
+          "selection_score": 2.71255908263365,
+          "hack_score": 0.2,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 1.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metrics_after": {
+          "task_score": 0.9594568809575998,
+          "semantic_score": 1.9594568809575998,
+          "selection_score": 2.7189137619151995,
+          "hack_score": 0.2,
+          "true_hack_risk": true,
+          "terminal_goal_evidence": true,
+          "reward_repetition_risk": false,
+          "high_reward_low_progress": false,
+          "shaping_goal_mismatch": true,
+          "unstable_contact_behavior": true,
+          "benign_terminal_dominance": false,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 1.0,
+          "safe_contact_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0
+        },
+        "metric_delta": {
+          "task_score": 0.0031773396407749344,
+          "semantic_score": 0.0031773396407748233,
+          "selection_score": 0.006354679281549647,
+          "hack_score": 0.0,
+          "success_episode_rate": 0.0,
+          "terminal_reward_paid_episode_rate": 0.0,
+          "stable_landing_episode_rate": 0.0,
+          "safe_contact_episode_rate": 0.0
+        },
+        "outcome_decision": {
+          "decision": "uncertain",
+          "continuation": "rollback_to_best_schema",
+          "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+          "task_delta": 0.0031773396407749344,
+          "hack_delta": 0.0,
+          "semantic_delta": 0.0031773396407748233,
+          "accepted_for_best": false,
+          "rollback_recommended": true
+        },
+        "mechanism_summary": "Outcome regressed after edit; inspect schema diff and avoid repeating this transition without new evidence.",
+        "future_guidance": [
+          "Retrieve this lesson before similar edit operators.",
+          "Prefer conservative local refinement or continue_training."
+        ],
+        "applicability": {
+          "dominant_component": "horizontal_approach",
+          "failure_modes": [],
+          "true_hack_risk": true,
+          "terminal_goal_evidence": true,
+          "semantic_roles_touched": [
+            "terminal_success"
+          ]
+        }
+      }
+    ],
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "Adding a new post‑contact stability component may slightly increase total dense reward; reducing the weight of an existing component (e.g., attitude_stability) can maintain balance. These two changes are logically independent but may be combined in one edit package for safety. The system may treat them as separable if the component addition alone is already balanced.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Add a new dense component that activates when either left_leg >0.5 or right_leg >0.5, and that penalises high absolute angle and/or angular velocity (e.g., exp(-alpha * (angle^2 + ang_vel^2))).",
+        "If needed, reduce the weight of attitude_stability from 1.0 to a value not lower than 0.5 to avoid overall reward inflation.",
+        "Do not modify the landing_bonus event rule (keep duration_steps=10, weight=10.0, one‑time=true).",
+        "Preserve all existing dense components with their current formulas."
+      ],
+      "must_preserve": [
+        "All existing dense component formulas (horizontal_approach, vertical_approach, descent_rate, attitude_stability, control_cost) unchanged.",
+        "Landing_bonus condition exactly as it is (sustained leg contact for 10 steps, one‑time, weight 10.0).",
+        "Control_cost and its weight (0.1)."
+      ],
+      "must_avoid": [
+        "Removing any existing component.",
+        "Adding a penalty that discourages any leg contact (e.g., negative reward simply for leg >0.5).",
+        "Making the terminal bonus harder or changing its fundamental logic.",
+        "Introducing a component that dominates the reward (e.g., weight >2.0) without careful rebalancing."
+      ],
+      "expected_effect": "The agent will learn to maintain low angular motion while legs are in contact, because the new dense component provides a strong, immediate incentive for stability after touchdown. Combined with the terminal bonus, this should yield episodes that end with a safe, upright landing. Hack risk remains low because the component is bounded and continuous.",
+      "risk_analysis": "If the new component is too weak, stability may not improve. If too strong (high weight), it could discourage contact altogether or slow down descent. The editor should set a moderate weight (suggest 1.0–1.5) and monitor contact toggle and angular metrics. If stability improves but landings become rarer, a later iteration can adjust weights."
+    },
+    "edit_plan": [
+      {
+        "operator": "decrease_weight",
+        "target": "attitude_stability",
+        "factor": 0.5
+      }
+    ],
+    "committed_edits": [
+      {
+        "operator": "decrease_weight",
+        "target": "attitude_stability",
+        "factor": 0.5
+      }
+    ],
+    "transition_decision": "commit",
+    "schema_transition": {
+      "decision": "commit",
+      "next_action": "apply_edit",
+      "requested_next_action": "apply_edit",
+      "schema_changed": true,
+      "committed_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "attitude_stability",
+          "factor": 0.5
+        }
+      ],
+      "rejected_edits": [],
+      "blocked_candidate_edits": [],
+      "blocked_gate_edits": [],
+      "reason": "Final edit plan committed to next schema.",
+      "trace": {
+        "validation_errors": [
+          "conditional_formula_component formula_ast invalid: ['$.arg.args[1].args[1].args[0]: variable not allowed: ang_vel', '$.arg.args[1].args[1].args[1]: variable not allowed: ang_vel']"
+        ],
+        "validation_warnings": [],
+        "candidate_accepted_count": 1,
+        "candidate_rejected_count": 0,
+        "gate_accepted_count": 1,
+        "gate_rejected_count": 0,
+        "final_edit_plan_count": 1,
+        "operator_constraints_enabled": true,
+        "source_of_truth": "committed_edits",
+        "notes": [],
+        "schema_canonicalization_report": {
+          "ok": true,
+          "notes": [],
+          "errors": [],
+          "component_count": 5,
+          "event_rule_count": 1,
+          "formula_ir": "ast"
+        }
+      },
+      "next_schema_version": 3
+    },
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "requested_next_action": "apply_edit",
+    "structural_search_used": false,
+    "edit_diagnosis": "Shaping‑goal mismatch: agent can trigger terminal bonus without stable upright landing. Add a post‑contact stability incentive conditioned on leg contact, and reduce global attitude weight to balance total reward.",
+    "edit_validation_errors": [
+      "conditional_formula_component formula_ast invalid: ['$.arg.args[1].args[1].args[0]: variable not allowed: ang_vel', '$.arg.args[1].args[1].args[1]: variable not allowed: ang_vel']"
+    ],
+    "edit_validation_warnings": [],
+    "candidate_evaluation": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "attitude_stability",
+          "factor": 0.5
+        }
+      ],
+      "rejected_edits": [],
+      "reports": [],
+      "warnings": []
+    },
+    "edit_gate": {
+      "accepted_edits": [
+        {
+          "operator": "decrease_weight",
+          "target": "attitude_stability",
+          "factor": 0.5
+        }
+      ],
+      "rejected_edits": [],
+      "warnings": [],
+      "plan_metadata": {
+        "plan_type": "coupled_rebalancing",
+        "atomicity": "separable",
+        "max_reasonable_edits": 2,
+        "reflection_strategy": {
+          "recommended_next_action": "apply_edit",
+          "plan_type": "coupled_rebalancing",
+          "atomicity": "separable",
+          "why_atomic_or_separable": "Adding a new post‑contact stability component may slightly increase total dense reward; reducing the weight of an existing component (e.g., attitude_stability) can maintain balance. These two changes are logically independent but may be combined in one edit package for safety. The system may treat them as separable if the component addition alone is already balanced.",
+          "max_reasonable_edits": 2,
+          "editor_constraints": [
+            "Add a new dense component that activates when either left_leg >0.5 or right_leg >0.5, and that penalises high absolute angle and/or angular velocity (e.g., exp(-alpha * (angle^2 + ang_vel^2))).",
+            "If needed, reduce the weight of attitude_stability from 1.0 to a value not lower than 0.5 to avoid overall reward inflation.",
+            "Do not modify the landing_bonus event rule (keep duration_steps=10, weight=10.0, one‑time=true).",
+            "Preserve all existing dense components with their current formulas."
+          ],
+          "must_preserve": [
+            "All existing dense component formulas (horizontal_approach, vertical_approach, descent_rate, attitude_stability, control_cost) unchanged.",
+            "Landing_bonus condition exactly as it is (sustained leg contact for 10 steps, one‑time, weight 10.0).",
+            "Control_cost and its weight (0.1)."
+          ],
+          "must_avoid": [
+            "Removing any existing component.",
+            "Adding a penalty that discourages any leg contact (e.g., negative reward simply for leg >0.5).",
+            "Making the terminal bonus harder or changing its fundamental logic.",
+            "Introducing a component that dominates the reward (e.g., weight >2.0) without careful rebalancing."
+          ],
+          "expected_effect": "The agent will learn to maintain low angular motion while legs are in contact, because the new dense component provides a strong, immediate incentive for stability after touchdown. Combined with the terminal bonus, this should yield episodes that end with a safe, upright landing. Hack risk remains low because the component is bounded and continuous.",
+          "risk_analysis": "If the new component is too weak, stability may not improve. If too strong (high weight), it could discourage contact altogether or slow down descent. The editor should set a moderate weight (suggest 1.0–1.5) and monitor contact toggle and angular metrics. If stability improves but landings become rarer, a later iteration can adjust weights."
+        }
+      }
+    },
+    "outcome_decision": {
+      "decision": "uncertain",
+      "continuation": "rollback_to_best_schema",
+      "reason": "Outcome change is ambiguous under internal semantic criteria; keep as evidence but continue from best accepted schema.",
+      "task_delta": 0.0031773396407749344,
+      "hack_delta": 0.0,
+      "semantic_delta": 0.0031773396407748233,
+      "accepted_for_best": false,
+      "rollback_recommended": true
+    },
+    "rollback_applied": true,
+    "best_score": 2.71255908263365,
+    "edit_generated": true,
+    "experiment_mode": {
+      "use_memory": true,
+      "use_attribution": true,
+      "use_hack_detector": true,
+      "use_llm_edit": true,
+      "use_operator_constraints": true,
+      "free_rewrite": false,
+      "one_shot": false
+    }
+  }
+]

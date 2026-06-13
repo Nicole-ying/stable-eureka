@@ -1,0 +1,884 @@
+You are the Structural Search sub-agent of EG-RSA-V2 AST-IR.
+
+Return one JSON object only.
+
+Primitive-only constraints:
+1. Do NOT use environment oracle reward or official reward values.
+2. Do NOT write Python code.
+3. Do NOT output string formulas or string conditions.
+4. Use formula_ast / condition_ast / condition.expr_ast only.
+5. Formula AST variables may use only: []
+6. If no safe structural edit exists, return edit_decision="no_edit" and next_action="continue_training".
+
+AST grammar:
+{
+  "leaf": [
+    {
+      "var": "x"
+    },
+    {
+      "const": 0.5
+    },
+    {
+      "bool": true
+    }
+  ],
+  "numeric_ops": [
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "neg",
+    "abs",
+    "min",
+    "max",
+    "clip"
+  ],
+  "boolean_ops": [
+    "and",
+    "or",
+    "not",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "eq",
+    "ne"
+  ]
+}
+
+Preferred structural edits:
+1. add_formula_component
+2. add_conditional_formula_component
+3. add_action_penalty
+4. add_event_predicate
+
+Required add_formula_component schema:
+{
+  "operator": "add_formula_component",
+  "component": {
+    "name": "r_unique_formula_component",
+    "type": "formula_component",
+    "weight": 1.0,
+    "formula_ast": {"op": "sub", "left": {"const": 1.0}, "right": {"op": "min", "args": [{"op": "abs", "arg": {"var": "x"}}, {"const": 1.0}]}},
+    "params": {
+      "formula_ast": {"op": "sub", "left": {"const": 1.0}, "right": {"op": "min", "args": [{"op": "abs", "arg": {"var": "x"}}, {"const": 1.0}]}}
+    },
+    "clip": [0.0, 1.0],
+    "enabled": true,
+    "semantic_role": "dense_guidance",
+    "reward_timing": "dense",
+    "behavior_channel": "progress"
+  }
+}
+
+Required add_event_predicate schema:
+{
+  "operator": "add_event_predicate",
+  "event_rule": {
+    "name": "r_unique_event_predicate",
+    "type": "event_predicate",
+    "weight": 20.0,
+    "condition": {
+      "expr_ast": {"op": "and", "args": [{"var": "left_contact"}, {"var": "right_contact"}]},
+      "duration_steps": 1
+    },
+    "one_time": true,
+    "enabled": true,
+    "semantic_role": "terminal_success",
+    "reward_timing": "sparse_event",
+    "behavior_channel": "completion"
+  }
+}
+
+Task description:
+Control a lander to approach the landing zone, reduce velocity, keep attitude stable, use thrust efficiently, and achieve safe two-leg contact.
+
+
+Current reward schema:
+{
+  "version": 2,
+  "components": [
+    {
+      "name": "horizontal_approach",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "x_pos"
+                }
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 1.0
+        },
+        "right": {
+          "op": "min",
+          "args": [
+            {
+              "op": "abs",
+              "arg": {
+                "var": "x_pos"
+              }
+            },
+            {
+              "const": 1.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "vertical_approach",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "sub",
+          "left": {
+            "const": 1.0
+          },
+          "right": {
+            "op": "min",
+            "args": [
+              {
+                "var": "y_pos"
+              },
+              {
+                "const": 1.0
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "formula_ast": {
+        "op": "sub",
+        "left": {
+          "const": 1.0
+        },
+        "right": {
+          "op": "min",
+          "args": [
+            {
+              "var": "y_pos"
+            },
+            {
+              "const": 1.0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "descent_rate",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "exp",
+          "arg": {
+            "op": "mul",
+            "args": [
+              {
+                "const": -25.0
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "var": "y_vel"
+                  },
+                  {
+                    "const": 0.5
+                  }
+                ]
+              },
+              {
+                "op": "add",
+                "args": [
+                  {
+                    "var": "y_vel"
+                  },
+                  {
+                    "const": 0.5
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "dense_guidance",
+      "reward_timing": "dense",
+      "behavior_channel": "progress",
+      "formula_ast": {
+        "op": "exp",
+        "arg": {
+          "op": "mul",
+          "args": [
+            {
+              "const": -25.0
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "var": "y_vel"
+                },
+                {
+                  "const": 0.5
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "args": [
+                {
+                  "var": "y_vel"
+                },
+                {
+                  "const": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "attitude_stability",
+      "type": "formula_component",
+      "weight": 1.0,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "exp",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": -10.0
+                  },
+                  {
+                    "var": "angle"
+                  },
+                  {
+                    "var": "angle"
+                  }
+                ]
+              },
+              {
+                "op": "mul",
+                "args": [
+                  {
+                    "const": -10.0
+                  },
+                  {
+                    "var": "ang_vel"
+                  },
+                  {
+                    "var": "ang_vel"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        0.0,
+        1.0
+      ],
+      "enabled": true,
+      "semantic_role": "stability_quality",
+      "reward_timing": "dense",
+      "behavior_channel": "safety",
+      "formula_ast": {
+        "op": "exp",
+        "arg": {
+          "op": "add",
+          "args": [
+            {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -10.0
+                },
+                {
+                  "var": "angle"
+                },
+                {
+                  "var": "angle"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "args": [
+                {
+                  "const": -10.0
+                },
+                {
+                  "var": "ang_vel"
+                },
+                {
+                  "var": "ang_vel"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "control_cost",
+      "type": "formula_component",
+      "weight": 0.1,
+      "inputs": [],
+      "params": {
+        "formula_ast": {
+          "op": "neg",
+          "arg": {
+            "op": "add",
+            "args": [
+              {
+                "var": "main_engine"
+              },
+              {
+                "op": "abs",
+                "arg": {
+                  "var": "side_engine"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "enabled": true,
+      "semantic_role": "control_cost",
+      "reward_timing": "dense",
+      "behavior_channel": "efficiency",
+      "formula_ast": {
+        "op": "neg",
+        "arg": {
+          "op": "add",
+          "args": [
+            {
+              "var": "main_engine"
+            },
+            {
+              "op": "abs",
+              "arg": {
+                "var": "side_engine"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "event_rules": [
+    {
+      "name": "landing_bonus",
+      "type": "event_predicate",
+      "weight": 1.0,
+      "condition": {
+        "expr_ast": {
+          "op": "and",
+          "args": [
+            {
+              "op": "gt",
+              "left": {
+                "var": "left_leg"
+              },
+              "right": {
+                "const": 0.5
+              }
+            },
+            {
+              "op": "gt",
+              "left": {
+                "var": "right_leg"
+              },
+              "right": {
+                "const": 0.5
+              }
+            }
+          ]
+        },
+        "duration_steps": 1
+      },
+      "one_time": true,
+      "enabled": true,
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "op": "gt",
+            "left": {
+              "var": "left_leg"
+            },
+            "right": {
+              "const": 0.5
+            }
+          },
+          {
+            "op": "gt",
+            "left": {
+              "var": "right_leg"
+            },
+            "right": {
+              "const": 0.5
+            }
+          }
+        ]
+      },
+      "semantic_role": "terminal_success",
+      "reward_timing": "sparse_event",
+      "behavior_channel": "completion"
+    }
+  ],
+  "metadata": {
+    "source": "llm_bootstrap_ast",
+    "formula_ir": "ast",
+    "input_boundary": "primitive_interface_conditioned",
+    "reward_blueprint_present": true,
+    "raw_env_code_input": false,
+    "identity_hidden_from_llm": true,
+    "action_mapping": {
+      "type": "discrete_lookup",
+      "variables": {
+        "main_engine": {
+          "0": 0.0,
+          "1": 0.0,
+          "2": 1.0,
+          "3": 0.0,
+          "default": 0.0
+        },
+        "side_engine": {
+          "0": 0.0,
+          "1": 1.0,
+          "2": 0.0,
+          "3": -1.0,
+          "default": 0.0
+        }
+      }
+    },
+    "action_variables": [
+      {
+        "name": "main_engine",
+        "description": "main upward thrust (0 or 1)",
+        "type": "float"
+      },
+      {
+        "name": "side_engine",
+        "description": "side engine thrust (-1 for one direction, 0 off, 1 for opposite)",
+        "type": "float"
+      }
+    ],
+    "allowed_formula_variables": [
+      "x_pos",
+      "y_pos",
+      "x_vel",
+      "y_vel",
+      "angle",
+      "ang_vel",
+      "left_leg",
+      "right_leg",
+      "main_engine",
+      "side_engine"
+    ],
+    "allowed_formula_functions": [
+      "abs",
+      "min",
+      "max",
+      "clip",
+      "sqrt",
+      "exp",
+      "tanh"
+    ],
+    "canonicalization_notes": [
+      "Event rule landing_bonus: inferred semantic_role from one_time sign.",
+      "Component control_cost: replaced invalid clip None with role-based default [-1.0, 0.0]."
+    ]
+  }
+}
+
+Diagnostic report:
+{
+  "attribution": {
+    "episode_reward_mean": 727.3024508666415,
+    "episode_reward_std": 56.88471708039422,
+    "component_stats": {
+      "horizontal_approach": {
+        "sum": 2665.1782348296038,
+        "abs_sum": 2665.1782348296038,
+        "mean": 0.9136709752586917,
+        "std": 0.08244003677948004,
+        "min": 0.654094398021698,
+        "max": 0.9999042510971776,
+        "ratio": 0.35035751913156665,
+        "trigger_rate": 1.0
+      },
+      "vertical_approach": {
+        "sum": 1540.1790789551596,
+        "abs_sum": 1540.1790789551596,
+        "mean": 0.5280010555211381,
+        "std": 0.3859213257036255,
+        "min": 0.0,
+        "max": 1.0,
+        "ratio": 0.20246800535483542,
+        "trigger_rate": 0.7888241343846417
+      },
+      "descent_rate": {
+        "sum": 797.317200437014,
+        "abs_sum": 797.317200437014,
+        "mean": 0.2733346590459424,
+        "std": 0.28813331869143594,
+        "min": 4.536733821142782e-11,
+        "max": 0.9999639529234853,
+        "ratio": 0.10481328139913242,
+        "trigger_rate": 0.9965718203633871
+      },
+      "attitude_stability": {
+        "sum": 2427.349994444637,
+        "abs_sum": 2427.349994444637,
+        "mean": 0.8321391821887683,
+        "std": 0.18195989198353518,
+        "min": 0.03384715244053261,
+        "max": 0.9999999744901081,
+        "ratio": 0.31909322648810295,
+        "trigger_rate": 1.0
+      },
+      "control_cost": {
+        "sum": -167.0,
+        "abs_sum": 167.0,
+        "mean": -0.057250599931436406,
+        "std": 0.049471494829186786,
+        "min": -0.1,
+        "max": -0.0,
+        "ratio": 0.021953393184119412,
+        "trigger_rate": 0.5725059993143641
+      },
+      "landing_bonus": {
+        "sum": 10.0,
+        "abs_sum": 10.0,
+        "mean": 0.0034281796366129585,
+        "std": 0.05845021147089266,
+        "min": 0.0,
+        "max": 1.0,
+        "ratio": 0.001314574442162839,
+        "trigger_rate": 0.0034281796366129585
+      }
+    },
+    "dominant_component": "horizontal_approach",
+    "dominant_component_ratio": 0.35035751913156665
+  },
+  "diagnostics": {
+    "hack_flags": {
+      "high_reward_low_progress": false,
+      "component_dominance": false,
+      "repeated_event_exploitation": false,
+      "shaping_goal_mismatch": true,
+      "terminal_success_dominance": false,
+      "unstable_contact_behavior": true,
+      "reward_repetition_risk": false
+    },
+    "failure_modes": [
+      "shaping_goal_mismatch"
+    ],
+    "hack_score": 0.2,
+    "suspected_components": [],
+    "dominant_component": "horizontal_approach",
+    "dominant_component_ratio": 0.35035751913156665,
+    "raw_component_dominance": false,
+    "benign_terminal_dominance": false,
+    "repeated_event_details": {
+      "flag": false,
+      "event_toggle_counts": {},
+      "max_event": null,
+      "max_toggle_count": 0
+    },
+    "semantic_notes": [
+      "contact_or_landing_toggles_observed_but_not_repeated_reward_exploitation"
+    ]
+  },
+  "semantic_outcome": {
+    "episode_count": 10,
+    "semantic_score": 1.9689784085293438,
+    "success_episode_rate": 0.0,
+    "terminal_reward_paid_episode_rate": 1.0,
+    "terminal_reward_payment_count_mean": 1.0,
+    "terminal_reward_payment_count_max": 1,
+    "safe_contact_episode_rate": 0.0,
+    "stable_landing_episode_rate": 0.0,
+    "progress_score_mean": 0.9981484085293436,
+    "progress_score_std": 0.0011068957574125599,
+    "episode_length_mean": 291.7,
+    "episode_length_std": 19.71319355152787,
+    "contact_toggle_mean": 145.2,
+    "contact_toggle_max": 163.0,
+    "reward_repetition_risk": false,
+    "one_time_repeat_violations": [],
+    "terminal_goal_evidence": true,
+    "unstable_contact_behavior": true,
+    "event_rule_payment_stats": {
+      "landing_bonus": {
+        "episode_payment_counts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "episode_paid_rate": 1.0,
+        "payment_count_mean": 1.0,
+        "payment_count_max": 1,
+        "one_time": true
+      }
+    },
+    "terminal_rule_names": [
+      "landing_bonus"
+    ],
+    "one_time_rule_names": [
+      "landing_bonus"
+    ],
+    "semantic_risks": [
+      "unstable_contact_behavior",
+      "terminal_goal_evidence_present"
+    ]
+  },
+  "experiment_mode": {
+    "use_memory": true,
+    "use_attribution": true,
+    "use_hack_detector": true,
+    "use_llm_edit": true,
+    "use_operator_constraints": true,
+    "free_rewrite": false,
+    "one_shot": false
+  }
+}
+
+Retrieved lesson cards:
+[]
+
+Structural context:
+{
+  "available_events": [
+    "action_nonzero"
+  ],
+  "event_specs": {
+    "action_nonzero": {
+      "type": "action_nonzero"
+    }
+  },
+  "available_task_metrics": [
+    "attitude_smoothness",
+    "energy_cost",
+    "progress"
+  ],
+  "task_metric_specs": {
+    "attitude_smoothness": {
+      "type": "raw_abs_inverse",
+      "inputs": [
+        "angle"
+      ]
+    },
+    "energy_cost": {
+      "type": "action_cost"
+    },
+    "progress": {
+      "type": "metric_mean",
+      "metrics": [
+        "attitude_smoothness"
+      ]
+    }
+  },
+  "preferred_success_events": []
+}
+
+Allowed edit operators:
+[
+  {
+    "operator": "increase_weight",
+    "required": [
+      "target",
+      "factor"
+    ],
+    "description": "Multiply existing reward item weight by factor > 1."
+  },
+  {
+    "operator": "decrease_weight",
+    "required": [
+      "target",
+      "factor"
+    ],
+    "description": "Multiply existing reward item weight by 0 < factor < 1."
+  },
+  {
+    "operator": "clip_component",
+    "required": [
+      "target",
+      "clip"
+    ],
+    "description": "Set existing component clip range [min, max]."
+  },
+  {
+    "operator": "disable_component",
+    "required": [
+      "target"
+    ],
+    "description": "Disable harmful/redundant component or event rule."
+  },
+  {
+    "operator": "replace_formula",
+    "required": [
+      "target",
+      "formula_ast"
+    ],
+    "description": "Replace params.formula_ast of an existing AST formula component."
+  },
+  {
+    "operator": "replace_condition",
+    "required": [
+      "target",
+      "condition_ast"
+    ],
+    "description": "Replace params.condition_ast or event condition.expr_ast."
+  },
+  {
+    "operator": "add_formula_component",
+    "required": [
+      "component.formula_ast"
+    ],
+    "description": "Add formula_component using AST IR."
+  },
+  {
+    "operator": "add_conditional_formula_component",
+    "required": [
+      "component.condition_ast",
+      "component.formula_ast"
+    ],
+    "description": "Add conditional_formula_component using AST IR."
+  },
+  {
+    "operator": "add_action_penalty",
+    "required": [
+      "component.formula_ast"
+    ],
+    "description": "Alias for AST formula_component with semantic_role=control_cost."
+  },
+  {
+    "operator": "add_event_predicate",
+    "required": [
+      "event_rule.condition.expr_ast"
+    ],
+    "description": "Add event_predicate using AST boolean predicate."
+  },
+  {
+    "operator": "add_component",
+    "required": [
+      "component"
+    ],
+    "description": "Backward-compatible structural add; AST fields are still required for formula types."
+  },
+  {
+    "operator": "add_event_rule",
+    "required": [
+      "event_rule"
+    ],
+    "description": "Backward-compatible event add; event_predicate requires condition.expr_ast."
+  },
+  {
+    "operator": "convert_to_one_time_event",
+    "required": [
+      "target"
+    ],
+    "description": "Convert event rule or event_bonus component into one-time event."
+  },
+  {
+    "operator": "add_duration_condition",
+    "required": [
+      "target",
+      "duration_steps"
+    ],
+    "description": "Set event rule duration requirement."
+  }
+]
+
+Return exactly this JSON format:
+{
+  "structural_analysis": {
+    "missing_signal_hypothesis": "what primitive-variable reward signal appears missing",
+    "why_local_edit_is_insufficient": "why existing local operators are insufficient",
+    "memory_constraints": [],
+    "safety_constraints": []
+  },
+  "reward_editor": {
+    "edit_decision": "edit | no_edit",
+    "next_action": "apply_edit | continue_training | early_stop",
+    "rationale": "why this structural edit is safe and useful",
+    "edit_plan": []
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit | continue_training | early_stop | reject_edit"
+  },
+  "diagnosis": "short structural-search diagnosis",
+  "edit_plan": []
+}

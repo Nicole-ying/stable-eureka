@@ -1,0 +1,42 @@
+{
+  "accepted_edits": [
+    {
+      "operator": "decrease_weight",
+      "target": "attitude_stability",
+      "factor": 0.5
+    }
+  ],
+  "rejected_edits": [],
+  "warnings": [],
+  "plan_metadata": {
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "separable",
+    "max_reasonable_edits": 2,
+    "reflection_strategy": {
+      "recommended_next_action": "apply_edit",
+      "plan_type": "coupled_rebalancing",
+      "atomicity": "separable",
+      "why_atomic_or_separable": "Adding a new post‑contact stability component may slightly increase total dense reward; reducing the weight of an existing component (e.g., attitude_stability) can maintain balance. These two changes are logically independent but may be combined in one edit package for safety. The system may treat them as separable if the component addition alone is already balanced.",
+      "max_reasonable_edits": 2,
+      "editor_constraints": [
+        "Add a new dense component that activates when either left_leg >0.5 or right_leg >0.5, and that penalises high absolute angle and/or angular velocity (e.g., exp(-alpha * (angle^2 + ang_vel^2))).",
+        "If needed, reduce the weight of attitude_stability from 1.0 to a value not lower than 0.5 to avoid overall reward inflation.",
+        "Do not modify the landing_bonus event rule (keep duration_steps=10, weight=10.0, one‑time=true).",
+        "Preserve all existing dense components with their current formulas."
+      ],
+      "must_preserve": [
+        "All existing dense component formulas (horizontal_approach, vertical_approach, descent_rate, attitude_stability, control_cost) unchanged.",
+        "Landing_bonus condition exactly as it is (sustained leg contact for 10 steps, one‑time, weight 10.0).",
+        "Control_cost and its weight (0.1)."
+      ],
+      "must_avoid": [
+        "Removing any existing component.",
+        "Adding a penalty that discourages any leg contact (e.g., negative reward simply for leg >0.5).",
+        "Making the terminal bonus harder or changing its fundamental logic.",
+        "Introducing a component that dominates the reward (e.g., weight >2.0) without careful rebalancing."
+      ],
+      "expected_effect": "The agent will learn to maintain low angular motion while legs are in contact, because the new dense component provides a strong, immediate incentive for stability after touchdown. Combined with the terminal bonus, this should yield episodes that end with a safe, upright landing. Hack risk remains low because the component is bounded and continuous.",
+      "risk_analysis": "If the new component is too weak, stability may not improve. If too strong (high weight), it could discourage contact altogether or slow down descent. The editor should set a moderate weight (suggest 1.0–1.5) and monitor contact toggle and angular metrics. If stability improves but landings become rarer, a later iteration can adjust weights."
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "reflection_summary": "The lander achieves high dense reward and terminal bonus every episode, but zero stable landings. The previous edit (sustained leg contact duration + higher weight) did not improve stability. The reward still fails to penalize post-contact instability; the agent can satisfy the terminal condition without safe upright landing.",
+  "failure_assessment": {
+    "observed_facts": [
+      "All episodes receive landing_bonus (leg contact >0.5 for 10 consecutive steps), yet safe_contact_episode_rate=0, stable_landing_episode_rate=0.",
+      "Dense components (horizontal_approach, attitude_stability) dominate with high means and ratios.",
+      "Unstable_contact_behavior flag true.",
+      "Shaping_goal_mismatch flag true.",
+      "Terminal goal evidence present, but not translating into stability after contact."
+    ],
+    "likely_true_failures": [
+      "Shaping‑goal mismatch: the terminal bonus only enforces leg contact duration, not post‑contact attitude stability (low angle, low angular velocity).",
+      "Dense components lack conditioning on leg contact, so they do not specifically discourage bouncing or tilting after touchdown.",
+      "The agent exploits the reward by sustaining contact without achieving a safe, stable landing."
+    ],
+    "likely_false_positives": [
+      "Hack score is low (0.2) and no repeated event exploitation – the failure is a task misalignment, not a reward hack.",
+      "Terminal success dominance is false; the terminal bonus is small relative to cumulative dense rewards."
+    ],
+    "root_cause_hypotheses": [
+      "The landing_bonus condition (both legs >0.5 for 10 steps) can be satisfied even if the lander is tilted, bouncing, or swinging after contact.",
+      "No component explicitly penalises angular velocity or angle during leg contact, so the agent has no incentive to be upright after touching down.",
+      "The attitude_stability component applies globally but does not become stronger after contact; the agent can learn to be stable before contact and then becomes unstable."
+    ],
+    "failure_kind": "task_failure",
+    "confidence": 0.9
+  },
+  "memory_assessment": {
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [
+      "lesson_iter_000_to_001: increasing landing_bonus weight and adding duration_steps=10 gave minimal task improvement and did not fix stable‑landing rate.",
+      "regression_lesson: the same edit is classified as a weak edit, rollback recommended."
+    ],
+    "conflicting_lessons": [],
+    "avoid_actions": [
+      "Do not repeat the edit of adding duration_steps to landing_bonus and increasing its weight – it does not solve post‑contact instability.",
+      "Do not further raise the terminal bonus weight without addressing the stability gap."
+    ],
+    "recommended_actions": [
+      "Add a dense component that penalises large angle and/or angular velocity when either leg is in contact with the ground.",
+      "Optionally reduce the weight of attitude_stability slightly if needed to keep total dense reward magnitude balanced."
+    ],
+    "memory_confidence": 0.7
+  },
+  "memory_use_policy": {
+    "use_raw_memory_cards": true,
+    "use_distilled_lesson_cards": true,
+    "use_outcome_lessons": true,
+    "raw_memory_reason": "The raw memory from iter_000→001 provides direct evidence that the previous atomic edit (duration_steps+weight) was ineffective; it prevents re‑applying the same failing remedy.",
+    "lesson_memory_reason": "Distilled lesson cards flag the edit as weak/regression, confirming low reuse confidence and advising against repetition.",
+    "outcome_lesson_reason": "The outcome lesson explicitly recommends rollback and classifies the transition as regression; this reinforces the need for a structural change rather than a re‑weighting.",
+    "selected_memory_ids": [
+      "iter_000_to_001",
+      "lesson_iter_000_to_001",
+      "regression_lesson"
+    ],
+    "ignored_memory_ids": [],
+    "conflict_resolution": "No contradictory memories exist; all evidence concurs that the last edit failed to achieve stable landings.",
+    "memory_confidence": 0.7
+  },
+  "strategy": {
+    "recommended_next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "separable",
+    "why_atomic_or_separable": "Adding a new post‑contact stability component may slightly increase total dense reward; reducing the weight of an existing component (e.g., attitude_stability) can maintain balance. These two changes are logically independent but may be combined in one edit package for safety. The system may treat them as separable if the component addition alone is already balanced.",
+    "max_reasonable_edits": 2,
+    "editor_constraints": [
+      "Add a new dense component that activates when either left_leg >0.5 or right_leg >0.5, and that penalises high absolute angle and/or angular velocity (e.g., exp(-alpha * (angle^2 + ang_vel^2))).",
+      "If needed, reduce the weight of attitude_stability from 1.0 to a value not lower than 0.5 to avoid overall reward inflation.",
+      "Do not modify the landing_bonus event rule (keep duration_steps=10, weight=10.0, one‑time=true).",
+      "Preserve all existing dense components with their current formulas."
+    ],
+    "must_preserve": [
+      "All existing dense component formulas (horizontal_approach, vertical_approach, descent_rate, attitude_stability, control_cost) unchanged.",
+      "Landing_bonus condition exactly as it is (sustained leg contact for 10 steps, one‑time, weight 10.0).",
+      "Control_cost and its weight (0.1)."
+    ],
+    "must_avoid": [
+      "Removing any existing component.",
+      "Adding a penalty that discourages any leg contact (e.g., negative reward simply for leg >0.5).",
+      "Making the terminal bonus harder or changing its fundamental logic.",
+      "Introducing a component that dominates the reward (e.g., weight >2.0) without careful rebalancing."
+    ],
+    "expected_effect": "The agent will learn to maintain low angular motion while legs are in contact, because the new dense component provides a strong, immediate incentive for stability after touchdown. Combined with the terminal bonus, this should yield episodes that end with a safe, upright landing. Hack risk remains low because the component is bounded and continuous.",
+    "risk_analysis": "If the new component is too weak, stability may not improve. If too strong (high weight), it could discourage contact altogether or slow down descent. The editor should set a moderate weight (suggest 1.0–1.5) and monitor contact toggle and angular metrics. If stability improves but landings become rarer, a later iteration can adjust weights."
+  },
+  "auditor_hints": {
+    "package_should_be_rejected_if": [
+      "The added component penalises leg contact itself (e.g., negative reward for leg >0.5) rather than only attitude instability.",
+      "The landing_bonus event rule is altered (weight, duration, or condition).",
+      "Any existing dense component is removed or its formula changed.",
+      "The new component has a weight outside [0.3, 2.0] without a simultaneous counter‑balancing adjustment of an existing component."
+    ],
+    "package_should_be_accepted_if": [
+      "A dense component is added that explicitly reduces reward when (angle or ang_vel) is large, activated only when a leg is in contact.",
+      "The attitude_stability weight is reduced to a value ≤1.0 but ≥0.5 if the editor decides to rebalance.",
+      "No other changes are made, or only benign formula tweaks that preserve the original purpose."
+    ],
+    "safety_notes": [
+      "Monitor contact toggle mean and max; if the agent repeatedly bounces to avoid the post‑contact penalty, the component may need a stronger shape (e.g., higher cost for ang_vel).",
+      "Check if the new component inadvertently delays landing; ensure it does not penalise normal descent before contact.",
+      "The one‑time terminal reward must remain one‑time; confirm that the new component does not interfere with its trigger logic."
+    ]
+  }
+}

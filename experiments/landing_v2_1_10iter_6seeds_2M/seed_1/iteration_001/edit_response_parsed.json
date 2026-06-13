@@ -1,0 +1,207 @@
+{
+  "diagnostic_analysis": {
+    "observed_facts": [
+      "success_episode_rate=0.0 despite progress_score_mean=0.998",
+      "landing_bonus paid every episode (rate=1.0) but no stable landing",
+      "unstable_contact_behavior with high contact_toggle_mean=145.2",
+      "horizontal_approach component dominates with ratio 0.35",
+      "attitude_stability and horizontal_approach means >0.83",
+      "shaping_goal_mismatch hack flag raised"
+    ],
+    "likely_true_failures": [
+      "Shaping rewards incentivize approach but not terminal success",
+      "Landing bonus condition (1‑step leg contact) allows bounces to trigger it",
+      "Dense reward weights are too high relative to the terminal reward"
+    ],
+    "likely_false_positives": [
+      "component_dominance flag is correct; the dominant component does not constitute reward hacking but reflects a well‑learned sub‑goal",
+      "high_reward_low_progress flag is false (progress is high), correctly indicating no progress inflation"
+    ],
+    "root_cause_hypotheses": [
+      "The reward function over‑rewards horizontal position and attitude while under‑rewarding sustained, low‑velocity two‑leg contact with stable attitude."
+    ],
+    "failure_kind": "mixed",
+    "edit_need": "must_edit",
+    "confidence": 0.85
+  },
+  "memory_reflection": {
+    "lesson_assessments": [],
+    "reusable_lessons": [],
+    "failed_or_weak_lessons": [],
+    "avoid_actions": [],
+    "recommended_actions": [],
+    "memory_confidence": 0.0
+  },
+  "reward_editor": {
+    "edit_decision": "edit",
+    "next_action": "apply_edit",
+    "plan_type": "coupled_rebalancing",
+    "atomicity": "atomic",
+    "max_reasonable_edits": 5,
+    "rationale": "To fix shaping-goal mismatch, we increase terminal reward weight and require sustained contact while reducing dense weights for approach and stability. Added velocity constraints in landing condition discourage bouncing.",
+    "expected_effect": "Higher terminal reward with sustained-contact requirement will push the agent to land and stay down; lower dense weights reduce incentive to hover. Combined, this should shift return distribution toward successful stable landings.",
+    "risk_analysis": "If terminal weight is too high, agent may crash-land quickly; but the condition includes velocity and attitude constraints to prevent that. If dense weights are reduced too much, agent may fail to reach landing zone; proposed bounds are moderate.",
+    "edit_plan": [
+      {
+        "operator": "increase_weight",
+        "target": "landing_bonus",
+        "factor": 5.0
+      },
+      {
+        "operator": "add_duration_condition",
+        "target": "landing_bonus",
+        "duration_steps": 5
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "horizontal_approach",
+        "factor": 0.3
+      },
+      {
+        "operator": "decrease_weight",
+        "target": "attitude_stability",
+        "factor": 0.3
+      },
+      {
+        "operator": "replace_condition",
+        "target": "landing_bonus",
+        "condition_ast": {
+          "op": "and",
+          "args": [
+            {
+              "op": "gt",
+              "left": {
+                "var": "left_leg"
+              },
+              "right": {
+                "const": 0.5
+              }
+            },
+            {
+              "op": "gt",
+              "left": {
+                "var": "right_leg"
+              },
+              "right": {
+                "const": 0.5
+              }
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "y_vel"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            },
+            {
+              "op": "lt",
+              "left": {
+                "op": "abs",
+                "arg": {
+                  "var": "ang_vel"
+                }
+              },
+              "right": {
+                "const": 0.2
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "auditor_check": {
+    "approved": true,
+    "issues": [],
+    "final_action": "apply_edit"
+  },
+  "distilled_lessons": {
+    "what_worked": [],
+    "what_failed": [],
+    "avoid_next": [],
+    "recommend_next": [],
+    "applicability_notes": []
+  },
+  "diagnosis": "Shaping‑goal mismatch causing hovering but no stable landing; rebalance dense/terminal weights and tighten landing condition with velocity constraints.",
+  "edit_plan": [
+    {
+      "operator": "increase_weight",
+      "target": "landing_bonus",
+      "factor": 5.0
+    },
+    {
+      "operator": "add_duration_condition",
+      "target": "landing_bonus",
+      "duration_steps": 5
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "horizontal_approach",
+      "factor": 0.3
+    },
+    {
+      "operator": "decrease_weight",
+      "target": "attitude_stability",
+      "factor": 0.3
+    },
+    {
+      "operator": "replace_condition",
+      "target": "landing_bonus",
+      "condition_ast": {
+        "op": "and",
+        "args": [
+          {
+            "op": "gt",
+            "left": {
+              "var": "left_leg"
+            },
+            "right": {
+              "const": 0.5
+            }
+          },
+          {
+            "op": "gt",
+            "left": {
+              "var": "right_leg"
+            },
+            "right": {
+              "const": 0.5
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "var": "y_vel"
+              }
+            },
+            "right": {
+              "const": 0.2
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "op": "abs",
+              "arg": {
+                "var": "ang_vel"
+              }
+            },
+            "right": {
+              "const": 0.2
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "plan_type": "coupled_rebalancing",
+  "atomicity": "atomic",
+  "max_reasonable_edits": 5
+}

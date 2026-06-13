@@ -45,7 +45,12 @@ class EditPlanValidator:
         edit_plan: List[Dict[str, Any]],
         structural_context: Optional[Dict[str, Any]] = None,
     ) -> EditPlanValidationResult:
-        structural_context = structural_context or {}
+        structural_context = dict(structural_context or {})
+        # Merge schema metadata's allowed_formula_variables so the validator
+        # uses the same variable names that the edit prompt shows the LLM.
+        schema_allowed = (schema.metadata or {}).get("allowed_formula_variables", [])
+        if schema_allowed:
+            structural_context.setdefault("allowed_formula_variables", schema_allowed)
         result = EditPlanValidationResult()
 
         if not isinstance(edit_plan, list):
