@@ -22,9 +22,6 @@ class CandidateRecord:
     validation_errors_before_repair: list[str]
     validation_errors_after_repair: list[str]
 
-    semantic_warning_count: int
-    semantic_warnings: dict[str, Any]
-
     reflection_summary: str
     reward_code: str
     llm_rationale: str

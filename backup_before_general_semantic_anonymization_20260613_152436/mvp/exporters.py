@@ -44,8 +44,6 @@ def export_memory_csv(memory_jsonl: Path, output_csv: Path) -> Path:
                         "validation_errors": row.get("validation_errors", []),
                         "validation_errors_before_repair": row.get("validation_errors_before_repair", []),
                         "validation_errors_after_repair": row.get("validation_errors_after_repair", []),
-                        "semantic_warning_count": row.get("semantic_warning_count", 0),
-                        "semantic_warnings": row.get("semantic_warnings", {}),
                         "judge_reason": row.get("judge_reason", ""),
                         "video_path": row.get("video_path", ""),
                     }
@@ -67,8 +65,6 @@ def export_memory_csv(memory_jsonl: Path, output_csv: Path) -> Path:
         "validation_errors",
         "validation_errors_before_repair",
         "validation_errors_after_repair",
-        "semantic_warning_count",
-        "semantic_warnings",
         "judge_reason",
         "video_path",
     ]

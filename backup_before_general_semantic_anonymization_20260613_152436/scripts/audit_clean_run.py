@@ -94,14 +94,12 @@ def main() -> None:
     statuses = {}
     repair_attempts = 0
     repair_success = 0
-    semantic_warning_count_total = 0
 
     for row in rows:
         status = str(row.get("status", "unknown"))
         statuses[status] = statuses.get(status, 0) + 1
         repair_attempts += int(row.get("repair_attempts", 0) or 0)
         repair_success += int(bool(row.get("repair_success", False)))
-        semantic_warning_count_total += int(row.get("semantic_warning_count", 0) or 0)
 
     ok_rows = [r for r in rows if r.get("status") == "ok"]
     best = None
@@ -114,7 +112,6 @@ def main() -> None:
         "num_ok": len(ok_rows),
         "repair_attempts_total": repair_attempts,
         "repair_success_count": repair_success,
-        "semantic_warning_count_total": semantic_warning_count_total,
         "best_candidate": None
         if best is None
         else {

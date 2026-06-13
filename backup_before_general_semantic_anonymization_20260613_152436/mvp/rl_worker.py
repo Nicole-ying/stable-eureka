@@ -9,7 +9,6 @@ from typing import Callable
 import gymnasium as gym
 import imageio.v2 as imageio
 import numpy as np
-from gymnasium import spaces
 from stable_baselines3 import PPO
 
 from .config import RLConfig
@@ -66,88 +65,22 @@ def compile_reward_function(reward_code: str) -> RewardFn:
     return fn
 
 
-class ObservationAnonymizer:
-    """
-    Generic observation anonymizer for reward computation.
-
-    策略：
-      - policy 仍然看 raw obs；
-      - reward function 只看 normalized anonymous obs；
-      - 对 Box 空间：有限 bounds 用中心/半径归一化到约 [-1,1]；
-        非有限维度用通用尺度 tanh 压缩；
-      - 对非 Box 空间：转成 float array，做通用尺度压缩；
-      - 不包含任何环境专属逻辑。
-    """
-
-    def __init__(self, observation_space: spaces.Space):
-        self.observation_space = observation_space
-
-        if isinstance(observation_space, spaces.Box):
-            low = np.asarray(observation_space.low, dtype=np.float32)
-            high = np.asarray(observation_space.high, dtype=np.float32)
-            finite = np.isfinite(low) & np.isfinite(high) & (high > low)
-
-            center = np.zeros_like(low, dtype=np.float32)
-            scale = np.ones_like(low, dtype=np.float32)
-
-            center[finite] = (low[finite] + high[finite]) / 2.0
-            scale[finite] = (high[finite] - low[finite]) / 2.0
-            scale = np.where(np.abs(scale) < 1e-6, 1.0, scale)
-
-            self.box_finite = finite
-            self.center = center
-            self.scale = scale
-        else:
-            self.box_finite = None
-            self.center = None
-            self.scale = None
-
-    def transform(self, obs):
-        arr = np.asarray(obs, dtype=np.float32)
-
-        if isinstance(self.observation_space, spaces.Box):
-            out = np.zeros_like(arr, dtype=np.float32)
-
-            finite = self.box_finite
-            out[finite] = (arr[finite] - self.center[finite]) / self.scale[finite]
-
-            # 非有限 bound 维度不暴露原始尺度，用 generic tanh 压缩。
-            nonfinite = ~finite
-            out[nonfinite] = np.tanh(arr[nonfinite] / 5.0)
-
-            out = np.clip(out, -5.0, 5.0)
-            return out.astype(np.float32)
-
-        return np.tanh(arr / 5.0).astype(np.float32)
-
-
 class RewardFunctionWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env, reward_fn: RewardFn):
         super().__init__(env)
         self.reward_fn = reward_fn
         self._prev_obs = None
-        self._prev_obs_reward_view = None
-        self._anonymizer = ObservationAnonymizer(env.observation_space)
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         self._prev_obs = obs
-        self._prev_obs_reward_view = self._anonymizer.transform(obs)
         return obs, info
 
     def step(self, action):
         next_obs, hidden_env_reward, terminated, truncated, info = self.env.step(action)
         done = bool(terminated or truncated)
 
-        next_obs_reward_view = self._anonymizer.transform(next_obs)
-
-        out = self.reward_fn(
-            self._prev_obs_reward_view,
-            action,
-            next_obs_reward_view,
-            done,
-            info,
-        )
+        out = self.reward_fn(self._prev_obs, action, next_obs, done, info)
         if not isinstance(out, tuple) or len(out) != 2:
             raise ValueError("compute_reward must return (reward, components)")
 
@@ -163,7 +96,6 @@ class RewardFunctionWrapper(gym.Wrapper):
         safe_info["_reward_components"] = {str(k): float(v) for k, v in components.items()}
 
         self._prev_obs = next_obs
-        self._prev_obs_reward_view = next_obs_reward_view
         return next_obs, reward, terminated, truncated, safe_info
 
 

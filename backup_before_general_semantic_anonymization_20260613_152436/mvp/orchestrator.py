@@ -20,7 +20,6 @@ from .leak_audit import LeakAuditError, audit_text_bundle, save_audit_report
 from .memory import CandidateRecord, JsonlMemory
 from .models import ModelGateway
 from .reward_schema import validate_reward_code
-from .semantic_audit import audit_semantic_text_bundle, save_semantic_audit_report
 from .rl_worker import RLWorker
 from .task_specs import get_private_task_spec, get_public_task_spec, make_env_alias
 
@@ -68,17 +67,6 @@ class RewardEvolutionOrchestrator:
             extra_terms=public_task.forbidden_terms,
         )
         save_audit_report(audit, self.cfg.workspace / "leak_audit_pre_generation.json")
-        semantic_pre_report = audit_semantic_text_bundle(
-            {
-                "clean_interface": clean_interface,
-                "reward_schema": reward_schema,
-                "clean_plan": plan,
-            }
-        )
-        save_semantic_audit_report(
-            semantic_pre_report,
-            self.cfg.workspace / "semantic_audit_pre_generation.json",
-        )
         if not audit["ok"]:
             raise LeakAuditError(
                 "Pre-generation leak audit failed. "
@@ -216,14 +204,6 @@ class RewardEvolutionOrchestrator:
                     judge_details = {"error": str(e)}
                     rationale = rationale or "pipeline failed"
 
-                semantic_report = audit_semantic_text_bundle(
-                    {
-                        "reward_code": reward_code,
-                        "llm_rationale": rationale,
-                        "reflection_summary": reflection,
-                    }
-                )
-
                 private_eval_return = float(train_result.get("eval_hidden_return", -1e9))
                 generated_return = float(train_result.get("eval_generated_return", -1e9))
                 selection_score = private_eval_return if status == "ok" else -1e9
@@ -240,8 +220,6 @@ class RewardEvolutionOrchestrator:
                     repair_success=repair_success,
                     validation_errors_before_repair=validation_errors_before_repair,
                     validation_errors_after_repair=validation_errors_after_repair,
-                    semantic_warning_count=int(semantic_report.get("semantic_warning_count", 0)),
-                    semantic_warnings=semantic_report.get("semantic_warnings", {}),
                     reflection_summary=reflection,
                     reward_code=reward_code,
                     llm_rationale=rationale,
@@ -292,7 +270,6 @@ def format_report(best: dict, out_path: Path) -> None:
         f"generated_reward_return: {best.get('train_mean_return', 0)}",
         f"repair_attempts: {best.get('repair_attempts', 0)}",
         f"repair_success: {best.get('repair_success', False)}",
-        f"semantic_warning_count: {best.get('semantic_warning_count', 0)}",
         f"judge_score: {best.get('judge_score', 0)}",
         f"judge_reason: {best.get('judge_reason', '')}",
         f"parents: {best.get('parent_ids', [])}",
