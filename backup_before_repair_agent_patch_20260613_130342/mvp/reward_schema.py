@@ -85,7 +85,7 @@ def build_default_schema(public_task: dict[str, Any], clean_interface: dict[str,
             },
             {
                 "id": "terminal",
-                "description": "bounded terminal success/failure shaping from public termination signals",
+                "description": "bounded terminal success/failure shaping without reading hidden reward",
                 "direction": "maximize",
                 "required": True,
             },

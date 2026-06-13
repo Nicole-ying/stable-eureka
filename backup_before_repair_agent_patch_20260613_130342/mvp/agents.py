@@ -5,32 +5,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .leak_audit import LeakAuditError, assert_no_leak_text
+from .leak_audit import assert_no_leak_text
 from .models import ModelGateway
 from .reward_schema import build_default_schema
 from .task_specs import PublicTaskSpec
 
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
-
-
-PRIVATE_TERMS = (
-    "env_reward",
-    "hidden_env_reward",
-    "_hidden_env_reward",
-    "fitness_score",
-    "compute_fitness_score",
-    "benchmark_reward",
-    "official_reward",
-    "original_reward",
-    "hidden_reward",
-    "LunarLander",
-    "BipedalWalker",
-    "CartPole",
-    "Acrobot",
-    "MountainCar",
-    "Pendulum",
-)
 
 
 @dataclass
@@ -40,33 +21,12 @@ class RewardDraft:
     rationale: str
 
 
-@dataclass
-class RepairDraft:
-    reward_code: str
-    rationale: str
-
-
-def _contains_private_term(text: str) -> bool:
-    text_lower = text.lower()
-    return any(term.lower() in text_lower for term in PRIVATE_TERMS)
-
-
-def _sanitize_errors(errors: list[str]) -> list[str]:
-    sanitized = []
-    for err in errors:
-        clean = str(err)
-        for term in PRIVATE_TERMS:
-            clean = re.sub(re.escape(term), "[PRIVATE_TERM]", clean, flags=re.IGNORECASE)
-        sanitized.append(clean)
-    return sanitized
-
-
 class BootstrapAgent:
     """
-    Bootstrap schema agent.
+    Bootstrap schema agent。
 
     只基于 PublicTaskSpec + CleanEnvInterface 生成通用 RewardSchema。
-    不读取原始环境源码，不读取专家奖励模板，不读取私有评价实现。
+    不读取原始 env.py，不读取官方 reward，不读取 hidden evaluator 实现。
     """
 
     def build_schema(
@@ -154,73 +114,6 @@ class RewardCoderAgent:
         return RewardDraft(candidate_id=candidate_id, reward_code=reward_code, rationale=rationale)
 
 
-class RepairAgent:
-    """
-    RepairAgent 只做 schema / syntax / contract 修复。
-
-    重要边界：
-      - 如果错误代码或错误信息中出现私有词，直接拒绝 repair；
-      - repair prompt 不携带私有 token；
-      - repair 后仍然必须经过 validator。
-    """
-
-    def __init__(self, model: ModelGateway):
-        self.model = model
-        self.system_prompt = (PROMPT_DIR / "repair_system.txt").read_text(encoding="utf-8")
-
-    def can_repair(self, reward_code: str, validation_errors: list[str]) -> bool:
-        joined_errors = "\n".join(str(e) for e in validation_errors)
-        if _contains_private_term(reward_code):
-            return False
-        if _contains_private_term(joined_errors):
-            return False
-        return True
-
-    def repair(
-        self,
-        reward_code: str,
-        validation_errors: list[str],
-        clean_interface: dict[str, Any],
-        reward_schema: dict[str, Any],
-        attempt_index: int,
-    ) -> RepairDraft:
-        if not self.can_repair(reward_code, validation_errors):
-            raise LeakAuditError("Repair refused because candidate or errors contain private terms.")
-
-        sanitized_errors = _sanitize_errors(validation_errors)
-
-        schema_components = "\n".join(
-            [
-                f"- {c['id']}: {c['description']} | direction={c['direction']} | required={c['required']}"
-                for c in reward_schema["components"]
-            ]
-        )
-
-        user = (
-            f"Repair attempt: {attempt_index}\n\n"
-            f"Validation errors:\n{sanitized_errors}\n\n"
-            f"Clean environment interface:\n{clean_interface}\n\n"
-            f"Reward schema version: {reward_schema['schema_version']}\n"
-            f"Reward signature: {reward_schema['reward_signature']}\n"
-            f"Required schema components:\n{schema_components}\n\n"
-            "Candidate reward code to repair:\n"
-            "```python\n"
-            f"{reward_code}\n"
-            "```\n\n"
-            "Repair only schema, syntax, numerical stability, and return-contract issues. "
-            "Do not introduce any new non-public signal or infer the real environment identity."
-        )
-
-        assert_no_leak_text("repair_user_prompt", user)
-
-        text = self.model.chat(self.system_prompt, user)
-        code_match = re.search(r"```python\n(.*?)```", text, re.DOTALL)
-        repaired_code = code_match.group(1).strip() if code_match else text.strip()
-        rationale_match = re.search(r"RATIONALE:(.*)", text, re.DOTALL)
-        rationale = rationale_match.group(1).strip() if rationale_match else "schema repair"
-        return RepairDraft(reward_code=repaired_code, rationale=rationale)
-
-
 class VisionJudgeAgent:
     def __init__(self, model: ModelGateway):
         self.model = model
@@ -272,8 +165,6 @@ class ReflectionAgent:
                     f"selection_score={r.get('selection_score')}, "
                     f"private_eval_return={r.get('hidden_eval_return')}, "
                     f"generated_return={r.get('train_mean_return')}, "
-                    f"repair_attempts={r.get('repair_attempts', 0)}, "
-                    f"repair_success={r.get('repair_success', False)}, "
                     f"reason={r.get('judge_reason')}, "
                     f"validation_errors={r.get('validation_errors', [])}"
                 )
@@ -285,6 +176,7 @@ class ReflectionAgent:
             + "\n\nDo not infer the real environment identity. Propose schema-preserving mutation hypotheses."
         )
 
+        # Reflection 允许看到私有评价数值，但不允许出现环境名和具体私有变量名。
         assert_no_leak_text(
             "reflection_user_prompt",
             user,

@@ -6,14 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .agents import (
-    BootstrapAgent,
-    PlannerAgent,
-    ReflectionAgent,
-    RepairAgent,
-    RewardCoderAgent,
-    VisionJudgeAgent,
-)
+from .agents import BootstrapAgent, PlannerAgent, ReflectionAgent, RewardCoderAgent, VisionJudgeAgent
 from .config import MVPConfig
 from .env_sanitizer import infer_clean_env_interface
 from .leak_audit import LeakAuditError, audit_text_bundle, save_audit_report
@@ -22,9 +15,6 @@ from .models import ModelGateway
 from .reward_schema import validate_reward_code
 from .rl_worker import RLWorker
 from .task_specs import get_private_task_spec, get_public_task_spec, make_env_alias
-
-
-MAX_REPAIR_ATTEMPTS = 2
 
 
 class RewardEvolutionOrchestrator:
@@ -38,7 +28,6 @@ class RewardEvolutionOrchestrator:
         self.bootstrap = BootstrapAgent()
         self.planner = PlannerAgent()
         self.coder = RewardCoderAgent(self.model)
-        self.repairer = RepairAgent(self.model)
         self.judge = VisionJudgeAgent(self.model)
         self.reflector = ReflectionAgent(self.model)
         self.worker = RLWorker(cfg.rl)
@@ -111,11 +100,6 @@ class RewardEvolutionOrchestrator:
                 reward_code = ""
                 rationale = ""
                 validation_errors: list[str] = []
-                validation_errors_before_repair: list[str] = []
-                validation_errors_after_repair: list[str] = []
-                repair_attempts = 0
-                repair_success = False
-
                 status = "failed"
                 train_result = {
                     "eval_generated_return": -1e9,
@@ -143,41 +127,6 @@ class RewardEvolutionOrchestrator:
                         reward_schema,
                         clean_interface,
                     )
-
-                    if not valid:
-                        validation_errors_before_repair = list(validation_errors)
-
-                        for attempt in range(1, MAX_REPAIR_ATTEMPTS + 1):
-                            if not self.repairer.can_repair(reward_code, validation_errors):
-                                break
-
-                            repair_attempts = attempt
-                            repair_draft = self.repairer.repair(
-                                reward_code=reward_code,
-                                validation_errors=validation_errors,
-                                clean_interface=clean_interface,
-                                reward_schema=reward_schema,
-                                attempt_index=attempt,
-                            )
-
-                            reward_code = repair_draft.reward_code
-                            rationale = (
-                                rationale
-                                + f"\n\nREPAIR_ATTEMPT_{attempt}: "
-                                + repair_draft.rationale
-                            )
-
-                            valid, validation_errors = validate_reward_code(
-                                reward_code,
-                                reward_schema,
-                                clean_interface,
-                            )
-
-                            if valid:
-                                repair_success = True
-                                break
-
-                    validation_errors_after_repair = list(validation_errors)
 
                     if not valid:
                         status = "invalid_schema"
@@ -216,10 +165,6 @@ class RewardEvolutionOrchestrator:
                     env_alias=clean_interface["env_alias"],
                     status=status,
                     validation_errors=validation_errors,
-                    repair_attempts=repair_attempts,
-                    repair_success=repair_success,
-                    validation_errors_before_repair=validation_errors_before_repair,
-                    validation_errors_after_repair=validation_errors_after_repair,
                     reflection_summary=reflection,
                     reward_code=reward_code,
                     llm_rationale=rationale,
@@ -268,8 +213,6 @@ def format_report(best: dict, out_path: Path) -> None:
         f"selection_score_private_eval: {best.get('selection_score', 0)}",
         f"private_eval_return: {best.get('hidden_eval_return', 0)}",
         f"generated_reward_return: {best.get('train_mean_return', 0)}",
-        f"repair_attempts: {best.get('repair_attempts', 0)}",
-        f"repair_success: {best.get('repair_success', False)}",
         f"judge_score: {best.get('judge_score', 0)}",
         f"judge_reason: {best.get('judge_reason', '')}",
         f"parents: {best.get('parent_ids', [])}",

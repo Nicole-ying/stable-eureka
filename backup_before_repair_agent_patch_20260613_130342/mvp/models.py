@@ -49,9 +49,12 @@ class ModelGateway:
             "    delta = next_arr - obs_arr\n"
             "    progress = float(np.clip(np.linalg.norm(obs_arr) - np.linalg.norm(next_arr), -5.0, 5.0))\n"
             "    stability = float(-0.05 * np.tanh(np.linalg.norm(delta)))\n"
-            "    act_arr = np.asarray(action, dtype=float).reshape(-1)\n"
-            "    effort = float(-0.01 * np.tanh(np.linalg.norm(act_arr)))\n"
-            "    terminal = float(-1.0 if done else 0.0)\n"
+            "    try:\n"
+            "        act_arr = np.asarray(action, dtype=float).reshape(-1)\n"
+            "        effort = float(-0.01 * np.tanh(np.linalg.norm(act_arr)))\n"
+            "    except Exception:\n"
+            "        effort = float(-0.01 * abs(float(action))) if isinstance(action, (int, float)) else 0.0\n"
+            "    terminal = -1.0 if done else 0.0\n"
             "    total = progress + stability + effort + terminal\n"
             "    components = {\n"
             "        'progress': progress,\n"
@@ -61,7 +64,7 @@ class ModelGateway:
             "    }\n"
             "    return float(total), components\n"
             "```\n"
-            "RATIONALE: clean bounded transition reward using only public transition inputs."
+            "RATIONALE: clean bounded transition reward without using hidden environment reward."
         )
 
     def judge_video(self, system_prompt: str, rubric: str, video_path: Path) -> dict:

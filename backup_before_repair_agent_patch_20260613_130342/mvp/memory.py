@@ -17,11 +17,6 @@ class CandidateRecord:
     status: str
     validation_errors: list[str]
 
-    repair_attempts: int
-    repair_success: bool
-    validation_errors_before_repair: list[str]
-    validation_errors_after_repair: list[str]
-
     reflection_summary: str
     reward_code: str
     llm_rationale: str
