@@ -3,9 +3,9 @@ best_candidate: g0_c0
 schema_version: clean_reward_schema_v1_e18c317ff9
 env_alias: Env-0f1fc662
 status: ok
-selection_score_private_eval: 72.0
-private_eval_return: 72.0
-generated_reward_return: -3.6468400137167647
+selection_score_private_eval: 500.0
+private_eval_return: 500.0
+generated_reward_return: -11.417387286999382
 repair_attempts: 0
 repair_success: False
 judge_score: 0.0

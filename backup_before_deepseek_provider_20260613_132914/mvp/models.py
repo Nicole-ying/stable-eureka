@@ -1,6 +1,5 @@
 import base64
 import json
-import os
 from pathlib import Path
 
 import ollama
@@ -15,43 +14,11 @@ class ModelGateway:
     def __init__(self, config: ModelConfig):
         self.config = config
         self.provider = config.provider.lower()
-
-        self.openai_client = None
-        self.ollama_client = None
-
-        if self.provider == "openai":
-            kwargs = {
-                "api_key": os.environ.get(config.openai_api_key_env),
-            }
-            if config.openai_base_url:
-                kwargs["base_url"] = config.openai_base_url
-            self.openai_client = OpenAI(**kwargs)
-
-        elif self.provider == "deepseek":
-            api_key = os.environ.get(config.deepseek_api_key_env)
-            if not api_key:
-                raise RuntimeError(
-                    f"Missing DeepSeek API key. Please export {config.deepseek_api_key_env}=<your_key>"
-                )
-            self.openai_client = OpenAI(
-                api_key=api_key,
-                base_url=config.deepseek_base_url,
-            )
-
-        elif self.provider == "ollama":
-            self.ollama_client = ollama.Client(host=config.ollama_host)
-
-        elif self.provider == "mock":
-            pass
-
-        else:
-            raise ValueError(
-                f"Unsupported model provider: {config.provider}. "
-                "Expected one of: openai, deepseek, ollama, mock."
-            )
+        self.openai_client = OpenAI() if self.provider == "openai" else None
+        self.ollama_client = ollama.Client(host=config.ollama_host) if self.provider == "ollama" else None
 
     def chat(self, system: str, user: str) -> str:
-        if self.provider in ("openai", "deepseek"):
+        if self.provider == "openai":
             response = self.openai_client.chat.completions.create(
                 model=self.config.llm_model,
                 temperature=self.config.temperature,
@@ -74,7 +41,6 @@ class ModelGateway:
             )
             return response["message"]["content"]
 
-        # mock provider
         return (
             "```python\n"
             "def compute_reward(obs, action, next_obs, done, info):\n"
@@ -99,18 +65,7 @@ class ModelGateway:
         )
 
     def judge_video(self, system_prompt: str, rubric: str, video_path: Path) -> dict:
-        if self.provider in ("openai", "deepseek"):
-            # DeepSeek 当前主要用于文本 reward generation。
-            # 如果没有真实多模态能力，这里返回 0 分，不影响 selection_score；
-            # selection_score 仍由 private evaluator return 决定。
-            if self.provider == "deepseek":
-                return {
-                    "score": 0.0,
-                    "reason": "deepseek_text_only_judge_skipped",
-                    "strengths": [],
-                    "weaknesses": [],
-                }
-
+        if self.provider == "openai":
             b64 = base64.b64encode(video_path.read_bytes()).decode("utf-8")
             data_url = f"data:image/gif;base64,{b64}"
             response = self.openai_client.chat.completions.create(

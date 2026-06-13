@@ -1,3 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "[1/5] check repo layout..."
+test -d mvp || { echo "ERROR: please run this script at repo root"; exit 1; }
+
+backup_dir="backup_before_deepseek_provider_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$backup_dir"
+
+for f in \
+  mvp/config.py \
+  mvp/models.py \
+  mvp/configs/cartpole_clean_deepseek_small.yaml \
+  scripts/run_clean_cartpole_deepseek_small.sh
+do
+  if [ -f "$f" ]; then
+    mkdir -p "$backup_dir/$(dirname "$f")"
+    cp "$f" "$backup_dir/$f"
+  fi
+done
+
+echo "[2/5] patch mvp/config.py..."
+cat > mvp/config.py <<'PY'
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+@dataclass
+class ModelConfig:
+    provider: str = "openai"  # openai | deepseek | ollama | mock
+
+    llm_model: str = "gpt-4.1"
+    vlm_model: str = "gpt-4.1-mini"
+
+    # OpenAI-compatible settings.
+    openai_base_url: str | None = None
+    openai_api_key_env: str = "OPENAI_API_KEY"
+
+    # DeepSeek API settings.
+    # DeepSeek is OpenAI-compatible, but should use its own base_url and key env.
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_api_key_env: str = "DEEPSEEK_API_KEY"
+
+    # Ollama settings.
+    ollama_host: str = "http://localhost:11434"
+
+    temperature: float = 0.7
+    max_tokens: int = 1200
+
+
+@dataclass
+class RLConfig:
+    env_id: str = "LunarLander-v3"
+    total_timesteps: int = 30_000
+    eval_episodes: int = 3
+    learning_rate: float = 3e-4
+    gamma: float = 0.99
+
+
+@dataclass
+class EvolutionConfig:
+    generations: int = 4
+    population_size: int = 3
+    elite_size: int = 1
+    reflection_top_k: int = 2
+    target_score: float | None = None
+    max_stagnation_generations: int | None = None
+
+
+@dataclass
+class MVPConfig:
+    model: ModelConfig = field(default_factory=ModelConfig)
+    rl: RLConfig = field(default_factory=RLConfig)
+    evolution: EvolutionConfig = field(default_factory=EvolutionConfig)
+    workspace: Path = Path("runs/mvp")
+    seed: int = 42
+
+    @property
+    def memory_path(self) -> Path:
+        return self.workspace / "memory.jsonl"
+
+    @property
+    def videos_dir(self) -> Path:
+        return self.workspace / "videos"
+
+    @property
+    def checkpoints_dir(self) -> Path:
+        return self.workspace / "checkpoints"
+
+
+def _deep_update(target: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(target.get(k), dict):
+            target[k] = _deep_update(target[k], v)
+        else:
+            target[k] = v
+    return target
+
+
+def load_config(path: str | Path | None = None) -> MVPConfig:
+    cfg = MVPConfig()
+    if path is None:
+        return cfg
+
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    base = {
+        "model": cfg.model.__dict__.copy(),
+        "rl": cfg.rl.__dict__.copy(),
+        "evolution": cfg.evolution.__dict__.copy(),
+        "workspace": str(cfg.workspace),
+        "seed": cfg.seed,
+    }
+    merged = _deep_update(base, raw)
+
+    return MVPConfig(
+        model=ModelConfig(**merged["model"]),
+        rl=RLConfig(**merged["rl"]),
+        evolution=EvolutionConfig(**merged["evolution"]),
+        workspace=Path(merged["workspace"]),
+        seed=int(merged["seed"]),
+    )
+PY
+
+echo "[3/5] patch mvp/models.py..."
+cat > mvp/models.py <<'PY'
 import base64
 import json
 import os
@@ -163,3 +293,68 @@ class ModelGateway:
                 return {"score": 0.0, "reason": "ollama_json_parse_error"}
 
         return {"score": 0.0, "reason": "mock_judge_no_vision"}
+PY
+
+echo "[4/5] write DeepSeek clean CartPole config..."
+cat > mvp/configs/cartpole_clean_deepseek_small.yaml <<'YAML'
+model:
+  provider: deepseek
+  llm_model: deepseek-v4-flash
+  vlm_model: deepseek-v4-flash
+  deepseek_base_url: https://api.deepseek.com
+  deepseek_api_key_env: DEEPSEEK_API_KEY
+  temperature: 0.7
+  max_tokens: 1200
+
+rl:
+  env_id: CartPole-v1
+  total_timesteps: 8000
+  eval_episodes: 3
+  learning_rate: 0.0003
+  gamma: 0.99
+
+evolution:
+  generations: 2
+  population_size: 2
+  elite_size: 1
+  reflection_top_k: 2
+
+workspace: runs/clean_cartpole_deepseek_g2p2_t8k
+seed: 42
+YAML
+
+echo "[5/5] write DeepSeek run script..."
+cat > scripts/run_clean_cartpole_deepseek_small.sh <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+WORKSPACE="runs/clean_cartpole_deepseek_g2p2_t8k"
+
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+  echo "ERROR: DEEPSEEK_API_KEY is not set."
+  echo "Please run:"
+  echo "  export DEEPSEEK_API_KEY='your_key_here'"
+  exit 1
+fi
+
+rm -rf "$WORKSPACE"
+
+python run_mvp.py \
+  --config mvp/configs/cartpole_clean_deepseek_small.yaml
+
+python scripts/audit_clean_run.py "$WORKSPACE"
+SH
+
+chmod +x scripts/run_clean_cartpole_deepseek_small.sh
+
+python -m py_compile \
+  mvp/config.py \
+  mvp/models.py
+
+echo ""
+echo "PATCH DONE."
+echo "Backup saved at: $backup_dir"
+echo ""
+echo "Next:"
+echo "  export DEEPSEEK_API_KEY='your_key_here'"
+echo "  bash scripts/run_clean_cartpole_deepseek_small.sh"

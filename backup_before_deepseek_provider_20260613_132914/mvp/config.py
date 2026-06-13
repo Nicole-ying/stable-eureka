@@ -9,23 +9,10 @@ import yaml
 
 @dataclass
 class ModelConfig:
-    provider: str = "openai"  # openai | deepseek | ollama | mock
-
+    provider: str = "openai"  # openai | ollama | mock
     llm_model: str = "gpt-4.1"
     vlm_model: str = "gpt-4.1-mini"
-
-    # OpenAI-compatible settings.
-    openai_base_url: str | None = None
-    openai_api_key_env: str = "OPENAI_API_KEY"
-
-    # DeepSeek API settings.
-    # DeepSeek is OpenAI-compatible, but should use its own base_url and key env.
-    deepseek_base_url: str = "https://api.deepseek.com"
-    deepseek_api_key_env: str = "DEEPSEEK_API_KEY"
-
-    # Ollama settings.
     ollama_host: str = "http://localhost:11434"
-
     temperature: float = 0.7
     max_tokens: int = 1200
 
