@@ -32,6 +32,7 @@ def main() -> None:
     run_dir = Path(args.run_dir)
     errors = []
     warnings = []
+    schema_ids = []
 
     schema_path = run_dir / "reward_schema.txt"
     if not schema_path.exists():
@@ -39,6 +40,7 @@ def main() -> None:
     else:
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         comps = schema.get("components", [])
+        schema_ids = [str(c.get("id", "")) for c in comps if c.get("id")]
         if len(comps) > args.max_schema_components:
             errors.append(f"schema has too many components: {len(comps)} > {args.max_schema_components}")
         terminal_like = [
@@ -52,6 +54,24 @@ def main() -> None:
     memory_rows = read_jsonl(run_dir / "memory.jsonl")
     if not memory_rows:
         errors.append("missing or empty memory.jsonl")
+
+    for r in memory_rows:
+        if r.get("status") == "ok":
+            spec = r.get("reward_spec") or {}
+            if not spec:
+                errors.append(f"missing reward_spec in memory row: {r.get('candidate_id')}")
+            else:
+                spec_ids = [str(c.get("id", "")) for c in spec.get("components", [])]
+                if schema_ids and spec_ids != schema_ids:
+                    errors.append(f"reward_spec component ids do not match schema for {r.get('candidate_id')}: {spec_ids} vs {schema_ids}")
+
+            comp_returns = ((r.get("diagnostics") or {}).get("component_returns") or {})
+            extra = [k for k in comp_returns.keys() if schema_ids and k not in schema_ids]
+            missing = [k for k in schema_ids if k not in comp_returns]
+            if extra:
+                errors.append(f"component_returns has schema-extra keys for {r.get('candidate_id')}: {extra}")
+            if missing:
+                warnings.append(f"component_returns missing schema keys for {r.get('candidate_id')}: {missing}")
 
     candidate_lessons = read_jsonl(run_dir / "candidate_lessons.jsonl")
     if memory_rows and not candidate_lessons:
@@ -74,6 +94,14 @@ def main() -> None:
     action_guess_phrases = [
         "continuous action is common",
         "if actions are continuous",
+        "if the action space is continuous",
+        "use action magnitude",
+        "continuous fuel consumption model",
+    ]
+    population_guess_phrases = [
+        "increase the number of candidates",
+        "3-5 candidates",
+        "increase population size",
     ]
 
     for source_name, rows in [
@@ -86,6 +114,8 @@ def main() -> None:
                 errors.append(f"unsafe hidden-evaluator wording in {source_name}: {row.get('lesson_id')}")
             if any(p.lower() in text for p in action_guess_phrases):
                 warnings.append(f"possible action-space guess in {source_name}: {row.get('lesson_id')}")
+            if any(p.lower() in text for p in population_guess_phrases):
+                warnings.append(f"possible population-search suggestion in {source_name}: {row.get('lesson_id')}")
 
     invalid_import = []
     for r in memory_rows:
@@ -119,17 +149,17 @@ def main() -> None:
     print(f"num_env_lessons: {len(env_lessons)}")
 
     if warnings:
-        print("\\nWARNINGS:")
+        print("\nWARNINGS:")
         for w in warnings:
             print(f"- {w}")
 
     if errors:
-        print("\\nERRORS:")
+        print("\nERRORS:")
         for e in errors:
             print(f"- {e}")
         raise SystemExit(1)
 
-    print("\\nOK: quality checks passed.")
+    print("\nOK: quality checks passed.")
 
 
 if __name__ == "__main__":
