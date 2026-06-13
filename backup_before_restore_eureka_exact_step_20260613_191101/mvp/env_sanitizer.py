@@ -53,7 +53,7 @@ def _find_eureka_file(env_id: str, filename: str) -> Path:
     raise FileNotFoundError(
         f"Eureka-style file not found for env_id={env_id}: {filename}\n"
         f"Searched:\n{searched}\n\n"
-        "EG-RSA requires Eureka-style envs/<task>/task_description.txt and envs/<task>/step.py. "
+        "Final EG-RSA framework requires envs/<task>/task_description.txt and envs/<task>/step.py. "
         "It does not synthesize extra observation/action range tables."
     )
 
@@ -62,66 +62,29 @@ def _read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _assert_eureka_step_has_no_objective_implementation(step_code: str) -> None:
-    """
-    Eureka step.py may contain hook calls such as:
-      self.compute_reward(...)
-      self.compute_fitness_score(...)
-
-    That is acceptable for Eureka-aligned input.
-
-    What must not be present is the implementation body of official reward
-    or hidden evaluator functions inside the step.py file.
-    """
-    forbidden_defs = [
-        "def compute_reward",
-        "def compute_fitness_score",
-        "class Reward",
-    ]
-    lower = step_code.lower()
-    leaked = [x for x in forbidden_defs if x.lower() in lower]
-    if leaked:
-        raise ValueError(
-            "Eureka step.py appears to contain private objective/evaluator implementation definitions: "
-            f"{leaked}"
-        )
-
-
 def infer_clean_env_interface(env_id: str, env_alias: str) -> dict[str, Any]:
     """
     Final EG-RSA task input.
 
-    We follow Eureka exactly:
+    The LLM receives exactly Eureka-style task context:
       1. task_description.txt
-      2. Eureka-processed step.py
+      2. step.py
 
-    We do not add a Gym-space-derived observation/action range table.
-    We also do not additionally redact hook lines that are already part of
-    Eureka's provided step.py. The hidden reward/evaluator implementation
-    itself must not be present.
+    The framework may add memory, lessons, feedback, schema, and parent reward code
+    during iteration. It does not add a separate Gym-space-derived observation/action
+    range table.
     """
     task_path = _find_eureka_file(env_id, "task_description.txt")
     step_path = _find_eureka_file(env_id, "step.py")
 
-    step_code = _read_file(step_path)
-    _assert_eureka_step_has_no_objective_implementation(step_code)
-
     return {
-        "interface_mode": "eureka_exact_step",
+        "interface_mode": "eureka_clean",
         "env_alias": env_alias,
         "eureka_task_description": _read_file(task_path),
-        "eureka_step_code": step_code,
+        "eureka_step_code": _read_file(step_path),
         "source_files": {
             "task_description": str(task_path),
             "step": str(step_path),
-        },
-        "step_policy": {
-            "mode": "eureka_exact",
-            "description": (
-                "The LLM receives the same Eureka-processed step.py. "
-                "Hook calls to compute_reward/compute_fitness_score may appear, "
-                "but their implementations are not provided."
-            ),
         },
         "reward_function_contract": {
             "signature": "compute_reward(obs, action, next_obs, done, info)",
@@ -131,8 +94,8 @@ def infer_clean_env_interface(env_id: str, env_alias: str) -> dict[str, Any]:
         "input_boundary": {
             "allowed": [
                 "task_description.txt",
-                "Eureka-processed step.py",
-                "LLM reasoning over observation/action semantics from public task files",
+                "step.py",
+                "LLM reasoning over observation/action semantics",
                 "environment understanding generated from task files",
                 "reward schema and search plan generated from task files",
                 "parent reward code",
@@ -140,9 +103,10 @@ def infer_clean_env_interface(env_id: str, env_alias: str) -> dict[str, Any]:
                 "STM/MTM/LTM lessons retrieved from memory",
             ],
             "generated_code_forbidden": [
-                "environment reward returned by env.step",
-                "official reward implementation",
-                "fitness/evaluation implementation",
+                "env_reward",
+                "official reward formula",
+                "fitness_score",
+                "compute_fitness_score",
                 "hidden evaluator implementation",
                 "expert reward template",
             ],
