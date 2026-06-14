@@ -61,9 +61,8 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
     write_json(run_dir / "target_alignment_summary.json", target_summary)
 
     current_dir = run_dir
-    best_evidence: Dict[str, Any] = {}
     current_evidence = EvidenceBuilder.build(current_dir, output_path=current_dir / "iteration_evidence.json")
-    best_evidence = current_evidence
+    best_evidence: Dict[str, Any] = current_evidence
     write_json(run_dir / "best_iteration_evidence.json", best_evidence)
 
     for next_iteration in range(1, total_iterations):
@@ -116,7 +115,7 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
 
         next_dir = run_dir / "iterations" / f"iter_{next_iteration:03d}"
         next_dir.mkdir(parents=True, exist_ok=True)
-        _materialize_revision(config, next_dir, revision, env_summary, target_summary)
+        _materialize_revision(config, next_dir, revision, env_summary, target_summary, next_iteration)
 
         next_evidence = EvidenceBuilder.build(next_dir, output_path=next_dir / "iteration_evidence.json")
         memory_record = memory.append_transition(
@@ -140,7 +139,14 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
     return run_dir
 
 
-def _materialize_revision(config: Dict[str, Any], next_dir: Path, revision: Dict[str, Any], env_summary: Dict[str, Any], target_summary: Dict[str, Any]) -> None:
+def _materialize_revision(
+    config: Dict[str, Any],
+    next_dir: Path,
+    revision: Dict[str, Any],
+    env_summary: Dict[str, Any],
+    target_summary: Dict[str, Any],
+    iteration: int,
+) -> None:
     reward_schema = revision.get("reward_schema") or {}
     reward_code = revision.get("reward_code") or ""
     reward_dir = next_dir / "reward"
@@ -164,6 +170,9 @@ def _materialize_revision(config: Dict[str, Any], next_dir: Path, revision: Dict
         environment_understanding=env_summary,
         target_alignment_contract=target_summary,
         reward_schema=reward_schema,
+        candidate_id=f"iter_{iteration:03d}",
+        generation=iteration,
+        creation_type="llm_reward_revision",
     )
     reward_trace = trainer.train()
     write_json(next_dir / "reward_trace.json", reward_trace)
