@@ -1,0 +1,123 @@
+{
+  "memory_type": "reward_transition",
+  "iteration_from": 2,
+  "iteration_to": 3,
+  "parent_candidate_id": "iter_002",
+  "candidate_id": "iter_003",
+  "before_metrics": {
+    "fitness_score": 2.3461006826305124,
+    "generated_reward": 21.38945482969284,
+    "episode_length": 105.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "after_metrics": {
+    "fitness_score": -215.199685196345,
+    "generated_reward": -794.3529523789882,
+    "episode_length": 971.8,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "metric_delta": {
+    "episode_length": 866.8,
+    "fitness_score": -217.54578587897552,
+    "generated_reward": -815.742407208681,
+    "out_of_bounds_rate": 0.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0
+  },
+  "before_behavior": {
+    "action_distribution": {
+      "1": 0.05714285714285714,
+      "0": 0.4742857142857143,
+      "2": 0.44571428571428573,
+      "3": 0.022857142857142857
+    },
+    "dominant_action": {
+      "action": "0",
+      "probability": 0.4742857142857143
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "early_failure_or_uncontrolled_terminal"
+  },
+  "after_behavior": {
+    "action_distribution": {
+      "1": 0.045688413253755916,
+      "2": 0.5719283803251698,
+      "0": 0.33587157851409755,
+      "3": 0.046511627906976744
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.5719283803251698
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "hovering_or_timeout_policy"
+  },
+  "reflection_diagnosis": {
+    "outcome_label": "promising_policy",
+    "main_problem": "Reward signal misalignment with environment termination logic prevents consistent success reinforcement.",
+    "evidence": [
+      "Episode 4 final state meets physical success criteria (Legs=1.0, Velocity~0, X~0) but terminal_classification is 'unknown_terminal'.",
+      "success_like_terminal_rate is 0.0 despite evidence of landing behavior in trajectory examples.",
+      "Average fitness_score (2.35) is low relative to potential success bonus (+100), indicating the bonus is rarely or inconsistently triggered.",
+      "Action distribution shows active control (45% Main Engine) but high fuel penalty (-27.6) dominates without consistent positive terminal reward."
+    ],
+    "root_cause_hypotheses": [
+      "Environment does not terminate immediately on soft landing, leaving 'terminated' flag False when success conditions are met.",
+      "Reward function restricts +100 bonus to 'if terminated:' block, missing non-terminated landing states.",
+      "Evaluation metric for success relies on termination flags that do not capture successful landings in this configuration."
+    ],
+    "reward_hacking_flags": {
+      "hovering_hacking": false,
+      "terminal_hacking": false,
+      "component_dominance_hacking": true
+    },
+    "bad_local_optimum_flags": {
+      "passive_policy": false,
+      "wrong_action_mode_policy": false,
+      "hovering_or_stalling": false,
+      "unstable_fast_completion": false,
+      "proxy_contact_or_terminal_behavior": true
+    },
+    "confidence": 0.85
+  },
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "Decouple success bonus from 'terminated' flag. Evidence shows landing states (Legs=1, Vel~0) occur without immediate termination or correct classification, causing the +100 bonus to be missed. Moving logic to state-based detection ensures immediate positive feedback for safe landings regardless of environment termination timing.",
+    "preserved_design": [
+      "Fuel penalty weight (0.5)",
+      "Step penalty (-0.2 per step)",
+      "Orientation control shaping",
+      "Position and velocity stability shaping terms"
+    ],
+    "changed_design": [
+      "Moved 'landing_success_bonus' logic outside 'if terminated:' block to trigger on state conditions (Leg Contact + Low Velocity + Near Pad) at any step.",
+      "Modified 'termination_failure_penalty' to apply only if 'terminated' is True AND success conditions are NOT met, preventing penalizing successful landings that terminate."
+    ],
+    "risk": [
+      "Agent might trigger success bonus briefly then drift away before episode ends (mitigated by dense penalties continuing).",
+      "Double counting risk if termination happens on the same step as landing (handled by conditional logic)."
+    ],
+    "expected_metric_changes": {
+      "fitness_score": "Increase due to consistent +100 signal for successful landings.",
+      "success_like_terminal_rate": "Should increase as agent learns state-based success criteria."
+    },
+    "validation_metrics": [
+      "correlation_between_leg_contact_and_reward_spike",
+      "mean_reward_per_step_at_landing_state"
+    ]
+  },
+  "acceptance": {
+    "accepted_as_elite": false,
+    "reason": "fitness_score did not improve"
+  },
+  "reuse_policy": "negative_constraint",
+  "lesson": "A medium reward revision from behavior 'early_failure_or_uncontrolled_terminal' to 'hovering_or_timeout_policy' did not improve fitness_score by -217.546. Changed design summary: [\"Moved 'landing_success_bonus' logic outside 'if terminated:' block to trigger on state conditions (Leg Contact + Low Velocity + Near Pad) at any step.\", \"Modified 'termination_failure_penalty' to apply only if 'terminated' is True AND success conditions are NOT met, preventing penalizing successful landings that terminate.\"]. Original diagnosis: Reward signal misalignment with environment termination logic prevents consistent success reinforcement.."
+}

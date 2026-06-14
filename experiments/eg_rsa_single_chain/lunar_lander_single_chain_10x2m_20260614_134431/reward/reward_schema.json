@@ -1,0 +1,131 @@
+{
+  "version": "initial_v0",
+  "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+  "design_principle": "Sparse terminal reward for success/failure combined with dense fuel penalty and weak shaping for position/velocity to guide exploration without over-constraining early behavior.",
+  "behavior_trajectory_prior_used": {
+    "phases_considered": [
+      "Stabilization (Angle correction)",
+      "Descent (Y reduction)",
+      "Touchdown (Leg contact + Low Velocity)"
+    ],
+    "prioritized_signals": [
+      "Fuel consumption minimization",
+      "Terminal success conditions (Legs, Velocity, Position)",
+      "Termination failure penalty"
+    ]
+  },
+  "component_catalog": [
+    {
+      "id": "fuel_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Discourage unnecessary engine usage to promote efficiency.",
+      "uses": [
+        "m_power",
+        "s_power"
+      ],
+      "expected_effect": "Agent minimizes thrust duration.",
+      "activation_reason": "Fuel is infinite physically but tracked for cost; essential for optimization.",
+      "anti_hacking_role": "Prevents hovering indefinitely."
+    },
+    {
+      "id": "landing_success_bonus",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Provide strong positive signal for safe landing.",
+      "uses": [
+        "state[6]",
+        "state[7]",
+        "state[2]",
+        "state[3]",
+        "state[0]"
+      ],
+      "expected_effect": "Agent learns to land gently on pad.",
+      "activation_reason": "Primary objective is successful landing.",
+      "anti_hacking_role": "Requires low velocity and leg contact, preventing crash-for-points."
+    },
+    {
+      "id": "termination_failure_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize crashes or out-of-bounds termination.",
+      "uses": [
+        "terminated"
+      ],
+      "expected_effect": "Agent avoids crashing and staying in bounds.",
+      "activation_reason": "Safety constraint is critical.",
+      "anti_hacking_role": "Prevents intentional crashing if fuel cost > crash penalty."
+    },
+    {
+      "id": "position_shaping",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Weakly encourage movement towards pad center (0,0).",
+      "uses": [
+        "state[0]",
+        "state[1]"
+      ],
+      "expected_effect": "Reduces time to reach target area.",
+      "activation_reason": "Helps exploration in early iterations without dense reward hacking risk.",
+      "anti_hacking_role": "Low weight prevents hovering at pad edge."
+    },
+    {
+      "id": "velocity_stability",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Weakly penalize high velocity during flight.",
+      "uses": [
+        "state[2]",
+        "state[3]"
+      ],
+      "expected_effect": "Encourages smoother trajectory.",
+      "activation_reason": "Supports safe landing preparation.",
+      "anti_hacking_role": "Prevents high-speed approaches that might crash."
+    },
+    {
+      "id": "orientation_control",
+      "type": "reward_term",
+      "status": "dormant",
+      "purpose": "Penalize deviation from upright angle.",
+      "uses": [
+        "state[4]"
+      ],
+      "expected_effect": "Ensures lander is vertical before landing.",
+      "activation_reason": "May be needed if agent learns to land sideways; deferred for iter0 simplicity.",
+      "anti_hacking_role": "N/A"
+    },
+    {
+      "id": "leg_contact_diagnostic",
+      "type": "diagnostic_term",
+      "status": "active",
+      "purpose": "Track leg contact status for analysis.",
+      "uses": [
+        "state[6]",
+        "state[7]"
+      ],
+      "expected_effect": "None (logging only).",
+      "activation_reason": "Required for diagnostic metrics in individual_reward.",
+      "anti_hacking_role": "N/A"
+    }
+  ],
+  "active_reward_terms": [
+    "fuel_penalty",
+    "landing_success_bonus",
+    "termination_failure_penalty",
+    "position_shaping",
+    "velocity_stability"
+  ],
+  "diagnostic_terms": [
+    "leg_contact_diagnostic",
+    "fuel_penalty",
+    "position_shaping",
+    "velocity_stability"
+  ],
+  "dormant_terms": [
+    "orientation_control"
+  ],
+  "iteration_policy": {
+    "iter0_principle": "simple, exploration-friendly, not over-constrained",
+    "future_search_principle": "future iterations may activate, deactivate, reshape, or replace components when training evidence justifies it; edits are not artificially limited but must declare scope, reason, risks, and validation metrics"
+  }
+}

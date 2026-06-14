@@ -1,0 +1,87 @@
+{
+  "file_type": "reflection_decision",
+  "iteration": 3,
+  "candidate_id": "iter_003",
+  "diagnosis": {
+    "outcome_label": "hovering_or_timeout_policy",
+    "main_problem": "Agent has converged to a hovering strategy that avoids termination penalties by maintaining altitude until episode timeout, failing to achieve the landing success bonus due to strict velocity constraints and high cost of descent attempts.",
+    "evidence": [
+      "Episode length is near maximum (971.8 steps), indicating avoidance of early termination.",
+      "Landing success rate is 0.0 despite high fuel consumption (645.4 mean cost).",
+      "Termination failure penalty mean return is only -20.0, suggesting most episodes do not trigger the crash/failure condition, likely timing out without game_over flag.",
+      "Action distribution shows dominant Main Engine usage (57%) to counteract gravity rather than descend.",
+      "Final states in trajectories show high Y coordinates (1.5-2.5) and zero leg contact."
+    ],
+    "root_cause_hypotheses": [
+      "Step penalty (-0.2) is too low compared to the risk of crashing or failing velocity checks, making hovering until timeout a higher expected return strategy.",
+      "Position shaping reward is insufficient to drive descent; agent stays at safe altitude to minimize distance penalty without risking landing.",
+      "Success bonus (+100) is sparse and hard to trigger (requires low velocity + contact), while failure penalty (-100) is avoided by not touching down.",
+      "Timeout episodes may not be triggering the termination_failure_penalty logic, allowing survival as a valid strategy."
+    ],
+    "reward_hacking_flags": {
+      "hovering_hacking": true,
+      "terminal_hacking": false,
+      "component_dominance_hacking": false
+    },
+    "bad_local_optimum_flags": {
+      "passive_policy": false,
+      "wrong_action_mode_policy": false,
+      "hovering_or_stalling": true,
+      "unstable_fast_completion": false,
+      "proxy_contact_or_terminal_behavior": false
+    },
+    "confidence": 0.92
+  },
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "scope_reason": "The current reward structure incentivizes survival over landing. A medium edit is required to rebalance time pressure and descent incentives without completely restructuring the success criteria which was working in Iteration 2.",
+    "exploration_vs_exploitation": "exploitation",
+    "what_to_preserve": [
+      "State-based success detection logic (Leg Contact + Low Velocity + Near Pad).",
+      "Fuel penalty mechanism to discourage wasteful thrusting.",
+      "Orientation control to ensure upright landing."
+    ],
+    "what_to_change": [
+      "Increase step penalty weight significantly (e.g., from -0.2 to -0.5 or higher) to make hovering unsustainable.",
+      "Add explicit descent reward for reducing Y coordinate (state[1]) to encourage movement towards ground.",
+      "Ensure timeout episodes trigger the failure penalty if success conditions are not met, closing the survival loophole.",
+      "Consider slightly relaxing velocity threshold for success bonus temporarily (e.g., 0.6) or adding intermediate rewards for safe descent."
+    ],
+    "what_to_avoid": [
+      "Removing fuel penalties entirely as this encourages inefficient hovering.",
+      "Increasing failure penalty without addressing the survival loophole, which may not change behavior if timeout is still cheaper than landing risk."
+    ]
+  },
+  "expected_metric_changes": {
+    "episode_length": "Decrease significantly (target < 500 steps)",
+    "success_like_terminal_rate": "Increase from 0.0 to > 0.1",
+    "mean_fuel_cost_per_episode": "May decrease as episodes end sooner, or increase slightly if descent requires more thrust initially.",
+    "fitness_score": "Initial drop possible due to higher step penalties, followed by recovery as landing is discovered."
+  },
+  "validation_metrics": [
+    {
+      "name": "average_steps_to_termination",
+      "threshold": "< 500",
+      "purpose": "Verify agent stops hovering and attempts termination/landing faster."
+    },
+    {
+      "name": "mean_y_coordinate_at_termination",
+      "threshold": "< 1.0",
+      "purpose": "Confirm agent is descending towards the pad rather than staying high."
+    },
+    {
+      "name": "success_like_terminal_rate",
+      "threshold": "> 0.05",
+      "purpose": "Ensure landing attempts are resulting in valid success states."
+    }
+  ],
+  "memory_queries": [
+    {
+      "query_type": "reward_transition",
+      "target_iteration": 2,
+      "reason": "Review Iteration 2 reward weights which achieved short episodes (105 steps) and positive fitness (+2.3) to understand the balance between step penalty and fuel cost that encouraged action over hovering."
+    }
+  ],
+  "agent_name": "ReflectionAgent"
+}

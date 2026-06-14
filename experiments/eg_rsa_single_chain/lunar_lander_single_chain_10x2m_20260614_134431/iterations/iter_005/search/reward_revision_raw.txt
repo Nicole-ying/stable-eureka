@@ -1,0 +1,210 @@
+{
+  "file_type": "revised_reward_schema_and_code",
+  "parent_candidate_id": "iter_005",
+  "candidate_id": "iter_006_revert_y_shaping_tighten_vel",
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "Removing the problematic Y-descent shaping term to restore exploration balance seen in Iteration 2. Tightening velocity threshold for success bonus from 0.6 to 0.4 to prevent crash-landing bonuses while maintaining safety constraints.",
+    "preserved_design": [
+      "Terminal success bonus (+100) and failure penalty (-100) logic.",
+      "Fuel penalty weight (0.5) to maintain efficiency incentive.",
+      "Step penalty (-0.2) to prevent infinite episodes without forcing unsafe rushing.",
+      "Orientation control weight (1.0) to ensure upright safety.",
+      "Position shaping (X alignment) with weight 0.1."
+    ],
+    "changed_design": [
+      "Removed y_descent_shaping term entirely to reduce negative pressure on height that encouraged passivity.",
+      "Tightened velocity threshold for success bonus from 0.6 to 0.4 to ensure safe landings only trigger the large positive reward."
+    ],
+    "risk": [
+      "Removing Y-shaping might slightly reduce descent urgency, potentially increasing episode length if step penalty is too low.",
+      "Tighter velocity threshold (0.4) makes success bonus harder to reach initially, possibly slowing convergence on landing behavior."
+    ],
+    "expected_metric_changes": {
+      "fitness_score": "Increase from -115 towards positive values (target > -50 initially).",
+      "action_distribution_entropy": "Increase as Action 0 probability decreases below 60%.",
+      "success_like_terminal_rate": "Increase from 0.0 to > 0.05 as stable landings become more frequent."
+    },
+    "validation_metrics": [
+      {
+        "name": "fitness_score",
+        "threshold": "> -50.0",
+        "purpose": "Verify removal of Y-shaping improves aggregate return."
+      },
+      {
+        "name": "action_distribution_entropy",
+        "threshold": "> 0.3",
+        "purpose": "Ensure policy explores thrust actions (Action 1, 2) more frequently."
+      },
+      {
+        "name": "terminal_velocity_magnitude",
+        "threshold": "< 0.4 at touchdown",
+        "purpose": "Confirm success bonus is not triggered by high-velocity impacts."
+      }
+    ]
+  },
+  "reward_schema": {
+    "version": "iter_006_revert_y_shaping_tighten_vel",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Reverted to Iteration 2 baseline structure by removing Y-descent shaping which caused passivity. Tightened velocity threshold for success bonus to ensure safety without penalizing height directly.",
+    "behavior_trajectory_prior_used": {
+      "phases_considered": [
+        "Stabilization (Angle correction)",
+        "Descent (Y reduction, X alignment)",
+        "Touchdown (Leg contact + Low Velocity)"
+      ],
+      "prioritized_signals": [
+        "Time pressure (Step Penalty -0.2)",
+        "State-based success conditions",
+        "Fuel efficiency"
+      ]
+    },
+    "component_catalog": [
+      {
+        "id": "fuel_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Discourage unnecessary engine usage.",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Agent minimizes thrust duration while maintaining control.",
+        "activation_reason": "Fuel is a resource cost; essential for optimization.",
+        "anti_hacking_role": "Prevents hovering indefinitely."
+      },
+      {
+        "id": "step_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage faster completion (time pressure).",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent learns to land quickly rather than drifting, but not at cost of safety.",
+        "activation_reason": "Prevents infinite episodes; weight -0.2 allows stabilization.",
+        "anti_hacking_role": "Makes survival strategy unsustainable without being dominant."
+      },
+      {
+        "id": "orientation_control",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize deviation from upright angle.",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Ensures lander is vertical before landing.",
+        "activation_reason": "Safety constraint for stable descent.",
+        "anti_hacking_role": "Prevents sideways crashes."
+      },
+      {
+        "id": "position_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage movement towards pad center (0,0).",
+        "uses": [
+          "state[0]",
+          "state[1]"
+        ],
+        "expected_effect": "Guides descent direction.",
+        "activation_reason": "Provides dense gradient signal for exploration.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "velocity_stability",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize unsafe high velocities.",
+        "uses": [
+          "state[2]",
+          "state[3]"
+        ],
+        "expected_effect": "Encourages smoother trajectory and safe touchdown velocity.",
+        "activation_reason": "Safety constraint for landing.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "landing_success_bonus",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Provide strong positive signal for safe landing state.",
+        "uses": [
+          "state[6]",
+          "state[7]",
+          "state[2]",
+          "state[3]",
+          "state[0]"
+        ],
+        "expected_effect": "Agent learns to land gently on pad regardless of termination flag.",
+        "activation_reason": "Primary objective is successful landing; decoupled from 'terminated' to fix signal gap.",
+        "anti_hacking_role": "Requires low velocity and leg contact, preventing crash-for-points."
+      },
+      {
+        "id": "termination_failure_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize crashes or out-of-bounds termination.",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent avoids crashing and staying in bounds.",
+        "activation_reason": "Safety constraint is critical; applied only if success conditions not met at termination.",
+        "anti_hacking_role": "Prevents intentional crashing."
+      },
+      {
+        "id": "leg_contact_diagnostic",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track leg contact status for analysis.",
+        "uses": [
+          "state[6]",
+          "state[7]"
+        ],
+        "expected_effect": "None (logging only).",
+        "activation_reason": "Required for diagnostic metrics in individual_reward.",
+        "anti_hacking_role": "N/A"
+      }
+    ],
+    "active_reward_terms": [
+      "fuel_penalty",
+      "step_penalty",
+      "orientation_control",
+      "position_shaping",
+      "velocity_stability",
+      "landing_success_bonus",
+      "termination_failure_penalty"
+    ],
+    "diagnostic_terms": [
+      "leg_contact_diagnostic",
+      "fuel_cost",
+      "step_penalty",
+      "orientation_penalty",
+      "position_shaping",
+      "velocity_stability",
+      "landing_success",
+      "termination_failure_penalty"
+    ],
+    "dormant_terms": [
+      "y_descent_shaping"
+    ],
+    "iteration_policy": {
+      "iter6_principle": "Revert to Iteration 2 baseline by removing Y-shaping which caused passivity. Tighten velocity threshold for safety.",
+      "future_search_principle": "Monitor if episode length increases excessively (hovering). If so, increase step penalty slightly or add velocity-based descent constraints."
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Active Term: Step Penalty (Maintained Weight -0.2) ---\n    step_penalty_val = -0.2\n    reward += step_penalty_val\n    individual_reward['step_penalty'] = float(step_penalty_val)\n\n    # --- Active Term: Fuel Penalty (Maintained Weight 0.5) ---\n    fuel_cost = m_power + s_power\n    fuel_penalty_weight = 0.5\n    reward -= fuel_cost * fuel_penalty_weight\n    individual_reward['fuel_cost'] = float(fuel_cost)\n    individual_reward['fuel_penalty'] = float(-fuel_cost * fuel_penalty_weight)\n\n    # --- Active Term: Orientation Control (Maintained Weight 1.0) ---\n    angle_penalty_weight = 1.0\n    angle_penalty_val = abs(angle) * angle_penalty_weight\n    reward -= angle_penalty_val\n    individual_reward['orientation_penalty'] = float(angle_penalty_val)\n\n    # --- Active Term: Position Shaping (X Alignment, Weight 0.1) ---\n    position_shaping_weight = 0.1\n    x_dist = abs(x)\n    position_shaping_val = -x_dist * position_shaping_weight\n    reward += position_shaping_val\n    individual_reward['position_shaping'] = float(position_shaping_val)\n\n    # --- Active Term: Velocity Stability (Thresholded) ---\n    vel_mag = (vx**2 + vy**2)**0.5\n    velocity_threshold = 0.6\n    velocity_penalty_weight = 1.0\n    if vel_mag > velocity_threshold:\n        velocity_stability_val = -((vel_mag - velocity_threshold)**2) * velocity_penalty_weight\n        reward += velocity_stability_val\n    else:\n        velocity_stability_val = 0.0\n    individual_reward['velocity_stability'] = float(velocity_stability_val)\n\n    # --- State-Based Success Detection (Tightened Velocity Threshold to 0.4) ---\n    leg_contact = (leg_l == 1.0 or leg_r == 1.0)\n    low_velocity = (abs(vx) < 0.4 and abs(vy) < 0.4)\n    near_pad = (abs(x) < 0.5)\n    is_success_state = leg_contact and low_velocity and near_pad\n\n    if is_success_state:\n        # Success: Large positive reward triggered by state conditions\n        reward += 100.0\n        individual_reward['landing_success'] = 1.0\n    else:\n        individual_reward['landing_success'] = 0.0\n\n    # --- Termination Handling (Failure Penalty) ---\n    if terminated and not is_success_state:\n        # Failure: Crash, Out of Bounds, or Bad Landing at termination\n        reward -= 100.0\n        individual_reward['termination_failure_penalty'] = -100.0\n    else:\n        individual_reward['termination_failure_penalty'] = 0.0\n\n    # --- Diagnostic Term: Leg Contact Status ---\n    leg_contact_status = max(leg_l, leg_r)\n    individual_reward['leg_contact_status'] = float(leg_contact_status)\n\n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "short_term": "Agent should reduce passivity (Action 0) as height penalty is removed. Exploration of thrust actions should increase.",
+    "long_term": "Agent learns to balance fuel usage with safe landing velocity constraints."
+  },
+  "known_risks": [
+    "Tighter velocity threshold might delay discovery of success bonus if agent cannot stabilize quickly enough.",
+    "Without Y-shaping, descent urgency relies solely on step penalty and position shaping."
+  ],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "uses_only_allowed_inputs_or_safe_internal_state": true
+  }
+}

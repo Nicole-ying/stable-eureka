@@ -1,0 +1,26 @@
+{
+  "edit_scope": "medium",
+  "reason": "Decouple success bonus from 'terminated' flag. Evidence shows landing states (Legs=1, Vel~0) occur without immediate termination or correct classification, causing the +100 bonus to be missed. Moving logic to state-based detection ensures immediate positive feedback for safe landings regardless of environment termination timing.",
+  "preserved_design": [
+    "Fuel penalty weight (0.5)",
+    "Step penalty (-0.2 per step)",
+    "Orientation control shaping",
+    "Position and velocity stability shaping terms"
+  ],
+  "changed_design": [
+    "Moved 'landing_success_bonus' logic outside 'if terminated:' block to trigger on state conditions (Leg Contact + Low Velocity + Near Pad) at any step.",
+    "Modified 'termination_failure_penalty' to apply only if 'terminated' is True AND success conditions are NOT met, preventing penalizing successful landings that terminate."
+  ],
+  "risk": [
+    "Agent might trigger success bonus briefly then drift away before episode ends (mitigated by dense penalties continuing).",
+    "Double counting risk if termination happens on the same step as landing (handled by conditional logic)."
+  ],
+  "expected_metric_changes": {
+    "fitness_score": "Increase due to consistent +100 signal for successful landings.",
+    "success_like_terminal_rate": "Should increase as agent learns state-based success criteria."
+  },
+  "validation_metrics": [
+    "correlation_between_leg_contact_and_reward_spike",
+    "mean_reward_per_step_at_landing_state"
+  ]
+}

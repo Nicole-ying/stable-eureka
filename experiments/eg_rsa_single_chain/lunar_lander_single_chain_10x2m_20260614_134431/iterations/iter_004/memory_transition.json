@@ -1,0 +1,141 @@
+{
+  "memory_type": "reward_transition",
+  "iteration_from": 3,
+  "iteration_to": 4,
+  "parent_candidate_id": "iter_003",
+  "candidate_id": "iter_004",
+  "before_metrics": {
+    "fitness_score": -215.199685196345,
+    "generated_reward": -794.3529523789882,
+    "episode_length": 971.8,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "after_metrics": {
+    "fitness_score": -127.16523343568511,
+    "generated_reward": 43.415101087093355,
+    "episode_length": 90.4,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "metric_delta": {
+    "episode_length": -881.4,
+    "fitness_score": 88.03445176065989,
+    "generated_reward": 837.7680534660816,
+    "out_of_bounds_rate": 0.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0
+  },
+  "before_behavior": {
+    "action_distribution": {
+      "1": 0.045688413253755916,
+      "2": 0.5719283803251698,
+      "0": 0.33587157851409755,
+      "3": 0.046511627906976744
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.5719283803251698
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "hovering_or_timeout_policy"
+  },
+  "after_behavior": {
+    "action_distribution": {
+      "0": 0.6128318584070797,
+      "1": 0.13716814159292035,
+      "2": 0.25
+    },
+    "dominant_action": {
+      "action": "0",
+      "probability": 0.6128318584070797
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "early_failure_or_uncontrolled_terminal"
+  },
+  "reflection_diagnosis": {
+    "outcome_label": "hovering_or_timeout_policy",
+    "main_problem": "Agent has converged to a hovering strategy that avoids termination penalties by maintaining altitude until episode timeout, failing to achieve the landing success bonus due to strict velocity constraints and high cost of descent attempts.",
+    "evidence": [
+      "Episode length is near maximum (971.8 steps), indicating avoidance of early termination.",
+      "Landing success rate is 0.0 despite high fuel consumption (645.4 mean cost).",
+      "Termination failure penalty mean return is only -20.0, suggesting most episodes do not trigger the crash/failure condition, likely timing out without game_over flag.",
+      "Action distribution shows dominant Main Engine usage (57%) to counteract gravity rather than descend.",
+      "Final states in trajectories show high Y coordinates (1.5-2.5) and zero leg contact."
+    ],
+    "root_cause_hypotheses": [
+      "Step penalty (-0.2) is too low compared to the risk of crashing or failing velocity checks, making hovering until timeout a higher expected return strategy.",
+      "Position shaping reward is insufficient to drive descent; agent stays at safe altitude to minimize distance penalty without risking landing.",
+      "Success bonus (+100) is sparse and hard to trigger (requires low velocity + contact), while failure penalty (-100) is avoided by not touching down.",
+      "Timeout episodes may not be triggering the termination_failure_penalty logic, allowing survival as a valid strategy."
+    ],
+    "reward_hacking_flags": {
+      "hovering_hacking": true,
+      "terminal_hacking": false,
+      "component_dominance_hacking": false
+    },
+    "bad_local_optimum_flags": {
+      "passive_policy": false,
+      "wrong_action_mode_policy": false,
+      "hovering_or_stalling": true,
+      "unstable_fast_completion": false,
+      "proxy_contact_or_terminal_behavior": false
+    },
+    "confidence": 0.92
+  },
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "Agent converged to a hovering strategy (971 steps avg) exploiting low step penalty (-0.2) and timeout loophole where termination failure penalty is not triggered on max-steps truncation. Increasing step penalty to -0.5 makes time expensive, forcing faster landing attempts. Relaxing velocity threshold to 0.6 makes success bonus more reachable.",
+    "preserved_design": [
+      "State-based success detection (Leg Contact + Low Velocity + Near Pad).",
+      "Fuel penalty mechanism (weight 0.5) to discourage wasteful thrusting.",
+      "Orientation control (weight 1.0) for safety.",
+      "Position shaping (weight 0.1) for guidance."
+    ],
+    "changed_design": [
+      "Increased step_penalty from -0.2 to -0.5 per step to penalize hovering/timeout significantly.",
+      "Relaxed landing_success velocity threshold from 0.5 to 0.6 to increase success signal density.",
+      "Maintained failure penalty logic but relied on higher cumulative time cost to discourage non-terminating timeouts."
+    ],
+    "risk": [
+      "Agent may rush and crash more frequently initially due to high time pressure.",
+      "Higher step penalty might dominate fuel efficiency if not balanced by success bonus discovery.",
+      "Velocity threshold relaxation might allow slightly harder landings but reduces risk of missing the bonus entirely."
+    ],
+    "expected_metric_changes": {
+      "episode_length": "Decrease significantly (target < 500 steps)",
+      "success_like_terminal_rate": "Increase from 0.0 to > 0.1",
+      "mean_fuel_cost_per_episode": "May decrease as episodes end sooner, or increase slightly if descent requires more thrust initially.",
+      "fitness_score": "Initial drop possible due to higher step penalties, followed by recovery as landing is discovered."
+    },
+    "validation_metrics": [
+      {
+        "name": "average_steps_to_termination",
+        "threshold": "< 500",
+        "purpose": "Verify agent stops hovering and attempts termination/landing faster."
+      },
+      {
+        "name": "mean_y_coordinate_at_termination",
+        "threshold": "< 1.0",
+        "purpose": "Confirm agent is descending towards the pad rather than staying high."
+      },
+      {
+        "name": "success_like_terminal_rate",
+        "threshold": "> 0.05",
+        "purpose": "Ensure landing attempts are resulting in valid success states."
+      }
+    ]
+  },
+  "acceptance": {
+    "accepted_as_elite": true,
+    "reason": "fitness_score improved"
+  },
+  "reuse_policy": "positive_reference",
+  "lesson": "A medium reward revision from behavior 'hovering_or_timeout_policy' to 'early_failure_or_uncontrolled_terminal' improved fitness_score by 88.034. Changed design summary: ['Increased step_penalty from -0.2 to -0.5 per step to penalize hovering/timeout significantly.', 'Relaxed landing_success velocity threshold from 0.5 to 0.6 to increase success signal density.', 'Maintained failure penalty logic but relied on higher cumulative time cost to discourage non-terminating timeouts.']. Original diagnosis: Agent has converged to a hovering strategy that avoids termination penalties by maintaining altitude until episode timeout, failing to achieve the landing success bonus due to strict velocity constraints and high cost of descent attempts.."
+}

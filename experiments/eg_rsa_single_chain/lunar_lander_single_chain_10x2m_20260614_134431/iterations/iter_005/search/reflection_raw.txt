@@ -1,0 +1,86 @@
+{
+  "file_type": "reflection_decision",
+  "iteration": 5,
+  "candidate_id": "iter_005",
+  "diagnosis": {
+    "outcome_label": "passive_no_action_policy",
+    "main_problem": "Significant fitness regression compared to Iteration 2 baseline due to the addition of Y-descent shaping term which penalizes height without ensuring safe descent, leading to increased passivity (Action 0 dominance) and inconsistent landing attempts.",
+    "evidence": [
+      "fitness_score dropped from +2.34 in Iteration 2 to -115.85 in Iteration 5.",
+      "Action 0 probability increased from 0.47 (Iter 2) to 0.63 (Iter 5), indicating reduced exploration of thrust actions.",
+      "y_descent_shaping component mean return is -22.5, adding significant negative pressure without guaranteeing success.",
+      "success_like_terminal_rate remains 0.0 despite some episodes triggering landing_success bonus mid-episode (e.g., Ep 1, 2, 4), suggesting unstable landings that fail terminal checks."
+    ],
+    "root_cause_hypotheses": [
+      "Y-descent shaping penalizes being high up (-0.3 * y), making active descent attempts costly compared to passive falling.",
+      "Velocity threshold for success bonus (0.6) may be too lenient, allowing crash landings that trigger the +100 bonus but result in termination failure penalty later.",
+      "Combined penalties (Step -0.2, Fuel 0.5, Y-Descent 0.3) create a high-cost environment where doing nothing minimizes immediate loss."
+    ],
+    "reward_hacking_flags": {
+      "proxy_reward_hacking": true,
+      "hovering_hacking": false,
+      "terminal_hacking": false
+    },
+    "bad_local_optimum_flags": {
+      "passive_policy": true,
+      "wrong_action_mode_policy": false,
+      "hovering_or_stalling": false
+    },
+    "confidence": 0.85
+  },
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "scope_reason": "Removing the problematic Y-descent shaping term should restore the exploration balance seen in Iteration 2 without requiring full restructuring of terminal logic.",
+    "exploration_vs_exploitation": "exploration",
+    "what_to_preserve": [
+      "Terminal success bonus (+100) and failure penalty (-100) logic.",
+      "Fuel penalty weight (0.5) to maintain efficiency incentive.",
+      "Step penalty (-0.2) to prevent infinite episodes without forcing unsafe rushing.",
+      "Orientation control weight (1.0) to ensure upright safety."
+    ],
+    "what_to_change": [
+      "Remove y_descent_shaping term entirely to reduce negative pressure on height.",
+      "Tighten velocity threshold for success bonus from 0.6 to 0.4 to prevent crash-landing bonuses.",
+      "Verify position_shaping weight (0.1) is sufficient to guide X alignment without Y-shaping."
+    ],
+    "what_to_avoid": [
+      "Adding more dense state penalties that punish existence rather than progress.",
+      "Increasing step penalty beyond -0.2 which previously caused passivity in Iteration 4."
+    ]
+  },
+  "expected_metric_changes": {
+    "fitness_score": "Increase from -115 towards positive values (target > -50 initially, aiming for +2 like Iter 2).",
+    "action_distribution_entropy": "Increase as Action 0 probability decreases below 60%.",
+    "success_like_terminal_rate": "Increase from 0.0 to > 0.05 as stable landings become more frequent."
+  },
+  "validation_metrics": [
+    {
+      "name": "fitness_score",
+      "threshold": "> -50.0",
+      "purpose": "Verify removal of Y-shaping improves aggregate return."
+    },
+    {
+      "name": "action_distribution_entropy",
+      "threshold": "> 0.3",
+      "purpose": "Ensure policy explores thrust actions (Action 1, 2) more frequently."
+    },
+    {
+      "name": "terminal_velocity_magnitude",
+      "threshold": "< 0.4 at touchdown",
+      "purpose": "Confirm success bonus is not triggered by high-velocity impacts."
+    }
+  ],
+  "memory_queries": [
+    {
+      "query_type": "reward_transition",
+      "target_iteration": 2,
+      "reason": "Verify Iteration 2 reward structure (without Y-shaping) as a stable baseline for reversion."
+    },
+    {
+      "query_type": "component_analysis",
+      "target_component": "y_descent_shaping",
+      "reason": "Confirm correlation between Y-shaping activation and fitness regression in Iteration 5."
+    }
+  ]
+}

@@ -1,0 +1,209 @@
+{
+  "file_type": "revised_reward_schema_and_code",
+  "parent_candidate_id": "single_chain_iter0",
+  "candidate_id": "single_chain_iter1_restructure",
+  "edit_summary": {
+    "edit_scope": "large",
+    "reason": "The previous reward structure caused a passive policy collapse (Action 0 probability 1.0) because dense negative penalties for distance and velocity punished natural falling dynamics, making inaction appear optimal compared to the cost of exploration. This revision removes state-dependent shaping penalties that discourage movement, replaces them with a constant step penalty to induce time pressure without punishing specific states, activates orientation control to prevent sideways crashes, and rebalances weights to ensure landing is more valuable than crashing or hovering.",
+    "preserved_design": [
+      "Terminal success bonus (+100) for safe landing conditions (Legs + Low Velocity + Near Pad).",
+      "Terminal failure penalty (-100) for crashes/out-of-bounds.",
+      "Fuel cost tracking mechanism."
+    ],
+    "changed_design": [
+      "Removed dense negative penalties for 'distance_to_pad' and 'velocity_magnitude'.",
+      "Introduced constant step penalty (-0.2 per call) to encourage speed without punishing state values directly.",
+      "Activated 'orientation_control' term (penalize angle deviation from 0).",
+      "Adjusted fuel cost weight relative to success bonus to ensure landing is more valuable than crashing."
+    ],
+    "risk": [
+      "Agent might rush and crash if step penalty outweighs safety incentives.",
+      "Orientation penalty might be insufficient to prevent sideways impact before touchdown.",
+      "Without distance shaping, agent may take longer paths to pad initially."
+    ],
+    "expected_metric_changes": {
+      "action_entropy": "Increase from near-zero to >0.1",
+      "fuel_consumption_rate": "Increase from 0.0 to >0.05 per step",
+      "fitness_score": "Initial decrease possible due to exploration costs, followed by increase as landing is discovered",
+      "success_like_terminal_rate": "Target >0.0 within next iteration"
+    },
+    "validation_metrics": [
+      {
+        "name": "action_distribution_entropy",
+        "threshold": "> 0.1",
+        "purpose": "Verify policy explores actions other than 'Nothing'."
+      },
+      {
+        "name": "mean_fuel_cost_per_episode",
+        "threshold": "> 5.0",
+        "purpose": "Confirm agent is using engines to attempt landing."
+      },
+      {
+        "name": "fitness_score_trend",
+        "threshold": "Improving over last 3 checkpoints",
+        "purpose": "Ensure learning signal is positive after reward revision."
+      }
+    ]
+  },
+  "reward_schema": {
+    "version": "restructure_v1",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Sparse terminal reward for success/failure combined with constant step penalty (time pressure) and orientation control to encourage active landing without punishing natural falling dynamics.",
+    "behavior_trajectory_prior_used": {
+      "phases_considered": [
+        "Stabilization (Angle correction)",
+        "Descent (Y reduction via gravity + thrust)",
+        "Touchdown (Leg contact + Low Velocity)"
+      ],
+      "prioritized_signals": [
+        "Terminal success conditions",
+        "Time pressure (step penalty)",
+        "Orientation stability"
+      ]
+    },
+    "component_catalog": [
+      {
+        "id": "fuel_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Discourage unnecessary engine usage to promote efficiency.",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Agent minimizes thrust duration while maintaining control.",
+        "activation_reason": "Fuel is a resource cost; essential for optimization.",
+        "anti_hacking_role": "Prevents hovering indefinitely."
+      },
+      {
+        "id": "step_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage faster completion (time pressure) without punishing specific states.",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent learns to land quickly rather than drifting or hovering.",
+        "activation_reason": "Replaces state-dependent penalties that discouraged movement.",
+        "anti_hacking_role": "Prevents infinite episodes."
+      },
+      {
+        "id": "orientation_control",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize deviation from upright angle to prevent sideways crashes.",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Ensures lander is vertical before landing.",
+        "activation_reason": "Activated to prevent local optima of crashing sideways.",
+        "anti_hacking_role": "Prevents orientation-based crash hacking."
+      },
+      {
+        "id": "landing_success_bonus",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Provide strong positive signal for safe landing.",
+        "uses": [
+          "state[6]",
+          "state[7]",
+          "state[2]",
+          "state[3]",
+          "state[0]"
+        ],
+        "expected_effect": "Agent learns to land gently on pad.",
+        "activation_reason": "Primary objective is successful landing.",
+        "anti_hacking_role": "Requires low velocity and leg contact, preventing crash-for-points."
+      },
+      {
+        "id": "termination_failure_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize crashes or out-of-bounds termination.",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent avoids crashing and staying in bounds.",
+        "activation_reason": "Safety constraint is critical.",
+        "anti_hacking_role": "Prevents intentional crashing if fuel cost > crash penalty."
+      },
+      {
+        "id": "position_shaping",
+        "type": "reward_term",
+        "status": "dormant",
+        "purpose": "Weakly encourage movement towards pad center (0,0).",
+        "uses": [
+          "state[0]",
+          "state[1]"
+        ],
+        "expected_effect": "Reduces time to reach target area.",
+        "activation_reason": "Deactivated because it punished natural falling dynamics and caused passive policy collapse.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "velocity_stability",
+        "type": "reward_term",
+        "status": "dormant",
+        "purpose": "Weakly penalize high velocity during flight.",
+        "uses": [
+          "state[2]",
+          "state[3]"
+        ],
+        "expected_effect": "Encourages smoother trajectory.",
+        "activation_reason": "Deactivated because it punished necessary descent velocity.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "leg_contact_diagnostic",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track leg contact status for analysis.",
+        "uses": [
+          "state[6]",
+          "state[7]"
+        ],
+        "expected_effect": "None (logging only).",
+        "activation_reason": "Required for diagnostic metrics in individual_reward.",
+        "anti_hacking_role": "N/A"
+      }
+    ],
+    "active_reward_terms": [
+      "fuel_penalty",
+      "step_penalty",
+      "orientation_control",
+      "landing_success_bonus",
+      "termination_failure_penalty"
+    ],
+    "diagnostic_terms": [
+      "leg_contact_diagnostic",
+      "fuel_penalty",
+      "step_penalty",
+      "orientation_control"
+    ],
+    "dormant_terms": [
+      "position_shaping",
+      "velocity_stability"
+    ],
+    "iteration_policy": {
+      "iter1_principle": "Remove state-dependent penalties that discourage movement; use step penalty for time pressure.",
+      "future_search_principle": "Monitor if agent rushes too fast (crashes) or ignores orientation. May reactivate position shaping with positive reward only if exploration stalls."
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Active Term: Step Penalty (Time Pressure) ---\n    step_penalty_val = -0.2\n    reward += step_penalty_val\n    individual_reward['step_penalty'] = float(step_penalty_val)\n\n    # --- Active Term: Fuel Penalty ---\n    fuel_cost = m_power + s_power\n    reward -= fuel_cost * 1.0\n    individual_reward['fuel_cost'] = float(fuel_cost)\n\n    # --- Active Term: Orientation Control ---\n    angle_penalty = abs(angle) * 0.5\n    reward -= angle_penalty\n    individual_reward['orientation_penalty'] = float(angle_penalty)\n\n    # --- Termination Handling (Success vs Failure) ---\n    if terminated:\n        # Check for successful landing conditions based on state inference\n        leg_contact = (leg_l == 1.0 or leg_r == 1.0)\n        low_velocity = (abs(vx) < 0.5 and abs(vy) < 0.5)\n        near_pad = (abs(x) < 0.5)\n\n        if leg_contact and low_velocity and near_pad:\n            # Success: Large positive reward\n            reward += 100.0\n            individual_reward['landing_success'] = 1.0\n        else:\n            # Failure: Crash, Out of Bounds, or Bad Landing\n            reward -= 100.0\n            individual_reward['landing_success'] = 0.0\n        \n        return float(reward), individual_reward\n\n    # --- Diagnostic Term: Leg Contact Status ---\n    leg_contact_status = max(leg_l, leg_r)\n    individual_reward['leg_contact_status'] = float(leg_contact_status)\n\n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "exploration": "Agent should attempt to use engines (Action 1, 2, 3) to counteract gravity and control orientation due to step penalty pressure.",
+    "landing_strategy": "Agent will prioritize reaching the pad quickly while maintaining upright orientation to maximize net reward (+100 - time_cost - fuel_cost).",
+    "avoidance": "Agent should avoid crashing (-100) as it outweighs accumulated step penalties for typical episode lengths."
+  },
+  "known_risks": [
+    "Step penalty might encourage rushing leading to crashes if terminal failure penalty is not sufficiently high relative to time cost.",
+    "Orientation penalty weight (0.5) may need tuning if agent still lands sideways.",
+    "Without distance shaping, initial exploration towards pad center may be slower."
+  ],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "uses_only_allowed_inputs_or_safe_internal_state": true
+  }
+}

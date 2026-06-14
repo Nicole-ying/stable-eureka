@@ -1,0 +1,162 @@
+{
+  "file_type": "initial_reward_schema_and_code",
+  "environment_name": "RocketLandingEnv",
+  "reward_schema": {
+    "version": "initial_v0",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Sparse terminal reward for success/failure combined with dense fuel penalty and weak shaping for position/velocity to guide exploration without over-constraining early behavior.",
+    "behavior_trajectory_prior_used": {
+      "phases_considered": [
+        "Stabilization (Angle correction)",
+        "Descent (Y reduction)",
+        "Touchdown (Leg contact + Low Velocity)"
+      ],
+      "prioritized_signals": [
+        "Fuel consumption minimization",
+        "Terminal success conditions (Legs, Velocity, Position)",
+        "Termination failure penalty"
+      ]
+    },
+    "component_catalog": [
+      {
+        "id": "fuel_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Discourage unnecessary engine usage to promote efficiency.",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Agent minimizes thrust duration.",
+        "activation_reason": "Fuel is infinite physically but tracked for cost; essential for optimization.",
+        "anti_hacking_role": "Prevents hovering indefinitely."
+      },
+      {
+        "id": "landing_success_bonus",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Provide strong positive signal for safe landing.",
+        "uses": [
+          "state[6]",
+          "state[7]",
+          "state[2]",
+          "state[3]",
+          "state[0]"
+        ],
+        "expected_effect": "Agent learns to land gently on pad.",
+        "activation_reason": "Primary objective is successful landing.",
+        "anti_hacking_role": "Requires low velocity and leg contact, preventing crash-for-points."
+      },
+      {
+        "id": "termination_failure_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize crashes or out-of-bounds termination.",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent avoids crashing and staying in bounds.",
+        "activation_reason": "Safety constraint is critical.",
+        "anti_hacking_role": "Prevents intentional crashing if fuel cost > crash penalty."
+      },
+      {
+        "id": "position_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Weakly encourage movement towards pad center (0,0).",
+        "uses": [
+          "state[0]",
+          "state[1]"
+        ],
+        "expected_effect": "Reduces time to reach target area.",
+        "activation_reason": "Helps exploration in early iterations without dense reward hacking risk.",
+        "anti_hacking_role": "Low weight prevents hovering at pad edge."
+      },
+      {
+        "id": "velocity_stability",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Weakly penalize high velocity during flight.",
+        "uses": [
+          "state[2]",
+          "state[3]"
+        ],
+        "expected_effect": "Encourages smoother trajectory.",
+        "activation_reason": "Supports safe landing preparation.",
+        "anti_hacking_role": "Prevents high-speed approaches that might crash."
+      },
+      {
+        "id": "orientation_control",
+        "type": "reward_term",
+        "status": "dormant",
+        "purpose": "Penalize deviation from upright angle.",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Ensures lander is vertical before landing.",
+        "activation_reason": "May be needed if agent learns to land sideways; deferred for iter0 simplicity.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "leg_contact_diagnostic",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track leg contact status for analysis.",
+        "uses": [
+          "state[6]",
+          "state[7]"
+        ],
+        "expected_effect": "None (logging only).",
+        "activation_reason": "Required for diagnostic metrics in individual_reward.",
+        "anti_hacking_role": "N/A"
+      }
+    ],
+    "active_reward_terms": [
+      "fuel_penalty",
+      "landing_success_bonus",
+      "termination_failure_penalty",
+      "position_shaping",
+      "velocity_stability"
+    ],
+    "diagnostic_terms": [
+      "leg_contact_diagnostic",
+      "fuel_penalty",
+      "position_shaping",
+      "velocity_stability"
+    ],
+    "dormant_terms": [
+      "orientation_control"
+    ],
+    "iteration_policy": {
+      "iter0_principle": "simple, exploration-friendly, not over-constrained",
+      "future_search_principle": "future iterations may activate, deactivate, reshape, or replace components when training evidence justifies it; edits are not artificially limited but must declare scope, reason, risks, and validation metrics"
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Active Term: Fuel Penalty ---\n    fuel_cost = m_power + s_power\n    reward -= fuel_cost * 1.0\n    individual_reward['fuel_cost'] = float(fuel_cost)\n\n    # --- Termination Handling (Success vs Failure) ---\n    if terminated:\n        # Check for successful landing conditions based on state inference\n        leg_contact = (leg_l == 1.0 or leg_r == 1.0)\n        low_velocity = (abs(vx) < 0.5 and abs(vy) < 0.5)\n        near_pad = (abs(x) < 0.5)\n\n        if leg_contact and low_velocity and near_pad:\n            # Success: Large positive reward\n            reward += 100.0\n            individual_reward['landing_success'] = 1.0\n        else:\n            # Failure: Crash, Out of Bounds, or Bad Landing\n            reward -= 100.0\n            individual_reward['landing_success'] = 0.0\n        \n        return float(reward), individual_reward\n\n    # --- Active Term: Position Shaping (Exploration) ---\n    distance_to_pad = abs(x) + abs(y)\n    reward -= distance_to_pad * 0.1\n    individual_reward['distance_to_pad'] = float(distance_to_pad)\n\n    # --- Active Term: Velocity Stability ---\n    velocity_magnitude = abs(vx) + abs(vy)\n    reward -= velocity_magnitude * 0.1\n    individual_reward['velocity_magnitude'] = float(velocity_magnitude)\n\n    # --- Diagnostic Term: Leg Contact Status ---\n    leg_contact_status = max(leg_l, leg_r)\n    individual_reward['leg_contact_status'] = float(leg_contact_status)\n\n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "early_exploration": "Agent will try to reduce fuel cost while moving towards (0,0) due to position shaping.",
+    "terminal_signal": "Agent learns that termination yields +100 only if legs touch gently near pad; otherwise -100.",
+    "avoidance": "Agent avoids crashing or flying off-screen due to high failure penalty."
+  },
+  "known_risks": [
+    {
+      "risk": "Hovering at Edge",
+      "mitigation": "Position shaping penalizes distance from (0,0), discouraging staying at viewport edge."
+    },
+    {
+      "risk": "Crash for Points",
+      "mitigation": "Failure penalty (-100) is larger than max possible fuel savings from crashing early."
+    },
+    {
+      "risk": "Normalization Sensitivity",
+      "mitigation": "Thresholds (0.5) chosen based on normalized state range [-1, 1]."
+    }
+  ],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "success_like_uses_multiple_relevant_signal_groups_when_available": true
+  },
+  "agent_name": "InitialRewardSchemaAndCodeAgent"
+}

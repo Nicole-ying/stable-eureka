@@ -1,0 +1,83 @@
+{
+  "file_type": "reflection_decision",
+  "iteration": 2,
+  "candidate_id": "iter_002",
+  "diagnosis": {
+    "outcome_label": "promising_policy",
+    "main_problem": "Reward signal misalignment with environment termination logic prevents consistent success reinforcement.",
+    "evidence": [
+      "Episode 4 final state meets physical success criteria (Legs=1.0, Velocity~0, X~0) but terminal_classification is 'unknown_terminal'.",
+      "success_like_terminal_rate is 0.0 despite evidence of landing behavior in trajectory examples.",
+      "Average fitness_score (2.35) is low relative to potential success bonus (+100), indicating the bonus is rarely or inconsistently triggered.",
+      "Action distribution shows active control (45% Main Engine) but high fuel penalty (-27.6) dominates without consistent positive terminal reward."
+    ],
+    "root_cause_hypotheses": [
+      "Environment does not terminate immediately on soft landing, leaving 'terminated' flag False when success conditions are met.",
+      "Reward function restricts +100 bonus to 'if terminated:' block, missing non-terminated landing states.",
+      "Evaluation metric for success relies on termination flags that do not capture successful landings in this configuration."
+    ],
+    "reward_hacking_flags": {
+      "hovering_hacking": false,
+      "terminal_hacking": false,
+      "component_dominance_hacking": true
+    },
+    "bad_local_optimum_flags": {
+      "passive_policy": false,
+      "wrong_action_mode_policy": false,
+      "hovering_or_stalling": false,
+      "unstable_fast_completion": false,
+      "proxy_contact_or_terminal_behavior": true
+    },
+    "confidence": 0.85
+  },
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "scope_reason": "The core logic of the success bonus must change from termination-dependent to state-dependent to align with environment behavior where landing does not guarantee immediate termination.",
+    "exploration_vs_exploitation": "exploitation",
+    "what_to_preserve": [
+      "Fuel penalty weight (0.5) to maintain efficiency pressure.",
+      "Step penalty (-0.2) to prevent infinite hovering.",
+      "Orientation control and velocity stability shaping terms which guide safe descent."
+    ],
+    "what_to_change": [
+      "Move success bonus logic outside the 'if terminated:' block to trigger on state conditions (Leg Contact + Low Velocity + Near Pad) at any step.",
+      "Ensure landing states provide immediate positive feedback even if environment does not terminate immediately.",
+      "Adjust failure penalty to apply only upon actual crash/bounds termination, not just non-successful end of episode."
+    ],
+    "what_to_avoid": [
+      "Increasing fuel penalties further without fixing the success signal gap.",
+      "Relying solely on 'terminated' flag for critical objective signals in this environment."
+    ]
+  },
+  "expected_metric_changes": {
+    "fitness_score": "Increase as landing states consistently yield positive rewards.",
+    "success_like_terminal_rate": "Increase if evaluation harness aligns with new state-based success detection.",
+    "mean_fuel_cost_per_episode": "Stable or decrease as agent learns efficient landing trajectories."
+  },
+  "validation_metrics": [
+    {
+      "name": "leg_contact_at_high_reward_steps",
+      "threshold": "> 0.5 correlation with positive reward spikes",
+      "purpose": "Verify success bonus triggers on landing states regardless of termination flag."
+    },
+    {
+      "name": "terminal_velocity_magnitude",
+      "threshold": "< 0.5 at episode end",
+      "purpose": "Confirm safe landing behavior is reinforced."
+    },
+    {
+      "name": "fitness_score_trend",
+      "threshold": "Monotonic increase over last 3 checkpoints",
+      "purpose": "Ensure learning signal is positive and stable."
+    }
+  ],
+  "memory_queries": [
+    {
+      "query_type": "reward_transition",
+      "target_iteration": 1,
+      "reason": "Review how Iteration 1 handled termination-dependent rewards to avoid repeating the passive collapse seen in Iteration 0."
+    }
+  ],
+  "agent_name": "ReflectionAgent"
+}

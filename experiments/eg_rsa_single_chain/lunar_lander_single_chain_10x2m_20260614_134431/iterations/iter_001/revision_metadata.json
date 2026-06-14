@@ -1,0 +1,43 @@
+{
+  "edit_scope": "large",
+  "reason": "The previous reward structure caused a passive policy collapse (Action 0 probability 1.0) because dense negative penalties for distance and velocity punished natural falling dynamics, making inaction appear optimal compared to the cost of exploration. This revision removes state-dependent shaping penalties that discourage movement, replaces them with a constant step penalty to induce time pressure without punishing specific states, activates orientation control to prevent sideways crashes, and rebalances weights to ensure landing is more valuable than crashing or hovering.",
+  "preserved_design": [
+    "Terminal success bonus (+100) for safe landing conditions (Legs + Low Velocity + Near Pad).",
+    "Terminal failure penalty (-100) for crashes/out-of-bounds.",
+    "Fuel cost tracking mechanism."
+  ],
+  "changed_design": [
+    "Removed dense negative penalties for 'distance_to_pad' and 'velocity_magnitude'.",
+    "Introduced constant step penalty (-0.2 per call) to encourage speed without punishing state values directly.",
+    "Activated 'orientation_control' term (penalize angle deviation from 0).",
+    "Adjusted fuel cost weight relative to success bonus to ensure landing is more valuable than crashing."
+  ],
+  "risk": [
+    "Agent might rush and crash if step penalty outweighs safety incentives.",
+    "Orientation penalty might be insufficient to prevent sideways impact before touchdown.",
+    "Without distance shaping, agent may take longer paths to pad initially."
+  ],
+  "expected_metric_changes": {
+    "action_entropy": "Increase from near-zero to >0.1",
+    "fuel_consumption_rate": "Increase from 0.0 to >0.05 per step",
+    "fitness_score": "Initial decrease possible due to exploration costs, followed by increase as landing is discovered",
+    "success_like_terminal_rate": "Target >0.0 within next iteration"
+  },
+  "validation_metrics": [
+    {
+      "name": "action_distribution_entropy",
+      "threshold": "> 0.1",
+      "purpose": "Verify policy explores actions other than 'Nothing'."
+    },
+    {
+      "name": "mean_fuel_cost_per_episode",
+      "threshold": "> 5.0",
+      "purpose": "Confirm agent is using engines to attempt landing."
+    },
+    {
+      "name": "fitness_score_trend",
+      "threshold": "Improving over last 3 checkpoints",
+      "purpose": "Ensure learning signal is positive after reward revision."
+    }
+  ]
+}

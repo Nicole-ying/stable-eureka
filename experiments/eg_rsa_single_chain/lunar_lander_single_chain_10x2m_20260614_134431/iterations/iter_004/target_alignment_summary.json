@@ -1,0 +1,206 @@
+{
+  "file_type": "target_alignment_contract_summary",
+  "environment_name": "RocketLandingEnv",
+  "primary_objective": {
+    "description": "Land the rocket at coordinates (0,0) with minimal velocity and fuel consumption.",
+    "constraints": [
+      "Avoid crashing into the moon surface (game_over)",
+      "Stay within viewport X bounds (abs(state[0]) < 1.0)",
+      "Ensure lander remains awake in physics engine"
+    ]
+  },
+  "objective_decomposition": [
+    {
+      "component": "Position Alignment",
+      "target": "state[0] -> 0, state[1] -> 0",
+      "priority": "High"
+    },
+    {
+      "component": "Velocity Damping",
+      "target": "state[2], state[3] -> 0 at touchdown",
+      "priority": "Critical for safety"
+    },
+    {
+      "component": "Orientation Control",
+      "target": "state[4] -> 0 (upright)",
+      "priority": "Medium"
+    },
+    {
+      "component": "Fuel Efficiency",
+      "target": "Minimize sum(m_power, s_power) over episode",
+      "priority": "Secondary to safety/landing"
+    }
+  ],
+  "behavior_trajectory_alignment": {
+    "phase_objectives": [
+      {
+        "phase": "Stabilization",
+        "goal": "Correct angle and reduce horizontal velocity using side engines.",
+        "signals": [
+          "state[4]",
+          "state[2]"
+        ]
+      },
+      {
+        "phase": "Descent",
+        "goal": "Reduce vertical velocity while moving towards pad X=0.",
+        "signals": [
+          "state[1]",
+          "state[3]"
+        ]
+      },
+      {
+        "phase": "Touchdown",
+        "goal": "Legs contact ground at low velocity.",
+        "signals": [
+          "state[6], state[7]",
+          "state[2], state[3]"
+        ]
+      }
+    ],
+    "phase_diagnostics": [
+      {
+        "check": "Angle correction rate",
+        "expected": "Decreasing deviation from 0 radians"
+      },
+      {
+        "check": "Vertical velocity trend",
+        "expected": "Negative (downward) but bounded before touchdown"
+      }
+    ],
+    "behaviors_that_may_be_good_temporarily_but_bad_if_persistent": [
+      "High fuel consumption during initial stabilization",
+      "Oscillating near pad without landing to minimize velocity penalty"
+    ],
+    "behaviors_that_should_not_be_overpenalized_early": [
+      "Fuel usage while correcting orientation from random start state",
+      "Small X deviations while prioritizing Y descent"
+    ]
+  },
+  "metric_priority": [
+    "fitness_score",
+    "immediate_reward",
+    "terminal_velocity_magnitude",
+    "fuel_consumption_rate"
+  ],
+  "primary_selection_metric": "fitness_score",
+  "proxy_metrics": [
+    {
+      "name": "immediate_reward",
+      "description": "Return value from compute_reward function, used for gradient signal.",
+      "limitations": "May not capture long-term success if sparse or poorly shaped."
+    }
+  ],
+  "diagnostic_metrics": [
+    {
+      "name": "leg_contact_status",
+      "source": "state[6], state[7]",
+      "interpretation": "1.0 indicates ground contact, must be verified with velocity for success."
+    },
+    {
+      "name": "terminal_velocity",
+      "source": "state[2], state[3] at termination",
+      "interpretation": "High values indicate crash or failed landing."
+    },
+    {
+      "name": "termination_reason",
+      "source": "step.py logic (game_over, bounds, awake)",
+      "interpretation": "Distinguishes success from failure modes."
+    }
+  ],
+  "success_criteria": {
+    "success_like_terminal": {
+      "role": "behavioral diagnostic, not official ground truth unless explicitly provided",
+      "conditions": [
+        "state[6] == 1.0 or state[7] == 1.0 (Leg contact)",
+        "abs(state[2]) < threshold (Low horizontal velocity)",
+        "abs(state[3]) < threshold (Low vertical velocity)",
+        "abs(state[0]) < threshold (Near pad center)"
+      ],
+      "required_signal_groups": [
+        "contact_signals",
+        "velocity_signals"
+      ]
+    }
+  },
+  "failure_modes": {
+    "crash": {
+      "trigger": "self.game_over is True",
+      "indicators": [
+        "High impact velocity",
+        "Body contact with ground"
+      ]
+    },
+    "out_of_bounds": {
+      "trigger": "abs(state[0]) >= 1.0",
+      "indicators": [
+        "X coordinate exceeds viewport limit"
+      ]
+    },
+    "sleep_crash": {
+      "trigger": "not self.lander.awake",
+      "indicators": [
+        "Physics engine stopped simulating lander"
+      ]
+    }
+  },
+  "bad_local_optima": {
+    "passive_policy": {
+      "description": "Agent does nothing to minimize fuel cost, drifting until timeout or bounds.",
+      "detection": "Low action frequency, high step count without termination."
+    },
+    "wrong_action_mode_policy": {
+      "description": "Using side engines exclusively for propulsion instead of main engine.",
+      "detection": "High s_power usage with minimal descent progress."
+    },
+    "hovering_or_stalling": {
+      "description": "Maintaining altitude near ground to avoid crash penalty without landing.",
+      "detection": "state[1] stable near 0, state[6/7] == 0, high fuel usage over time."
+    },
+    "unstable_fast_completion": {
+      "description": "Crashing intentionally if crash penalty is lower than fuel cost of hovering.",
+      "detection": "High velocity at termination with negative reward accumulation."
+    },
+    "proxy_contact_or_terminal_behavior": {
+      "description": "Triggering leg contact sensors via collision rather than controlled landing.",
+      "detection": "Leg contact == 1.0 but velocity > safe_threshold."
+    }
+  },
+  "reward_hacking_definitions": {
+    "proxy_reward_hacking": {
+      "definition": "Maximizing immediate reward signal without achieving the true objective (landing).",
+      "example": "Oscillating near pad to gain proximity rewards without touching down."
+    },
+    "terminal_hacking": {
+      "definition": "Triggering termination conditions early to stop negative cumulative rewards.",
+      "example": "Flying off-screen if out-of-bounds penalty is less than fuel cost of hovering."
+    },
+    "hovering_hacking": {
+      "definition": "Exploiting lack of step limit or time penalty to stay airborne indefinitely.",
+      "example": "Maintaining hover at safe altitude with minimal thrust."
+    },
+    "component_dominance_hacking": {
+      "definition": "Optimizing one metric (e.g., position) while ignoring others (e.g., velocity).",
+      "example": "Landing on pad but crashing due to high vertical velocity."
+    }
+  },
+  "reward_generator_constraints": {
+    "must_include_in_schema_catalog": [
+      "fuel_cost_penalty (m_power, s_power)",
+      "position_proximity_reward (state[0], state[1])",
+      "velocity_penalty_at_contact (state[2], state[3] when legs=1)"
+    ],
+    "must_avoid": [
+      "step_count_dependency (not available in signature)",
+      "unbounded_positive_rewards without termination check"
+    ],
+    "preferred_design": [
+      "Sparse large reward for successful landing.",
+      "Dense negative penalty for fuel usage."
+    ],
+    "initial_reward_guidance": [
+      "Ensure crash penalty is significantly higher than max possible fuel cost of hovering.",
+      "Normalize state values before applying thresholds in reward function."
+    ]
+  }
+}

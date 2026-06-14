@@ -1,0 +1,40 @@
+{
+  "edit_scope": "medium",
+  "reason": "Fix reward hacking where agent accumulates dense success bonus (+100/step) while hovering on ground without terminating. Change success bonus to sparse (terminal only). Increase step penalty (-0.2 -> -0.5) to discourage long episodes and enforce time pressure, aligning with Iteration 3->4 memory evidence.",
+  "preserved_design": [
+    "Fuel penalty mechanism (weight 0.5)",
+    "Orientation control term (weight 1.0)",
+    "Position shaping (X alignment, weight 0.1)",
+    "Velocity stability thresholding logic"
+  ],
+  "changed_design": [
+    "landing_success_bonus: Changed from dense state-based to sparse terminal-only trigger.",
+    "step_penalty: Increased magnitude from -0.2 to -0.5 per step."
+  ],
+  "risk": [
+    "Higher step penalty may cause agent to rush and crash initially before learning safe descent.",
+    "Sparse success reward might slow convergence if shaping signals are insufficient (mitigated by existing position/velocity terms)."
+  ],
+  "expected_metric_changes": {
+    "episode_length": "Decrease significantly (Target < 400 steps)",
+    "success_like_terminal_rate": "Increase from 0.0 to > 0.1",
+    "fitness_score": "Initial drop possible due to higher step penalty, followed by recovery as landing terminates episodes."
+  },
+  "validation_metrics": [
+    {
+      "name": "average_steps_to_termination",
+      "threshold": "< 400",
+      "purpose": "Verify agent stops hovering and attempts termination faster."
+    },
+    {
+      "name": "success_like_terminal_rate",
+      "threshold": "> 0.1",
+      "purpose": "Ensure landing attempts result in valid success states at episode end."
+    },
+    {
+      "name": "mean_orientation_penalty_per_step",
+      "threshold": "< 0.5",
+      "purpose": "Confirm agent maintains upright orientation during descent."
+    }
+  ]
+}

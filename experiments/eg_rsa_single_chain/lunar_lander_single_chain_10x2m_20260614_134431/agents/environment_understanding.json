@@ -1,0 +1,211 @@
+{
+  "file_type": "environment_understanding",
+  "environment_name": "RocketLandingEnv",
+  "sandbox_inputs": [
+    "task_description.txt",
+    "step.py"
+  ],
+  "known_facts": {
+    "physics_engine": "Uses a physics engine (likely Box2D) with ApplyForceToCenter, Step, etc.",
+    "state_dimensions": 8,
+    "action_modes": [
+      "Discrete (4 actions)",
+      "Continuous (2 floats)"
+    ],
+    "termination_conditions_code": [
+      "self.game_over is True",
+      "abs(state[0]) >= 1.0",
+      "not self.lander.awake"
+    ],
+    "wind_turbulence": "Enabled via flags, applies force/torque if legs not touching ground",
+    "fuel_mechanic": "Fuel is infinite physically, but power usage (m_power, s_power) is tracked for reward cost."
+  },
+  "inferred_facts": {
+    "pad_location_normalized": "state[0] == 0 and state[1] == 0 corresponds to landing pad center/ground level",
+    "coordinate_system": "X is horizontal (centered), Y is vertical (relative to helipad height)",
+    "fuel_cost_proxy": "Sum of m_power and s_power over time represents fuel consumption",
+    "start_state": "Top center of viewport with random initial force applied"
+  },
+  "uncertain_facts": {
+    "success_termination": "Whether successful landing triggers self.game_over or relies on external timeout/reward logic is not explicitly shown in step.py snippet",
+    "y_axis_direction": "Whether positive Y is up or down relative to screen coordinates (inferred from normalization but sign convention uncertain)",
+    "step_limit": "No explicit step counter termination check visible in provided code"
+  },
+  "task_goal": {
+    "primary_objective": "Land at the pad (0,0) as fast as possible",
+    "secondary_objective": "Minimize fuel spent (power usage)",
+    "constraints": [
+      "Do not crash (body contact with moon)",
+      "Stay within viewport X bounds"
+    ]
+  },
+  "reward_function_interface": {
+    "expected_signature": "compute_reward(state, m_power, s_power, terminated)",
+    "available_inputs": {
+      "state": "8-dimensional numpy array (float32) containing normalized position, velocity, angle, angular velocity, and leg contacts",
+      "m_power": "Float representing main engine power applied in current step (0.0 to 1.0)",
+      "s_power": "Float representing side engine power applied in current step (0.0 to 1.0)",
+      "terminated": "Boolean indicating if the episode has ended"
+    },
+    "not_directly_available": [
+      "Total fuel consumed so far",
+      "Time elapsed / Step count",
+      "Wind magnitude or direction",
+      "Exact physics coordinates (only normalized state provided)"
+    ],
+    "safe_internal_state_that_reward_may_maintain": [
+      "Cumulative fuel cost",
+      "Previous position for velocity estimation if needed"
+    ]
+  },
+  "state_space": {
+    "dimension": 8,
+    "indices": {
+      "0": "Normalized X coordinate (centered at pad)",
+      "1": "Normalized Y coordinate (relative to helipad height)",
+      "2": "Scaled linear velocity X",
+      "3": "Scaled linear velocity Y",
+      "4": "Lander angle (radians)",
+      "5": "Scaled angular velocity",
+      "6": "Left leg ground contact (0.0 or 1.0)",
+      "7": "Right leg ground contact (0.0 or 1.0)"
+    }
+  },
+  "action_space": {
+    "configured_or_inferred_action_space": "Discrete(4) or Box(-1, 1, shape=(2,))",
+    "code_supported_action_spaces": [
+      "Discrete: 0 (Nothing), 1 (Left Orientation), 2 (Main Engine), 3 (Right Orientation)",
+      "Continuous: action[0] (Main Power), action[1] (Side Direction/Power)"
+    ],
+    "action_semantics": {
+      "discrete_0": "No thrust",
+      "discrete_1": "Fire left orientation engine (torque + small lateral force)",
+      "discrete_2": "Fire main engine (downward thrust relative to lander angle)",
+      "discrete_3": "Fire right orientation engine (torque + small lateral force)",
+      "continuous_main": "Throttle level for main engine",
+      "continuous_side": "Direction and throttle for side engines"
+    }
+  },
+  "termination_modes": [
+    {
+      "condition": "Crash",
+      "trigger": "self.game_over becomes True (likely body collision with ground)",
+      "inferred_outcome": "Episode ends, likely negative reward"
+    },
+    {
+      "condition": "Out of Bounds X",
+      "trigger": "abs(state[0]) >= 1.0",
+      "inferred_outcome": "Episode ends, agent flew off screen"
+    },
+    {
+      "condition": "Lander Asleep",
+      "trigger": "not self.lander.awake",
+      "inferred_outcome": "Physics engine stopped simulating lander (likely crashed or landed)"
+    }
+  ],
+  "success_like_ending": {
+    "description": "Lander touches down on the pad with legs contacting ground, minimal velocity, and upright orientation.",
+    "signals": {
+      "leg_contact": "state[6] == 1.0 or state[7] == 1.0",
+      "position": "state[0] near 0.0, state[1] near 0.0",
+      "velocity": "state[2], state[3] near 0.0"
+    },
+    "is_official_ground_truth": false
+  },
+  "failure_like_endings": {
+    "crash": "High velocity impact with ground (game_over triggered)",
+    "drift_loss": "X coordinate exceeds viewport bounds",
+    "sleep_crash": "Lander goes to sleep due to collision"
+  },
+  "behavior_trajectory_prior": {
+    "successful_trajectory_phases": [
+      {
+        "phase": "Stabilization",
+        "expected_behavior": "Correct orientation (angle) and reduce horizontal velocity using side engines.",
+        "available_signals": [
+          "state[4] (angle)",
+          "state[2] (vx)"
+        ],
+        "reward_design_implication": "Do not heavily penalize fuel usage here; prioritize alignment."
+      },
+      {
+        "phase": "Descent",
+        "expected_behavior": "Reduce vertical velocity while moving towards pad X=0.",
+        "available_signals": [
+          "state[1] (y)",
+          "state[3] (vy)"
+        ],
+        "reward_design_implication": "Reward proximity to y=0 but penalize high vy."
+      },
+      {
+        "phase": "Touchdown",
+        "expected_behavior": "Legs contact ground at low velocity.",
+        "available_signals": [
+          "state[6], state[7] (legs)",
+          "state[2], state[3] (velocities)"
+        ],
+        "reward_design_implication": "High reward for leg contact only if velocities are low."
+      }
+    ],
+    "behaviors_not_to_overpenalize_early": [
+      "Fuel consumption during initial stabilization",
+      "Small deviations in X position while correcting angle"
+    ],
+    "likely_bad_local_optima": [
+      "Hovering indefinitely near ground (if no time limit)",
+      "Drifting to viewport edge and stopping there (minimizing movement cost)"
+    ],
+    "exploration_implications_for_initial_reward": [
+      "Initial reward should encourage descent towards y=0",
+      "Penalty for X drift must be strong enough to prevent boundary loss"
+    ]
+  },
+  "reward_design_variables": {
+    "safe_to_use": [
+      "state[0] (X position)",
+      "state[1] (Y position)",
+      "m_power",
+      "s_power",
+      "terminated"
+    ],
+    "use_with_caution": [
+      "state[6], state[7] (Leg contact - can trigger on crash too)",
+      "state[2], state[3] (Velocities - need scaling awareness)"
+    ],
+    "forbidden_or_unconfirmed": [
+      "Total fuel consumed (must be accumulated externally or passed via info)",
+      "Step count (not available in reward function signature)"
+    ]
+  },
+  "reward_design_risks": [
+    {
+      "risk": "Infinite Episodes",
+      "description": "No explicit step limit visible; agent might hover to maximize time-based rewards or avoid termination."
+    },
+    {
+      "risk": "Crash Reward Hacking",
+      "description": "If crash penalty is not high enough, agent might prefer crashing over landing if fuel cost is too high."
+    },
+    {
+      "risk": "Normalization Sensitivity",
+      "description": "State values are normalized; reward thresholds must account for this scaling (e.g., state[0] range [-1, 1])."
+    }
+  ],
+  "reward_hacking_risks": [
+    {
+      "hack": "Hovering at Edge",
+      "mechanism": "Agent stays just inside viewport bounds to avoid termination penalty while minimizing fuel."
+    },
+    {
+      "hack": "Soft Crash Landing",
+      "mechanism": "If leg contact reward is high without velocity check, agent might crash into pad legs first."
+    }
+  ],
+  "minimum_recommended_reward_components": [
+    "Negative cost for m_power and s_power (fuel)",
+    "Positive reward for proximity to state[0]=0, state[1]=0",
+    "Penalty for high absolute velocity at leg contact",
+    "Large negative penalty on termination if not successful landing"
+  ],
+  "agent_name": "EnvironmentUnderstandingAgent"
+}

@@ -1,0 +1,91 @@
+{
+  "file_type": "reflection_decision",
+  "iteration": 6,
+  "candidate_id": "iter_006",
+  "diagnosis": {
+    "outcome_label": "hovering_or_timeout_policy",
+    "main_problem": "Policy exploits dense success bonus (+100 per step) to accumulate reward while touching ground without terminating (Episode 1 length 1000), violating the 'Sparse large reward' design principle. Most episodes fail orientation checks (High Orientation Penalty ~271) or crash, resulting in negative fitness score (-192).",
+    "evidence": [
+      "Episode 1 reached step limit (1000) with ground contact but no termination, accumulating +2098 generated reward via dense success bonus.",
+      "Average episode length is 650 steps, indicating slow descent or post-landing hovering.",
+      "Orientation penalty mean (271.37) suggests frequent sideways crashes or unstable angles before touchdown.",
+      "Success-like terminal rate is 0.0 despite ground contact in multiple episodes, confirming termination logic mismatch with reward hacking.",
+      "Fitness score (-192) diverges negatively from generated reward (118), indicating the immediate reward signal does not align with true objective."
+    ],
+    "root_cause_hypotheses": [
+      "Dense success bonus (+100/step) encourages 'ground hovering' instead of terminating, creating a local optimum.",
+      "Step penalty (-0.2) is too weak to discourage long episodes compared to the +100/step gain from landing state.",
+      "Reversion to Iteration 2 baseline removed Iteration 4's higher step pressure (-0.5), allowing timeout exploitation.",
+      "Orientation control weight (1.0) may be insufficient relative to fuel/step costs during stabilization phase."
+    ],
+    "reward_hacking_flags": {
+      "hovering_hacking": true,
+      "proxy_reward_hacking": true,
+      "terminal_hacking": false
+    },
+    "bad_local_optimum_flags": {
+      "hovering_or_stalling": true,
+      "passive_policy": false,
+      "wrong_action_mode_policy": false
+    },
+    "confidence": 0.92
+  },
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "scope_reason": "Requires changing success bonus logic from dense to sparse and adjusting step penalty weight. These are structural changes to reward terms but do not require full restructuring of the schema.",
+    "exploration_vs_exploitation": "stabilization",
+    "what_to_preserve": [
+      "Fuel penalty mechanism (weight 0.5)",
+      "Orientation control term (weight 1.0) for safety",
+      "Position shaping (X alignment)"
+    ],
+    "what_to_change": [
+      "Change landing_success_bonus to trigger only on termination (`if terminated and is_success_state`), not every step.",
+      "Increase step_penalty from -0.2 to -0.5 to discourage long episodes and ground hovering.",
+      "Ensure velocity threshold for success remains tight (0.4) but verify it's reachable."
+    ],
+    "what_to_avoid": [
+      "Dense positive rewards that can be accumulated without episode termination.",
+      "Further reducing step penalty which enables timeout exploitation.",
+      "Removing orientation penalties which are critical for preventing sideways crashes."
+    ]
+  },
+  "expected_metric_changes": {
+    "episode_length": "Decrease (Target < 400 steps)",
+    "success_like_terminal_rate": "Increase (Target > 0.1)",
+    "fitness_score": "Initial drop possible due to higher step penalty, followed by recovery as landing terminates episodes.",
+    "generated_reward": "Decrease in magnitude per episode but better correlation with fitness."
+  },
+  "validation_metrics": [
+    {
+      "name": "average_steps_to_termination",
+      "threshold": "< 400",
+      "purpose": "Verify agent stops hovering and attempts termination faster."
+    },
+    {
+      "name": "success_like_terminal_rate",
+      "threshold": "> 0.1",
+      "purpose": "Ensure landing attempts result in valid success states at episode end."
+    },
+    {
+      "name": "mean_orientation_penalty_per_step",
+      "threshold": "< 0.5",
+      "purpose": "Confirm agent maintains upright orientation during descent."
+    }
+  ],
+  "memory_queries": [
+    {
+      "query_type": "reward_transition",
+      "target_iteration_from": 3,
+      "target_iteration_to": 4,
+      "reason": "Retrieve details on step penalty increase (-0.2 to -0.5) and its effect on episode length."
+    },
+    {
+      "query_type": "reward_transition",
+      "target_iteration_from": 1,
+      "target_iteration_to": 2,
+      "reason": "Verify Iteration 2 baseline success bonus logic (Sparse vs Dense)."
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "memory_type": "reward_transition",
+  "iteration_from": 5,
+  "iteration_to": 6,
+  "parent_candidate_id": "iter_005",
+  "candidate_id": "iter_006",
+  "before_metrics": {
+    "fitness_score": -115.85489205824805,
+    "generated_reward": -35.27400707006454,
+    "episode_length": 83.8,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "after_metrics": {
+    "fitness_score": -192.89737149097544,
+    "generated_reward": 118.52489393353463,
+    "episode_length": 650.2,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "metric_delta": {
+    "episode_length": 566.4000000000001,
+    "fitness_score": -77.04247943272739,
+    "generated_reward": 153.79890100359916,
+    "out_of_bounds_rate": 0.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0
+  },
+  "before_behavior": {
+    "action_distribution": {
+      "0": 0.630071599045346,
+      "1": 0.13842482100238662,
+      "2": 0.2315035799522673
+    },
+    "dominant_action": {
+      "action": "0",
+      "probability": 0.630071599045346
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "early_failure_or_uncontrolled_terminal"
+  },
+  "after_behavior": {
+    "action_distribution": {
+      "1": 0.1316517994463242,
+      "0": 0.1519532451553368,
+      "2": 0.5868963395878192,
+      "3": 0.12949861581051983
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.5868963395878192
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "unclear_policy"
+  },
+  "reflection_diagnosis": {
+    "outcome_label": "passive_no_action_policy",
+    "main_problem": "Significant fitness regression compared to Iteration 2 baseline due to the addition of Y-descent shaping term which penalizes height without ensuring safe descent, leading to increased passivity (Action 0 dominance) and inconsistent landing attempts.",
+    "evidence": [
+      "fitness_score dropped from +2.34 in Iteration 2 to -115.85 in Iteration 5.",
+      "Action 0 probability increased from 0.47 (Iter 2) to 0.63 (Iter 5), indicating reduced exploration of thrust actions.",
+      "y_descent_shaping component mean return is -22.5, adding significant negative pressure without guaranteeing success.",
+      "success_like_terminal_rate remains 0.0 despite some episodes triggering landing_success bonus mid-episode (e.g., Ep 1, 2, 4), suggesting unstable landings that fail terminal checks."
+    ],
+    "root_cause_hypotheses": [
+      "Y-descent shaping penalizes being high up (-0.3 * y), making active descent attempts costly compared to passive falling.",
+      "Velocity threshold for success bonus (0.6) may be too lenient, allowing crash landings that trigger the +100 bonus but result in termination failure penalty later.",
+      "Combined penalties (Step -0.2, Fuel 0.5, Y-Descent 0.3) create a high-cost environment where doing nothing minimizes immediate loss."
+    ],
+    "reward_hacking_flags": {
+      "proxy_reward_hacking": true,
+      "hovering_hacking": false,
+      "terminal_hacking": false
+    },
+    "bad_local_optimum_flags": {
+      "passive_policy": true,
+      "wrong_action_mode_policy": false,
+      "hovering_or_stalling": false
+    },
+    "confidence": 0.85
+  },
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "Removing the problematic Y-descent shaping term to restore exploration balance seen in Iteration 2. Tightening velocity threshold for success bonus from 0.6 to 0.4 to prevent crash-landing bonuses while maintaining safety constraints.",
+    "preserved_design": [
+      "Terminal success bonus (+100) and failure penalty (-100) logic.",
+      "Fuel penalty weight (0.5) to maintain efficiency incentive.",
+      "Step penalty (-0.2) to prevent infinite episodes without forcing unsafe rushing.",
+      "Orientation control weight (1.0) to ensure upright safety.",
+      "Position shaping (X alignment) with weight 0.1."
+    ],
+    "changed_design": [
+      "Removed y_descent_shaping term entirely to reduce negative pressure on height that encouraged passivity.",
+      "Tightened velocity threshold for success bonus from 0.6 to 0.4 to ensure safe landings only trigger the large positive reward."
+    ],
+    "risk": [
+      "Removing Y-shaping might slightly reduce descent urgency, potentially increasing episode length if step penalty is too low.",
+      "Tighter velocity threshold (0.4) makes success bonus harder to reach initially, possibly slowing convergence on landing behavior."
+    ],
+    "expected_metric_changes": {
+      "fitness_score": "Increase from -115 towards positive values (target > -50 initially).",
+      "action_distribution_entropy": "Increase as Action 0 probability decreases below 60%.",
+      "success_like_terminal_rate": "Increase from 0.0 to > 0.05 as stable landings become more frequent."
+    },
+    "validation_metrics": [
+      {
+        "name": "fitness_score",
+        "threshold": "> -50.0",
+        "purpose": "Verify removal of Y-shaping improves aggregate return."
+      },
+      {
+        "name": "action_distribution_entropy",
+        "threshold": "> 0.3",
+        "purpose": "Ensure policy explores thrust actions (Action 1, 2) more frequently."
+      },
+      {
+        "name": "terminal_velocity_magnitude",
+        "threshold": "< 0.4 at touchdown",
+        "purpose": "Confirm success bonus is not triggered by high-velocity impacts."
+      }
+    ]
+  },
+  "acceptance": {
+    "accepted_as_elite": false,
+    "reason": "fitness_score did not improve"
+  },
+  "reuse_policy": "negative_constraint",
+  "lesson": "A medium reward revision from behavior 'early_failure_or_uncontrolled_terminal' to 'unclear_policy' did not improve fitness_score by -77.042. Changed design summary: ['Removed y_descent_shaping term entirely to reduce negative pressure on height that encouraged passivity.', 'Tightened velocity threshold for success bonus from 0.6 to 0.4 to ensure safe landings only trigger the large positive reward.']. Original diagnosis: Significant fitness regression compared to Iteration 2 baseline due to the addition of Y-descent shaping term which penalizes height without ensuring safe descent, leading to increased passivity (Action 0 dominance) and inconsistent landing attempts.."
+}

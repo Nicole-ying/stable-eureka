@@ -1,0 +1,148 @@
+{
+  "version": "iter_007_sparse_success_high_step_penalty",
+  "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+  "design_principle": "Sparse terminal success bonus to prevent ground hovering exploitation. Increased step penalty (-0.5) enforces time pressure and discourages infinite episodes.",
+  "behavior_trajectory_prior_used": {
+    "phases_considered": [
+      "Stabilization (Angle correction)",
+      "Descent (Y reduction, X alignment)",
+      "Touchdown (Leg contact + Low Velocity)"
+    ],
+    "prioritized_signals": [
+      "Time pressure (Step Penalty -0.5)",
+      "Terminal success conditions",
+      "Fuel efficiency"
+    ]
+  },
+  "component_catalog": [
+    {
+      "id": "fuel_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Discourage unnecessary engine usage.",
+      "uses": [
+        "m_power",
+        "s_power"
+      ],
+      "expected_effect": "Agent minimizes thrust duration while maintaining control.",
+      "activation_reason": "Fuel is a resource cost; essential for optimization.",
+      "anti_hacking_role": "Prevents hovering indefinitely."
+    },
+    {
+      "id": "step_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Encourage faster completion (time pressure).",
+      "uses": [
+        "terminated"
+      ],
+      "expected_effect": "Agent learns to land quickly rather than drifting or hovering.",
+      "activation_reason": "Increased weight (-0.5) prevents timeout exploitation and ground hovering.",
+      "anti_hacking_role": "Makes survival strategy unsustainable."
+    },
+    {
+      "id": "orientation_control",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize deviation from upright angle.",
+      "uses": [
+        "state[4]"
+      ],
+      "expected_effect": "Ensures lander is vertical before landing.",
+      "activation_reason": "Safety constraint for stable descent.",
+      "anti_hacking_role": "Prevents sideways crashes."
+    },
+    {
+      "id": "position_shaping",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Encourage movement towards pad center (0,0).",
+      "uses": [
+        "state[0]",
+        "state[1]"
+      ],
+      "expected_effect": "Guides descent direction.",
+      "activation_reason": "Provides dense gradient signal for exploration.",
+      "anti_hacking_role": "N/A"
+    },
+    {
+      "id": "velocity_stability",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize unsafe high velocities.",
+      "uses": [
+        "state[2]",
+        "state[3]"
+      ],
+      "expected_effect": "Encourages smoother trajectory and safe touchdown velocity.",
+      "activation_reason": "Safety constraint for landing.",
+      "anti_hacking_role": "N/A"
+    },
+    {
+      "id": "landing_success_bonus",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Provide strong positive signal ONLY upon successful termination.",
+      "uses": [
+        "state[6]",
+        "state[7]",
+        "state[2]",
+        "state[3]",
+        "state[0]",
+        "terminated"
+      ],
+      "expected_effect": "Agent learns to land gently on pad and terminate episode.",
+      "activation_reason": "Sparse reward prevents ground hovering exploitation (Iter 6 issue).",
+      "anti_hacking_role": "Requires termination + low velocity + leg contact."
+    },
+    {
+      "id": "termination_failure_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize crashes or out-of-bounds termination.",
+      "uses": [
+        "terminated"
+      ],
+      "expected_effect": "Agent avoids crashing and staying in bounds.",
+      "activation_reason": "Safety constraint is critical; applied only if success conditions not met at termination.",
+      "anti_hacking_role": "Prevents intentional crashing."
+    },
+    {
+      "id": "leg_contact_status",
+      "type": "diagnostic_term",
+      "status": "active",
+      "purpose": "Track leg contact status for analysis.",
+      "uses": [
+        "state[6]",
+        "state[7]"
+      ],
+      "expected_effect": "None (logging only).",
+      "activation_reason": "Required for diagnostic metrics in individual_reward.",
+      "anti_hacking_role": "N/A"
+    }
+  ],
+  "active_reward_terms": [
+    "fuel_penalty",
+    "step_penalty",
+    "orientation_control",
+    "position_shaping",
+    "velocity_stability",
+    "landing_success_bonus",
+    "termination_failure_penalty"
+  ],
+  "diagnostic_terms": [
+    "leg_contact_status",
+    "fuel_cost",
+    "step_penalty",
+    "orientation_penalty",
+    "position_shaping",
+    "velocity_stability",
+    "landing_success",
+    "termination_failure_penalty"
+  ],
+  "dormant_terms": [],
+  "iteration_policy": {
+    "iter7_principle": "Sparse success bonus + High step penalty to fix hovering exploitation.",
+    "future_search_principle": "Monitor if crash rate increases due to high time pressure. If so, relax velocity threshold or reduce step penalty slightly."
+  }
+}

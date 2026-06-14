@@ -1,0 +1,223 @@
+{
+  "file_type": "revised_reward_schema_and_code",
+  "parent_candidate_id": "iter_004_time_pressure_descent",
+  "candidate_id": "iter_005_balanced_descent_shaping",
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "Iteration 4's excessive step penalty (-0.5) made safe landing mathematically unprofitable, causing passive behavior (Action 0 dominance). Reverting step penalty to -0.2 aligns with Iteration 2's successful baseline. Adding explicit Y-descent shaping provides a dense gradient signal for progress before terminal success is reached.",
+    "preserved_design": [
+      "Terminal success bonus (+100) logic for safe landing state detection.",
+      "Terminal failure penalty (-100) to discourage crashes/out-of-bounds.",
+      "Orientation control weight (1.0) to ensure upright safety.",
+      "Fuel penalty mechanism (weight 0.5) to maintain efficiency incentive."
+    ],
+    "changed_design": [
+      "Reduced step_penalty from -0.5 to -0.2 per step to reduce time pressure dominance.",
+      "Added y_descent_shaping term (weight 0.3) to explicitly reward vertical progress towards pad.",
+      "Maintained position_shaping for X alignment but prioritized Y descent via new term."
+    ],
+    "risk": [
+      "Reduced step penalty might allow slight increase in episode length if not balanced by descent shaping.",
+      "Y-descent weight must be tuned to avoid encouraging crashing into ground without velocity control."
+    ],
+    "expected_metric_changes": {
+      "fitness_score": "Increase from -127 towards positive values (target > -50 initially).",
+      "success_like_terminal_rate": "Increase from 0.0 to > 0.05 as time pressure allows stabilization.",
+      "episode_length": "May increase slightly compared to Iter 4 but remain below hovering levels (< 200 steps)."
+    },
+    "validation_metrics": [
+      {
+        "name": "fitness_score",
+        "threshold": "> -50.0",
+        "purpose": "Verify time pressure reduction improves aggregate return."
+      },
+      {
+        "name": "success_like_terminal_rate",
+        "threshold": "> 0.05",
+        "purpose": "Confirm agent can achieve safe landing conditions more frequently."
+      },
+      {
+        "name": "average_steps_to_termination",
+        "threshold": "< 200",
+        "purpose": "Ensure agent does not revert to hovering/timeout behavior."
+      }
+    ]
+  },
+  "reward_schema": {
+    "version": "iter_005_balanced_descent_shaping",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Balanced time pressure (-0.2/step) combined with explicit Y-descent shaping to encourage active landing attempts without forcing unsafe rushing. State-based success detection ensures reward signal aligns with physical landing behavior.",
+    "behavior_trajectory_prior_used": {
+      "phases_considered": [
+        "Stabilization (Angle correction)",
+        "Descent (Y reduction, X alignment)",
+        "Touchdown (Leg contact + Low Velocity)"
+      ],
+      "prioritized_signals": [
+        "Time pressure (Step Penalty -0.2)",
+        "Y-Descent Shaping",
+        "State-based success conditions"
+      ]
+    },
+    "component_catalog": [
+      {
+        "id": "fuel_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Discourage unnecessary engine usage.",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Agent minimizes thrust duration while maintaining control.",
+        "activation_reason": "Fuel is a resource cost; essential for optimization.",
+        "anti_hacking_role": "Prevents hovering indefinitely."
+      },
+      {
+        "id": "step_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage faster completion (time pressure).",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent learns to land quickly rather than drifting, but not at cost of safety.",
+        "activation_reason": "Prevents infinite episodes; weight reduced from -0.5 to -0.2 to allow stabilization.",
+        "anti_hacking_role": "Makes survival strategy unsustainable without being dominant."
+      },
+      {
+        "id": "orientation_control",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize deviation from upright angle.",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Ensures lander is vertical before landing.",
+        "activation_reason": "Safety constraint for stable descent.",
+        "anti_hacking_role": "Prevents sideways crashes."
+      },
+      {
+        "id": "position_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage movement towards pad center (0,0).",
+        "uses": [
+          "state[0]",
+          "state[1]"
+        ],
+        "expected_effect": "Guides descent direction.",
+        "activation_reason": "Provides dense gradient signal for exploration.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "y_descent_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Explicitly reward vertical progress towards ground (Y reduction).",
+        "uses": [
+          "state[1]"
+        ],
+        "expected_effect": "Prioritizes descent over X alignment initially to break passive falling.",
+        "activation_reason": "Added per reflection decision to provide dense Y-progress signal.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "velocity_stability",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize unsafe high velocities.",
+        "uses": [
+          "state[2]",
+          "state[3]"
+        ],
+        "expected_effect": "Encourages smoother trajectory and safe touchdown velocity.",
+        "activation_reason": "Safety constraint for landing.",
+        "anti_hacking_role": "N/A"
+      },
+      {
+        "id": "landing_success_bonus",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Provide strong positive signal for safe landing state.",
+        "uses": [
+          "state[6]",
+          "state[7]",
+          "state[2]",
+          "state[3]",
+          "state[0]"
+        ],
+        "expected_effect": "Agent learns to land gently on pad regardless of termination flag.",
+        "activation_reason": "Primary objective is successful landing; decoupled from 'terminated' to fix signal gap.",
+        "anti_hacking_role": "Requires low velocity and leg contact, preventing crash-for-points."
+      },
+      {
+        "id": "termination_failure_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize crashes or out-of-bounds termination.",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Agent avoids crashing and staying in bounds.",
+        "activation_reason": "Safety constraint is critical; applied only if success conditions not met at termination.",
+        "anti_hacking_role": "Prevents intentional crashing."
+      },
+      {
+        "id": "leg_contact_diagnostic",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track leg contact status for analysis.",
+        "uses": [
+          "state[6]",
+          "state[7]"
+        ],
+        "expected_effect": "None (logging only).",
+        "activation_reason": "Required for diagnostic metrics in individual_reward.",
+        "anti_hacking_role": "N/A"
+      }
+    ],
+    "active_reward_terms": [
+      "fuel_penalty",
+      "step_penalty",
+      "orientation_control",
+      "position_shaping",
+      "y_descent_shaping",
+      "velocity_stability",
+      "landing_success_bonus",
+      "termination_failure_penalty"
+    ],
+    "diagnostic_terms": [
+      "leg_contact_diagnostic",
+      "fuel_cost",
+      "step_penalty",
+      "orientation_penalty",
+      "position_shaping",
+      "y_descent_shaping",
+      "velocity_stability",
+      "landing_success",
+      "termination_failure_penalty"
+    ],
+    "dormant_terms": [],
+    "iteration_policy": {
+      "iter5_principle": "Balanced time pressure (-0.2/step) allows stabilization attempts while Y-descent shaping encourages active progress towards pad.",
+      "future_search_principle": "Monitor if episode length increases excessively (hovering). If so, increase step penalty slightly or add velocity-based descent constraints."
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Active Term: Step Penalty (Reduced Weight for Balanced Time Pressure) ---\n    step_penalty_val = -0.2\n    reward += step_penalty_val\n    individual_reward['step_penalty'] = float(step_penalty_val)\n\n    # --- Active Term: Fuel Penalty (Maintained Weight) ---\n    fuel_cost = m_power + s_power\n    fuel_penalty_weight = 0.5\n    reward -= fuel_cost * fuel_penalty_weight\n    individual_reward['fuel_cost'] = float(fuel_cost)\n    individual_reward['fuel_penalty'] = float(-fuel_cost * fuel_penalty_weight)\n\n    # --- Active Term: Orientation Control (Maintained Weight) ---\n    angle_penalty_weight = 1.0\n    angle_penalty_val = abs(angle) * angle_penalty_weight\n    reward -= angle_penalty_val\n    individual_reward['orientation_penalty'] = float(angle_penalty_val)\n\n    # --- Active Term: Position Shaping (X Alignment) ---\n    position_shaping_weight = 0.1\n    x_dist = abs(x)\n    position_shaping_val = -x_dist * position_shaping_weight\n    reward += position_shaping_val\n    individual_reward['position_shaping'] = float(position_shaping_val)\n\n    # --- Active Term: Y Descent Shaping (New) ---\n    y_descent_weight = 0.3\n    # Reward being lower (y closer to 0 or negative). Assuming y > 0 is above pad.\n    y_descent_val = -y * y_descent_weight\n    reward += y_descent_val\n    individual_reward['y_descent_shaping'] = float(y_descent_val)\n\n    # --- Active Term: Velocity Stability (Maintained Thresholded) ---\n    vel_mag = (vx**2 + vy**2)**0.5\n    velocity_threshold = 0.6\n    velocity_penalty_weight = 1.0\n    if vel_mag > velocity_threshold:\n        velocity_stability_val = -((vel_mag - velocity_threshold)**2) * velocity_penalty_weight\n        reward += velocity_stability_val\n    else:\n        velocity_stability_val = 0.0\n    individual_reward['velocity_stability'] = float(velocity_stability_val)\n\n    # --- State-Based Success Detection (Relaxed Velocity Threshold) ---\n    leg_contact = (leg_l == 1.0 or leg_r == 1.0)\n    low_velocity = (abs(vx) < 0.6 and abs(vy) < 0.6)\n    near_pad = (abs(x) < 0.5)\n    is_success_state = leg_contact and low_velocity and near_pad\n\n    if is_success_state:\n        # Success: Large positive reward triggered by state conditions\n        reward += 100.0\n        individual_reward['landing_success'] = 1.0\n    else:\n        individual_reward['landing_success'] = 0.0\n\n    # --- Termination Handling (Failure Penalty) ---\n    if terminated and not is_success_state:\n        # Failure: Crash, Out of Bounds, or Bad Landing at termination\n        reward -= 100.0\n        individual_reward['termination_failure_penalty'] = -100.0\n    else:\n        individual_reward['termination_failure_penalty'] = 0.0\n\n    # --- Diagnostic Term: Leg Contact Status ---\n    leg_contact_status = max(leg_l, leg_r)\n    individual_reward['leg_contact_status'] = float(leg_contact_status)\n\n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "short_term": "Agent should attempt more active descent (Action 2) due to Y-shaping and reduced step penalty.",
+    "long_term": "Discovery of safe landing trajectories as time pressure allows stabilization."
+  },
+  "known_risks": [
+    "Reduced step penalty might allow slight increase in episode length if not balanced by descent shaping.",
+    "Y-descent weight must be tuned to avoid encouraging crashing into ground without velocity control."
+  ],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "uses_only_allowed_inputs_or_safe_internal_state": true
+  },
+  "agent_name": "RewardRevisionAgent"
+}
