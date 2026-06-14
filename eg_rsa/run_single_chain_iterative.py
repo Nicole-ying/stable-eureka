@@ -11,6 +11,7 @@ import yaml
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.run_single_chain import run as run_bootstrap
 from eg_rsa.single_chain.agents import JsonAgent
+from eg_rsa.single_chain.controller import SearchController, write_controller_decision
 from eg_rsa.single_chain.env_builder import load_env_class, prepare_env_code
 from eg_rsa.single_chain.evidence import EvidenceBuilder
 from eg_rsa.single_chain.json_tools import read_json, read_text, write_json, write_text
@@ -45,13 +46,12 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
         raise RuntimeError("iterative single-chain search requires an LLM backend")
 
     search_cfg = config.get("search", {}) or {}
-    total_iterations = int(search_cfg.get("iterations", 2))
-    if total_iterations < 1:
-        total_iterations = 1
+    total_iterations = max(1, int(search_cfg.get("iterations", 2)))
 
     memory_cfg = config.get("memory", {}) or {}
     memory_path = run_dir / memory_cfg.get("path", "memory/reward_memory.jsonl")
     memory = MemoryManager(memory_path, top_k=int(memory_cfg.get("retrieve_top_k", 5)))
+    controller = SearchController(config)
 
     env_understanding = read_json(run_dir / "agents" / "environment_understanding.json")
     target_contract = read_json(run_dir / "agents" / "target_alignment_contract.json")
@@ -60,21 +60,26 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
     write_json(run_dir / "environment_understanding_summary.json", env_summary)
     write_json(run_dir / "target_alignment_summary.json", target_summary)
 
-    current_dir = run_dir
-    current_evidence = EvidenceBuilder.build(current_dir, output_path=current_dir / "iteration_evidence.json")
-    best_evidence: Dict[str, Any] = current_evidence
+    # Parent means the candidate whose reward will be edited next.
+    parent_dir = run_dir
+    parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
+    best_dir = parent_dir
+    best_evidence: Dict[str, Any] = parent_evidence
     write_json(run_dir / "best_iteration_evidence.json", best_evidence)
+    write_text(run_dir / "BEST_PARENT.txt", str(best_dir) + "\n")
+
+    consecutive_rejections = 0
 
     for next_iteration in range(1, total_iterations):
-        search_dir = current_dir / "search"
+        search_dir = parent_dir / "search"
         search_dir.mkdir(parents=True, exist_ok=True)
 
-        current_evidence = EvidenceBuilder.build(current_dir, output_path=current_dir / "iteration_evidence.json")
-        retrieved = memory.retrieve(current_evidence)
+        parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
+        retrieved = memory.retrieve(parent_evidence)
         write_json(search_dir / "retrieved_memory.json", {"items": retrieved})
 
-        current_reward_schema = read_json(current_dir / "reward" / "reward_schema.json")
-        current_reward_code = read_text(current_dir / "reward" / "reward_code.py")
+        current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
+        current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
 
         reflection_prompt = read_text(PROMPT_DIR / "reflection_prompt.txt")
         reflection = JsonAgent("ReflectionAgent", llm_client, reflection_prompt).run(
@@ -83,7 +88,7 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
                 "target_alignment_contract_summary_json": as_json_text(target_summary),
                 "current_reward_schema_json": as_json_text(current_reward_schema),
                 "current_reward_code": current_reward_code,
-                "iteration_evidence_json": as_json_text(current_evidence),
+                "iteration_evidence_json": as_json_text(parent_evidence),
                 "best_iteration_evidence_json": as_json_text(best_evidence),
                 "retrieved_memory_json": as_json_text({"items": retrieved}),
             },
@@ -95,7 +100,21 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
             write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped at iteration {next_iteration - 1}: stop_success\n")
             break
 
-        retrieved_after_reflection = memory.retrieve(current_evidence, reflection)
+        # If the LLM explicitly asks to roll back, use the elite as the edit parent immediately.
+        if reflection.get("search_decision", {}).get("recommended_next_action") == "rollback_to_best" and best_dir != parent_dir:
+            write_json(search_dir / "controller_pre_revision_decision.json", {
+                "action": "rollback_to_best_before_revision",
+                "from_parent_dir": str(parent_dir),
+                "to_best_dir": str(best_dir),
+            })
+            parent_dir = best_dir
+            parent_evidence = best_evidence
+            current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
+            current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
+            search_dir = parent_dir / "search"
+            search_dir.mkdir(parents=True, exist_ok=True)
+
+        retrieved_after_reflection = memory.retrieve(parent_evidence, reflection)
         write_json(search_dir / "retrieved_memory_after_reflection.json", {"items": retrieved_after_reflection})
 
         revision_prompt = read_text(PROMPT_DIR / "reward_revision_prompt.txt")
@@ -105,7 +124,7 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
                 "target_alignment_contract_summary_json": as_json_text(target_summary),
                 "current_reward_schema_json": as_json_text(current_reward_schema),
                 "current_reward_code": current_reward_code,
-                "iteration_evidence_json": as_json_text(current_evidence),
+                "iteration_evidence_json": as_json_text(parent_evidence),
                 "reflection_decision_json": as_json_text(reflection),
                 "retrieved_memory_json": as_json_text({"items": retrieved_after_reflection}),
             },
@@ -113,27 +132,54 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
             search_dir / "reward_revision_raw.txt",
         )
 
-        next_dir = run_dir / "iterations" / f"iter_{next_iteration:03d}"
-        next_dir.mkdir(parents=True, exist_ok=True)
-        _materialize_revision(config, next_dir, revision, env_summary, target_summary, next_iteration)
+        candidate_dir = run_dir / "iterations" / f"iter_{next_iteration:03d}"
+        candidate_dir.mkdir(parents=True, exist_ok=True)
+        _materialize_revision(config, candidate_dir, revision, env_summary, target_summary, next_iteration)
 
-        next_evidence = EvidenceBuilder.build(next_dir, output_path=next_dir / "iteration_evidence.json")
+        candidate_evidence = EvidenceBuilder.build(candidate_dir, output_path=candidate_dir / "iteration_evidence.json")
+        decision = controller.decide(
+            parent_evidence=parent_evidence,
+            candidate_evidence=candidate_evidence,
+            best_evidence=best_evidence,
+            parent_dir=parent_dir,
+            candidate_dir=candidate_dir,
+            best_dir=best_dir,
+            consecutive_rejections=consecutive_rejections,
+        )
+        write_controller_decision(candidate_dir / "controller_decision.json", decision)
+        write_controller_decision(run_dir / "last_controller_decision.json", decision)
+
         memory_record = memory.append_transition(
             iteration_from=next_iteration - 1,
             iteration_to=next_iteration,
-            before_evidence=current_evidence,
-            after_evidence=next_evidence,
+            before_evidence=parent_evidence,
+            after_evidence=candidate_evidence,
             reflection=reflection,
             revision=revision,
-            output_copy_path=next_dir / "memory_transition.json",
+            output_copy_path=candidate_dir / "memory_transition.json",
         )
 
-        if _fitness(next_evidence) > _fitness(best_evidence):
-            best_evidence = next_evidence
+        if decision.get("accepted_as_elite"):
+            best_dir = candidate_dir
+            best_evidence = candidate_evidence
             write_json(run_dir / "best_iteration_evidence.json", best_evidence)
             write_json(run_dir / "best_memory_transition.json", memory_record)
+            write_text(run_dir / "BEST_PARENT.txt", str(best_dir) + "\n")
 
-        current_dir = next_dir
+        if decision.get("rejected"):
+            consecutive_rejections += 1
+        else:
+            consecutive_rejections = 0
+
+        if decision.get("should_stop"):
+            write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped after {consecutive_rejections} consecutive rejected candidates.\n")
+            break
+
+        next_parent_dir = Path(decision.get("rollback", {}).get("next_parent_dir") or candidate_dir)
+        if not next_parent_dir.exists():
+            next_parent_dir = best_dir
+        parent_dir = next_parent_dir
+        write_text(run_dir / "CURRENT_PARENT.txt", str(parent_dir) + "\n")
 
     write_text(run_dir / "ITERATIVE_DONE.txt", "single-chain iterative search finished\n")
     return run_dir
@@ -176,13 +222,6 @@ def _materialize_revision(
     )
     reward_trace = trainer.train()
     write_json(next_dir / "reward_trace.json", reward_trace)
-
-
-def _fitness(evidence: Dict[str, Any]) -> float:
-    try:
-        return float(evidence.get("primary_metrics", {}).get("fitness_score", -1e18))
-    except Exception:
-        return -1e18
 
 
 def _environment_summary(data: Dict[str, Any]) -> Dict[str, Any]:
