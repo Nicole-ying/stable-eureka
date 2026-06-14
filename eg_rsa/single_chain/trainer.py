@@ -61,6 +61,9 @@ class SingleChainPPOTrainer:
         environment_understanding: Dict[str, Any],
         target_alignment_contract: Dict[str, Any],
         reward_schema: Dict[str, Any],
+        candidate_id: str = "single_chain_iter0",
+        generation: int = 0,
+        creation_type: str = "initial_llm_generation",
     ):
         self.config = config
         self.output_dir = Path(output_dir)
@@ -69,6 +72,9 @@ class SingleChainPPOTrainer:
         self.environment_understanding = environment_understanding
         self.target_alignment_contract = target_alignment_contract
         self.reward_schema = reward_schema
+        self.candidate_id = candidate_id
+        self.generation = int(generation)
+        self.creation_type = creation_type
 
         self.env_cfg = config.get("environment", {})
         self.rl_cfg = config.get("rl", {})
@@ -261,9 +267,9 @@ class SingleChainPPOTrainer:
 
         return {
             "file_type": "reward_trace",
-            "candidate_id": "single_chain_iter0",
-            "generation": 0,
-            "creation_type": "initial_llm_generation",
+            "candidate_id": self.candidate_id,
+            "generation": self.generation,
+            "creation_type": self.creation_type,
             "primary_metrics": {
                 "fitness_score": fitness,
                 "selection_metric": "fitness_score",
