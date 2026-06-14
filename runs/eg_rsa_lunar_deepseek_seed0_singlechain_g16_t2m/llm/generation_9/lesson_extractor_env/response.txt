@@ -1,0 +1,65 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a survival cost and throttle penalty are added to break degenerate full-throttle behavior, but the penalties are too strong relative to positive rewards.",
+    "observation": "Adding -0.2 per main engine activation and -0.05 per-step survival cost reduced action mean from 1.9983 to 0.1304 and episode length from 1000 to 75.9, but private_eval_return dropped 10x to -115.0 and no terminal reward was earned.",
+    "explanation": "The penalties created urgency and broke degenerate hovering, but they overshot: the agent now crashes before reaching the pad because the combined penalties discourage any sustained controlled flight toward the landing zone. The shaping reward collapsed 99% (1127 to 9.6) because the agent never spends time near the pad.",
+    "recommendation": "Apply penalties incrementally rather than at full strength. Start with a lower survival cost (-0.01 to -0.02) and a slightly reduced throttle penalty (-0.15), and gradually increase them as the policy improves. Ensure the positive signal (shaping) remains strong enough to guide the agent toward the pad.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When terminal reward conditions are strict and the agent is crashing before reaching the pad.",
+    "observation": "The terminal bonus of 1000.0 was never earned despite the agent landing or crashing. Episode length was 75.9, velocity penalty was -81.85, and shaping reward was only 9.62.",
+    "explanation": "The terminal condition required tight tolerances on position, velocity, and angle. The agent descends too quickly due to strong penalties and survival cost, so it crashes before meeting the landing criteria. The terminal reward becomes unreachable, removing the main positive signal.",
+    "recommendation": "Widen terminal condition tolerances (e.g., position < 0.3, velocity < 0.5, angle < 0.3) to make landing achievable for the current policy. Add intermediate rewards such as a descent reward or ground contact bonus to bridge the gap between survival and successful landing.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When reshaping a reward function from degenerate to healthy behavior in a single generation.",
+    "observation": "The transition from g8 (full-throttle hovering, high generated return) to g9 (sparse engine use, short episodes) caused a 10x drop in private_eval_return and 99% reduction in shaping reward.",
+    "explanation": "Applying full-strength penalties immediately shocks the policy, causing it to switch from one extreme behavior (hovering) to another (crashing). The agent cannot smoothly learn the intermediate behavior of controlled descent because the penalty landscape is too steep.",
+    "recommendation": "Phase in penalties over multiple generations: start with moderate penalties and increase them as the policy adapts. Use validation criteria to detect if the policy is crashing (e.g., episode length < 50, velocity penalty > -100) and adjust accordingly.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When a shaping reward collapses by >90% after penalty adjustments.",
+    "observation": "Shaping reward dropped from 1127.92 (g8) to 9.62 (g9), a 99.1% reduction, even though the multiplier only decreased from 2.0 to 1.5.",
+    "explanation": "The shaping reward depends on proximity to the pad. When penalties cause the agent to crash early (episode length 75.9), it never gets close enough to the pad to earn shaping reward. The collapse is not due to the multiplier change but due to behavioral change.",
+    "recommendation": "Monitor shaping reward as a leading indicator of whether the agent is reaching the pad. If shaping reward drops below 10% of its previous value, the agent is likely crashing before descent. Reduce penalties or add a longer-range proximity signal to guide the agent.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the generated-private gap reverses sign (generated return less negative than private return) after a major reward redesign.",
+    "observation": "In g9, generated return was -77.1 and private return was -115.0, giving a positive gap of 37.89. This reversed from g8 where generated return was much higher than private return.",
+    "explanation": "The positive gap means the generated reward overestimates performance relative to the hidden evaluator. The agent is doing something that the generated reward considers better than the hidden evaluator does—likely crashing quickly (which the generated reward penalizes less than the hidden evaluator penalizes failure to land).",
+    "recommendation": "When the gap reverses sign after a redesign, check whether the generated reward is rewarding behaviors that the hidden evaluator penalizes. Add a penalty for crashing (e.g., negative terminal reward when done but landing conditions not met) to align the generated signal with the hidden evaluator.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "When applying a survival cost to create urgency in a lunar lander task.",
+    "observation": "The -0.05 per-step survival cost reduced episode length from 1000 to 75.9 (92.4% reduction), but the agent now crashes instead of landing successfully.",
+    "explanation": "The survival cost creates urgency to end the episode quickly, but without a strong enough positive signal for landing, the agent learns to crash as the fastest way to end the episode. The cost was effective at breaking hovering but too aggressive for learning a successful landing policy.",
+    "recommendation": "Use a smaller survival cost (-0.01 to -0.02) combined with a descent reward that rewards moving downward toward the pad. This creates urgency without punishing the agent for taking the time needed to land safely.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When the velocity penalty becomes the dominant reward component (e.g., >5x the shaping reward).",
+    "observation": "Velocity penalty was -81.85 while shaping was 9.62, making the velocity penalty 8.5x the shaping reward. The agent had high velocity and crashed early.",
+    "explanation": "When the velocity penalty dominates the reward signal, the agent learns to minimize velocity at all costs, which can lead to crashing (velocity goes to zero upon impact) or staying still. The penalty should be balanced with positive signals for desired behavior.",
+    "recommendation": "Keep the velocity penalty-to-shaping ratio below 2:1 to ensure the agent still has incentive to move toward the pad. If the ratio exceeds 5:1, reduce the velocity multiplier or increase the shaping multiplier.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  }
+]

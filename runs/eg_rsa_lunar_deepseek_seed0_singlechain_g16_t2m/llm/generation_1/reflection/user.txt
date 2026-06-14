@@ -1,0 +1,176 @@
+Structured evidence for this generation:
+{
+  "generation": 1,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": 4.6305939148434785,
+      "private_eval_return": 4.6305939148434785,
+      "generated_return": 7665.382198414784,
+      "generated_minus_private": 7660.751604499941,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 7660.751604499941,
+        "action_mean": 1.9312985571587125,
+        "action_std": 0.7424405421233227,
+        "episode_length_mean": 901.0,
+        "component_returns": {
+          "shaping": 7691.358511092016,
+          "velocity_penalty": -12.528583570520222,
+          "angle_penalty": -13.447729106710355,
+          "fuel_efficiency": 0.0,
+          "terminal": 0.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Stronger shaping reward for proximity to landing pad (15x multiplier).\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.1 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Reduced velocity penalty to allow controlled movement.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize large angle and angular velocity.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Removed fuel penalty to avoid discouraging necessary engine use.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus for successful landing with relaxed tolerances.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_40b9d87439\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.1 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": 4.6305939148434785,
+      "private_eval_return": 4.6305939148434785,
+      "generated_return": 7665.382198414784,
+      "generated_minus_private": 7660.751604499941,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 7660.751604499941,
+        "action_mean": 1.9312985571587125,
+        "action_std": 0.7424405421233227,
+        "episode_length_mean": 901.0,
+        "component_returns": {
+          "shaping": 7691.358511092016,
+          "velocity_penalty": -12.528583570520222,
+          "angle_penalty": -13.447729106710355,
+          "fuel_efficiency": 0.0,
+          "terminal": 0.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Stronger shaping reward for proximity to landing pad (15x multiplier).\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.1 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Reduced velocity penalty to allow controlled movement.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize large angle and angular velocity.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Removed fuel penalty to avoid discouraging necessary engine use.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus for successful landing with relaxed tolerances.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_40b9d87439\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.1 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable."
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 0
+
+## Latest reflection
+**Reflection on Generation 0**
+
+**1. What worked**
+
+- The reward spec was syntactically valid and passed validation (no errors, 1 ok candidate).
+- The shaping component provided positive signal (+13.23), indicating the agent learned to move toward the pad.
+- The angle penalty was small (-0.42), suggesting the agent maintained reasonable orientation.
+- Fuel efficiency penalty was minimal (-0.23), meaning the agent didn't overuse engines wastefully.
+- The PPO training ran successfully for 2M timesteps without crashing.
+
+**2. What failed**
+
+- **Very poor private eval return**: -107.42. This is extremely negative, indicating the learned policy is catastrophic.
+- **Massive generated-private gap**: +75.82. The generated return (-31.60) is much higher than private (-107.42), meaning the reward function severely misaligns with the hidden evaluator's true objective.
+- **Velocity penalty dominated**: -44.18. The agent is being heavily penalized for velocity, but the shaping reward (+13.23) is too weak to compensate, leading to a policy that may hover or move too slowly.
+- **No terminal successes**: terminal component = 0.0. The agent never achieved a successful landing, likely because the terminal bonus (10.0) is too small relative to the large negative penalties, and the conditions are too strict.
+- **Very low action mean (0.08)**: The agent learned to mostly take no-op (action 0), probably to avoid velocity and fuel penalties, resulting in a timid, ineffective policy.
+- **Episode length 65.6**: Relatively short episodes, suggesting early termination (likely crashing) rather than sustained flight.
+
+**3. What to try next**
+
+- **Increase shaping reward magnitude**: The exponential shaping (max ~1.0) is vastly outweighed by velocity penalties (~-0.5 per velocity unit). Scale shaping up (e.g., 10x-50x) to provide stronger incentive to move toward the pad.
+- **Reduce velocity penalty magnitude**: Current -0.5 per unit velocity is too harsh. Try -0.05 to -0.1 so the agent isn't afraid to move.
+- **Increase terminal bonus dramatically**: 10.0 is negligible. Try 100-500 to make successful landing a dominant reward signal.
+- **Relax terminal conditions**: Consider loosening the success criteria (e.g., larger position tolerance, allow some velocity) to make the terminal reward reachable initially.
+- **Remove or reduce fuel penalty**: The fuel penalty (-0.1 per engine use) discourages necessary engine firing. Try 0 or -0.01.
+- **Consider adding a survival bonus**: Small positive reward per timestep to encourage longer episodes and give the agent time to learn.
+- **Scale components more carefully**: Ensure the shaping reward magnitude is comparable to or larger than penalty magnitudes so the net reward isn't dominated by negatives.
+
+**4. Lessons supported or contradicted**
+
+- **Supported**: "Penalties that dominate the reward signal can lead to overly cautious policies (action mean near 0)." The velocity penalty dominating caused the agent to mostly take no-op.
+- **Supported**: "Large generated-private gap indicates reward misspecification." The gap of +75.82 confirms the reward function doesn't match the hidden evaluator.
+- **Supported**: "Terminal bonuses must be large enough to overcome per-step penalties." The 10.0 bonus was insufficient against -44 velocity penalty.
+- **Contradicted**: "Exponential shaping provides smooth gradients for learning." While it provided some positive signal, it was too weak relative to penalties to drive effective behavior.
+- **New lesson emerging**: "Component scaling ratios matter more than individual component values." The ratio of shaping:velocity_penalty (~0.3:1) was far too small; a ratio of at least 5:1 or 10:1 may be needed for effective learning.
+
+## Recent environment lessons
+- failure_mode: Ensure the shaping reward magnitude is at least 5-10 times larger than the velocity penalty magnitude to provide sufficient incentive for movement.
+- failure_mode: Increase terminal bonus to at least 100-500 to make successful landing a dominant reward signal that overcomes per-step penalties.
+- failure_mode: Remove or reduce fuel penalty to -0.01 or 0 to avoid discouraging necessary engine firing.
+- failure_mode: Use black-box selection feedback to reduce generated/private mismatch by adjusting component weights and adding survival bonuses to align with the hidden objective.
+- failure_mode: Relax terminal conditions initially (e.g., position tolerance 0.3, velocity tolerance 0.5) and tighten them gradually as the agent improves.
+- general: Design reward components such that the positive shaping reward is at least 5-10 times larger than the largest penalty to maintain net positive reward for desired actions.
+- general: Use linear or polynomial shaping rewards that scale with distance to the target, or multiply exponential shaping by a large constant (10-50x) to match penalty magnitudes.
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_cf6598abf9] type=reward_pattern, confidence=0.9, condition=Candidate uses a terminal bonus conditioned on done and obs[6] > 0.5 and obs[7] > 0.5 and tight tolerances on position, velocity, and angle., recommendation=Add intermediate rewards for partial landing milestones (e.g., reducing altitude, slowing descent, or touching ground) rather than relying solely on a hard-to-achieve terminal bonus. Rebalance the shaping component to provide more consistent positive reward for proximity to the pad.
+- [candidate_52b34f851a] type=failure_mode, confidence=0.85, condition=Candidate has a velocity_penalty component with coefficient -0.5 on sum of absolute velocities., recommendation=Reduce the velocity penalty coefficient (e.g., from -0.5 to -0.2 or -0.1) or add a velocity-based shaping that rewards controlled descent toward the pad instead of penalizing all velocity uniformly.
+- [candidate_895ab9d219] type=mutation_rule, confidence=0.7, condition=Candidate uses obs[6] and obs[7] for leg contact in the terminal condition., recommendation=Before using specific observation indices for terminal conditions, verify the observation space layout from the environment documentation or step.py. If uncertain, design terminal conditions that rely on more robust signals like position and velocity only.
+- [candidate_080340c7ff] type=repair_rule, confidence=0.75, condition=Candidate has a fuel_efficiency component that penalizes action == 2 (main engine) and action in [1,3] (side engines) with a flat -0.1 per activation., recommendation=Consider removing the fuel penalty entirely if it is not critical to the task objective, or reshape it to penalize only wasteful engine use (e.g., firing main engine when far from pad). Alternatively, increase the shaping reward to counteract the penalty.
+- [candidate_bb1c4d0402] type=general, confidence=0.9, condition=Candidate has a large generated_private_gap (75.8) and both returns are negative., recommendation=Use black-box selection feedback to reduce generated/private mismatch. Focus on increasing the shaping reward for proximity to the pad and reducing the velocity penalty to allow controlled movement. Add intermediate landing rewards that align with the hidden evaluator's criteria.
+
+Relevant environment-level lessons:
+- [environment_59f6a42e9d] type=failure_mode, confidence=0.9, condition=Velocity penalty magnitude is large relative to shaping reward magnitude, recommendation=Ensure the shaping reward magnitude is at least 5-10 times larger than the velocity penalty magnitude to provide sufficient incentive for movement.
+- [environment_a8f69ef207] type=failure_mode, confidence=0.85, condition=Terminal bonus is too small relative to per-step penalties, recommendation=Increase terminal bonus to at least 100-500 to make successful landing a dominant reward signal that overcomes per-step penalties.
+- [environment_5c9a0b9161] type=failure_mode, confidence=0.8, condition=Fuel penalty discourages necessary engine usage, recommendation=Remove or reduce fuel penalty to -0.01 or 0 to avoid discouraging necessary engine firing.
+- [environment_cabd750e0c] type=failure_mode, confidence=0.9, condition=Large generated-private return gap indicates reward misspecification, recommendation=Use black-box selection feedback to reduce generated/private mismatch by adjusting component weights and adding survival bonuses to align with the hidden objective.
+- [environment_f2a060120e] type=failure_mode, confidence=0.75, condition=Terminal conditions are too strict for initial learning, recommendation=Relax terminal conditions initially (e.g., position tolerance 0.3, velocity tolerance 0.5) and tighten them gradually as the agent improves.
+- [environment_71e6d12354] type=general, confidence=0.85, condition=Component scaling ratios matter more than individual component values, recommendation=Design reward components such that the positive shaping reward is at least 5-10 times larger than the largest penalty to maintain net positive reward for desired actions.
+- [environment_86df7fa839] type=general, confidence=0.8, condition=Exponential shaping alone may be too weak for sparse negative penalties, recommendation=Use linear or polynomial shaping rewards that scale with distance to the target, or multiply exponential shaping by a large constant (10-50x) to match penalty magnitudes.
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

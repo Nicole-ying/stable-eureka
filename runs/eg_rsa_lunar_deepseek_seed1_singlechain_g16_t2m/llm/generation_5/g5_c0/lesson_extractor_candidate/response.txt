@@ -1,0 +1,49 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When per-step penalties (distance, velocity, angle) are reduced and terminal success reward is also reduced relative to original spec",
+    "observation": "Candidate g5_c0 reduced distance/velocity/angle penalties by half and decreased terminal success from +500 to +400, but generated_return (-23.59) and private_eval_return (-100.80) remain highly negative, with a large generated-private gap of 77.22.",
+    "explanation": "Although per-step penalties were halved, they still accumulate over the episode (mean length 76.6 steps), so the net per-step contribution remains negative. At the same time, the terminal success reward was reduced from +500 to +400, making it harder for the sparse success signal to offset the per-step penalties. The result is a reward that is still dominated by negative accumulation, discouraging exploration and successful landings.",
+    "recommendation": "When reducing per-step penalties, consider increasing the terminal success reward proportionally (or more) to ensure successful episodes yield a net positive total reward that can dominate the negative per-step accumulation. Alternatively, add a small positive survival bonus to counteract the per-step negativity without relying solely on sparse terminal rewards.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When per-step penalties are clipped to negative-only ranges and progress reward is positive but small",
+    "observation": "The distance_reward component includes a progress term (+1.0 * reduction in distance) but it is clipped to [-5,5], and the base penalty is -0.25* distance. The velocity and angle penalties are clipped to negative-only ranges [-5,0], so they can never contribute positive reward. The terminal reward is sparse.",
+    "explanation": "The positive progress signal is limited by clipping and the per-step base penalty, while velocity and angle components are strictly negative. This creates a reward landscape where the agent receives mostly negative signals step-by-step, with a rare positive spike only at successful termination. The policy struggles to learn because the negative per-step reward dominates the gradient.",
+    "recommendation": "Consider allowing velocity and angle components to have small positive rewards when the agent is near the target state (e.g., low speed and small angle) to provide shaping signals. Alternatively, remove negative-only clipping on those components so they can be zero when conditions are good, reducing the accumulated negativity.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When the generated-private gap is large (e.g., >50) and generated_return is much higher than private_eval_return",
+    "observation": "The generated_return (-23.59) is substantially higher (less negative) than the private_eval_return (-100.80), indicating the reward function is over-optimistic relative to the hidden evaluator's assessment.",
+    "explanation": "A large positive gap suggests the reward function gives the agent credit (e.g., progress reward, reduced penalties) that the hidden evaluator does not recognize as valuable. This misalignment can cause the policy to optimize for signals that do not translate to true task success, leading to poor private evaluation scores.",
+    "recommendation": "Use black-box selection feedback to reduce the generated-private gap. For example, if the gap is large, try making the reward more conservative: reduce progress bonuses or increase penalties for states that are not yet near success. The goal is to align the reward signal more closely with the hidden evaluator's criteria.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "When mutating a reward function that has a large generated-private gap, reducing per-step penalties without increasing terminal rewards proportionally",
+    "observation": "This candidate was mutated from g3_c0 by halving per-step penalties and reducing terminal success from +500 to +400, but the gap remained large (77.22).",
+    "explanation": "The mutation reduced the negativity of per-step components, which raised generated_return, but the terminal reward reduction meant the private evaluator still saw poor performance because successful landings were not rewarded enough to offset the accumulated penalties. The mutation was imbalanced: it helped the generated signal but hurt alignment with the hidden evaluator.",
+    "recommendation": "When mutating to reduce per-step penalties, also increase the terminal success reward or add a survival bonus to compensate. Monitor the generated-private gap: if it increases, the mutation is likely misaligned. Prefer mutations that keep the gap small while improving absolute returns.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "When terminal reward is the only positive component and its magnitude is smaller than the sum of negative per-step penalties over an episode",
+    "observation": "The terminal component yields +400 for success, but the distance_reward, velocity_penalty, and angle_penalty accumulate negative values over 76.6 steps. The mean distance_reward is -18.63, velocity_penalty -19.89, angle_penalty -2.57, totaling about -41.09 per episode, while terminal reward is +400 only if the episode ends in success. The net per-step negativity is not fully compensated.",
+    "explanation": "Even if the agent lands successfully, the net reward is +400 - 41.09 = +358.91, which is positive but the agent must endure many steps of negative reward to reach that point. The discount factor (gamma=0.999) means future rewards are only slightly discounted, so the negative per-step signal still dominates the learning gradient, making it hard for the agent to discover the sparse success.",
+    "recommendation": "Either increase the terminal success reward further (e.g., +600 or more) to make the sparse signal more dominant, or add a small positive per-step reward (e.g., survival bonus of +0.1 to +0.5) to reduce the net negativity and provide a better credit assignment signal for exploration.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  }
+]
+```

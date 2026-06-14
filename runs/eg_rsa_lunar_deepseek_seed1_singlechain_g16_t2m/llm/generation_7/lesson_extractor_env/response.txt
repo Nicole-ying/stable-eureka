@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "A progress reward (0.5 * reduction in distance) is added to the distance_reward component alongside a large terminal success reward (+500) and strict terminal thresholds",
+    "observation": "The generated-private gap exploded from +73.41 to +104.49, the largest gap ever recorded, while the terminal component improved from -6.50 to +27.50.",
+    "explanation": "The progress reward provides a strong per-step shaping signal that encourages the agent to move toward the pad. When combined with a large terminal reward, the agent overfits to the generated reward's success criteria, learning aggressive movements that achieve the generated reward's thresholds but do not align with the private evaluator's criteria.",
+    "recommendation": "When the generated-private gap is large, avoid adding progress or shaping rewards that provide strong per-step signals. Instead, use simple distance penalties without progress components to reduce misalignment.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The terminal success reward is set to +500 with strict thresholds (position<0.12, velocity<0.12, angle<0.12) and a crash penalty of -25",
+    "observation": "The terminal component improved significantly from -6.50 to +27.50, but the generated-private gap increased from +73.41 to +104.49, and action mean rose to 1.23 with std 1.25.",
+    "explanation": "A +500 terminal reward is too large relative to per-step penalties, causing the agent to prioritize achieving the sparse success condition at the cost of smooth, controlled behavior. The private evaluator likely uses different or stricter criteria, so the agent's aggressive optimization for the generated reward's success condition widens the gap.",
+    "recommendation": "Reduce the terminal success reward to +300 to lower the incentive for aggressive exploitation of the generated reward's success condition, and consider tightening thresholds further (e.g., position<0.1, velocity<0.1, angle<0.1) to better match private evaluator criteria.",
+    "confidence": 0.80,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Stricter terminal thresholds (position<0.12, velocity<0.12, angle<0.12) and a crash penalty of -25 are applied without a survival bonus",
+    "observation": "The terminal component improved from -6.50 to +27.50, and the generated return improved from -45.35 to -7.14, the best since generation 2.",
+    "explanation": "Stricter thresholds and a meaningful crash penalty effectively discourage crashes and encourage successful landings according to the generated reward. The removal of the survival bonus forces the agent to focus on the terminal condition rather than surviving indefinitely.",
+    "recommendation": "Continue using strict terminal thresholds with a nonzero crash penalty and no survival bonus to drive landing behavior. However, combine with a modest terminal success reward (e.g., +300) to avoid overfitting.",
+    "confidence": 0.90,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Action mean exceeds 1.0 and action std exceeds 1.0 after reward changes",
+    "observation": "Action mean rose from 0.27 (generation 6) to 1.23 (generation 7), and action std rose from 0.76 to 1.25, indicating aggressive, high-variance actions.",
+    "explanation": "When the generated reward provides a strong terminal success signal with a large magnitude (+500), the agent learns to take aggressive actions to reach the success condition quickly, rather than learning a smooth, controlled landing trajectory. High action variance suggests overfitting to the sparse reward rather than learning a robust policy.",
+    "recommendation": "Monitor action statistics after reward changes. If action mean and std increase significantly, the reward may be encouraging overly aggressive behavior. Reduce terminal reward magnitude or add smoothness penalties to encourage gentler control.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "A change improves the generated return significantly (+38.21) but improves the private return only modestly (+7.12), causing the gap to widen",
+    "observation": "The generated-private gap increased from +73.41 to +104.49, the largest ever, despite improvements in both generated and private returns.",
+    "explanation": "Changes that disproportionately benefit the generated reward relative to the private evaluator indicate misalignment between the reward function and the private evaluator's criteria. The agent is learning to exploit the generated reward's specific structure rather than the underlying task objective.",
+    "recommendation": "When the gap widens despite improving both returns, the reward function likely overemphasizes criteria not valued by the private evaluator. Revert shaping rewards, reduce terminal reward magnitude, and tighten thresholds to better align with the private evaluator.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  }
+]

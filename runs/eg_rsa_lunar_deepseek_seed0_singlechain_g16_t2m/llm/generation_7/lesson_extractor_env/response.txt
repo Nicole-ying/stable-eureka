@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Action mean saturates at the maximum value (e.g., 2.0) and action std is low.",
+    "observation": "In generation 7, action mean was 1.9997 and action std was 0.653, indicating the policy collapsed to a full-throttle degenerate solution, leading to a regression in private return from +205 to -33.",
+    "explanation": "When a large terminal bonus becomes consistently achievable, the agent may prioritize reaching it at all costs, converging to a degenerate behavior like maximum thrust, which the hidden evaluator penalizes.",
+    "recommendation": "Add a throttle penalty (e.g., -0.1 * action[0]**2) to discourage excessive thrust, and monitor action mean and std as key health indicators.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A large terminal bonus is consistently achieved after softening landing criteria.",
+    "observation": "Terminal reward increased from 210 to 753, but private return regressed from +205 to -33, showing that making terminal reward achievable is necessary but not sufficient for alignment.",
+    "explanation": "A large terminal bonus that is too dominant relative to other components can incentivize extreme actions (full throttle) to reach it, degrading overall behavior and hidden evaluator score.",
+    "recommendation": "Reduce the terminal bonus (e.g., to 1500 or 1000) and add penalties on excessive thrust and rewards for controlled descent to balance the reward structure.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Shaping is reduced by 50% while terminal bonus is increased and criteria are softened in the same generation.",
+    "observation": "Shaping dropped from 1089 to 363 (67% reduction) and terminal reward rose from 210 to 753, but private return regressed, suggesting too many simultaneous large changes caused a regime shift.",
+    "explanation": "Making large simultaneous changes to multiple reward components can destabilize the policy and cause unexpected degenerate behaviors, as the agent over-optimizes for the new dominant signal.",
+    "recommendation": "Make incremental changes (e.g., 25% adjustment per generation) and monitor behavioral metrics like action mean/std and episode length to detect regime shifts early.",
+    "confidence": 0.75,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Angle penalty is below 20% of shaping reward (e.g., 7.4%) yet landing is successful.",
+    "observation": "Angle penalty was -26.82 (7.4% of shaping 362.99), below the previously recommended 20-40% target, but the agent still landed successfully with a high terminal reward.",
+    "explanation": "When a large terminal bonus is achievable, stricter angle constraints within the terminal condition can replace the need for a high continuous angle penalty, relaxing the lower bound.",
+    "recommendation": "Consider that the 20-40% penalty-to-shaping ratio guideline is conservative when terminal bonuses are large and achievable; adjust targets based on actual behavioral outcomes.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "No repair attempts are made despite a clear regression in private return.",
+    "observation": "Private return dropped from +205 to -33, but the candidate passed validation with zero repair attempts, indicating the validation did not catch behavioral regression.",
+    "explanation": "Validation checks only structural correctness (code parsing, smoke test) and does not detect policy collapse or degenerate behavior, so regression can go unnoticed.",
+    "recommendation": "Add validation criteria that monitor action mean and std thresholds (e.g., action mean < 1.5) to flag degenerate policies before accepting candidates.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

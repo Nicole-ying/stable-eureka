@@ -1,0 +1,529 @@
+Candidate ID: g10_c0
+
+Eureka task_description.txt:
+This environment is a classic rocket trajectory optimization problem. It is optimal to fire the engine at full throttle or turn it off. This is the reason why this environment has discrete actions: engine on or off.
+The landing pad is always at coordinates (0,0). The coordinates are the first two numbers in the state vector. Landing outside of the landing pad is possible. Fuel is infinite, so an agent can learn to fly and then land on its first attempt.
+The goal is to land at the pad in the middle of the two flags, as fast as possible, with the least fuel spent. The lander starts at the top center of the viewport with a random initial force applied to its center of mass.
+Action Space: There are four discrete actions available:
+    0: do nothing
+    1: fire left orientation engine
+    2: fire main engine
+    3: fire right orientation engine
+Observation Space: The state is an 8-dimensional vector: the coordinates of the lander in x & y, its linear velocities in x & y, its angle, its angular velocity, and two booleans that represent whether each leg is in contact with the ground or not.
+The episode finishes if:
+    1) the lander crashes (the lander body gets in contact with the moon);
+    2) the lander gets outside of the viewport (`x` coordinate is greater than 1);
+    3) the lander is not awake.
+
+Eureka step.py:
+def step(self, action):
+    assert self.lander is not None
+
+    # Update wind and apply to the lander
+    assert self.lander is not None, "You forgot to call reset()"
+    if self.enable_wind and not (
+            self.legs[0].ground_contact or self.legs[1].ground_contact
+    ):
+        # the function used for wind is tanh(sin(2 k x) + sin(pi k x)),
+        # which is proven to never be periodic, k = 0.01
+        wind_mag = (
+                math.tanh(
+                    math.sin(0.02 * self.wind_idx)
+                    + (math.sin(math.pi * 0.01 * self.wind_idx))
+                )
+                * self.wind_power
+        )
+        self.wind_idx += 1
+        self.lander.ApplyForceToCenter(
+            (wind_mag, 0.0),
+            True,
+        )
+
+        # the function used for torque is tanh(sin(2 k x) + sin(pi k x)),
+        # which is proven to never be periodic, k = 0.01
+        torque_mag = math.tanh(
+            math.sin(0.02 * self.torque_idx)
+            + (math.sin(math.pi * 0.01 * self.torque_idx))
+        ) * (self.turbulence_power)
+        self.torque_idx += 1
+        self.lander.ApplyTorque(
+            (torque_mag),
+            True,
+        )
+
+    if self.continuous:
+        action = np.clip(action, -1, +1).astype(np.float32)
+    else:
+        assert self.action_space.contains(
+            action
+        ), f"{action!r} ({type(action)}) invalid "
+
+    # Apply Engine Impulses
+
+    # Tip is a the (X and Y) components of the rotation of the lander.
+    tip = (math.sin(self.lander.angle), math.cos(self.lander.angle))
+
+    # Side is the (-Y and X) components of the rotation of the lander.
+    side = (-tip[1], tip[0])
+
+    # Generate two random numbers between -1/SCALE and 1/SCALE.
+    dispersion = [self.np_random.uniform(-1.0, +1.0) / SCALE for _ in range(2)]
+
+    m_power = 0.0
+    if (self.continuous and action[0] > 0.0) or (
+            not self.continuous and action == 2
+    ):
+        # Main engine
+        if self.continuous:
+            m_power = (np.clip(action[0], 0.0, 1.0) + 1.0) * 0.5  # 0.5..1.0
+            assert m_power >= 0.5 and m_power <= 1.0
+        else:
+            m_power = 1.0
+
+        # 4 is move a bit downwards, +-2 for randomness
+        # The components of the impulse to be applied by the main engine.
+        ox = (
+                tip[0] * (MAIN_ENGINE_Y_LOCATION / SCALE + 2 * dispersion[0])
+                + side[0] * dispersion[1]
+        )
+        oy = (
+                -tip[1] * (MAIN_ENGINE_Y_LOCATION / SCALE + 2 * dispersion[0])
+                - side[1] * dispersion[1]
+        )
+
+        impulse_pos = (self.lander.position[0] + ox, self.lander.position[1] + oy)
+        if self.render_mode is not None:
+            # particles are just a decoration, with no impact on the physics, so don't add them when not rendering
+            p = self._create_particle(
+                3.5,  # 3.5 is here to make particle speed adequate
+                impulse_pos[0],
+                impulse_pos[1],
+                m_power,
+            )
+            p.ApplyLinearImpulse(
+                (
+                    ox * MAIN_ENGINE_POWER * m_power,
+                    oy * MAIN_ENGINE_POWER * m_power,
+                ),
+                impulse_pos,
+                True,
+            )
+        self.lander.ApplyLinearImpulse(
+            (-ox * MAIN_ENGINE_POWER * m_power, -oy * MAIN_ENGINE_POWER * m_power),
+            impulse_pos,
+            True,
+        )
+
+    s_power = 0.0
+    if (self.continuous and np.abs(action[1]) > 0.5) or (
+            not self.continuous and action in [1, 3]
+    ):
+        # Orientation/Side engines
+        if self.continuous:
+            direction = np.sign(action[1])
+            s_power = np.clip(np.abs(action[1]), 0.5, 1.0)
+            assert s_power >= 0.5 and s_power <= 1.0
+        else:
+            # action = 1 is left, action = 3 is right
+            direction = action - 2
+            s_power = 1.0
+
+        # The components of the impulse to be applied by the side engines.
+        ox = tip[0] * dispersion[0] + side[0] * (
+                3 * dispersion[1] + direction * SIDE_ENGINE_AWAY / SCALE
+        )
+        oy = -tip[1] * dispersion[0] - side[1] * (
+                3 * dispersion[1] + direction * SIDE_ENGINE_AWAY / SCALE
+        )
+
+        # The constant 17 is a constant, that is presumably meant to be SIDE_ENGINE_HEIGHT.
+        # However, SIDE_ENGINE_HEIGHT is defined as 14
+        # This casuses the position of the thurst on the body of the lander to change, depending on the orientation of the lander.
+        # This in turn results in an orientation depentant torque being applied to the lander.
+        impulse_pos = (
+            self.lander.position[0] + ox - tip[0] * 17 / SCALE,
+            self.lander.position[1] + oy + tip[1] * SIDE_ENGINE_HEIGHT / SCALE,
+        )
+        if self.render_mode is not None:
+            # particles are just a decoration, with no impact on the physics, so don't add them when not rendering
+            p = self._create_particle(0.7, impulse_pos[0], impulse_pos[1], s_power)
+            p.ApplyLinearImpulse(
+                (
+                    ox * SIDE_ENGINE_POWER * s_power,
+                    oy * SIDE_ENGINE_POWER * s_power,
+                ),
+                impulse_pos,
+                True,
+            )
+        self.lander.ApplyLinearImpulse(
+            (-ox * SIDE_ENGINE_POWER * s_power, -oy * SIDE_ENGINE_POWER * s_power),
+            impulse_pos,
+            True,
+        )
+
+    self.world.Step(1.0 / FPS, 6 * 30, 2 * 30)
+
+    pos = self.lander.position
+    vel = self.lander.linearVelocity
+
+    state = [
+        (pos.x - VIEWPORT_W / SCALE / 2) / (VIEWPORT_W / SCALE / 2),
+        (pos.y - (self.helipad_y + LEG_DOWN / SCALE)) / (VIEWPORT_H / SCALE / 2),
+        vel.x * (VIEWPORT_W / SCALE / 2) / FPS,
+        vel.y * (VIEWPORT_H / SCALE / 2) / FPS,
+        self.lander.angle,
+        20.0 * self.lander.angularVelocity / FPS,
+        1.0 if self.legs[0].ground_contact else 0.0,
+        1.0 if self.legs[1].ground_contact else 0.0,
+    ]
+    assert len(state) == 8
+
+    terminated = False
+    if self.game_over or abs(state[0]) >= 1.0:
+        terminated = True
+    if not self.lander.awake:
+        terminated = True
+
+    reward, individual_reward = self.compute_reward(state, m_power, s_power, terminated)
+
+    if self.render_mode == "human":
+        self.render()
+
+    fitness_score = self.compute_fitness_score(state, m_power, s_power, terminated)
+    individual_reward.update({'fitness_score': fitness_score})
+
+    return np.array(state, dtype=np.float32), reward, terminated, False, individual_reward
+
+
+Environment understanding:
+## Environment Understanding Report
+
+This is a Lunar Lander environment where the agent must learn to land a spacecraft on a designated landing pad. The environment features discrete actions (engine on/off) and continuous physics simulation.
+
+### Task Goal
+Land the spacecraft on the landing pad at coordinates (0,0) as fast as possible while minimizing fuel consumption. The lander starts at the top center with random initial forces.
+
+### Observation Space (8-dimensional vector)
+1. **x-coordinate**: Normalized horizontal position (range approximately [-1, 1])
+2. **y-coordinate**: Normalized vertical position relative to landing pad
+3. **x-velocity**: Normalized horizontal velocity
+4. **y-velocity**: Normalized vertical velocity
+5. **angle**: Lander orientation angle
+6. **angular velocity**: Scaled angular velocity
+7. **left leg contact**: Boolean (1.0 if left leg touches ground)
+8. **right leg contact**: Boolean (1.0 if right leg touches ground)
+
+### Action Space (Discrete, 4 actions)
+- **0**: Do nothing
+- **1**: Fire left orientation engine
+- **2**: Fire main engine (downward thrust)
+- **3**: Fire right orientation engine
+
+### Termination Conditions
+1. **Crash**: Lander body contacts the moon surface
+2. **Out of bounds**: x-coordinate exceeds 1.0 (leaves viewport)
+3. **Not awake**: Lander enters sleep state
+
+### Reward Function Visible Inputs
+The reward function receives only: `obs`, `action`, `next_obs`, `done`, `info`
+
+### Inferable Public Quantities
+From the observation vector, we can compute:
+- **Distance to pad**: Euclidean distance from (obs[0], obs[1]) to (0,0)
+- **Speed**: sqrt(obs[2]² + obs[3]²)
+- **Angle deviation**: absolute value of obs[4]
+- **Ground contact**: obs[6] and obs[7] indicate leg contact
+- **Fuel usage**: Can be inferred from action == 2 (main engine firing)
+- **Landing stability**: Combination of low speed, small angle, and ground contact
+
+### Risks
+- The reward function in step.py uses internal variables (`m_power`, `s_power`) that are NOT available as direct inputs to the reward function
+- The `terminated` flag in step.py may differ from the `done` flag passed to the reward function
+- Wind and turbulence effects are applied during the step but not directly observable in the state
+- Fuel is infinite, but fuel minimization is still a goal - this must be inferred from action patterns
+- The reward function must work with normalized observations
+
+```json
+{
+    "task_goal": "Land the spacecraft on the landing pad at coordinates (0,0) as fast as possible while minimizing fuel consumption",
+    "observations": [
+        "x-coordinate (normalized, range ~[-1, 1])",
+        "y-coordinate (normalized, relative to landing pad)",
+        "x-velocity (normalized)",
+        "y-velocity (normalized)",
+        "angle (radians)",
+        "angular velocity (scaled)",
+        "left leg ground contact (boolean 0/1)",
+        "right leg ground contact (boolean 0/1)"
+    ],
+    "actions": [
+        "0: do nothing",
+        "1: fire left orientation engine",
+        "2: fire main engine",
+        "3: fire right orientation engine"
+    ],
+    "termination": [
+        "Lander crashes (body contacts moon)",
+        "x-coordinate exceeds 1.0 (out of viewport)",
+        "Lander is not awake"
+    ],
+    "reward_function_visible_inputs": [
+        "obs (8-dimensional observation vector)",
+        "action (discrete 0-3)",
+        "next_obs (8-dimensional observation vector)",
+        "done (boolean termination flag)",
+        "info (dictionary, may contain additional data)"
+    ],
+    "inferable_public_quantities": [
+        "distance to landing pad from obs[0], obs[1]",
+        "linear speed from obs[2], obs[3]",
+        "angular deviation from obs[4]",
+        "ground contact status from obs[6], obs[7]",
+        "fuel usage from action==2 frequency",
+        "landing stability from combined metrics"
+    ],
+    "risks": [
+        "Internal variables m_power and s_power used in step.py reward calculation are NOT available to the reward function",
+        "Wind and turbulence effects are not directly observable in state",
+        "Fuel is infinite but minimization is still a goal - must be inferred from actions",
+        "terminated flag in step.py may differ from done flag passed to reward function",
+        "Observations are normalized, so raw physics quantities must be computed carefully"
+    ]
+}
+```
+
+Reward schema:
+{
+  "schema_version": "eg_rsa_reward_schema_v1_cc14e8210d",
+  "env_alias": "Env-90b964d9",
+  "reward_signature": "compute_reward(obs, action, next_obs, done, info)",
+  "return_contract": "return float(total_reward), components_dict",
+  "allowed_inputs": [
+    "obs",
+    "action",
+    "next_obs",
+    "done",
+    "info"
+  ],
+  "private_signal_policy": "Generated reward code must not use env_reward, fitness_score, or hidden evaluator details.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "description": "Negative penalty proportional to Euclidean distance from the lander to the landing pad (0,0). Computed from next_obs[0] and next_obs[1]. Encourages the lander to move toward the pad.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "velocity_penalty",
+      "description": "Negative penalty for high linear speed (sqrt(next_obs[2]^2 + next_obs[3]^2)). Encourages gentle landing by penalizing large velocities.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "angle_penalty",
+      "description": "Negative penalty for non-zero angle (abs(next_obs[4])). Encourages the lander to remain upright, which is critical for stable landing.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "fuel_efficiency",
+      "description": "Small negative penalty each time the main engine is fired (action == 2). Encourages fuel efficiency by discouraging unnecessary thrust.",
+      "direction": "maximize",
+      "required": true
+    },
+    {
+      "id": "terminal",
+      "description": "Large positive reward when the lander successfully lands: both legs on ground (next_obs[6] == 1 and next_obs[7] == 1), low speed (<0.1), small angle (<0.1), and near pad (distance <0.1). Applied only once when done becomes True.",
+      "direction": "maximize",
+      "required": true
+    }
+  ],
+  "reward_abs_bound": 1000.0
+}
+
+Search plan:
+## Search Plan for Lunar Lander Reward Function
+
+### Phase 1: Component Design and Tuning
+1. **Distance Reward**: Start with `-distance * k1` where distance = sqrt(next_obs[0]^2 + next_obs[1]^2). Tune k1 to balance with other components (suggested range: 1-5).
+2. **Velocity Penalty**: Start with `-speed * k2` where speed = sqrt(next_obs[2]^2 + next_obs[3]^2). Tune k2 to be slightly larger than k1 (suggested range: 2-10).
+3. **Angle Penalty**: Start with `-abs(next_obs[4]) * k3`. Tune k3 to be moderate (suggested range: 1-5).
+4. **Fuel Efficiency**: Start with `-0.1` when action == 2. Tune if needed (suggested range: 0.05-0.3).
+5. **Landing Bonus**: Start with `+100` when done and landing conditions met. Tune up to +500 if agent struggles to land.
+6. **Crash Penalty**: Start with `-100` when done but landing conditions not met. Tune down to -500 if agent crashes too often.
+
+### Phase 2: Scaling and Balance
+- Ensure all components have comparable expected magnitudes (within factor of 10).
+- The distance reward should dominate early exploration, while landing bonus should be the primary terminal signal.
+- Velocity and angle penalties should be significant enough to shape behavior but not dominate.
+
+### Phase 3: Testing Strategy
+1. Test with random agent to ensure baseline behavior is reasonable (not too positive or negative).
+2. Test with heuristic policy (main engine when above pad, orientation engines to stay upright).
+3. Iterate on component weights based on observed behavior.
+
+### Phase 4: Edge Cases and Robustness
+- Ensure crash_penalty and landing_bonus are mutually exclusive (use done flag to determine which applies).
+- Verify that the reward doesn't encourage hovering indefinitely (fuel penalty should discourage this).
+- Check that angle penalty doesn't prevent necessary tilting for horizontal movement.
+
+### Phase 5: Final Validation
+- Run multiple seeds to ensure consistent performance.
+- Verify that the reward function produces learning curves that converge to successful landing policies.
+
+Feedback context:
+## Reflection Analysis – Generation 9
+
+### 1. What Worked
+
+- **Generated return improved dramatically**: From **-85.10** (generation 8) to **-64.55** (generation 9) — a **+20.55 point improvement**. The agent is now performing better according to the generated reward, suggesting the relaxed thresholds and progress reward are helping.
+- **Terminal component improved**: From **-50.00** (all crashes) to **-25.00**. The agent is now achieving some successes (or at least not crashing every episode). The average terminal component of -25.0 suggests some episodes end in success (+400) and some in crashes (-25), or that the agent is still crashing but the penalty is halved.
+- **Distance_reward improved**: From **-16.21** to **-18.73** (slightly worse, -2.52 decline), but **velocity_penalty improved**: From **-17.84** to **-19.49** (slightly worse, -1.65 decline). These are minor changes and within noise.
+- **Angle_penalty remains low**: **-1.33**, continuing excellent angle control.
+- **Episode length increased**: From **67.8** to **75.5** steps, suggesting the agent is surviving longer, which is positive.
+- **Action mean increased**: From **0.084** to **0.150** — a **+78.6% increase**. The agent is now taking more varied actions, which is a positive sign of exploration/learning after the overly conservative behavior in generation 8.
+
+### 2. What Failed
+
+- **Selection score (private_eval_return) worsened**: From **-116.68** (generation 8) to **-120.41** (generation 9) — a **-3.73 point decline**. The private return continues to decline, now at its worst level ever. The agent is performing worse according to the hidden evaluator.
+- **Generated-private gap increased again**: From **+31.58** (generation 8) to **+55.86** (generation 9) — a **+24.28 point increase**. The gap has widened again, reversing the progress made in generation 8.
+- **Private return is still declining**: The trend is: gen 6: -118.75, gen 7: -111.63, gen 8: -116.68, gen 9: -120.41. The private return has been on a downward trend since generation 7, and the improvements in generated return are not translating to private return improvements.
+- **Component returns are all negative**: Distance_reward (-18.73), velocity_penalty (-19.49), angle_penalty (-1.33), terminal (-25.00). The total component sum is -64.55, matching the generated return. No component is providing positive signal, and the agent is still not landing successfully enough to overcome the negative per-step penalties.
+- **The progress reward didn't help enough**: Despite adding a +0.3 * distance decrease progress reward, the distance_reward component is still -18.73, suggesting the agent is still far from the pad on average.
+
+### 3. What to Try Next
+
+**Primary hypothesis**: The private evaluator's criteria are fundamentally different from what our reward function is optimizing. Despite relaxing thresholds (0.15), reducing crash penalty (-25), increasing terminal reward (+400), and adding a progress reward, the private return continues to decline. The agent is now surviving longer (75.5 steps) and taking more varied actions (action mean 0.15), but this is not translating to better private performance. The gap has widened because the generated return improved while the private return worsened.
+
+**The core problem**: The private evaluator may be using stricter criteria than our thresholds (0.15/0.15/0.15), or may value different aspects of the landing (e.g., fuel efficiency, smoothness, or specific trajectory characteristics). The progress reward is helping the agent learn to approach the pad (generated return improved), but this learning is not aligned with what the private evaluator considers good performance.
+
+**Recommended changes**:
+
+1. **Further relax the terminal thresholds** — The 0.15 thresholds are still too strict for the agent to achieve consistently. Try **position<0.2, velocity<0.2, angle<0.15** to make success more achievable. This may help the agent learn the basic landing behavior, after which thresholds can be tightened.
+
+2. **Increase the terminal success reward to +500** — The +400 reward is not enough to overcome the negative per-step penalties. Returning to the original +500 may help the agent achieve more successes and improve the private return.
+
+3. **Reduce the crash penalty to -10** — The -25 crash penalty, combined with the negative per-step penalties, may still be too harsh. Reducing to -10 would make crashes less costly while still providing a disincentive. This is a significant change but necessary to allow the agent to explore landing attempts without being overly punished.
+
+4. **Increase the progress reward coefficient** — The +0.3 progress reward is too small to provide meaningful guidance. Try **+0.5 * distance decrease** (the previous value from generation 7) to provide stronger shaping toward the pad.
+
+5. **Reduce the base distance penalty** — The -0.25 per unit distance penalty may be too high relative to the progress reward. Try **-0.15 * sqrt(next_obs[0]^2 + next_obs[1]^2)** to reduce the negative per-step penalty and allow the progress reward to dominate.
+
+**Specific reward spec changes for next generation**:
+- Distance_reward: `-0.15 * sqrt(next_obs[0]^2 + next_obs[1]^2) + 0.5 * (sqrt(obs[0]^2+obs[1]^2) - sqrt(next_obs[0]^2+next_obs[1]^2))`, clip [-5.0, 2.0]
+- Velocity_penalty: `-0.25 * sqrt(next_obs[2]^2 + next_obs[3]^2)` (keep)
+- Angle_penalty: `-0.5 * abs(next_obs[4])` (keep)
+- Terminal success: **+500** for successful landing, **-10** for crash
+- Thresholds: **position<0.2, velocity<0.2, angle<0.15**
+
+### 4. Lessons Supported or Contradicted
+
+**Supported lessons**:
+- **environment_1732f7824e (failure_mode)**: STRONGLY SUPPORTED — "When narrowing the generated-private gap, adjust only one or two parameters at a time. Avoid simultaneously reducing terminal reward, increasing crash penalty, and tightening thresholds." The generation 9 changes (relaxing thresholds, reducing crash penalty, increasing terminal reward, adding progress reward) changed too many parameters at once. The gap widened instead of narrowing.
+- **environment_3427582ebd (reward_pattern)**: SUPPORTED — "If removing a progress reward eliminates all successful landings, re-add a modest progress reward (e.g., +0.3 * distance decrease) as a separate component with a small clip range." The progress reward helped improve the generated return (+20.55), but didn't improve the private return.
+- **environment_604279c2a1 (general)**: SUPPORTED — "Set initial terminal thresholds to values the agent can plausibly achieve (e.g., 0.15 or 0.2) and tighten them gradually over generations as performance improves." The 0.15 thresholds are still not achievable enough.
+- **candidate_81c9282dd1 (failure_mode)**: SUPPORTED — "Loosen terminal success thresholds (e.g., 0.2-0.5) or increase the success reward to +500 to encourage landing attempts." The 0.15 thresholds and +400 reward are still insufficient.
+- **candidate_7225012155 (reward_pattern)**: SUPPORTED — "Introduce a small positive reward for reducing distance or velocity (e.g., progress bonus) to provide intermediate positive feedback." The progress reward improved generated return but needs to be stronger.
+
+**Contradicted lessons**:
+- **environment_fda4e35d8a (failure_mode)**: CONTRADICTED — "Reduce the terminal success reward to +300 to lower the incentive for aggressive exploitation." The +300 reward caused the agent to crash every episode. The +400 reward is still not enough. The private evaluator may actually reward higher terminal success rewards.
+- **environment_96091da136 (general)**: CONTRADICTED — "Continue using strict terminal thresholds with a nonzero crash penalty and no survival bonus to drive landing behavior. However, combine with a modest terminal success reward (e.g., +300) to avoid overfitting." The strict thresholds and modest reward approach has consistently failed to produce landings. The thresholds need to be significantly relaxed.
+- **environment_4580b3abf2 (general)**: CONTRADICTED — "When the gap widens despite improving both returns, the reward function likely overemphasizes criteria not valued by the private evaluator. Revert shaping rewards, reduce terminal reward magnitude, and tighten thresholds." This approach was tried in generation 8 and caused the agent to crash every episode. The opposite approach (adding shaping, increasing reward) is now needed.
+- **candidate_2b197efd63 (failure_mode)**: CONTRADICTED — "Reduce the generated/private gap by increasing the crash penalty to match the private evaluator's effective cost." Increasing the crash penalty to -50 caused the agent to crash every episode. The crash penalty needs to be reduced, not increased.
+- **candidate_c2eb4618ff (general)**: CONTRADICTED — "Increase crash penalty to at least -100 to better align with the private evaluator's cost." The -50 crash penalty was already too high. -100 would be catastrophic.
+- **candidate_12e8c0442b (reward_pattern)**: CONTRADICTED — "Increase the progress reward coefficient or reduce the base penalty further to make distance reduction more rewarding." This recommendation is actually what we should try next, but it contradicts the earlier lesson that progress rewards widen the gap. The situation has changed — the agent is now too conservative and needs stronger shaping.
+
+**New lessons to store**:
+- **Lesson L26**: When the private return is on a consistent downward trend (gen 7: -111.63 → gen 8: -116.68 → gen 9: -120.41), the current reward function is fundamentally misaligned with the private evaluator. Incremental adjustments to thresholds and component weights are insufficient. A more radical restructuring of the reward function may be needed.
+- **Lesson L27**: The progress reward (+0.3 * distance decrease) improved the generated return (+20.55) but did not improve the private return (-3.73). This suggests the private evaluator may not value distance reduction as much as the generated reward does, or that the agent is learning to exploit the progress reward without landing successfully.
+- **Lesson L28**: The terminal component average of -25.0 with 0.15 thresholds and +400 reward suggests the agent is achieving some successes (which give +400) but still crashing frequently (which gives -25). The ratio of successes to crashes is too low to produce a positive terminal component. The thresholds need to be relaxed further or the crash penalty reduced to allow more successes.
+
+Memory context:
+Relevant candidate-level lessons:
+- [candidate_7225012155] type=reward_pattern, confidence=0.9, condition=All components are negative or zero except for the terminal success reward, which is rarely triggered due to strict thresholds., recommendation=Introduce a small positive reward for reducing distance or velocity (e.g., progress bonus) to provide intermediate positive feedback and guide the agent toward the terminal success condition.
+- [candidate_f589a61312] type=prompt_rule, confidence=0.5, condition=The generated-private gap is 31.58, with the generated return (-85.10) being less negative than the private return (-116.68)., recommendation=Use private_eval_return only as black-box selection feedback. Reduce generated/private mismatch by adjusting reward component scales and behavior diagnostics, without inferring or reconstructing hidden evaluator internals.
+- [candidate_4573c1a79f] type=mutation_rule, confidence=0.85, condition=The candidate inherited from g3_c0 and applied changes: reduced terminal reward from +500 to +300, increased crash penalty from -25 to -50, tightened thresholds to (0.1, 0.1, 0.1), and removed progress reward from distance_reward., recommendation=When tightening thresholds, ensure the terminal success reward is high enough to incentivize reaching the condition, and retain or add intermediate progress rewards to guide the agent.
+- [candidate_e8045b4fc3] type=failure_mode, confidence=0.7, condition=Terminal thresholds are too strict (e.g., position<0.1, velocity<0.1, angle<0.1) combined with a high crash penalty (e.g., -50) and moderate terminal success reward (e.g., +300)., recommendation=Reduce the progress reward coefficient (e.g., from +0.3 to +0.1) to lower the positive shaping without eliminating guidance, or remove the progress reward entirely and rely on a stronger distance penalty. Alternatively, increase the terminal success reward to +500 or +600 to better match the private evaluator's valuation of successful landings, or further relax terminal thresholds (e.g., position<0.2, velocity<0.2, angle<0.2) to make success more achievable.
+- [candidate_a0a2332018] type=reward_pattern, confidence=0.8, condition=The reward includes a progress reward component that is positive and clipped to a small range (e.g., [0, 2]), combined with a distance penalty and a high terminal reward for success., recommendation=Consider removing or significantly reducing the progress reward (e.g., to 0.1 or 0.0) to better align with the private evaluator's sparse terminal-based reward structure. Alternatively, if guidance is needed, use a very small coefficient and ensure the total shaping does not dominate the terminal signal.
+- [candidate_330085bfa2] type=general, confidence=0.6, condition=The terminal reward component uses a large positive reward (+400) for success and a moderate negative reward (-25) for crash, with thresholds at 0.15 for position, velocity, and angle., recommendation=Consider further relaxing terminal thresholds (e.g., position<0.2, velocity<0.2, angle<0.2) to increase the chance of success, or reduce the crash penalty to -10 to prevent it from dominating the reward signal. Alternatively, add a small survival bonus (e.g., +0.1 per step) to encourage the agent to stay alive longer and explore landing strategies.
+- [candidate_ecf23d75a4] type=mutation_rule, confidence=0.7, condition=When mutating a reward candidate that has a large generated_private_gap (e.g., >50), the mutation should reduce positive shaping components rather than increasing them., recommendation=When the generated_private_gap is large, prefer mutations that remove or reduce positive shaping components (e.g., progress reward, survival bonuses) rather than adding them. Focus on adjusting terminal rewards and penalties to align with the private evaluator's sparse structure.
+- [candidate_fbdfbb99bd] type=repair_rule, confidence=0.6, condition=The reward code passes validation but has a large generated_private_gap (>50) and zero repair attempts., recommendation=Implement a repair trigger based on large generated_private_gap (e.g., >30) even when validation passes. The repair could automatically reduce the coefficient of positive shaping components or increase the terminal success reward to better match the private evaluator's scale.
+
+Relevant environment-level lessons:
+- [environment_3427582ebd] type=reward_pattern, confidence=0.85, condition=Removing a progress-based shaping reward in a lunar-lander-like environment with strict terminal conditions, recommendation=If removing a progress reward eliminates all successful landings, re-add a modest progress reward (e.g., +0.3 * distance decrease) as a separate component with a small clip range. This provides shaping without dominating the reward signal.
+- [environment_f6f5744518] type=general, confidence=0.9, condition=Multiple reward parameters (terminal reward, crash penalty, thresholds) are changed simultaneously in a single generation, recommendation=Change only one or two reward parameters per generation. If multiple changes are needed, test them incrementally across generations to isolate their individual effects.
+- [environment_604279c2a1] type=general, confidence=0.8, condition=Terminal thresholds are set to 0.1 for all three conditions (position, velocity, angle) in a lunar-lander-like environment, recommendation=Set initial terminal thresholds to values the agent can plausibly achieve (e.g., 0.15 or 0.2) and tighten them gradually over generations as performance improves.
+- [environment_5957e51cfe] type=failure_mode, confidence=0.85, condition=Private evaluator return is on a consistent downward trend across multiple generations (e.g., -111.63 → -116.68 → -120.41) while generated return improves., recommendation=Consider a more radical restructuring of the reward function, such as removing shaping components that don't align with private return, or directly mimicking the private evaluator's likely criteria (e.g., strict landing success, fuel efficiency) instead of incremental parameter changes.
+- [environment_2095b136ea] type=failure_mode, confidence=0.8, condition=Progress reward improves generated return but does not improve private evaluator return, and the generated-private gap widens., recommendation=If progress reward does not improve private return, either remove it entirely or increase its strength significantly (e.g., coefficient 0.5) combined with relaxed terminal thresholds to force the agent toward actual landing success. Monitor whether the private return improves when the agent achieves more terminal successes.
+- [environment_7eb9d341bc] type=failure_mode, confidence=0.9, condition=Terminal component average is negative despite some successful landings (e.g., -25.0 average with +400 success and -25 crash penalties)., recommendation=Further relax terminal thresholds (e.g., position<0.2, velocity<0.2, angle<0.15) or reduce the crash penalty (e.g., to -10) to increase the success-to-crash ratio. Alternatively, increase the terminal success reward to +500 to make success more rewarding relative to per-step costs.
+- [environment_1c44d32f9d] type=failure_mode, confidence=0.85, condition=Strict terminal thresholds (e.g., 0.15) combined with a moderate success reward (e.g., +400) and moderate crash penalty (-25) fail to produce consistent landings., recommendation=Relax thresholds further to position<0.2, velocity<0.2, angle<0.15. Increase terminal success reward to +500. Reduce crash penalty to -10. These changes make success more achievable and rewarding relative to per-step costs, which should increase the success rate and improve private return.
+- [environment_5f81133a21] type=reward_pattern, confidence=0.75, condition=The agent survives longer and takes more varied actions (action mean increases) but private return continues to decline., recommendation=Ensure the reward function strongly incentivizes actual landing attempts by increasing the terminal success reward relative to per-step penalties. Reduce the per-step distance/velocity penalties to allow the agent to approach the pad without incurring large negative costs that discourage landing attempts.
+- [environment_e7228b61dd] type=general, confidence=0.9, condition=Multiple parameter changes in a single generation (relaxing thresholds, reducing crash penalty, increasing success reward, adding progress reward) widen the generated-private gap., recommendation=Adjust only one or two parameters per generation. For example, first relax thresholds alone, then adjust rewards in subsequent generations. Monitor how each change affects both generated and private returns before making further modifications.
+- [environment_7a623cf6a1] type=reward_pattern, confidence=0.8, condition=Base distance penalty (-0.25 per unit distance) combined with a small progress reward (+0.3) produces a negative distance_reward component despite the agent surviving longer., recommendation=Reduce the base distance penalty to -0.15 and increase the progress reward coefficient to 0.5. This makes approaching the pad net positive per step, encouraging the agent to move toward the landing zone. Monitor whether this increases the success rate and improves private return.
+
+Relevant cross-environment lessons:
+- none
+
+Parent RewardSpecs:
+[
+  {
+    "reward_spec_version": "eg_rsa_reward_spec_v1",
+    "schema_version": "eg_rsa_reward_schema_v1_cc14e8210d",
+    "rationale": "Based on feedback, reduce distance_reward base coefficient from -1.0 to -0.5 and increase progress reward coefficient from 0.5 to 1.0 to better balance shaping. Increase terminal success reward from +300 to +500 to ensure positive net return. Remove fuel_efficiency component (always zero). Keep velocity_penalty at -0.5, angle_penalty at -1.0, survival bonus at +0.5, and crash penalty at -50.",
+    "components": [
+      {
+        "id": "distance_reward",
+        "expression": "-0.5 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))",
+        "clip": [
+          -5.0,
+          5.0
+        ],
+        "description": "Base distance penalty (-0.5 per unit distance) plus progress reward (1.0 * reduction in distance)"
+      },
+      {
+        "id": "velocity_penalty",
+        "expression": "-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+        "clip": [
+          -5.0,
+          0.0
+        ],
+        "description": "Reduced penalty for high linear speed to allow exploration"
+      },
+      {
+        "id": "angle_penalty",
+        "expression": "-1.0 * abs(next_obs[4])",
+        "clip": [
+          -5.0,
+          0.0
+        ],
+        "description": "Mild penalty for non-zero angle (reduced from -2.0 to avoid discouraging necessary tilting)"
+      },
+      {
+        "id": "fuel_efficiency",
+        "expression": "0.0",
+        "clip": [
+          0.0,
+          0.0
+        ],
+        "description": "Disabled - action==2 condition never triggered"
+      },
+      {
+        "id": "terminal",
+        "expression": "float(done) * (500.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -50.0) + (0.5 * float(not done))",
+        "clip": [
+          -500.0,
+          500.0
+        ],
+        "description": "Large positive reward for successful landing (+500), crash penalty (-50), and survival bonus (+0.5 per timestep)"
+      }
+    ],
+    "total": "sum_components",
+    "final_clip": [
+      -1000.0,
+      1000.0
+    ],
+    "spec_id": "reward_spec_b05725609c"
+  }
+]
+
+Generate exactly one RewardSpec JSON object. Do not output Python code. The RewardSpec components must exactly match the reward schema component IDs. Each component must contain id, expression, and clip. Expressions may only use obs, next_obs, action, done, info, np, math, abs, min, max, float, int, bool. Use private_eval_return only as black-box feedback; do not infer hidden evaluator internals.

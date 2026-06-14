@@ -1,0 +1,224 @@
+Structured evidence for this generation:
+{
+  "generation": 5,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g5_c0",
+      "parent_ids": [
+        "g3_c0"
+      ],
+      "status": "ok",
+      "selection_score": -100.80353025010385,
+      "private_eval_return": -100.80353025010385,
+      "generated_return": -23.58788927259263,
+      "generated_minus_private": 77.21564097751121,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 77.21564097751121,
+        "action_mean": 0.6775456919060052,
+        "action_std": 1.0883634358700596,
+        "episode_length_mean": 76.6,
+        "component_returns": {
+          "distance_reward": -18.626275904192244,
+          "velocity_penalty": -19.88980384432167,
+          "angle_penalty": -2.571809524078708,
+          "fuel_efficiency": 0.0,
+          "terminal": 17.5
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Reduce per-step penalties to make net reward less negative and encourage exploration. Decrease distance base coefficient from -0.5 to -0.25, velocity coefficient from -0.5 to -0.25, angle coefficient from -1.0 to -0.5. Keep progress reward at 1.0. Remove survival bonus (was +0.5) to maintain low generated-private gap. Increase terminal success reward from +500 to +400, reduce crash penalty from -50 to -25. Keep fuel_efficiency at 0.0 (disabled). These changes aim to make successful landings more dominant and reduce the negative per-step accumulation that discourages learning.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        5.0\n      ],\n      \"description\": \"Base distance penalty (-0.25 per unit distance) plus progress reward (1.0 * reduction in distance)\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Reduced penalty for high linear speed to allow more aggressive maneuvering\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Reduced penalty for non-zero angle to avoid discouraging necessary tilting\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - always zero\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -25.0)\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+400), reduced crash penalty (-25), no survival bonus\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_7c9cddff64\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 5.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -25.0))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Reduce per-step penalties to make net reward less negative and encourage exploration. Decrease distance base coefficient from -0.5 to -0.25, velocity coefficient from -0.5 to -0.25, angle coefficient from -1.0 to -0.5. Keep progress reward at 1.0. Remove survival bonus (was +0.5) to maintain low generated-private gap. Increase terminal success reward from +500 to +400, reduce crash penalty from -50 to -25. Keep fuel_efficiency at 0.0 (disabled). These changes aim to make successful landings more dominant and reduce the negative per-step accumulation that discourages learning."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g5_c0",
+      "parent_ids": [
+        "g3_c0"
+      ],
+      "status": "ok",
+      "selection_score": -100.80353025010385,
+      "private_eval_return": -100.80353025010385,
+      "generated_return": -23.58788927259263,
+      "generated_minus_private": 77.21564097751121,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 77.21564097751121,
+        "action_mean": 0.6775456919060052,
+        "action_std": 1.0883634358700596,
+        "episode_length_mean": 76.6,
+        "component_returns": {
+          "distance_reward": -18.626275904192244,
+          "velocity_penalty": -19.88980384432167,
+          "angle_penalty": -2.571809524078708,
+          "fuel_efficiency": 0.0,
+          "terminal": 17.5
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Reduce per-step penalties to make net reward less negative and encourage exploration. Decrease distance base coefficient from -0.5 to -0.25, velocity coefficient from -0.5 to -0.25, angle coefficient from -1.0 to -0.5. Keep progress reward at 1.0. Remove survival bonus (was +0.5) to maintain low generated-private gap. Increase terminal success reward from +500 to +400, reduce crash penalty from -50 to -25. Keep fuel_efficiency at 0.0 (disabled). These changes aim to make successful landings more dominant and reduce the negative per-step accumulation that discourages learning.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        5.0\n      ],\n      \"description\": \"Base distance penalty (-0.25 per unit distance) plus progress reward (1.0 * reduction in distance)\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Reduced penalty for high linear speed to allow more aggressive maneuvering\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Reduced penalty for non-zero angle to avoid discouraging necessary tilting\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - always zero\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -25.0)\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+400), reduced crash penalty (-25), no survival bonus\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_7c9cddff64\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 5.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -25.0))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Reduce per-step penalties to make net reward less negative and encourage exploration. Decrease distance base coefficient from -0.5 to -0.25, velocity coefficient from -0.5 to -0.25, angle coefficient from -1.0 to -0.5. Keep progress reward at 1.0. Remove survival bonus (was +0.5) to maintain low generated-private gap. Increase terminal success reward from +500 to +400, reduce crash penalty from -50 to -25. Keep fuel_efficiency at 0.0 (disabled). These changes aim to make successful landings more dominant and reduce the negative per-step accumulation that discourages learning."
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 4
+
+## Latest reflection
+## Reflection Analysis – Generation 4
+
+### 1. What Worked
+
+- **Removing the survival bonus was effective at reducing the generated-private gap**: The generated-private gap decreased from **+168.26** (generation 3) to **+28.86** (generation 4) — a massive **139.4 point reduction**. This confirms that the survival bonus was the primary source of misalignment.
+- **Reducing terminal success reward from +500 to +300 also contributed to gap reduction**: The terminal component dropped from +152.20 to **-15.0**, indicating the agent is no longer earning large success rewards. This aligns with the reduced success reward and removal of survival bonus.
+- **The agent is still learning**: Episode length is 59.7 steps (down from 75.4), and action mean is 0.56 (down from 0.99). The agent is now moving more (action mean away from 1.0) rather than staying idle.
+- **Private_eval_return only slightly worse**: The private score went from **-94.03** to **-104.88** — a drop of only -10.85 points despite major reward changes. This is a relatively small degradation compared to the massive gap reduction.
+
+### 2. What Failed
+
+- **Selection score decreased**: From -94.03 to **-104.88** — a **-10.85 point drop**. While the gap closed significantly, the absolute private score worsened. The agent is now earning less total reward under the private evaluator.
+- **Terminal component is now negative (-15.0)**: The agent is crashing more often than succeeding. The crash penalty (-50) is being applied more frequently than the success reward (+300). This suggests the agent is not landing successfully enough.
+- **Velocity_penalty remains high (-34.15)**: This is essentially unchanged from generation 3 (-38.62). The agent is still moving too fast, which is likely causing crashes.
+- **Distance_reward improved slightly (-24.84 vs -36.71)**: Better, but still negative. The agent is not consistently moving toward the landing pad.
+- **Action std is high (1.05)**: The agent is exploring a wide range of actions, which may be preventing it from converging to a stable landing policy.
+- **Generated_return turned negative (-76.02)**: From +74.23 in generation 3 to -76.02 now. The removal of survival bonus and reduced success reward has made the generated reward signal much more punishing.
+
+### 3. What to Try Next
+
+**Primary hypothesis**: The reward function is now too punitive. Removing the survival bonus and reducing the success reward has made the net reward signal strongly negative, which discourages the agent from learning. The agent is crashing because the per-step penalties (distance, velocity, angle) accumulate to approximately -60 over 60 steps, and the terminal success reward of +300 is not being earned frequently enough to offset this. The private evaluator may have a different reward structure that is more forgiving during the approach phase.
+
+**Recommended changes**:
+
+1. **Reduce per-step penalty magnitudes** — The current penalties are too large relative to the terminal reward. Consider:
+   - **Distance_reward**: Reduce base penalty from -0.5 to **-0.25** and keep progress reward at 1.0. This would make the net distance signal more positive when moving toward the pad.
+   - **Velocity_penalty**: Reduce from -0.5 to **-0.25** to allow more aggressive maneuvering without excessive punishment.
+   - **Angle_penalty**: Reduce from -1.0 to **-0.5** since angle is already small (-2.03 total over 60 steps).
+
+2. **Re-introduce a small survival bonus (+0.1)** — The previous generation showed that a survival bonus helps the agent stay alive longer and learn. A small bonus of +0.1 per timestep would add approximately +6 over 60 steps, providing a modest positive signal without causing the large gap seen with +0.5.
+
+3. **Increase terminal success reward to +400** — The current +300 is not sufficient to overcome the per-step penalties when the agent crashes 50% of the time. A higher success reward would make successful landings more rewarding and encourage the agent to attempt landings.
+
+4. **Consider adding a small crash penalty reduction** — Reduce crash penalty from -50 to **-25** to make failures less catastrophic and encourage exploration.
+
+5. **Verify the terminal success condition alignment** — The current condition uses position < 0.1, velocity < 0.1, angle < 0.1. If the private evaluator uses stricter thresholds (e.g., position < 0.05), the agent may be "succeeding" less often than the reward function thinks. Consider relaxing thresholds slightly (e.g., position < 0.15, velocity < 0.15) to increase success rate.
+
+**Specific reward spec changes for next generation**:
+- Distance_reward: `-0.25 * sqrt(next_obs[0]^2 + next_obs[1]^2) + 1.0 * (sqrt(obs[0]^2 + obs[1]^2) - sqrt(next_obs[0]^2 + next_obs[1]^2))`
+- Velocity_penalty: `-0.25 * sqrt(next_obs[2]^2 + next_obs[3]^2)`
+- Angle_penalty: `-0.5 * abs(next_obs[4])`
+- Survival bonus: `+0.1 * float(not done)`
+- Terminal success: `+400` for successful landing, `-25` for crash
+- Remove fuel_efficiency component entirely
+
+### 4. Lessons Supported or Contradicted
+
+**Supported lessons**:
+- **environment_a7d53ba4d7 (failure_mode)**: STRONGLY SUPPORTED — Removing the survival bonus (set to 0.0) reduced the generated-private gap from +168.26 to +28.86. This lesson is validated as correct.
+- **environment_dfd218ee0f (failure_mode)**: STRONGLY SUPPORTED — Reducing the survival bonus back to +0.1 or removing it is validated. The gap reduction confirms this recommendation.
+- **environment_401b4526b8 (failure_mode)**: SUPPORTED — Reducing terminal success reward from +500 to +300 helped reduce the gap (from +168.26 to +28.86), but the absolute score decreased. The lesson's recommendation is partially validated.
+- **candidate_46fd98ef79 (failure_mode)**: SUPPORTED — Reducing survival bonus and terminal success reward decreased the generated/private gap as recommended.
+- **environment_227c6b5308 (reward_pattern)**: SUPPORTED — Using base distance penalty of -0.5 and progress reward of 1.0 is still effective, but the coefficients may need further adjustment.
+- **environment_69d1862649 (reward_pattern)**: SUPPORTED — Fuel_efficiency remains 0.0. Should be removed per lesson recommendation.
+- **environment_221d398f03 (general)**: SUPPORTED — Always-zero components should be removed.
+
+**Contradicted lessons**:
+- **environment_37d3a73217 (failure_mode)**: PARTIALLY CONTRADICTED — The lesson recommended increasing terminal success reward to +500, but this caused a large generated-private gap. Reducing to +300 helped close the gap but also reduced absolute score. The optimal success reward may be somewhere between +300 and +500.
+- **environment_ebdbd334f4 (failure_mode)**: SUPPORTED — Base distance penalty of -0.5 and progress reward of 1.0 is still a good starting point, but further reduction may be needed.
+- **candidate_99310ebe60 (reward_pattern)**: SUPPORTED — The recommendation to increase progress reward coefficient to 2.0 or reduce base penalty to -0.25 may be worth trying next.
+
+**New lessons to store**:
+- **Lesson L11**: Removing a survival bonus of +0.5 per timestep reduced the generated-private gap by ~139 points (from +168 to +29). Survival bonuses are a primary source of misalignment when the private evaluator uses sparse rewards.
+- **Lesson L12**: After removing survival bonus and reducing terminal success reward from +500 to +300, the absolute private score dropped by only -10.85 points (from -94.03 to -104.88), while the gap closed dramatically. This trade-off is acceptable for alignment.
+- **Lesson L13**: When per-step penalties accumulate to approximately -60 over 60 steps and the terminal success reward is +300, the agent crashes more often than succeeds (terminal component = -15.0). Per-step penalties should be reduced or the success reward increased to make successful landings the dominant outcome.
+
+## Recent environment lessons
+- failure_mode: Verify the action space mapping for the main engine. If the mapping is unknown, consider removing the fuel penalty or replacing it with a continuous action threshold (e.g., action > 0.5 for normalized continuous actions).
+- general: Use a survival bonus of at least +0.5 per timestep when per-step penalties are in the range of -1 to -5, to provide a meaningful counterbalance.
+- failure_mode: Increase the terminal success reward to +200 or +300 when per-step penalties are significant (e.g., total negative return over episode exceeds -100), to ensure successful landings yield a clearly positive net return.
+- failure_mode: Reduce the base distance penalty coefficient to -0.5 and increase the progress reward coefficient to 1.0 to better balance shaping toward the landing pad.
+- failure_mode: Reduce the survival bonus back to +0.1 or remove it and rely on stronger terminal success reward and per-step shaping to avoid misalignment.
+- failure_mode: Increase the terminal success reward to +500 or further reduce per-step penalties so that successful episodes yield a clearly positive total return.
+- reward_pattern: Remove the fuel_efficiency component entirely to simplify the reward function and avoid a useless signal that may confuse learning.
+- general: Simplify the terminal success condition to use only position, velocity, and angle thresholds (e.g., distance < 0.1, speed < 0.1, angle < 0.1) without relying on contact flags.
+- failure_mode: Remove the survival bonus (set to 0.0) to align per-step rewards with the private evaluator's likely sparse reward structure. This reduces the generated-private gap.
+- reward_pattern: Use a base distance penalty coefficient of -0.5 and a progress reward coefficient of 1.0 when shaping distance-based rewards in similar environments.
+- failure_mode: Reduce the terminal success reward from +500 to +300 to lower the incentive for passive survival behavior and reduce the generated-private gap. Ensure per-step rewards do not encourage inaction.
+- general: Remove any always-zero components from the reward function to simplify it and eliminate potential confusion.
+- reward_pattern: Continue using position/velocity/angle thresholds for terminal success detection if they align with the environment's success criteria, but verify that the private evaluator uses similar conditions to avoid misalignment.
+- failure_mode: Avoid per-step survival bonuses in this environment; if a small bonus is needed, use a value no larger than +0.1 per timestep.
+- failure_mode: Prioritize reducing the generated-private gap even if it causes a modest decrease in absolute private score, as alignment is more important for stable learning.
+- failure_mode: Reduce per-step penalty coefficients (distance from -0.5 to -0.25, velocity from -0.5 to -0.25, angle from -1.0 to -0.5) or increase the terminal success reward to +400 to make successful landings the dominant outcome.
+- failure_mode: Remove always-zero components from the reward specification entirely to simplify the reward function and reduce cognitive load during design.
+- reward_pattern: Reduce the base distance penalty from -0.5 to -0.25 or increase the progress reward coefficient to 2.0 to ensure the net distance signal is positive when moving toward the pad.
+- failure_mode: Reduce the velocity penalty coefficient to -0.25 to allow more aggressive maneuvering without excessive punishment, or consider using a nonlinear penalty that penalizes only extreme velocities.
+- general: Consider relaxing the terminal success thresholds slightly (e.g., position<0.15, velocity<0.15, angle<0.15) to increase the success rate and provide more positive feedback.
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_29baba9565] type=failure_mode, confidence=0.95, condition=fuel_efficiency component is hardcoded to 0.0 and clipped to [0,0]., recommendation=Remove the fuel_efficiency component entirely from the reward spec and code to simplify the reward function and avoid misleading component names.
+- [candidate_2410aa3296] type=general, confidence=0.98, condition=The reward function uses next_obs for distance, velocity, and angle calculations, and obs for progress computation., recommendation=No change needed for next_obs usage; it is correctly used in this candidate.
+- [candidate_81d4bbdebc] type=general, confidence=0.99, condition=The reward code uses np.sqrt, abs, and basic arithmetic without import statements., recommendation=No change needed; the code follows the allowed namespace rules.
+- [candidate_80606d88a5] type=failure_mode, confidence=0.8, condition=Terminal component uses a large success reward (+300) with strict landing conditions and a moderate crash penalty (-50) while all other components provide negative or zero rewards., recommendation=Reduce the terminal success reward further (e.g., +50 to +100) or relax the landing thresholds to make success more attainable, and consider increasing the crash penalty to better align with the private evaluator's negative assessment.
+- [candidate_6bc4ace6bd] type=reward_pattern, confidence=0.75, condition=Multiple negative components dominate the total reward, while a large positive terminal reward is rarely triggered., recommendation=Balance the per-step penalties to be smaller (e.g., -0.1 or -0.2) while keeping the progress reward positive, or add a small survival bonus to offset negative components and provide a clearer gradient toward success.
+- [candidate_4b44bf78c9] type=general, confidence=0.85, condition=The generated_return (-76.02) is higher than the private_eval_return (-104.88), indicating the reward function overestimates performance., recommendation=Use black-box selection feedback to iteratively adjust component weights or add new components that penalize behaviors that increase the gap, such as high speed near the ground or oscillations.
+- [candidate_444f3adf50] type=repair_rule, confidence=0.9, condition=A component (fuel_efficiency) is set to constant zero, providing no learning signal and wasting a slot in the reward structure., recommendation=Remove zero-valued components from the reward spec to simplify the reward function and focus mutation efforts on meaningful components.
+- [candidate_daf0937fab] type=mutation_rule, confidence=0.7, condition=The candidate was mutated from g3_c0 by removing the survival bonus and reducing the terminal success reward from +500 to +300., recommendation=When mutating to reduce the generated-private gap, also adjust per-step penalties to be less negative or introduce a small positive shaping reward that encourages behaviors aligned with the private evaluator.
+
+Relevant environment-level lessons:
+- [environment_401b4526b8] type=failure_mode, confidence=0.8, condition=A terminal success reward of +500 is used, and the agent's action mean is close to 1.0 (suggesting it avoids movement to minimize penalties)., recommendation=Reduce the terminal success reward from +500 to +300 to lower the incentive for passive survival behavior and reduce the generated-private gap. Ensure per-step rewards do not encourage inaction.
+- [environment_221d398f03] type=general, confidence=1.0, condition=The reward function includes a fuel_efficiency component that is always zero because the condition for nonzero reward is never triggered., recommendation=Remove any always-zero components from the reward function to simplify it and eliminate potential confusion.
+- [environment_beb8e3283a] type=reward_pattern, confidence=0.75, condition=The reward function uses position, velocity, and angle thresholds without contact flags to determine terminal success., recommendation=Continue using position/velocity/angle thresholds for terminal success detection if they align with the environment's success criteria, but verify that the private evaluator uses similar conditions to avoid misalignment.
+- [environment_e8980a8573] type=failure_mode, confidence=0.95, condition=When a survival bonus of +0.5 per timestep is present and the private evaluator uses sparse rewards, recommendation=Avoid per-step survival bonuses in this environment; if a small bonus is needed, use a value no larger than +0.1 per timestep.
+- [environment_2347bfd48e] type=failure_mode, confidence=0.85, condition=When terminal success reward is reduced from +500 to +300 and survival bonus is removed, recommendation=Prioritize reducing the generated-private gap even if it causes a modest decrease in absolute private score, as alignment is more important for stable learning.
+- [environment_ab825e40e7] type=failure_mode, confidence=0.8, condition=When per-step penalties accumulate to approximately -60 over 60 steps and the terminal success reward is +300, recommendation=Reduce per-step penalty coefficients (distance from -0.5 to -0.25, velocity from -0.5 to -0.25, angle from -1.0 to -0.5) or increase the terminal success reward to +400 to make successful landings the dominant outcome.
+- [environment_2f681ebb0d] type=failure_mode, confidence=0.95, condition=When an always-zero component (fuel_efficiency) is included in the reward specification, recommendation=Remove always-zero components from the reward specification entirely to simplify the reward function and reduce cognitive load during design.
+- [environment_e2e0b3f1d1] type=reward_pattern, confidence=0.75, condition=When using a base distance penalty combined with a progress reward in a landing environment, recommendation=Reduce the base distance penalty from -0.5 to -0.25 or increase the progress reward coefficient to 2.0 to ensure the net distance signal is positive when moving toward the pad.
+- [environment_c9dc0eeadb] type=failure_mode, confidence=0.7, condition=When the velocity penalty coefficient is -0.5 and the agent has high action standard deviation (>1.0), recommendation=Reduce the velocity penalty coefficient to -0.25 to allow more aggressive maneuvering without excessive punishment, or consider using a nonlinear penalty that penalizes only extreme velocities.
+- [environment_319abc592a] type=general, confidence=0.6, condition=When the terminal success condition uses thresholds of position<0.1, velocity<0.1, angle<0.1, recommendation=Consider relaxing the terminal success thresholds slightly (e.g., position<0.15, velocity<0.15, angle<0.15) to increase the success rate and provide more positive feedback.
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

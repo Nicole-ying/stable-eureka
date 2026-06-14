@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "shaping reward magnitude (15x) is high but terminal reward is zero in most steps, and velocity/angle penalties are small",
+    "observation": "The shaping component dominates (7691) while velocity and angle penalties are negligible (-12.5, -13.4) and terminal is zero, leading to a generated return of 7665 but private_eval_return only 4.63, indicating the policy is rewarded for staying near the pad without landing.",
+    "explanation": "A large shaping reward that decays with distance encourages the agent to hover near the landing pad indefinitely rather than completing the landing, because the terminal bonus is rarely achieved and the penalties are too weak to force a landing.",
+    "recommendation": "Reduce shaping magnitude or increase its decay rate so it diminishes sharply near the pad, and ensure terminal reward is large enough to incentivize landing over hovering.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "generated_return is very high (7665) but private_eval_return is very low (4.63)",
+    "observation": "The generated return is 7665.38 while private_eval_return is only 4.63, a gap of 7660.75, indicating the reward function is highly exploitable and does not align with the true objective.",
+    "explanation": "The large shaping reward and small penalties allow the agent to accumulate high generated reward without achieving the landing goal, creating a massive mismatch between generated and private returns.",
+    "recommendation": "Use black-box selection feedback to reduce the generated/private mismatch by balancing components so that high generated return correlates with high private return.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "terminal component is zero throughout the episode (episode_length_mean 901)",
+    "observation": "The terminal reward component return is 0.0, meaning no successful landing occurred in any of the 901-step episodes, despite relaxed tolerances.",
+    "explanation": "Relaxing terminal tolerances (position 0.2, velocity 0.5, angle 0.3) was insufficient because the shaping reward encourages hovering near the pad but not the precise simultaneous satisfaction of all conditions, and the agent never achieves them.",
+    "recommendation": "Either increase terminal bonus further (e.g., 500 or 1000) or introduce a shaping component that explicitly rewards progress toward landing conditions (e.g., reducing velocity near the pad).",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "parent candidate had weak shaping and harsh velocity penalty; this candidate increased shaping 15x and reduced velocity penalty to -0.1",
+    "observation": "The mutation from generation 0 to generation 1 overcompensated: shaping went from weak to dominant, and velocity penalty went from harsh to negligible, causing the agent to hover without landing.",
+    "explanation": "Large changes to component magnitudes without considering the balance between shaping and penalties can shift the policy from one failure mode (too penalized to move) to another (no incentive to land).",
+    "recommendation": "When adjusting component magnitudes, use smaller multiplicative changes (e.g., 2x to 5x) and test intermediate values to avoid flipping the reward balance too far.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "fuel_efficiency component is set to 0.0 to avoid discouraging engine use",
+    "observation": "Removing the fuel penalty entirely resulted in no negative signal for excessive engine use, but the shaping reward already encourages constant engine use to hover, which may be inefficient.",
+    "explanation": "While removing a counterproductive penalty can help, a zero fuel component means the agent receives no penalty for wasteful fuel consumption, potentially leading to unrealistic or inefficient behavior.",
+    "recommendation": "Consider a small negative fuel penalty (e.g., -0.01 or -0.05) to discourage unnecessary engine use without dominating the reward, or keep it zero if fuel efficiency is not part of the objective.",
+    "confidence": 0.6,
+    "reuse_policy": "similar_env"
+  }
+]

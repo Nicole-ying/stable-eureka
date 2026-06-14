@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_4c4946654e",
+  "rationale": "The previous generation (g5) dramatically improved private_eval_return from -120.9 to -10.8 by increasing shaping, but the agent still fails to land (terminal reward 0.0). The angle penalty at -243.9 is now the dominant negative component, likely preventing the agent from making the final descent. To fix this: (1) reduce angle penalty per-step survival from -0.3 to -0.1 and angle scaling from 0.2 to 0.05, targeting -50 to -80 per episode; (2) reduce shaping multiplier from 5.0 to 3.0 so shaping (~900) is about 60% of terminal bonus (1500); (3) keep velocity penalty at -0.15 to target -20 per episode; (4) increase terminal bonus from 1500 to 2000 and soften landing angle tolerance from 0.2 to 0.3 radians; (5) add a soft landing bonus of 0.5 * exp(-2.0*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge proximity and touchdown.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "3.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Moderate shaping reward for proximity to pad, targeting ~900 per episode."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.15 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Mild penalty on horizontal and vertical velocity to encourage controlled descent."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.1 - 0.05 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Reduced penalty on angle and angular velocity, targeting -50 to -80 per episode."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.0",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Fuel penalty removed to avoid discouraging necessary engine use."
+    },
+    {
+      "id": "terminal",
+      "expression": "2000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 0.5 * np.exp(-2.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3])))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Large terminal bonus for successful landing with softened angle tolerance, plus soft landing bonus for low velocity near ground."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_8696463377"
+}

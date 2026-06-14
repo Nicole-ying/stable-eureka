@@ -1,0 +1,65 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Velocity penalty magnitude is large relative to shaping reward magnitude",
+    "observation": "Velocity penalty contributed -44.18 while shaping contributed only +13.23, leading to a net negative reward that discouraged movement.",
+    "explanation": "When penalty magnitudes dominate positive reward components, the agent learns to minimize penalties by taking no action, resulting in a timid policy with near-zero action mean (0.08).",
+    "recommendation": "Ensure the shaping reward magnitude is at least 5-10 times larger than the velocity penalty magnitude to provide sufficient incentive for movement.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal bonus is too small relative to per-step penalties",
+    "observation": "Terminal component returned 0.0 across all episodes, indicating the agent never achieved a successful landing despite 2M timesteps of training.",
+    "explanation": "The terminal bonus of 10.0 was negligible compared to the cumulative velocity penalty of -44.18 per episode, making the landing condition unrewarding relative to the cost of moving.",
+    "recommendation": "Increase terminal bonus to at least 100-500 to make successful landing a dominant reward signal that overcomes per-step penalties.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Fuel penalty discourages necessary engine usage",
+    "observation": "Fuel efficiency penalty was -0.23, and action mean was 0.08, indicating the agent rarely fired engines to avoid the fuel cost.",
+    "explanation": "Penalizing engine usage in a task that requires engine firing to reach the landing pad creates a conflict that leads to passive behavior.",
+    "recommendation": "Remove or reduce fuel penalty to -0.01 or 0 to avoid discouraging necessary engine firing.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Large generated-private return gap indicates reward misspecification",
+    "observation": "Generated return was -31.60 while private eval return was -107.42, a gap of +75.82, showing the reward function is misaligned with the hidden evaluator.",
+    "explanation": "A large positive gap means the reward function is giving higher scores than the true objective, likely because it encourages behaviors (e.g., hovering) that the evaluator penalizes.",
+    "recommendation": "Use black-box selection feedback to reduce generated/private mismatch by adjusting component weights and adding survival bonuses to align with the hidden objective.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal conditions are too strict for initial learning",
+    "observation": "Terminal bonus conditions require position <0.1, velocity <0.1, angle <0.1, and both legs grounded, which was never achieved.",
+    "explanation": "Overly strict terminal conditions make the success state unreachable during early training, providing no positive reinforcement for progress toward landing.",
+    "recommendation": "Relax terminal conditions initially (e.g., position tolerance 0.3, velocity tolerance 0.5) and tighten them gradually as the agent improves.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Component scaling ratios matter more than individual component values",
+    "observation": "Shaping reward max was ~1.0 while velocity penalty was up to -0.5 per unit, giving a ratio of ~0.3:1 which led to policy collapse.",
+    "explanation": "The relative magnitude between positive and negative components determines whether the agent is incentivized to act or to freeze; individual values alone do not predict behavior.",
+    "recommendation": "Design reward components such that the positive shaping reward is at least 5-10 times larger than the largest penalty to maintain net positive reward for desired actions.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Exponential shaping alone may be too weak for sparse negative penalties",
+    "observation": "Exponential shaping provided smooth gradients (+13.23) but was insufficient to overcome the velocity penalty (-44.18).",
+    "explanation": "Exponential functions saturate near 1.0, providing bounded positive reward that can be easily outweighed by unbounded or large-magnitude penalties.",
+    "recommendation": "Use linear or polynomial shaping rewards that scale with distance to the target, or multiply exponential shaping by a large constant (10-50x) to match penalty magnitudes.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  }
+]

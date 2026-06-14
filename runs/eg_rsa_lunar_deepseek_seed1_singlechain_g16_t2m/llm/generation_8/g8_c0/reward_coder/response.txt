@@ -1,0 +1,38 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "rationale": "Reduce terminal success reward from +500 to +300, increase crash penalty from -25 to -50, tighten thresholds to (0.1, 0.1, 0.1), remove progress reward from distance_reward (revert to simple -0.25 * distance), keep velocity_penalty at -0.25, angle_penalty at -0.5, no survival bonus. These changes aim to reduce the generated-private gap by aligning terminal criteria more closely with the private evaluator and reducing the incentive for aggressive exploitation.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2)",
+      "clip": [-5.0, 5.0],
+      "description": "Simple distance penalty without progress reward"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [-5.0, 0.0],
+      "description": "Reduced penalty for high linear speed"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * abs(next_obs[4])",
+      "clip": [-5.0, 0.0],
+      "description": "Mild penalty for non-zero angle"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "0.0",
+      "clip": [0.0, 0.0],
+      "description": "Disabled"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (300.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -50.0)",
+      "clip": [-500.0, 500.0],
+      "description": "Terminal success reward +300 for strict landing, crash penalty -50, no survival bonus"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [-1000.0, 1000.0]
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal component uses a sparse +100/-100 signal only at done=True, and the environment has long episodes (mean 70 steps) with no intermediate shaping toward landing success.",
+    "observation": "The terminal component yields large negative values on failure episodes, but the distance, velocity, and angle penalties dominate the per-step reward, causing the generated return to be far more negative (-435.3) than the private evaluator's return (-112.2). The gap (-323.1) indicates that the private evaluator likely rewards progress even in failure episodes, while this reward spec penalizes harshly at every step.",
+    "explanation": "The large negative per-step penalties (especially velocity_penalty at -3.0 * speed and distance_reward at -2.0 * distance) dwarf the terminal signal, making most trajectories highly negative. The private evaluator may use a softer or more progressive reward scheme that does not penalize intermediate states as heavily, resulting in a large generated/private gap.",
+    "recommendation": "Reduce the magnitude of per-step penalties (e.g., lower velocity_penalty coefficient from -3.0 to -1.0 or -0.5) and/or increase the positive terminal reward for successful landings to better align with the private evaluator's scoring.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Component returns show velocity_penalty (-215.8) is the largest negative contributor, followed by distance_reward (-134.5), while angle_penalty (-5.0) and fuel_efficiency (0.0) are negligible.",
+    "observation": "The velocity penalty dominates the total reward, accounting for about half of the negative sum. This suggests the agent is heavily penalized for moving, which may discourage exploration and lead to overly cautious or stuck behavior.",
+    "explanation": "A high velocity penalty coefficient (-3.0) combined with no lower bound on speed (clipped at -10.0) creates a strong incentive to stay stationary, which conflicts with the need to move toward the landing pad for a successful terminal reward.",
+    "recommendation": "Reduce the velocity penalty coefficient and/or add a small positive reward for moving toward the pad to encourage goal-directed exploration without excessive penalization of speed.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal condition requires next_obs[6]==1.0 and next_obs[7]==1.0, which are likely contact flags or leg status indicators, but their exact meaning is not guaranteed by the observation contract.",
+    "observation": "The terminal component depends on next_obs[6] and next_obs[7] being exactly 1.0 to identify a successful landing. If these indices do not correspond to stable landing indicators or if the observation space has different semantics, the success condition may never be met, causing the terminal reward to always be -100.",
+    "explanation": "Using hardcoded observation indices for success detection is brittle. In the generated run, the terminal component contributed -80.0 on average (likely -100 on failure episodes with some successes), but the large negative per-step penalties still dominate.",
+    "recommendation": "Verify the observation indices for landing success (e.g., check if the environment uses different flags or a continuous contact sensor). Consider using a threshold-based success condition on position and velocity instead of discrete flags.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Fuel_efficiency component uses action == 2, which is a discrete action index, but the component return is 0.0.",
+    "observation": "The fuel_efficiency component contributed exactly 0.0 to the total reward, meaning either the action is never 2 or the penalty is too small to register after clipping.",
+    "explanation": "With a coefficient of -0.1 and clip to -1.0, the penalty is negligible compared to other components. If action 2 is the main engine and is used frequently, the penalty should be visible; its zero contribution suggests the agent may not be using that action or the penalty is being masked by clipping.",
+    "recommendation": "Ensure the fuel_efficiency penalty is meaningful by increasing its coefficient (e.g., -1.0) and removing the clip, or verify that action 2 corresponds to the main engine in the environment's action space.",
+    "confidence": 0.6,
+    "reuse_policy": "same_env"
+  }
+]

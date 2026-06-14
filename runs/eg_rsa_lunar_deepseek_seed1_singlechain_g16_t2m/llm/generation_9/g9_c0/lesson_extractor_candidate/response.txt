@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal thresholds are too strict (e.g., position<0.1, velocity<0.1, angle<0.1) combined with a high crash penalty (e.g., -50) and moderate terminal success reward (e.g., +300).",
+    "observation": "Candidate g9_c0 inherited from g3_c0, which had strict thresholds and high crash penalty, causing the agent to crash every episode with terminal=-50. The relaxation to 0.15 thresholds and -25 crash penalty improved the private_eval_return from -50 to -120, but the generated_return (-64.55) still exceeds the private_eval_return (-120.41) by 55.86, indicating overestimation of reward by the agent.",
+    "explanation": "Even after relaxing thresholds and reducing crash penalty, the generated_return is significantly higher than private_eval_return, meaning the agent is receiving more reward on average than the hidden evaluator expects. This gap likely arises because the progress reward component (+0.3 * distance decrease) and the distance penalty (-0.25 * distance) together create a positive shaping signal that the private evaluator does not account for, while the terminal reward (+400 for success) may be awarded too infrequently due to remaining strict conditions or the agent not learning to land reliably within the episode length.",
+    "recommendation": "Reduce the progress reward coefficient (e.g., from +0.3 to +0.1) to lower the positive shaping without eliminating guidance, or remove the progress reward entirely and rely on a stronger distance penalty. Alternatively, increase the terminal success reward to +500 or +600 to better match the private evaluator's valuation of successful landings, or further relax terminal thresholds (e.g., position<0.2, velocity<0.2, angle<0.2) to make success more achievable.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The reward includes a progress reward component that is positive and clipped to a small range (e.g., [0, 2]), combined with a distance penalty and a high terminal reward for success.",
+    "observation": "The distance_reward component combines a base penalty (-0.25 * distance) with a progress reward (0.3 * distance decrease), clipped to [-5, 2]. The progress reward adds a positive bias that the private evaluator may not fully credit, contributing to the generated-return gap of 55.86.",
+    "explanation": "The progress reward creates a positive shaping signal that is not aligned with the private evaluator's reward structure, which likely only rewards terminal success and penalizes crashes. This mismatch causes the agent to overestimate the value of intermediate states, leading to a higher generated_return than private_eval_return.",
+    "recommendation": "Consider removing or significantly reducing the progress reward (e.g., to 0.1 or 0.0) to better align with the private evaluator's sparse terminal-based reward structure. Alternatively, if guidance is needed, use a very small coefficient and ensure the total shaping does not dominate the terminal signal.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The terminal reward component uses a large positive reward (+400) for success and a moderate negative reward (-25) for crash, with thresholds at 0.15 for position, velocity, and angle.",
+    "observation": "The terminal component contributed -25.0 on average (from component_returns), indicating that all episodes ended in crashes (no successes), despite the relaxed thresholds. The agent's mean episode length was 75.5 steps, suggesting it may not have enough time to land or the thresholds are still too strict for the agent's learned behavior.",
+    "explanation": "Even with relaxed thresholds, the agent failed to achieve any successful landing within the episode (likely limited by environment time horizon or the agent's policy not converging to landing behavior). The large positive reward (+400) is never realized, so the agent only receives the crash penalty (-25) plus intermediate penalties, resulting in low total return.",
+    "recommendation": "Consider further relaxing terminal thresholds (e.g., position<0.2, velocity<0.2, angle<0.2) to increase the chance of success, or reduce the crash penalty to -10 to prevent it from dominating the reward signal. Alternatively, add a small survival bonus (e.g., +0.1 per step) to encourage the agent to stay alive longer and explore landing strategies.",
+    "confidence": 0.6,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "When mutating a reward candidate that has a large generated_private_gap (e.g., >50), the mutation should reduce positive shaping components rather than increasing them.",
+    "observation": "Candidate g9_c0 was mutated from g3_c0 by relaxing thresholds and reducing crash penalty, but also added a progress reward (+0.3 * distance decrease). This addition increased the positive bias, contributing to a gap of 55.86.",
+    "explanation": "Adding a progress reward increases the generated_return relative to the private_eval_return because the private evaluator does not reward intermediate progress. Mutations that add positive shaping are likely to widen the gap, which is undesirable for alignment.",
+    "recommendation": "When the generated_private_gap is large, prefer mutations that remove or reduce positive shaping components (e.g., progress reward, survival bonuses) rather than adding them. Focus on adjusting terminal rewards and penalties to align with the private evaluator's sparse structure.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "The reward code passes validation but has a large generated_private_gap (>50) and zero repair attempts.",
+    "observation": "Candidate g9_c0 had no repair attempts and validation_errors were empty, yet the generated_private_gap was 55.86. This indicates the reward is syntactically correct but misaligned with the private evaluator.",
+    "explanation": "Validation only checks syntax and basic constraints (e.g., clipping), not alignment with the hidden evaluator. A large gap suggests the reward structure needs adjustment, but the repair system did not trigger because there were no validation errors.",
+    "recommendation": "Implement a repair trigger based on large generated_private_gap (e.g., >30) even when validation passes. The repair could automatically reduce the coefficient of positive shaping components or increase the terminal success reward to better match the private evaluator's scale.",
+    "confidence": 0.6,
+    "reuse_policy": "global"
+  }
+]

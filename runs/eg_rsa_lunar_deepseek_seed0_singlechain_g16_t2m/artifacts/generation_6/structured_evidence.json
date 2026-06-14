@@ -1,0 +1,96 @@
+{
+  "generation": 6,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g6_c0",
+      "parent_ids": [
+        "g2_c0"
+      ],
+      "status": "ok",
+      "selection_score": 205.07294905128046,
+      "private_eval_return": 205.07294905128046,
+      "generated_return": 1217.4121513863008,
+      "generated_minus_private": 1012.3392023350203,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 1012.3392023350203,
+        "action_mean": 1.5651017214397496,
+        "action_std": 0.9230501323185266,
+        "episode_length_mean": 639.0,
+        "component_returns": {
+          "shaping": 1088.9966189588765,
+          "velocity_penalty": -16.05789747057269,
+          "angle_penalty": -65.64762797491562,
+          "fuel_efficiency": 0.0,
+          "terminal": 210.1210578729128
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"The previous generation (g5) dramatically improved private_eval_return from -120.9 to -10.8 by increasing shaping, but the agent still fails to land (terminal reward 0.0). The angle penalty at -243.9 is now the dominant negative component, likely preventing the agent from making the final descent. To fix this: (1) reduce angle penalty per-step survival from -0.3 to -0.1 and angle scaling from 0.2 to 0.05, targeting -50 to -80 per episode; (2) reduce shaping multiplier from 5.0 to 3.0 so shaping (~900) is about 60% of terminal bonus (1500); (3) keep velocity penalty at -0.15 to target -20 per episode; (4) increase terminal bonus from 1500 to 2000 and soften landing angle tolerance from 0.2 to 0.3 radians; (5) add a soft landing bonus of 0.5 * exp(-2.0*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge proximity and touchdown.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"3.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Moderate shaping reward for proximity to pad, targeting ~900 per episode.\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.15 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Mild penalty on horizontal and vertical velocity to encourage controlled descent.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.1 - 0.05 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Reduced penalty on angle and angular velocity, targeting -50 to -80 per episode.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.0\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Fuel penalty removed to avoid discouraging necessary engine use.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"2000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 0.5 * np.exp(-2.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3])))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus for successful landing with softened angle tolerance, plus soft landing bonus for low velocity near ground.",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(3.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.15 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.1 - 0.05 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.0)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(2000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 0.5 * np.exp(-2.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3]))))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "The previous generation (g5) dramatically improved private_eval_return from -120.9 to -10.8 by increasing shaping, but the agent still fails to land (terminal reward 0.0). The angle penalty at -243.9 is now the dominant negative component, likely preventing the agent from making the final descent. To fix this: (1) reduce angle penalty per-step survival from -0.3 to -0.1 and angle scaling from 0.2 to 0.05, targeting -50 to -80 per episode; (2) reduce shaping multiplier from 5.0 to 3.0 so shaping (~900) is about 60% of terminal bonus (1500); (3) keep velocity penalty at -0.15 to target -20 per episode; (4) increase terminal bonus from 1500 to 2000 and soften landing angle tolerance from 0.2 to 0.3 radians; (5) add a soft landing bonus of 0.5 * exp(-2.0*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge proximity and touchdown."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g6_c0",
+      "parent_ids": [
+        "g2_c0"
+      ],
+      "status": "ok",
+      "selection_score": 205.07294905128046,
+      "private_eval_return": 205.07294905128046,
+      "generated_return": 1217.4121513863008,
+      "generated_minus_private": 1012.3392023350203,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 1012.3392023350203,
+        "action_mean": 1.5651017214397496,
+        "action_std": 0.9230501323185266,
+        "episode_length_mean": 639.0,
+        "component_returns": {
+          "shaping": 1088.9966189588765,
+          "velocity_penalty": -16.05789747057269,
+          "angle_penalty": -65.64762797491562,
+          "fuel_efficiency": 0.0,
+          "terminal": 210.1210578729128
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"The previous generation (g5) dramatically improved private_eval_return from -120.9 to -10.8 by increasing shaping, but the agent still fails to land (terminal reward 0.0). The angle penalty at -243.9 is now the dominant negative component, likely preventing the agent from making the final descent. To fix this: (1) reduce angle penalty per-step survival from -0.3 to -0.1 and angle scaling from 0.2 to 0.05, targeting -50 to -80 per episode; (2) reduce shaping multiplier from 5.0 to 3.0 so shaping (~900) is about 60% of terminal bonus (1500); (3) keep velocity penalty at -0.15 to target -20 per episode; (4) increase terminal bonus from 1500 to 2000 and soften landing angle tolerance from 0.2 to 0.3 radians; (5) add a soft landing bonus of 0.5 * exp(-2.0*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge proximity and touchdown.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"3.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Moderate shaping reward for proximity to pad, targeting ~900 per episode.\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.15 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Mild penalty on horizontal and vertical velocity to encourage controlled descent.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.1 - 0.05 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Reduced penalty on angle and angular velocity, targeting -50 to -80 per episode.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.0\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Fuel penalty removed to avoid discouraging necessary engine use.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"2000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 0.5 * np.exp(-2.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3])))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus for successful landing with softened angle tolerance, plus soft landing bonus for low velocity near ground.",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(3.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.15 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.1 - 0.05 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.0)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(2000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 0.5 * np.exp(-2.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3]))))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "The previous generation (g5) dramatically improved private_eval_return from -120.9 to -10.8 by increasing shaping, but the agent still fails to land (terminal reward 0.0). The angle penalty at -243.9 is now the dominant negative component, likely preventing the agent from making the final descent. To fix this: (1) reduce angle penalty per-step survival from -0.3 to -0.1 and angle scaling from 0.2 to 0.05, targeting -50 to -80 per episode; (2) reduce shaping multiplier from 5.0 to 3.0 so shaping (~900) is about 60% of terminal bonus (1500); (3) keep velocity penalty at -0.15 to target -20 per episode; (4) increase terminal bonus from 1500 to 2000 and soften landing angle tolerance from 0.2 to 0.3 radians; (5) add a soft landing bonus of 0.5 * exp(-2.0*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge proximity and touchdown."
+    }
+  ],
+  "failed_candidates": []
+}

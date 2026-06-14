@@ -1,0 +1,56 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Per-step survival penalty is too weak relative to positive per-step shaping reward.",
+    "observation": "Adding a -0.1 per-step survival penalty while shaping provides ~1.44 per step resulted in a net positive reward for hovering, causing the agent to survive the full 1000 steps and accumulate 1444.7 shaping, leading to a catastrophic drop in private return from 267.8 to 28.7.",
+    "explanation": "The survival penalty (-0.1) was negligible compared to the shaping reward (~1.44 per step). The agent learned to hover indefinitely, avoiding landing, because the net per-step reward was positive. This caused the episode length to increase to the maximum (1000 steps) and the terminal bonus to drop, severely misaligning the generated and private returns.",
+    "recommendation": "Ensure the per-step penalty is large enough to make the net per-step reward (shaping + penalty) negative when the agent is not actively landing. For shaping of ~1.44 per step, the survival penalty should be at least -1.5 per step to force the agent to seek the terminal bonus.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Reducing a dominant per-step component without considering the agent's ability to extend episode length.",
+    "observation": "Reducing the shaping multiplier from 3.0 to 2.0 (a 1.5x reduction) was insufficient because the agent exploited the longer episode duration (1000 steps vs. 289 steps) to accumulate more shaping total (1444.7 vs. 370.6), worsening the generated-private gap from 534.5 to 1484.8.",
+    "explanation": "A per-step reduction in an over-dominant component can backfire if the agent responds by extending the episode length. The total accumulated reward from that component may actually increase, defeating the purpose of the reduction. The lesson that a 3-5x reduction is reasonable needs refinement: the reduction must account for potential increases in episode duration.",
+    "recommendation": "When reducing a dominant per-step component, simulate or estimate the maximum possible total accumulation over a full episode. If the agent can survive longer, the per-step multiplier may need to be reduced more aggressively (e.g., 0.5x or lower) to ensure total accumulation decreases.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal bonus is too small relative to the net per-step reward accumulated over a full episode.",
+    "observation": "The terminal bonus averaged 250.0, while the net per-step total (shaping 1444.7 minus survival penalty -100.0) was 1344.7. The terminal bonus was only 0.19x the net per-step total, making landing unattractive compared to hovering.",
+    "explanation": "For the agent to prefer landing, the terminal bonus must be significantly larger than the maximum reward it can accumulate by avoiding termination. With a net per-step total of ~1344.7 over 1000 steps, a terminal bonus of 500 (or 250 average) was insufficient. The ratio of terminal bonus to net per-step total was far too low.",
+    "recommendation": "Target a terminal bonus that is 3-5x the largest net per-step component total over a full episode. If net per-step total over 1000 steps is ~1300, the terminal bonus should be at least 3900-6500. Alternatively, increase the survival penalty to make the net per-step total negative, reducing the required terminal bonus.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Multiple simultaneous changes to the reward structure can interact in unexpected ways, creating a worse outcome than any single change.",
+    "observation": "Reducing shaping from 3x to 2x, adding a -0.1 survival penalty, and slightly reducing velocity penalty from -0.5 to -0.4 combined to cause a 9.3x drop in private return (267.8 to 28.7). The interaction of these changes created a reward landscape where hovering was more attractive than landing, undoing the progress from the previous generation.",
+    "explanation": "Each individual change seemed reasonable in isolation, but their combined effect was catastrophic. The shaping reduction was too small, the survival penalty was too weak, and the velocity penalty reduction made hovering easier. The agent exploited the new balance to maximize per-step reward without landing.",
+    "recommendation": "When making multiple changes, simulate or estimate the expected per-step and total-episode reward balance before implementation. Consider making changes incrementally across generations (one per generation) to isolate their effects and avoid catastrophic interactions.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Generated-private gap is a reliable diagnostic for severe reward misalignment.",
+    "observation": "The generated-private gap increased from 534.5 (2x private return) in gen2 to 1484.8 (52x private return) in gen3, correctly identifying severe misalignment. The private return dropped from 267.8 to 28.7, confirming the diagnostic's value.",
+    "explanation": "A large generated-private gap indicates that the generated reward is not aligned with the hidden evaluator's objective. When the gap exceeds 2-3x the private return, it is a strong signal that the reward structure needs fundamental rebalancing. In this case, the gap of 52x private return correctly predicted the catastrophic drop in performance.",
+    "recommendation": "Monitor the generated-private gap as the primary diagnostic. If the gap exceeds 3x the private return, treat it as a critical failure and consider a major rebalancing of components, not minor adjustments. A gap of 52x requires a complete rethink of the reward structure.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Episode length is a key diagnostic for agent behavior: very high length indicates avoidance of termination.",
+    "observation": "Episode length increased from 289.5 steps in gen2 to 1000 steps (the maximum) in gen3, confirming the agent was avoiding landing and instead hovering indefinitely. This diagnostic correctly identified the root cause of the performance drop.",
+    "explanation": "When the agent can survive the full episode without landing, it indicates that the reward structure makes landing less attractive than continuing. The episode length diagnostic directly reveals whether the agent is actively seeking the terminal condition or avoiding it. In this case, the maximum episode length was a clear red flag.",
+    "recommendation": "Monitor episode length as a primary diagnostic. If episode length is near the maximum (e.g., >500 steps in a 1000-step environment), it is a strong indicator that the agent is avoiding termination. Immediately investigate the balance between per-step rewards and terminal bonus, and consider increasing survival penalties or terminal rewards.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  }
+]

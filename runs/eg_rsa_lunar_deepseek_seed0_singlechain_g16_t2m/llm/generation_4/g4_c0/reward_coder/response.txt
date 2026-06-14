@@ -1,0 +1,38 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "rationale": "The previous generation (g3_c0) failed catastrophically: the agent survived the full 1000 steps without landing because the per-step survival penalty (-0.1) was far too weak relative to shaping (~1.44 per step). The generated-private gap exploded to 1484.8 (52x private return). To fix this, we dramatically increase the survival penalty to -1.5 per step (making net per-step reward negative), reduce shaping to 1.0x, and increase terminal bonus to 1000. This targets: shaping ~50-100, velocity -20, angle -10, fuel -20, survival -1500, terminal 1000. The net per-step reward will be negative (~-1.5) when not landing, forcing the agent to seek the terminal bonus. This is a single major change (penalty magnitude) from g2_c0, which had private return 267.8.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "1.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [-1000.0, 1000.0],
+      "description": "Reduced shaping multiplier to 1.0 to prevent accumulation over long episodes."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.5 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [-1000.0, 1000.0],
+      "description": "Moderate penalty on horizontal and vertical velocity to encourage controlled descent."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [-1000.0, 1000.0],
+      "description": "Penalize large angle and angular velocity."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.1 * float(action == 2) - 0.05 * float(action == 1 or action == 3)",
+      "clip": [-1000.0, 1000.0],
+      "description": "Small penalty per engine activation to encourage fuel efficiency."
+    },
+    {
+      "id": "terminal",
+      "expression": "1000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.3 and abs(obs[3]) < 0.3 and abs(obs[4]) < 0.2)",
+      "clip": [-1000.0, 1000.0],
+      "description": "Large terminal bonus (1000) for successful landing with moderate tolerances."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [-1000.0, 1000.0]
+}

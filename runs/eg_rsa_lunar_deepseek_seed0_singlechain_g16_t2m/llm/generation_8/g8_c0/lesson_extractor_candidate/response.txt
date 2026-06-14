@@ -1,0 +1,56 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal bonus is very large (2500) relative to other reward components",
+    "observation": "Candidate g7 achieved generated return ~800-1000 but private return regressed from +205 to -33, with action mean 1.9997 indicating full-throttle rushing to pad.",
+    "explanation": "A dominant terminal bonus incentivizes the agent to ignore smooth guidance and velocity/angle penalties, maximizing thrust to reach the pad quickly, leading to uncontrolled descent and poor private evaluator scores.",
+    "recommendation": "Keep terminal bonus moderate (e.g., 1500) and ensure it does not overwhelm other components; use shaping and penalties to encourage controlled behavior.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal condition does not require leg contact but has strict positional and velocity tolerances",
+    "observation": "Candidate g8_c0 with terminal bonus 1500 and tolerances (pos<0.15, v<0.5, angle<0.3) still produced private return -11.75 despite generated return 2822.",
+    "explanation": "The large generated-private gap (2834) suggests the agent learned to exploit the soft landing bonus (2.0*exp(...)) and shaping to accumulate high generated return without satisfying the private evaluator's landing criteria, possibly because the tolerances are still too tight or the soft landing bonus creates a local optimum.",
+    "recommendation": "Ensure terminal condition tolerances align with private evaluator's landing definition; consider making the soft landing bonus conditional on proximity to pad to avoid degenerate hovering that generates high reward without landing.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Soft landing bonus uses continuous exponential functions of position and velocity",
+    "observation": "Candidate g8_c0's soft landing bonus (2.0*exp(-5*|y|)*exp(-0.5*(|vx|+|vy|))) contributed to a generated return of 2822 but private return was only -11.75.",
+    "explanation": "The soft landing bonus provides continuous reward for being near the pad with low velocity, but the agent may hover indefinitely to collect this reward without actually landing, leading to a large generated-private gap.",
+    "recommendation": "Limit the duration or magnitude of continuous bonuses to prevent infinite exploitation; consider decaying the bonus over time or making it conditional on progress toward landing.",
+    "confidence": 0.75,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Fuel efficiency penalty is small (-0.05) and only applies to main engine action (action==2)",
+    "observation": "Candidate g8_c0's fuel efficiency penalty is -0.05 per step when action==2, but action mean is 1.9983 (near full throttle), indicating the penalty is too weak to discourage continuous main engine use.",
+    "explanation": "A per-step penalty of -0.05 is negligible compared to the shaping and terminal rewards (hundreds to thousands), so the agent ignores it and uses main engine constantly.",
+    "recommendation": "Increase fuel efficiency penalty magnitude or make it proportional to thrust level (e.g., -0.1 * action magnitude) to meaningfully penalize excessive thrust.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Generated return is very high (2822) but private return is low (-11.75), indicating reward hacking",
+    "observation": "Candidate g8_c0 has generated return 2822 but private return -11.75, with a gap of 2834.",
+    "explanation": "The reward function is being exploited: the agent maximizes generated reward by hovering near the pad (shaping + soft landing bonus) without achieving the private evaluator's landing criteria, resulting in a large mismatch.",
+    "recommendation": "Reduce the magnitude of continuous rewards (shaping, soft landing) or make them conditional on actual landing progress; ensure terminal reward is the primary source of positive signal and is aligned with private evaluator's definition of success.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Candidate is direct child of g2_c0 (parent with very high shaping and terminal rewards)",
+    "observation": "Candidate g8_c0 inherits from g2_c0, which likely had high shaping and terminal rewards, and retains a large generated-private gap.",
+    "explanation": "Inheriting a reward structure with dominant positive components (shaping, terminal) without sufficient penalties or alignment adjustments can propagate reward hacking behavior across generations.",
+    "recommendation": "When mutating from a parent with high generated-private gap, prioritize reducing component magnitudes or adding constraints to prevent exploitation.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  }
+]

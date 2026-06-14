@@ -1,0 +1,49 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal success reward is set to +300, survival bonus to +0.5, and distance progress reward is added with coefficient 0.5",
+    "observation": "The candidate achieved a high generated return (-87.65) but a much lower private_eval_return (-117.91), with a gap of 30.26. The distance_reward component was very negative (-69.70), and velocity_penalty was also quite negative (-37.47), while terminal reward was only +20.25 on average.",
+    "explanation": "The large generated/private gap indicates the reward shaping did not transfer well to the hidden evaluator. The distance_reward and velocity_penalty components dominated with large negative values, while the terminal reward average (+20.25) was far below the +300 success reward, suggesting successful landings were rare. The survival bonus (+0.5 per step) was likely overwhelmed by the negative components, and the distance progress reward (0.5 * (prev_dist - current_dist)) may have been unstable or insufficient to counteract the negative distance penalty (-1.0 * sqrt(x^2+y^2)).",
+    "recommendation": "Reduce the negative distance_reward coefficient or clip range to prevent it from dominating. Consider rebalancing components so that positive incentives (progress, survival) are not drowned out by negative penalties. Verify that the landing condition is achievable by checking if the threshold values match the environment's termination logic.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Using next_obs for distance progress reward (0.5 * (prev_dist - current_dist)) alongside a negative distance penalty (-1.0 * sqrt(next_obs[0]^2 + next_obs[1]^2))",
+    "observation": "The distance_reward component had a large negative mean (-69.70) despite the progress term, indicating the negative penalty dominated.",
+    "explanation": "The progress reward (0.5 * reduction in distance) is per-step and bounded by the maximum possible reduction, while the negative penalty (-1.0 * current distance) accumulates over time. Over a 71.5-step episode, the penalty can far exceed the progress reward, especially if the lander drifts away from the pad. This creates an overall negative distance component that discourages exploration.",
+    "recommendation": "Either remove the negative distance penalty entirely and rely solely on progress reward, or apply a smaller coefficient (e.g., -0.1) to the distance penalty. Alternatively, clip the distance penalty to a tighter range (e.g., [-1.0, 0.0]) to prevent it from dominating the total reward.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal reward condition uses next_obs[6] == 1.0 and next_obs[7] == 1.0 as landing indicators",
+    "observation": "The average terminal reward was only +20.25, far below the +300 success reward, suggesting successful landings were extremely rare or absent.",
+    "explanation": "The indices next_obs[6] and next_obs[7] may not correspond to landing leg contact flags in this environment. If the observation space is different (e.g., fewer dimensions or different ordering), the condition may never be satisfied, preventing the +300 reward from being achieved. The -50 crash penalty and +0.5 survival bonus then dominate, resulting in a low average terminal reward.",
+    "recommendation": "Verify the observation space structure and correct indices for landing contact flags. If the environment uses a different termination signal (e.g., done flag with info), use that instead. Consider using a simpler success condition based on done and info fields.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Candidate generated from parent g1_c0 with repair_attempts = 0 and repair_success = false",
+    "observation": "The candidate was generated without any repair attempts, yet the generated/private gap is large (30.26) and component imbalance is severe.",
+    "explanation": "The mutation from the parent may have introduced changes (increased terminal reward, added progress term) that were not validated or repaired before selection. The lack of repair attempts suggests the candidate passed validation but still had fundamental design flaws that were not caught.",
+    "recommendation": "Incorporate automated checks for component balance (e.g., ratio of positive to negative components) and generated/private gap thresholds during generation. If the gap exceeds a certain limit, trigger a repair attempt even if validation passes.",
+    "confidence": 0.75,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Increasing terminal success reward from a lower value to +300 and survival bonus to +0.5",
+    "observation": "Despite the large terminal reward, the average terminal component was only +20.25, indicating the reward was rarely earned.",
+    "explanation": "Simply increasing the magnitude of a rarely-achieved reward does not improve learning if the condition is too strict or the reward is not reachable. The +300 reward acts as a sparse signal that may not be encountered during training, especially if the exploration policy is not guided toward it.",
+    "recommendation": "When increasing sparse rewards, also ensure that shaping rewards (e.g., progress, distance) provide sufficient gradient to guide the agent toward the terminal condition. Consider using a smaller success reward with a more lenient condition initially, then increasing strictness later.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  }
+]
+```

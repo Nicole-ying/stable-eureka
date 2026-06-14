@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal and soft landing bonuses are very large relative to per-step penalties, and the agent can hover near the pad indefinitely.",
+    "observation": "Candidate g9_c0 rolled back parent g8 which had high generated return (2822) but a huge generated-private gap (2834) and degenerate action mean near 2.0, indicating the agent exploited hovering near the pad for continuous reward instead of landing.",
+    "explanation": "When terminal bonuses are large and soft landing bonuses provide continuous reward near the pad without requiring a landing, the agent learns to hover to collect shaping and soft landing rewards, never triggering the terminal condition. This leads to inflated generated returns that do not match the private evaluator's goal of successful landing.",
+    "recommendation": "Remove soft landing bonuses from terminal components. Add strong per-step penalties (e.g., throttle penalty and survival cost) that compete with terminal bonuses to create urgency and prevent hovering exploitation.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Component returns show extreme imbalance: velocity_penalty dominates at -81.85, shaping is +9.62, and all other components are near zero.",
+    "observation": "In candidate g9_c0, component_returns show velocity_penalty = -81.85, shaping = 9.62, angle_penalty = -0.81, fuel_efficiency = -4.06, terminal = 0.0, leading to a total generated return of -77.11 and a large generated-private gap of 37.89.",
+    "explanation": "The velocity_penalty coefficient (-0.8) is too strong compared to other components, causing the agent to receive a large negative reward every step. The shaping reward is too weak to compensate, and the fuel_efficiency penalty (-0.2 for main engine, -0.05 survival cost) is not enough to encourage landing. The terminal bonus (1000) is never earned because the agent cannot overcome the velocity penalty to reach the landing zone.",
+    "recommendation": "Balance component magnitudes: reduce velocity_penalty coefficient, increase shaping reward coefficient, and ensure the sum of per-step penalties is not so large that the agent cannot accumulate enough reward to reach terminal. Tune coefficients so that terminal bonus is achievable and dominates over per-step costs when landing successfully.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated return (-77.11) is much lower than the private evaluator return (-114.99), indicating misalignment but with generated return being higher (less negative).",
+    "observation": "Candidate g9_c0 has generated return -77.11 vs private_eval_return -114.99, a gap of +37.89. The agent is performing better according to the generated reward than the private evaluator, which suggests the generated reward is too permissive or not penalizing the same behaviors.",
+    "explanation": "The generated reward components are not aligned with the private evaluator's criteria. The agent receives less negative reward than the private evaluator assigns, meaning the generated reward fails to penalize behaviors that the private evaluator considers failures (e.g., crashing, not landing properly).",
+    "recommendation": "Use black-box selection feedback to reduce the generated/private mismatch. Adjust component coefficients and terminal conditions to more closely match the private evaluator's scoring. Monitor generated vs private returns across episodes to identify which behaviors are over-rewarded or under-penalized.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Action mean is 0.13 and action std is 0.54, indicating the agent is using a variety of actions but not heavily favoring main engine (action 2) or side engines.",
+    "observation": "Candidate g9_c0 has action_mean=0.13 and action_std=0.54, suggesting the agent is not collapsing to a single action but is not aggressively using main engine to land either.",
+    "explanation": "The moderate action mean and std suggest the agent is exploring but not converging to a landing strategy. The strong velocity penalty and weak shaping may cause the agent to avoid main engine use (action 2) because it incurs a -0.2 penalty, and the survival cost (-0.05) encourages shorter episodes but the agent cannot reach the landing zone.",
+    "recommendation": "Ensure that the throttle penalty is not so high that it discourages using the main engine to land. Consider making the throttle penalty conditional on being far from the pad or reducing it to allow controlled burns. The survival cost should be balanced so that landing is incentivized over crashing.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Rolling back to a parent with high generated return but large generated-private gap and degenerate action mean.",
+    "observation": "Candidate g9_c0 was created by rolling back to parent g8 which had generated return 2822, generated-private gap 2834, and action mean 1.9983.",
+    "explanation": "Rolling back to a parent with a huge generated-private gap and degenerate action mean is risky because the parent's high generated return was likely due to reward exploitation (hovering), not genuine landing skill. The new candidate inherits the same structural flaws (large terminal bonus, soft landing bonus) and adds strong penalties that may overcorrect.",
+    "recommendation": "When rolling back, prefer parents with moderate generated-private gap and non-degenerate action distributions. If rolling back to a high-gap parent, carefully redesign components to eliminate exploitation opportunities rather than just adjusting coefficients.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

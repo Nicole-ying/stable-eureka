@@ -1,0 +1,65 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Private evaluator return is on a consistent downward trend across multiple generations (e.g., -111.63 → -116.68 → -120.41) while generated return improves.",
+    "observation": "Generation 9 improved generated return by +20.55 but private return declined by -3.73, widening the generated-private gap to +55.86.",
+    "explanation": "Incremental adjustments to thresholds and component weights are insufficient when the private evaluator's criteria are fundamentally different from what the generated reward optimizes. The agent learns to exploit the generated reward's shaping signals (e.g., progress reward) without achieving the behavior the private evaluator values, causing a persistent misalignment that incremental tuning cannot fix.",
+    "recommendation": "Consider a more radical restructuring of the reward function, such as removing shaping components that don't align with private return, or directly mimicking the private evaluator's likely criteria (e.g., strict landing success, fuel efficiency) instead of incremental parameter changes.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Progress reward improves generated return but does not improve private evaluator return, and the generated-private gap widens.",
+    "observation": "Adding +0.3 * distance decrease progress reward improved generated return by +20.55 but private return declined by -3.73. The gap widened from +31.58 to +55.86.",
+    "explanation": "The progress reward incentivizes the agent to reduce distance to the pad, which improves the generated reward score. However, the private evaluator may not value distance reduction as much as other criteria (e.g., smooth landing, terminal success). The agent learns to exploit the progress reward signal without achieving successful landings, causing the private return to drop.",
+    "recommendation": "If progress reward does not improve private return, either remove it entirely or increase its strength significantly (e.g., coefficient 0.5) combined with relaxed terminal thresholds to force the agent toward actual landing success. Monitor whether the private return improves when the agent achieves more terminal successes.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal component average is negative despite some successful landings (e.g., -25.0 average with +400 success and -25 crash penalties).",
+    "observation": "The terminal component average of -25.0 with 0.15 thresholds and +400 reward suggests the agent achieves some successes (+400) but crashes frequently (-25). The ratio of successes to crashes is too low to produce a positive terminal component.",
+    "explanation": "When the success reward is high but the crash penalty is moderate, a negative terminal average indicates the agent fails to land successfully in the majority of episodes. This is likely because the terminal thresholds (0.15) are too strict for the current policy to achieve consistently, or the per-step penalties discourage reaching the landing zone within the time limit.",
+    "recommendation": "Further relax terminal thresholds (e.g., position<0.2, velocity<0.2, angle<0.15) or reduce the crash penalty (e.g., to -10) to increase the success-to-crash ratio. Alternatively, increase the terminal success reward to +500 to make success more rewarding relative to per-step costs.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Strict terminal thresholds (e.g., 0.15) combined with a moderate success reward (e.g., +400) and moderate crash penalty (-25) fail to produce consistent landings.",
+    "observation": "Generation 9 used thresholds 0.15/0.15/0.15, success reward +400, crash penalty -25. The terminal component average was -25.0, indicating the agent still crashes most episodes. Previous generations with stricter thresholds (0.1) and higher crash penalty (-50) caused the agent to crash every episode.",
+    "explanation": "The 0.15 thresholds are still too strict for the agent to achieve consistently. The agent's action variance (std 0.57) and episode length (75.5 steps) suggest it is exploring but cannot consistently meet all three conditions simultaneously. The success reward of +400 is insufficient to overcome the accumulated negative per-step penalties when the agent does land successfully.",
+    "recommendation": "Relax thresholds further to position<0.2, velocity<0.2, angle<0.15. Increase terminal success reward to +500. Reduce crash penalty to -10. These changes make success more achievable and rewarding relative to per-step costs, which should increase the success rate and improve private return.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The agent survives longer and takes more varied actions (action mean increases) but private return continues to decline.",
+    "observation": "Generation 9: episode length increased from 67.8 to 75.5 steps, action mean increased from 0.084 to 0.150 (+78.6%), but private return dropped from -116.68 to -120.41.",
+    "explanation": "Longer episodes and higher action variance indicate the agent is exploring more and not dying immediately. However, this exploration is not translating into successful landings according to the private evaluator. The agent may be learning to survive longer by staying away from the pad (to avoid crashes) rather than attempting landings, which satisfies the generated reward's per-step penalties but not the private evaluator's landing criteria.",
+    "recommendation": "Ensure the reward function strongly incentivizes actual landing attempts by increasing the terminal success reward relative to per-step penalties. Reduce the per-step distance/velocity penalties to allow the agent to approach the pad without incurring large negative costs that discourage landing attempts.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Multiple parameter changes in a single generation (relaxing thresholds, reducing crash penalty, increasing success reward, adding progress reward) widen the generated-private gap.",
+    "observation": "Generation 9 changed 4 parameters simultaneously: thresholds 0.1→0.15, crash penalty -50→-25, success reward +300→+400, added progress reward. The gap widened from +31.58 to +55.86.",
+    "explanation": "Changing too many parameters at once makes it difficult to attribute the gap change to any single modification. The complex interaction between parameters (e.g., progress reward + relaxed thresholds) may create unintended exploitation opportunities that improve generated return but harm private return. A more controlled approach with one or two changes per generation allows better diagnosis of what affects the private evaluator.",
+    "recommendation": "Adjust only one or two parameters per generation. For example, first relax thresholds alone, then adjust rewards in subsequent generations. Monitor how each change affects both generated and private returns before making further modifications.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Base distance penalty (-0.25 per unit distance) combined with a small progress reward (+0.3) produces a negative distance_reward component despite the agent surviving longer.",
+    "observation": "Distance_reward component was -18.73, velocity_penalty was -19.49. The agent survives longer (75.5 steps) but accumulates large negative per-step penalties that outweigh the progress reward.",
+    "explanation": "The base distance penalty of -0.25 per unit distance is too high relative to the progress reward of +0.3 per unit distance reduction. On average, the agent's distance to the pad does not decrease enough per step to offset the penalty, resulting in a net negative distance reward. This discourages the agent from approaching the pad because any approach is penalized more than rewarded.",
+    "recommendation": "Reduce the base distance penalty to -0.15 and increase the progress reward coefficient to 0.5. This makes approaching the pad net positive per step, encouraging the agent to move toward the landing zone. Monitor whether this increases the success rate and improves private return.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  }
+]

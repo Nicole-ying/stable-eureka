@@ -1,0 +1,49 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A survival bonus (e.g., +0.5 per timestep) is included alongside a sparse terminal reward in a reward function, and the private evaluator uses predominantly sparse terminal rewards.",
+    "observation": "In generation 3, a survival bonus of +0.5 per timestep contributed approximately +37.7 over 75.4 steps to the generated return, while the private evaluator return was -94.03. The generated-private gap exploded to +168.26, indicating the survival bonus is a major source of misalignment.",
+    "explanation": "The survival bonus provides a continuous positive signal that the private evaluator does not reward, causing the generated return to be overly optimistic relative to the private evaluator's assessment. This misalignment leads to a large generated-private gap.",
+    "recommendation": "Remove the survival bonus (set to 0.0) to align per-step rewards with the private evaluator's likely sparse reward structure. This reduces the generated-private gap.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The reward function includes a distance penalty based on next_obs[0] and next_obs[1] and a progress reward based on the reduction in distance from obs to next_obs.",
+    "observation": "Reducing the base distance penalty coefficient from -1.0 to -0.5 and increasing the progress reward coefficient from 0.5 to 1.0 improved the private evaluator return by +23.88 points (from -117.91 to -94.03).",
+    "explanation": "A lower base distance penalty reduces the constant negative pressure on the agent, while a higher progress reward incentivizes movement toward the target. This combination encourages effective exploration and landing behavior without excessive penalization.",
+    "recommendation": "Use a base distance penalty coefficient of -0.5 and a progress reward coefficient of 1.0 when shaping distance-based rewards in similar environments.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A terminal success reward of +500 is used, and the agent's action mean is close to 1.0 (suggesting it avoids movement to minimize penalties).",
+    "observation": "With a terminal success reward of +500 and reduced per-step penalties, the generated return became positive (+74.23) but the generated-private gap was very large (+168.26). The action mean of 0.99 indicates the agent may be exploiting the survival bonus by staying near the starting position rather than actively attempting to land.",
+    "explanation": "A high terminal success reward combined with a survival bonus can incentivize the agent to avoid risky maneuvers and simply survive, leading to a positive generated return that does not reflect actual landing success as judged by the private evaluator.",
+    "recommendation": "Reduce the terminal success reward from +500 to +300 to lower the incentive for passive survival behavior and reduce the generated-private gap. Ensure per-step rewards do not encourage inaction.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The reward function includes a fuel_efficiency component that is always zero because the condition for nonzero reward is never triggered.",
+    "observation": "The fuel_efficiency component returned 0.0 throughout generation 3, as in previous generations, because the action-based condition (action==2) was never met.",
+    "explanation": "An always-zero component adds unnecessary complexity to the reward function without contributing any signal. It may also confuse the learning process by adding a constant zero term.",
+    "recommendation": "Remove any always-zero components from the reward function to simplify it and eliminate potential confusion.",
+    "confidence": 1.0,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The reward function uses position, velocity, and angle thresholds without contact flags to determine terminal success.",
+    "observation": "The terminal component achieved a return of +152.20, indicating that the agent is frequently meeting the success condition (distance < 0.1, velocity < 0.1, angle < 0.1) and earning the +500 reward.",
+    "explanation": "Using simple threshold-based conditions on position, velocity, and angle can effectively detect successful landings when the environment's definition of success aligns with these criteria. The high terminal return suggests the agent is learning to meet these thresholds.",
+    "recommendation": "Continue using position/velocity/angle thresholds for terminal success detection if they align with the environment's success criteria, but verify that the private evaluator uses similar conditions to avoid misalignment.",
+    "confidence": 0.75,
+    "reuse_policy": "same_env"
+  }
+]
+```

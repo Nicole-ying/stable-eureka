@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Shaping reward component dominates the total reward, overshadowing the terminal landing bonus.",
+    "observation": "Candidate g7_c0 has a generated_return of 1035.6 but a private_eval_return of -33.3, with the shaping component contributing 363.0 and the terminal component contributing 753.6, yet the private evaluator penalizes the agent heavily.",
+    "explanation": "Despite reducing the shaping multiplier from 3.0 to 1.5, the shaping reward still provides a strong proximity signal that encourages hovering rather than committing to landing. The terminal bonus of 2500 is rarely achieved because the landing criteria (position < 0.2, velocity < 0.8, angle < 0.4) may still be too strict or the agent learns to maximize shaping instead of landing. The large generated_private_gap of 1068.96 indicates the reward structure misaligns with the private evaluator's objectives.",
+    "recommendation": "Further reduce the shaping multiplier to 0.5 or 1.0 to weaken the hovering incentive, and increase the soft landing bonus (e.g., from 2.0 to 5.0) to provide a stronger gradient toward landing. Consider adding a small penalty for hovering or time spent to encourage earlier landing attempts.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Terminal reward component includes a large bonus (2500) but is rarely triggered, leading to high variance in generated return.",
+    "observation": "The terminal component has a maximum clip of 1000, but the expression includes 2500 * conditions. The actual clipped value is 1000 when conditions are met, but the component_returns show terminal at 753.6, suggesting the bonus is achieved partially via the soft landing term.",
+    "explanation": "The terminal bonus is clipped to 1000, making the 2500 ineffective. The soft landing term (2.0 * exp) provides continuous reward near landing but is small compared to shaping. The mismatch between the unclipped expression and the clip range reduces the intended impact of the terminal bonus.",
+    "recommendation": "Adjust the terminal bonus to be within the clip range (e.g., set the bonus to 1000 instead of 2500, or increase the clip range to 2500). Ensure the landing criteria are achievable by the policy, possibly by relaxing velocity thresholds further (e.g., abs(obs[2]) < 1.0, abs(obs[3]) < 1.0).",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Reducing shaping multiplier from 3.0 to 1.5 was insufficient to balance component contributions.",
+    "observation": "The previous generation (g2_c0) likely had a higher shaping multiplier, and the reduction to 1.5 still left shaping dominating the total reward (363.0 vs terminal 753.6, but terminal includes soft landing).",
+    "explanation": "A 50% reduction in shaping multiplier was not enough to shift the policy from hovering to landing. The shaping still provides strong positive reward for being near the target, which the agent exploits to maximize total reward without triggering the terminal condition.",
+    "recommendation": "When component imbalance persists after a reduction, apply a more aggressive reduction (e.g., reduce shaping multiplier by 70-80%) or introduce a time-based penalty to discourage hovering. Use the generated_private_gap as a signal: a large gap indicates the reward structure does not match the private evaluator's priorities.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The private evaluator return is negative (-33.3) while the generated return is positive (1035.6), indicating severe misalignment.",
+    "observation": "The generated_private_gap is 1068.96, meaning the reward function produces high reward for behaviors that the private evaluator penalizes.",
+    "explanation": "The reward components (shaping, velocity_penalty, angle_penalty, terminal) collectively reward hovering near the target, but the private evaluator likely expects efficient landing with minimal fuel use or specific trajectory constraints. The large gap suggests the reward function does not capture the true objective.",
+    "recommendation": "Use black-box selection feedback to reduce the generated/private mismatch. Focus on components that align with the private evaluator's likely goals: penalize fuel consumption more strongly (e.g., fuel_efficiency = -0.1 * abs(action[0])), reward smooth descent, and ensure terminal reward is the dominant signal. Avoid trying to infer the private evaluator's formula.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "The terminal reward expression uses a value (2500) that exceeds the component clip range ([-1000, 1000]).",
+    "observation": "The terminal component expression includes '2500.0 * float(done and ...)', but the component is clipped to [-1000, 1000], so the actual reward is capped at 1000. This makes the intended large bonus ineffective.",
+    "explanation": "The reward spec's clip range overrides the raw expression value. The high value in the expression gives a false sense of a large landing bonus, but the clip reduces it to 1000, which may not be sufficient to incentivize landing over hovering.",
+    "recommendation": "Either increase the clip range to match the intended bonus (e.g., clip to [-1000, 2500]) or reduce the bonus to 1000 and ensure it is achievable. Always verify that clip ranges do not nullify the intended magnitude of reward components.",
+    "confidence": 1.0,
+    "reuse_policy": "same_env"
+  }
+]

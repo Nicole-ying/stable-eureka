@@ -1,0 +1,67 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a survival bonus of +0.5 per timestep is present and the private evaluator uses sparse rewards",
+    "observation": "Removing the survival bonus reduced the generated-private gap from +168.26 to +28.86, a reduction of ~139 points",
+    "explanation": "The survival bonus created a large positive per-step signal that the private evaluator did not provide, causing the agent to overvalue staying alive over making progress toward the goal.",
+    "recommendation": "Avoid per-step survival bonuses in this environment; if a small bonus is needed, use a value no larger than +0.1 per timestep.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When terminal success reward is reduced from +500 to +300 and survival bonus is removed",
+    "observation": "The absolute private score dropped only -10.85 points (from -94.03 to -104.88), while the generated-private gap closed from +168.26 to +28.86",
+    "explanation": "The trade-off between reducing the gap and maintaining absolute performance was favorable; the large gap reduction came at a small cost to absolute score.",
+    "recommendation": "Prioritize reducing the generated-private gap even if it causes a modest decrease in absolute private score, as alignment is more important for stable learning.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When per-step penalties accumulate to approximately -60 over 60 steps and the terminal success reward is +300",
+    "observation": "The terminal component became negative (-15.0), indicating the agent crashes more often than succeeds",
+    "explanation": "The per-step penalties (distance, velocity, angle) are too large relative to the terminal reward, making successful landings the exception rather than the rule.",
+    "recommendation": "Reduce per-step penalty coefficients (distance from -0.5 to -0.25, velocity from -0.5 to -0.25, angle from -1.0 to -0.5) or increase the terminal success reward to +400 to make successful landings the dominant outcome.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When an always-zero component (fuel_efficiency) is included in the reward specification",
+    "observation": "The fuel_efficiency component contributed exactly 0.0 to the total reward across all generations",
+    "explanation": "Including a component that always evaluates to zero adds unnecessary complexity and wastes computational resources without providing any learning signal.",
+    "recommendation": "Remove always-zero components from the reward specification entirely to simplify the reward function and reduce cognitive load during design.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When using a base distance penalty combined with a progress reward in a landing environment",
+    "observation": "The distance_reward component remains negative (-24.84) even with a progress reward of 1.0, indicating the agent is not consistently moving toward the landing pad",
+    "explanation": "The base penalty of -0.5 per unit distance outweighs the progress reward when the agent is far from the target or moving slowly toward it.",
+    "recommendation": "Reduce the base distance penalty from -0.5 to -0.25 or increase the progress reward coefficient to 2.0 to ensure the net distance signal is positive when moving toward the pad.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the velocity penalty coefficient is -0.5 and the agent has high action standard deviation (>1.0)",
+    "observation": "The velocity_penalty remains high (-34.15) and the agent is still moving too fast, causing crashes",
+    "explanation": "The high action exploration (std=1.05) combined with a strong velocity penalty creates a conflicting signal: the agent is penalized for exploring high-velocity actions, yet needs to explore to learn.",
+    "recommendation": "Reduce the velocity penalty coefficient to -0.25 to allow more aggressive maneuvering without excessive punishment, or consider using a nonlinear penalty that penalizes only extreme velocities.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When the terminal success condition uses thresholds of position<0.1, velocity<0.1, angle<0.1",
+    "observation": "The agent achieves successful landings infrequently, resulting in a negative terminal component (-15.0)",
+    "explanation": "Strict terminal success thresholds may not align with the private evaluator's criteria, causing the agent to be penalized even when it makes reasonable landing attempts.",
+    "recommendation": "Consider relaxing the terminal success thresholds slightly (e.g., position<0.15, velocity<0.15, angle<0.15) to increase the success rate and provide more positive feedback.",
+    "confidence": 0.6,
+    "reuse_policy": "similar_env"
+  }
+]
+```

@@ -1,0 +1,55 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 4
+Candidate ID: g4_c0
+
+Structured evidence:
+{
+  "generation": 4,
+  "candidate_id": "g4_c0",
+  "parent_ids": [
+    "g3_c0"
+  ],
+  "status": "ok",
+  "selection_score": -104.88232977289245,
+  "private_eval_return": -104.88232977289245,
+  "generated_return": -76.01795548513542,
+  "generated_minus_private": 28.86437428775703,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 28.86437428775703,
+    "action_mean": 0.559463986599665,
+    "action_std": 1.0475616007326254,
+    "episode_length_mean": 59.7,
+    "component_returns": {
+      "distance_reward": -24.83906800322954,
+      "velocity_penalty": -34.14858347564141,
+      "angle_penalty": -2.030304006264487,
+      "fuel_efficiency": 0.0,
+      "terminal": -15.0
+    },
+    "ppo_n_envs": 1,
+    "ppo_vec_env_type": "dummy",
+    "ppo_total_timesteps": 2000000,
+    "ppo_n_steps": 1024,
+    "ppo_batch_size": 64,
+    "ppo_n_epochs": 4,
+    "ppo_gae_lambda": 0.98,
+    "ppo_gamma": 0.999,
+    "ppo_ent_coef": 0.01,
+    "ppo_learning_rate": 0.0003,
+    "ppo_clip_range": 0.2,
+    "ppo_vf_coef": 0.5,
+    "ppo_max_grad_norm": 0.5
+  },
+  "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Based on feedback, remove survival bonus to close the large generated-private gap. Reduce terminal success reward from +500 to +300 to further reduce misalignment. Keep distance_reward base -0.5 and progress +1.0, velocity_penalty -0.5, angle_penalty -1.0, crash penalty -50. Remove fuel_efficiency (always zero).\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.5 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        5.0\n      ],\n      \"description\": \"Base distance penalty (-0.5 per unit distance) plus progress reward (1.0 * reduction in distance)\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Penalty for high linear speed to encourage gentle landing\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-1.0 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Mild penalty for non-zero angle\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - always zero\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (300.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -50.0) + 0.0\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+300), crash penalty (-50), no survival bonus\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_62457a756f\"\n}",
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.5 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 5.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-1.0 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (300.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -50.0) + 0.0)\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+  "llm_rationale": "Based on feedback, remove survival bonus to close the large generated-private gap. Reduce terminal success reward from +500 to +300 to further reduce misalignment. Keep distance_reward base -0.5 and progress +1.0, velocity_penalty -0.5, angle_penalty -1.0, crash penalty -50. Remove fuel_efficiency (always zero)."
+}
+
+Reflection report:
+Based on feedback, remove survival bonus to close the large generated-private gap. Reduce terminal success reward from +500 to +300 to further reduce misalignment. Keep distance_reward base -0.5 and progress +1.0, velocity_penalty -0.5, angle_penalty -1.0, crash penalty -50. Remove fuel_efficiency (always zero).
+
+Return JSON array of lessons. Do not include code blocks.

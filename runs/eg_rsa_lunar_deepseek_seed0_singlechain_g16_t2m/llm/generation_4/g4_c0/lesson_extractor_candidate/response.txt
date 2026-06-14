@@ -1,0 +1,67 @@
+```json
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "shaping component dominates over survival penalty, causing agent to avoid terminal landing and survive full episode",
+    "observation": "In g3_c0, shaping (~1.44 per step) outweighed the weak survival penalty (-0.1 per step), leading to positive net per-step reward and the agent surviving 1000 steps without landing. The generated-private gap reached 1484.8 (52x private return).",
+    "explanation": "When per-step reward is positive without landing, the agent has no incentive to seek the terminal bonus and can exploit infinite episode length. The shaping reward must be smaller than the survival penalty to make non-landing steps net negative.",
+    "recommendation": "Ensure survival penalty magnitude exceeds any per-step shaping reward so that non-terminal steps are net negative, forcing the agent to seek the terminal bonus. Verify expected per-step net reward is negative before training.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "net per-step reward is negative when not landing, forcing agent to seek terminal bonus",
+    "observation": "In g4_c0, the survival penalty (-1.5 per step) was set to dominate shaping (1.0x multiplier, ~1.0 per step max), making net per-step reward negative. However, private return still dropped to -120.9, indicating the agent failed to land despite the penalty structure.",
+    "explanation": "While making net per-step negative is necessary, it is not sufficient. The terminal bonus tolerances or the agent's exploration may still prevent successful landings. Additional factors like landing condition strictness or reward sparsity may hinder learning.",
+    "recommendation": "After ensuring negative net per-step reward, also verify that terminal bonus conditions are reachable by the agent and that the bonus magnitude (e.g., 1000) provides sufficient contrast against accumulated negative rewards over an episode.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "large generated-private gap persists despite negative net per-step reward",
+    "observation": "g4_c0 had a generated-private gap of 79.78 (generated -41.12 vs private -120.90), indicating the reward signal still does not match the hidden evaluator's assessment. The agent's actual performance (private return -120.9) was much worse than the generated estimate.",
+    "explanation": "The generated reward components may not align with the private evaluator's criteria. For example, the terminal bonus conditions might be too strict or the velocity/angle penalties may not reflect the true landing difficulty. The gap shows the reward function is still misaligned.",
+    "recommendation": "Use black-box selection feedback to iteratively adjust component weights and terminal conditions to reduce the generated/private mismatch. Focus on aligning the reward structure with the hidden evaluator's implicit priorities.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "terminal bonus conditions are too strict relative to agent's capability",
+    "observation": "The terminal bonus requires obs[6] > 0.5 and obs[7] > 0.5 (likely leg contact indicators) plus tight position/velocity/angle tolerances. The component return for terminal was 0.0, meaning the agent never achieved a successful landing in this generation.",
+    "explanation": "If the terminal bonus is never achieved, the agent learns from negative per-step rewards only, which may not guide it toward the landing behavior. The strict conditions combined with negative per-step reward can result in learned helplessness or suboptimal policies.",
+    "recommendation": "Relax terminal bonus conditions in early generations (e.g., wider position/velocity tolerances) to provide occasional positive feedback, then tighten gradually. Alternatively, add intermediate shaping rewards that correlate with landing progress.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "fuel efficiency penalty uses discrete action comparisons",
+    "observation": "The fuel_efficiency component applies -0.1 for action==2 and -0.05 for action in {1,3}. This is appropriate for discrete action spaces and does not cause issues.",
+    "explanation": "The discrete action penalty is correctly implemented and does not contribute to the failure. The component return was -0.17, which is negligible relative to other penalties.",
+    "recommendation": "Keep fuel efficiency penalty as a small disincentive for excessive engine use, but ensure it does not dominate the reward signal. Current magnitude is appropriate.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "action statistics show moderate variance (std=0.40) but episode length is short (72.3 steps)",
+    "observation": "Mean action was 0.077 with std 0.403, indicating some action diversity. Episode length of 72.3 steps is much shorter than the maximum 1000, suggesting the agent terminates early (likely crashing or landing). The short episodes combined with negative total return (-120.9) indicate frequent crashes.",
+    "explanation": "The agent is not learning to land successfully (terminal bonus 0.0) and is likely crashing, leading to early termination with accumulated negative rewards. The negative net per-step reward (-1.5) combined with inability to land results in poor performance.",
+    "recommendation": "Consider adding a shaping reward that guides the agent toward safe landing conditions (e.g., rewarding proximity to landing pad with low velocity) rather than relying solely on a hard-to-achieve terminal bonus.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "generation with negative net per-step reward still fails to achieve terminal bonus",
+    "observation": "Despite making net per-step reward negative (-1.5 per step) with shaping at 1.0x and terminal bonus at 1000, the agent never achieved a landing (terminal return 0.0) and private return was -120.9.",
+    "explanation": "The fix from g3_c0 (increasing survival penalty) addressed the infinite episode problem but created a new problem: the agent now crashes before learning to land. The negative per-step reward penalizes all exploration, potentially preventing the agent from discovering the landing behavior.",
+    "recommendation": "Consider a more balanced approach: use moderate negative per-step penalty (e.g., -0.2 to -0.5) combined with intermediate shaping rewards that provide positive feedback for partial progress (e.g., reducing velocity near ground, maintaining upright angle). Avoid extreme negative penalties that discourage exploration.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]
+```

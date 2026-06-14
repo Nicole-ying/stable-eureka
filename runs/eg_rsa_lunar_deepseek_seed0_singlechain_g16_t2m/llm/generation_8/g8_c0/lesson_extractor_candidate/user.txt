@@ -1,0 +1,55 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 8
+Candidate ID: g8_c0
+
+Structured evidence:
+{
+  "generation": 8,
+  "candidate_id": "g8_c0",
+  "parent_ids": [
+    "g2_c0"
+  ],
+  "status": "ok",
+  "selection_score": -11.745809754890525,
+  "private_eval_return": -11.745809754890525,
+  "generated_return": 2822.5199320027255,
+  "generated_minus_private": 2834.265741757616,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 2834.265741757616,
+    "action_mean": 1.9983,
+    "action_std": 0.6536796692570452,
+    "episode_length_mean": 1000.0,
+    "component_returns": {
+      "shaping": 1127.9177008983484,
+      "velocity_penalty": -62.27554940080372,
+      "angle_penalty": -18.564636124114003,
+      "fuel_efficiency": -28.635000000000268,
+      "terminal": 1805.0410318341553
+    },
+    "ppo_n_envs": 1,
+    "ppo_vec_env_type": "dummy",
+    "ppo_total_timesteps": 2000000,
+    "ppo_n_steps": 1024,
+    "ppo_batch_size": 64,
+    "ppo_n_epochs": 4,
+    "ppo_gae_lambda": 0.98,
+    "ppo_gamma": 0.999,
+    "ppo_ent_coef": 0.01,
+    "ppo_learning_rate": 0.0003,
+    "ppo_clip_range": 0.2,
+    "ppo_vf_coef": 0.5,
+    "ppo_max_grad_norm": 0.5
+  },
+  "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft landing ~20, generated return ~800-1000, with private return improving toward positive.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Smooth proximity reward with moderate multiplier (2.0) and faster decay (3.0) to guide toward pad without dominating.\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize high horizontal and vertical velocities to encourage controlled descent.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Moderate penalty on angle and angular velocity to maintain upright orientation.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.05 * float(action == 2)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Small per-step penalty for main engine activation to discourage excessive thrust (action==2).\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 2.0 * np.exp(-5.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3])))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus (1500) for successful landing with relaxed tolerances (no leg contact required). Plus a continuous soft landing bonus (2.0) that rewards being close to the pad with low velocity, bridging the gap to the terminal condition.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_133526ea21\"\n}",
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.05 * float(action == 2))\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 2.0 * np.exp(-5.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3]))))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+  "llm_rationale": "The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft landing ~20, generated return ~800-1000, with private return improving toward positive."
+}
+
+Reflection report:
+The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft landing ~20, generated return ~800-1000, with private return improving toward positive.
+
+Return JSON array of lessons. Do not include code blocks.

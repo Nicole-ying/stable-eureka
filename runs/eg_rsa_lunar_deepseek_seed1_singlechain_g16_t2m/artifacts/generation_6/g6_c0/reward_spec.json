@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_cc14e8210d",
+  "rationale": "Based on feedback, reduce per-step penalties further (distance from -0.5 to -0.25, velocity from -0.5 to -0.25, angle from -1.0 to -0.5) and remove progress reward to simplify. Increase terminal success reward to +500 and reduce crash penalty to -10. Add small survival bonus (+0.05) to reduce net negativity without widening the gap. Relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15 to increase success rate. Remove fuel_efficiency component (always zero).",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2)",
+      "clip": [
+        -5.0,
+        5.0
+      ],
+      "description": "Base distance penalty (-0.25 per unit distance), no progress reward to simplify"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Reduced penalty for high linear speed to allow exploration"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * abs(next_obs[4])",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Mild penalty for non-zero angle (reduced from -1.0 to avoid discouraging necessary tilting)"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "0.0",
+      "clip": [
+        0.0,
+        0.0
+      ],
+      "description": "Disabled - action==2 condition never triggered"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (500.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -10.0) + (0.05 * float(not done))",
+      "clip": [
+        -500.0,
+        500.0
+      ],
+      "description": "Large positive reward for successful landing (+500), small crash penalty (-10), and small survival bonus (+0.05 per timestep)"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_17ce3ce950"
+}

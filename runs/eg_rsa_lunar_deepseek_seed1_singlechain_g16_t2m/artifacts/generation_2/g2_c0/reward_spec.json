@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_cc14e8210d",
+  "rationale": "Based on feedback, increase terminal success reward to +300 and survival bonus to +0.5 per timestep to provide stronger positive incentive. Add distance progress reward (0.5 * (prev_dist - current_dist) using next_obs) to encourage movement toward pad. Reduce angle_penalty coefficient to -1.0. Keep fuel_efficiency as is but increase coefficient to -1.0. Keep velocity_penalty and distance_reward coefficients unchanged.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-1.0 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.5 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))",
+      "clip": [
+        -5.0,
+        5.0
+      ],
+      "description": "Negative penalty proportional to Euclidean distance to landing pad plus positive reward for reducing distance"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Reduced penalty for high linear speed to allow exploration"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-1.0 * abs(next_obs[4])",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Reduced penalty for non-zero angle to avoid discouraging necessary tilting"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-1.0 * float(action == 2)",
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "description": "Increased negative penalty each time main engine is fired (action 2)"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (300.0 if (next_obs[6] == 1.0 and next_obs[7] == 1.0 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1 and np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1) else -50.0) + (0.5 * float(not done))",
+      "clip": [
+        -500.0,
+        500.0
+      ],
+      "description": "Large positive reward (+300) for successful landing, reduced crash penalty (-50), and increased survival bonus (+0.5 per timestep)"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_e0b3a444b5"
+}

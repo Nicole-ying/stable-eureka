@@ -1,0 +1,65 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Terminal bonus is present and achievable with moderate tolerances",
+    "observation": "The terminal bonus of 500 was successfully triggered for the first time, with tolerances (position 0.15, velocity 0.3, angle 0.2), yielding private_eval_return of 267.8.",
+    "explanation": "A balanced reward structure with a dominant terminal bonus and moderate landing tolerances enabled the agent to learn to land within ~290 steps, dramatically improving alignment from a private return of 4.63 to 267.8.",
+    "recommendation": "When designing terminal bonuses, use moderate tolerances (position 0.15, velocity 0.3, angle 0.2) and a bonus of 500-1000 to make landing the clear win condition.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A per-step survival penalty is planned in the rationale but not implemented in the reward code",
+    "observation": "The rationale specified a -0.1 per-step survival penalty, but the fuel_efficiency component was set to -0.0, omitting the penalty entirely. This contributed to a generated-private gap of 534.5.",
+    "explanation": "Omission of a planned component, especially one that creates urgency for task completion, leaves per-step reward accumulation unchecked and reduces the relative attractiveness of the terminal bonus.",
+    "recommendation": "Always verify that all components mentioned in the rationale are actually present in the reward code, particularly per-step penalties that drive task completion.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Shaping reward is reduced from a very high multiplier (15x) to a moderate multiplier (3x)",
+    "observation": "Reducing shaping from 15x (7691 per episode) to 3x (370.6 per episode) reduced the generated-private gap from 7660 to 534.5 and improved private return from 4.63 to 267.8.",
+    "explanation": "A 5x reduction in shaping multiplier was aggressive but effective, demonstrating that large over-corrections from previous generations can be successfully dialed back to bring component magnitudes into a balanced range.",
+    "recommendation": "When reducing an over-dominant component, a 3-5x reduction is a reasonable step, but monitor per-step magnitude to ensure the component does not still dominate the non-terminal reward.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated-private gap is approximately 2x the private return",
+    "observation": "The generated return (802.3) was 2x the private return (267.8), with a gap of 534.5, indicating meaningful misalignment even though the agent successfully landed.",
+    "explanation": "A gap of 2x the private return means the reward function still over-rewards behaviors that the hidden evaluator does not fully value, likely due to per-step rewards (shaping) still being too high relative to the terminal bonus.",
+    "recommendation": "Target a generated-private gap of less than 0.5x the private return for well-aligned reward functions, and continue reducing per-step components until the terminal bonus dominates total episode reward.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Episode length decreases significantly after reward rebalancing",
+    "observation": "Episode length dropped from 901 steps in gen1 to 289.5 steps in gen2 after reducing shaping and increasing penalties, indicating the agent is no longer hovering indefinitely.",
+    "explanation": "A balanced reward structure with meaningful penalties and a dominant terminal bonus naturally encourages shorter, more purposeful episodes, as the agent learns to complete the task quickly rather than accumulate per-step reward.",
+    "recommendation": "Use episode length as a diagnostic: if length is very high (>500 steps), it may indicate the agent is avoiding termination, and per-step penalties or terminal bonus adjustments are needed.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "A per-step survival penalty is needed but was omitted in the previous generation",
+    "observation": "The survival penalty was planned (-0.1 per step) but not implemented, allowing the agent to accumulate per-step reward without urgency, contributing to the large generated-private gap.",
+    "explanation": "A dedicated per-step negative reward creates urgency for task completion and makes the terminal bonus relatively more attractive, reducing the gap between generated and private return.",
+    "recommendation": "Add a separate per-step survival penalty component (e.g., -0.1 * 1.0) to penalize long episodes and encourage the agent to complete the task quickly.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Action mean is high (1.76) while action std is moderate (0.92)",
+    "observation": "The agent's mean action of 1.76 indicates aggressive engine firing, while the std of 0.92 shows continued exploration, suggesting the policy has not converged to a precise landing strategy.",
+    "explanation": "High action means with moderate std can indicate the agent is using brute force to achieve landing rather than learning smooth, controlled maneuvers, which may limit further improvement.",
+    "recommendation": "Monitor action mean and std as diagnostics: if mean action is near max and std remains high, consider adding smoothness or energy efficiency penalties to encourage more precise control.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  }
+]

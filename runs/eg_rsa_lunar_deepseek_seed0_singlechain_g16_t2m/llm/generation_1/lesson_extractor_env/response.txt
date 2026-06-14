@@ -1,0 +1,56 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Shaping reward magnitude is set 15x higher than penalties, creating a 600:1 ratio",
+    "observation": "Generated return reached 7665 while private eval return was only 4.63, and terminal component was 0.0 over 901-step episodes",
+    "explanation": "The shaping reward became so dominant that the agent could collect massive per-step reward by hovering near the pad without ever attempting to land, causing a 7660 point generated-private gap and zero successful landings.",
+    "recommendation": "Reduce shaping multiplier to 2-5x so it provides gentle guidance (total ~20-50 per episode) rather than dominating the reward signal. Ensure terminal bonus (500-1000) is the largest single reward to incentivize task completion.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "A single component (shaping) provides 600x more reward than all penalties combined",
+    "observation": "Component returns: shaping 7691, velocity_penalty -12.5, angle_penalty -13.4. Agent action mean 1.93, episode length 901 steps, no landings achieved.",
+    "explanation": "Extreme component imbalance allows the agent to accumulate huge reward through a simple behavior (hovering near pad) while ignoring the primary task objective. The penalties become effectively irrelevant.",
+    "recommendation": "Target a balanced reward composition: shaping ~20-50, velocity penalty -10 to -30, angle penalty -5 to -10, terminal 500-1000 per episode. Add a small per-step survival penalty (-0.1) to create urgency for task completion.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Generated-private gap increased 100x from generation 0 to generation 1 (from 75.8 to 7660.8)",
+    "observation": "The gap exploded despite fixing the previous issue of penalties dominating. The 15x shaping multiplier overshot the correct balance.",
+    "explanation": "Large generated-private gap directly indicates reward misspecification. The reward function is being optimized for a proxy objective (proximity to pad) rather than the true objective (successful landing with proper conditions).",
+    "recommendation": "Monitor generated-private gap as the primary diagnostic. If gap exceeds 10x the private return, the reward function is likely optimizing for the wrong behavior. Reduce shaping magnitude and ensure terminal bonus is the dominant reward.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "After fixing one imbalance (penalties too strong), the correction overshoots and creates the opposite imbalance (shaping too strong)",
+    "observation": "Previous generation had 0.3:1 shaping-to-penalty ratio (too weak). This generation has 600:1 ratio (too strong). Neither extreme produces good results.",
+    "explanation": "Reward design corrections often overshoot because the relationship between component magnitudes and behavior is nonlinear. A 15x multiplier was excessive when 2-5x might have been appropriate.",
+    "recommendation": "When adjusting component magnitudes, use incremental changes (2-3x at most) and test intermediate values. Target a ratio where no single component provides more than 10x the total of all other components combined.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal bonus (200) is much smaller than per-step shaping reward accumulated over a full episode (7691)",
+    "observation": "Terminal component return was 0.0 despite 901-step episodes. The agent never attempted to land because hovering provided more total reward.",
+    "explanation": "When per-step rewards dwarf the terminal bonus, the agent has no incentive to complete the task. It can collect more reward by extending the episode indefinitely than by landing.",
+    "recommendation": "Make terminal bonus the dominant reward (500-1000) and ensure it exceeds the maximum possible per-step reward accumulated over the entire episode. Add a small per-step negative reward to create urgency for task completion.",
+    "confidence": 0.95,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "prompt_rule",
+    "condition": "The hidden evaluator gives 4.63 reward while generated reward is 7665, suggesting landing success is the primary evaluation criterion",
+    "observation": "Private eval return remained near zero despite high generated return, indicating the evaluator provides negligible reward for anything except successful landing.",
+    "explanation": "The massive generated-private gap strongly implies the hidden evaluator's reward is tied almost exclusively to landing success, not to proximity or hovering behavior that the shaping reward incentivizes.",
+    "recommendation": "Use black-box selection feedback to reduce generated/private mismatch. Design the reward function so that successful landing provides the vast majority of total episode reward, and all other components serve only as guidance toward that goal.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

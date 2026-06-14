@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Angle penalty dominates episode return (e.g., -65.6) and terminal reward is zero despite high shaping (~1089) and soft landing bonus (~210).",
+    "observation": "Despite reducing angle penalty magnitude, the agent still fails to achieve any successful landing (terminal=0). The soft landing bonus (210) is nonzero but insufficient to overcome the angle penalty and guide the agent to a landing.",
+    "explanation": "The soft landing bonus fires continuously (not only at done) and rewards low velocity near ground, but it does not enforce the precise landing conditions (position, contact legs, angle). The agent may hover or drift near the pad without meeting the strict terminal criteria.",
+    "recommendation": "Consider increasing the terminal bonus further or relaxing the landing criteria (e.g., allow larger position tolerance or reduce leg-contact requirement) to make successful landings more achievable before further tuning other components.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Generated return (~1217) is much higher than private_eval_return (~205), with generated_private_gap ~1012.",
+    "observation": "The reward function produces large per-step shaping and soft landing bonuses that are not reflected in the hidden evaluator's return, indicating misalignment between the reward signal and true task objective.",
+    "explanation": "The shaping and soft landing bonuses inflate the generated return without corresponding improvement in the hidden evaluator's assessment, likely because the evaluator only rewards successful landings or penalizes failures more harshly.",
+    "recommendation": "Reduce the magnitude of per-step shaping and soft landing bonuses to better align with the private evaluator's sparse success/failure signal, and increase the terminal bonus weight to emphasize landing completion.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Adding a continuous soft landing bonus (0.5 * exp(-2*|y|) * exp(-0.5*(|vx|+|vy|))) alongside a large terminal bonus.",
+    "observation": "The soft landing bonus contributed 210 to the generated return but did not lead to any successful landing (terminal=0), and the private_eval_return only improved modestly to 205.",
+    "explanation": "The soft landing bonus rewards proximity and low speed but does not directly incentivize meeting the strict landing conditions (leg contact, position tolerance, angle). The agent may collect the bonus without ever triggering a successful landing.",
+    "recommendation": "Either make the soft landing bonus conditional on being very close to the pad (e.g., |x|<0.1, |y|<0.1) to bridge to landing, or remove it and rely solely on a higher terminal bonus to avoid misleading the agent.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Terminal reward is zero across the episode despite high shaping and soft landing bonuses.",
+    "observation": "The agent never meets the landing conditions (obs[6]>0.5, obs[7]>0.5, position, velocity, angle tolerances). Terminal=0 indicates no successful landings were achieved in the evaluation.",
+    "explanation": "The landing criteria may be too strict for the current policy, or the shaping/soft landing bonuses create a local optimum where the agent hovers near the pad without committing to a landing.",
+    "recommendation": "Consider relaxing the landing tolerances (e.g., position <0.2, angle <0.4) or reducing the shaping gradient to encourage the agent to attempt landing rather than hovering for continuous reward.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Component returns show angle_penalty=-65.6 and velocity_penalty=-16.1, while shaping=1089 and terminal=210, yet private_eval_return is only 205.",
+    "observation": "The shaping component dominates the generated return (1089) but does not translate to high private_eval_return, indicating that proximity reward alone is insufficient for task success.",
+    "explanation": "The shaping reward encourages staying near the pad but does not ensure proper landing posture (legs down, low angle, low speed). The agent may be stuck in a suboptimal orbit around the landing zone.",
+    "recommendation": "Introduce a component that explicitly rewards landing-relevant conditions such as leg deployment (obs[6], obs[7]) or penalizes being airborne for too long, to break the hovering behavior.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  }
+]

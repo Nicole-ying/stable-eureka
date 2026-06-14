@@ -1,0 +1,58 @@
+```json
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When shaping reward magnitude approaches or exceeds the terminal bonus magnitude",
+    "observation": "In generation 5, shaping reached 1504.2 while terminal bonus was 1500, and the agent hovered near the pad for 767 steps without landing (terminal reward = 0). The shaping reward created a local optimum where collecting shaping reward was competitive with landing.",
+    "explanation": "If shaping reward per episode is comparable to or greater than the terminal reward for successful completion, the agent can accumulate similar or higher reward by staying near the target without completing the task. This creates a hovering local optimum that prevents task resolution.",
+    "recommendation": "Keep shaping reward magnitude at 50-70% of the terminal bonus to provide strong guidance while ensuring that landing remains the most rewarding outcome. If shaping exceeds 80% of the terminal bonus, reduce the shaping multiplier or increase the terminal bonus.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When angle penalty becomes the dominant negative component (several times larger than velocity penalty) and terminal reward is zero",
+    "observation": "Angle penalty reached -243.9 over 767 steps, which was 8x larger than the velocity penalty (-30.2). The agent hovered near the pad but never landed, suggesting the angle penalty made orientation changes during descent too costly.",
+    "explanation": "A large per-step angle penalty penalizes the agent for changing orientation. During the final descent, the agent must adjust its angle to land upright. If the angle penalty is too aggressive, the agent will avoid the final descent maneuver and instead hover in a safe orientation, collecting shaping reward but never completing the task.",
+    "recommendation": "Keep angle penalty moderate so it discourages extreme angles without preventing the orientation adjustments needed for landing. Target total angle penalty per episode at 20-40% of the shaping reward. If angle penalty exceeds shaping reward, reduce the per-step angle penalty scaling factor.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When generated return is positive but private evaluator return is negative, with a gap exceeding 10x the private return magnitude",
+    "observation": "Generated return was 1230.1 while private return was -10.8, a gap of 1240.9 (115x private return). The shaping component contributed 1504.2 to generated return, but the hidden evaluator heavily discounted or penalized this shaping.",
+    "explanation": "A large generated-private gap indicates that the reward function components are not aligned with what the hidden evaluator values. The hidden evaluator likely gives little or no weight to the shaping reward for proximity to the pad, and instead focuses on successful landing. High shaping reward with zero terminal reward creates a large gap because the evaluator only rewards the landing outcome.",
+    "recommendation": "Reduce the generated-private gap by making landing achievable rather than by reducing shaping. Focus on balancing negative components (angle, velocity) so they don't prevent landing, and ensure the terminal bonus is large enough to dominate the total reward. Use black-box selection feedback to prioritize candidates with smaller gaps.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When episode length increases significantly (10x or more) but terminal reward remains zero",
+    "observation": "Episode length increased from 72.3 to 767.1 steps (10.6x), yet terminal reward remained 0.0. The agent explored longer but never completed the task.",
+    "explanation": "Longer episodes without successful task completion indicate the agent has found a survivable but suboptimal behavior (e.g., hovering near the pad). The reward function provides enough positive signal to keep the agent alive and exploring, but not enough gradient to complete the final critical maneuver. This is a sign that one or more components create a barrier to task completion.",
+    "recommendation": "When episode length increases but terminal reward stays zero, check which negative component (angle penalty, velocity penalty, survival penalty) has become dominant. Reduce that component to allow the agent to perform the final maneuver. Also verify that the terminal conditions (tolerances for landing) are achievable given the agent's typical behavior.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "After restoring a guidance signal (shaping), the next step is to check whether any negative component blocks task completion",
+    "observation": "After increasing shaping from 7.6 to 1504.2, the agent explored longer but the angle penalty (-243.9) became the dominant negative signal, preventing landing. The fix for one issue (weak guidance) created a new issue (angle penalty too aggressive).",
+    "explanation": "Reward function design often involves sequential adjustments. Fixing one imbalance (shaping too weak) can expose another imbalance (angle penalty too strong). After each adjustment, re-evaluate the balance of all components, especially the ratio of the largest negative component to the largest positive component.",
+    "recommendation": "After making a major adjustment to one reward component (e.g., increasing shaping 198x), immediately check whether any other component has become disproportionately large. Maintain balance by ensuring the largest negative component is no more than 20-30% of the largest positive component. If a new imbalance appears, adjust the offending component in the next generation.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When shaping reward per episode exceeds 80% of the terminal bonus and terminal reward is zero",
+    "observation": "Shaping at 1504.2 was 100% of the terminal bonus (1500). The agent accumulated large shaping reward by staying near the pad without landing, creating a local optimum that made hovering more attractive than attempting the final descent.",
+    "explanation": "If the agent can accumulate reward from a continuous component (shaping) at a rate comparable to the one-time terminal bonus, it may prefer to collect the continuous reward indefinitely rather than risk the terminal maneuver. This is especially problematic when the terminal maneuver is penalized by other components (angle penalty during descent).",
+    "recommendation": "Ensure the terminal bonus is at least 1.5x the expected shaping reward per episode. If shaping exceeds terminal bonus, either reduce the shaping multiplier or increase the terminal bonus. A good rule of thumb is terminal bonus = 1.5 to 2.0 times the expected shaping reward.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  }
+]
+```

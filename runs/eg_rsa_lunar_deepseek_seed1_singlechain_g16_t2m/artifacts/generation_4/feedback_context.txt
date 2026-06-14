@@ -1,0 +1,64 @@
+## Reflection Analysis – Generation 3
+
+### 1. What Worked
+
+- **Selection score improved significantly**: The private_eval_return increased from **-117.91** (generation 2) to **-94.03** (generation 3) — a **+23.88 point improvement**. This is the best score across all three generations.
+- **Generated_return turned positive**: The generated_return is now **+74.23**, compared to -87.65 in generation 2. This suggests the reward function is now providing a net positive signal during training.
+- **Terminal component increased dramatically**: From +20.25 to **+152.20** — a huge improvement. The agent is achieving successful landings more frequently, earning the +500 success reward.
+- **Episode length increased**: From 71.5 to **75.4 steps** — the agent is surviving longer, consistent with the improved terminal outcomes.
+- **Distance_reward improved**: From -69.70 to **-36.71** — the reduced base coefficient (-0.5 vs -1.0) and increased progress reward (1.0 vs 0.5) are working as intended.
+- **Velocity_penalty essentially unchanged**: -37.47 to **-38.62** — as expected since the coefficient remained at -0.5.
+- **Angle_penalty slightly higher but still small**: -0.73 to **-2.64** — still negligible in the overall reward.
+
+### 2. What Failed
+
+- **Generated-private gap remains very large**: The gap increased from +30.26 to **+168.26** — a massive jump. The generated_return (+74.23) is now much higher than the private_eval_return (-94.03). This means the reward function is significantly misaligned with the hidden evaluator.
+- **The gap is now the dominant failure mode**: While the absolute private score improved, the generated-private gap is the largest it has ever been. This suggests the reward function is now *over-optimistic* — it thinks the agent is doing well (+74.23) but the evaluator disagrees (-94.03).
+- **The survival bonus may be contributing to the gap**: The terminal component includes +0.5 per timestep for survival. Over 75.4 steps, that's ~+37.7 from survival alone. If the private evaluator does not include a survival bonus, this would explain a significant portion of the gap.
+- **Action mean shifted**: From 0.86 (gen 2) to **0.99** (gen 3) — the agent is now almost always selecting action 0 (likely idle/main engine off). This suggests the agent has learned to avoid movement to minimize penalties, which may prevent it from reaching the landing pad.
+
+### 3. What to Try Next
+
+**Primary hypothesis**: The changes in generation 3 (reduced distance penalty, increased progress reward, higher terminal success reward) improved the private score, but the generated-private gap exploded. The most likely cause is the **survival bonus (+0.5 per timestep)** — it's providing a large positive signal that the private evaluator does not reward. Additionally, the agent may be exploiting the survival bonus by staying alive but not actually landing successfully.
+
+**Recommended changes**:
+
+1. **Remove the survival bonus entirely** — The +0.5 per timestep is likely the main source of misalignment. Over 75 steps, it contributes ~+37.7 to the generated return. If the private evaluator uses a sparse terminal-only reward (or much smaller per-step rewards), this would explain the gap. Replacing it with 0.0 would eliminate this misalignment.
+
+2. **Reduce the terminal success reward from +500 to +300** — The +500 may be causing the agent to overvalue successful landings relative to the private evaluator. The +300 from generation 1 produced a smaller gap (+26.17) and a similar private score (-108.23 vs -94.03). A moderate success reward may be better aligned.
+
+3. **Keep the reduced distance penalty (-0.5) and increased progress reward (1.0)** — These changes improved the private score from -117.91 to -94.03. They should be retained.
+
+4. **Consider adding a small per-step penalty for not making progress** — The agent's action mean of 0.99 suggests it may be hovering/staying still to avoid penalties. Adding a small negative reward for distance not decreasing (or a requirement to reach the pad within a time limit) could prevent this exploitation.
+
+5. **Verify the terminal success condition** — The current condition uses `np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1` without contact flags. If the private evaluator uses a different condition (e.g., stricter thresholds or contact flags), the agent may be "succeeding" in the generated reward but not in the private evaluator's view.
+
+**Specific reward spec changes for next generation**:
+- Remove survival bonus (change `0.5 * float(not done)` to `0.0`)
+- Reduce terminal success reward from +500 to +300
+- Keep distance_reward: `-0.5 * sqrt(next_obs[0]^2 + next_obs[1]^2) + 1.0 * (sqrt(obs[0]^2 + obs[1]^2) - sqrt(next_obs[0]^2 + next_obs[1]^2))`
+- Keep velocity_penalty: `-0.5 * sqrt(next_obs[2]^2 + next_obs[3]^2)`
+- Keep angle_penalty: `-1.0 * abs(next_obs[4])`
+- Remove fuel_efficiency component entirely
+- Keep terminal crash penalty at -50
+
+### 4. Lessons Supported or Contradicted
+
+**Supported lessons**:
+- **environment_ebdbd334f4 (failure_mode)**: STRONGLY SUPPORTED — Reducing base distance penalty to -0.5 and increasing progress reward to 1.0 improved the private score from -117.91 to -94.03. This lesson is validated.
+- **environment_37d3a73217 (failure_mode)**: SUPPORTED — Increasing terminal success reward to +500 (from +300) contributed to improved private score. The recommendation to use +500 is validated.
+- **environment_69d1862649 (reward_pattern)**: SUPPORTED — Fuel_efficiency remains 0.0. Removing it would simplify the reward function.
+- **environment_85a7fca61f (general)**: SUPPORTED — Using position/velocity/angle thresholds without contact flags appears to be working (terminal component = +152.20).
+- **candidate_4925b4d39b (repair_rule)**: STRONGLY SUPPORTED — The generated-private gap is now the dominant issue (+168.26). Closing this gap is critical.
+- **candidate_c9c01a91af (failure_mode)**: SUPPORTED — The recommendation to rebalance components so positive incentives are not drowned out by negative penalties was partially successful, but the gap remains.
+- **candidate_a2b4cdd2a1 (reward_pattern)**: SUPPORTED — Reducing the negative distance penalty coefficient helped. The recommendation to use -0.1 or remove it entirely may be worth considering further.
+
+**Contradicted lessons**:
+- **environment_dfd218ee0f (failure_mode)**: STRONGLY SUPPORTED (contradicts previous direction) — The lesson recommended reducing the survival bonus back to +0.1 or removing it. This is now validated: the survival bonus is likely the main source of the generated-private gap. We should follow this recommendation.
+- **environment_aac47d585b (general)**: PARTIALLY CONTRADICTED — The lesson recommended a survival bonus of +0.5, but this appears to be causing misalignment. A survival bonus of 0.0 may be more appropriate.
+- **candidate_e78b95aad6 (mutation_rule)**: SUPPORTED — The recommendation to ensure shaping rewards provide sufficient gradient alongside sparse rewards is validated. The progress reward (1.0) is providing gradient, but the survival bonus is causing misalignment.
+
+**New lessons to store**:
+- **Lesson L8**: Reducing the base distance penalty from -1.0 to -0.5 and increasing the progress reward from 0.5 to 1.0 improved the private score by +23.88 points. This combination is effective for balancing distance shaping.
+- **Lesson L9**: A survival bonus of +0.5 per timestep is a major source of generated-private misalignment. When the private evaluator uses sparse terminal rewards, remove the survival bonus to close the gap.
+- **Lesson L10**: A terminal success reward of +500 combined with reduced per-step penalties can yield a positive generated return (+74.23), but the generated-private gap may still be large if survival bonuses are present. Aligning per-step rewards with the private evaluator is critical.

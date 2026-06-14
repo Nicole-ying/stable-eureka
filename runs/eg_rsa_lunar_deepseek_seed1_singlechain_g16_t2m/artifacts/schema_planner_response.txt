@@ -1,0 +1,46 @@
+```json
+{
+  "reward_schema": {
+    "components": [
+      {
+        "id": "distance_reward",
+        "description": "Negative penalty proportional to Euclidean distance from the lander to the landing pad (0,0). Computed from next_obs[0] and next_obs[1]. Encourages the lander to move toward the pad.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "velocity_penalty",
+        "description": "Negative penalty for high linear speed (sqrt(next_obs[2]^2 + next_obs[3]^2)). Encourages gentle landing by penalizing large velocities.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "angle_penalty",
+        "description": "Negative penalty for non-zero angle (abs(next_obs[4])). Encourages the lander to remain upright, which is critical for stable landing.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "fuel_efficiency",
+        "description": "Small negative penalty each time the main engine is fired (action == 2). Encourages fuel efficiency by discouraging unnecessary thrust.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "landing_bonus",
+        "description": "Large positive reward when the lander successfully lands: both legs on ground (next_obs[6] == 1 and next_obs[7] == 1), low speed (<0.1), small angle (<0.1), and near pad (distance <0.1). Applied only once when done becomes True.",
+        "direction": "maximize",
+        "required": true
+      },
+      {
+        "id": "crash_penalty",
+        "description": "Large negative penalty when the lander crashes or goes out of bounds, indicated by done becoming True without a successful landing. Discourages catastrophic failures.",
+        "direction": "maximize",
+        "required": true
+      }
+    ],
+    "reward_abs_bound": 1000.0
+  },
+  "search_plan": "## Search Plan for Lunar Lander Reward Function\n\n### Phase 1: Component Design and Tuning\n1. **Distance Reward**: Start with `-distance * k1` where distance = sqrt(next_obs[0]^2 + next_obs[1]^2). Tune k1 to balance with other components (suggested range: 1-5).\n2. **Velocity Penalty**: Start with `-speed * k2` where speed = sqrt(next_obs[2]^2 + next_obs[3]^2). Tune k2 to be slightly larger than k1 (suggested range: 2-10).\n3. **Angle Penalty**: Start with `-abs(next_obs[4]) * k3`. Tune k3 to be moderate (suggested range: 1-5).\n4. **Fuel Efficiency**: Start with `-0.1` when action == 2. Tune if needed (suggested range: 0.05-0.3).\n5. **Landing Bonus**: Start with `+100` when done and landing conditions met. Tune up to +500 if agent struggles to land.\n6. **Crash Penalty**: Start with `-100` when done but landing conditions not met. Tune down to -500 if agent crashes too often.\n\n### Phase 2: Scaling and Balance\n- Ensure all components have comparable expected magnitudes (within factor of 10).\n- The distance reward should dominate early exploration, while landing bonus should be the primary terminal signal.\n- Velocity and angle penalties should be significant enough to shape behavior but not dominate.\n\n### Phase 3: Testing Strategy\n1. Test with random agent to ensure baseline behavior is reasonable (not too positive or negative).\n2. Test with heuristic policy (main engine when above pad, orientation engines to stay upright).\n3. Iterate on component weights based on observed behavior.\n\n### Phase 4: Edge Cases and Robustness\n- Ensure crash_penalty and landing_bonus are mutually exclusive (use done flag to determine which applies).\n- Verify that the reward doesn't encourage hovering indefinitely (fuel penalty should discourage this).\n- Check that angle penalty doesn't prevent necessary tilting for horizontal movement.\n\n### Phase 5: Final Validation\n- Run multiple seeds to ensure consistent performance.\n- Verify that the reward function produces learning curves that converge to successful landing policies."
+}
+```

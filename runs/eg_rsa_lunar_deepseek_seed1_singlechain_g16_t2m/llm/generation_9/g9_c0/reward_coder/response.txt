@@ -1,0 +1,38 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "rationale": "Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))",
+      "clip": [-5.0, 2.0],
+      "description": "Base distance penalty (-0.25 per unit distance) plus small progress reward (0.3 * reduction in distance), clipped to prevent excessive positive shaping"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [-5.0, 0.0],
+      "description": "Moderate penalty for high linear speed to encourage gentle landing"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * abs(next_obs[4])",
+      "clip": [-5.0, 0.0],
+      "description": "Moderate penalty for non-zero angle to encourage upright orientation"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "0.0",
+      "clip": [0.0, 0.0],
+      "description": "Disabled - fuel efficiency not directly observable"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0)",
+      "clip": [-500.0, 500.0],
+      "description": "Large positive reward for successful landing (+400) with relaxed thresholds (0.15), moderate crash penalty (-25), no survival bonus"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [-1000.0, 1000.0]
+}

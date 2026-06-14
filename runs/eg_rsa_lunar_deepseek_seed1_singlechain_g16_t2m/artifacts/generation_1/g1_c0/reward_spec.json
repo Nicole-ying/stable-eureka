@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_cc14e8210d",
+  "rationale": "Reduce velocity_penalty coefficient from -3.0 to -0.5 and distance_reward coefficient from -2.0 to -1.0 to encourage exploration and reduce the dominant velocity penalty. Add a small positive survival bonus (+0.1 per timestep) to encourage longer episodes. Reduce terminal crash penalty from -100 to -50 to avoid double punishment. Increase fuel_efficiency penalty to -0.5 to make it meaningful.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-1.0 * np.sqrt(next_obs[0]**2 + next_obs[1]**2)",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Negative penalty proportional to Euclidean distance to landing pad (0,0)"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Reduced penalty for high linear speed to allow exploration"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-2.0 * abs(next_obs[4])",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Negative penalty for non-zero angle"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.5 * float(action == 2)",
+      "clip": [
+        -1.0,
+        0.0
+      ],
+      "description": "Moderate negative penalty each time main engine is fired"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (100.0 if (next_obs[6] == 1.0 and next_obs[7] == 1.0 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1 and np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1) else -50.0) + (0.1 * float(not done))",
+      "clip": [
+        -500.0,
+        500.0
+      ],
+      "description": "Large positive reward for successful landing, reduced crash penalty, and small survival bonus per timestep"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_49c61cf950"
+}

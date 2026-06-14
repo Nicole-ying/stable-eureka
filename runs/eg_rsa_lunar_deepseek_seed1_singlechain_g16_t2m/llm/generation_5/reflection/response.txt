@@ -1,0 +1,64 @@
+## Reflection Analysis – Generation 5
+
+### 1. What Worked
+
+- **The generated-private gap remained relatively consistent**: The gap went from **+28.86** (generation 4) to **+77.22** (generation 5) — an increase of 48.36 points. While the gap widened, it is still far below the +168.26 seen in generation 3. The gap is now in the 30-80 range, suggesting the reward function is partially aligned.
+- **Action statistics improved**: Action mean of **0.68** (down from 0.56 in gen 4) and action std of **1.09** (up from 1.05) suggest the agent is exploring more and not stuck at idle behavior. The agent is now taking more varied actions.
+- **Episode length is reasonable**: **76.6 steps** (up from 59.7 in gen 4) — the agent is surviving longer, which is a positive sign for learning.
+- **Angle penalty is very low**: Only **-2.57** total over the episode, suggesting the agent is maintaining good angle control. This is a significant improvement from previous generations.
+- **Terminal component is positive (+17.5)**: The agent is earning more success rewards than crash penalties. This is a major improvement from generation 4 (-15.0) and generation 3 (+152.2 with large gap). The agent is now landing successfully more often than crashing.
+
+### 2. What Failed
+
+- **Selection score worsened significantly**: From **-104.88** (generation 4) to **-100.80** (generation 5) — a **+4.08 point improvement**. Wait, this is actually an *improvement* — the private score went up. However, the gap increased from +28.86 to +77.22, meaning the generated return improved even more. The private evaluator is still not rewarding the agent as much as the generated reward suggests.
+- **Generated_return improved dramatically**: From **-76.02** (generation 4) to **-23.59** (generation 5) — a **+52.43 point improvement**. The reward function changes (reducing per-step penalties) made the generated reward signal much less negative, but the private evaluator only improved by +4.08 points. This suggests the private evaluator does not value the reduced per-step penalties as much as the generated reward does.
+- **Velocity_penalty is still high (-19.89)**: Despite reducing the coefficient from -0.5 to -0.25, the velocity penalty is still a major negative contributor. The agent is still moving too fast.
+- **Distance_reward remains negative (-18.63)**: Even with the reduced base penalty (-0.25) and progress reward (1.0), the agent is not consistently moving toward the landing pad. The net distance signal is still negative, meaning the agent spends more time moving away from the pad than toward it.
+- **The gap widened from +28.86 to +77.22**: The primary goal of alignment (reducing the gap) has regressed. The changes made in generation 5 (reducing per-step penalties) helped the generated return more than the private return, widening the gap.
+
+### 3. What to Try Next
+
+**Primary hypothesis**: The private evaluator likely uses a different reward structure that does not reward per-step progress as much as our generated reward does. The gap widened because reducing per-step penalties made the generated reward more positive, but the private evaluator does not have those penalties, so the agent's behavior didn't improve as much as the generated reward suggests.
+
+**Recommended changes**:
+
+1. **Increase the terminal success reward further** — The current +400 is helping (terminal component is +17.5), but the agent is still crashing too often. Consider increasing to **+500** to make successful landings even more dominant. However, this might increase the gap again, so proceed cautiously.
+
+2. **Reduce the crash penalty further** — Currently -25 (reduced from -50). Consider reducing to **-10** to make failures less catastrophic. This would reduce the negative impact of crashes on the total reward.
+
+3. **Add a small survival bonus (+0.05)** — A very small survival bonus could help keep the agent alive longer without creating a large gap. The previous +0.5 caused a huge gap (+168), but +0.05 would add only ~3-4 over 70 steps. This is worth testing.
+
+4. **Relax the terminal success thresholds** — Currently position<0.1, velocity<0.1, angle<0.1. Consider relaxing to **position<0.15, velocity<0.15, angle<0.15** to increase the success rate. The agent is getting close to landing but may not be meeting the strict thresholds. This would provide more positive feedback and encourage landing attempts.
+
+5. **Consider removing the progress reward entirely** — The progress reward (1.0 * reduction in distance) may be causing the agent to oscillate or move in circles rather than directly toward the pad. Consider replacing with a simple distance-based penalty that rewards being close to the pad, e.g., `-0.25 * sqrt(next_obs[0]^2 + next_obs[1]^2)` without the progress term. This would simplify the reward and potentially reduce the gap.
+
+6. **Verify the private evaluator's reward structure** — The fact that reducing per-step penalties improved generated return by +52.43 but private return by only +4.08 suggests the private evaluator may not use per-step penalties at all. Consider making the generated reward even more sparse (like the private evaluator appears to be) to improve alignment.
+
+**Specific reward spec changes for next generation**:
+- Distance_reward: `-0.25 * sqrt(next_obs[0]^2 + next_obs[1]^2)` (remove progress reward)
+- Velocity_penalty: `-0.25 * sqrt(next_obs[2]^2 + next_obs[3]^2)`
+- Angle_penalty: `-0.5 * abs(next_obs[4])`
+- Survival bonus: `+0.05 * float(not done)` (very small)
+- Terminal success: `+500` for successful landing, `-10` for crash
+- Relax thresholds: position<0.15, velocity<0.15, angle<0.15
+
+### 4. Lessons Supported or Contradicted
+
+**Supported lessons**:
+- **environment_ab825e40e7 (failure_mode)**: STRONGLY SUPPORTED — Reducing per-step penalties (distance from -0.5 to -0.25, velocity from -0.5 to -0.25, angle from -1.0 to -0.5) improved the generated return by +52.43 points. The agent is now earning more total reward.
+- **environment_e2e0b3f1d1 (reward_pattern)**: SUPPORTED — Reducing base distance penalty from -0.5 to -0.25 improved distance_reward from -24.84 to -18.63. The net distance signal is still negative but less so.
+- **environment_c9dc0eeadb (failure_mode)**: SUPPORTED — Reducing velocity penalty coefficient from -0.5 to -0.25 improved velocity_penalty from -34.15 to -19.89. The agent can now maneuver more aggressively.
+- **environment_2f681ebb0d (failure_mode)**: STRONGLY SUPPORTED — The fuel_efficiency component is still 0.0 and should be removed. It's wasting a slot in the reward structure.
+- **environment_221d398f03 (general)**: STRONGLY SUPPORTED — Always-zero components should be removed. Fuel_efficiency is still present and should be eliminated.
+- **candidate_29baba9565 (failure_mode)**: STRONGLY SUPPORTED — Remove the fuel_efficiency component entirely. It provides no learning signal.
+- **candidate_444f3adf50 (repair_rule)**: STRONGLY SUPPORTED — Zero-valued components should be removed to simplify the reward function.
+
+**Contradicted lessons**:
+- **environment_2347bfd48e (failure_mode)**: PARTIALLY CONTRADICTED — The lesson says "prioritize reducing the generated-private gap even if it causes a modest decrease in absolute private score." In generation 5, the gap *increased* from +28.86 to +77.22, and the private score improved by +4.08. The trade-off is not working as expected — reducing per-step penalties improved the private score slightly but widened the gap significantly.
+- **environment_319abc592a (general)**: PARTIALLY SUPPORTED — The recommendation to relax terminal success thresholds (e.g., position<0.15, velocity<0.15, angle<0.15) has not been tested yet but may help increase the success rate. The current thresholds seem to be working (terminal component is +17.5), so relaxing them may or may not help.
+- **candidate_80606d88a5 (failure_mode)**: PARTIALLY CONTRADICTED — The lesson recommends reducing the terminal success reward further (e.g., +50 to +100). However, the terminal component is now positive (+17.5), suggesting the current +400 is working. Reducing it further would likely make the terminal component negative again.
+
+**New lessons to store**:
+- **Lesson L14**: Reducing per-step penalty coefficients (distance from -0.5 to -0.25, velocity from -0.5 to -0.25, angle from -1.0 to -0.5) improved generated return by +52.43 points but private return by only +4.08 points. The gap widened from +28.86 to +77.22. This suggests the private evaluator does not use per-step penalties, so reducing them primarily helps the generated reward, not the private reward.
+- **Lesson L15**: When the terminal component is positive (+17.5) after reducing per-step penalties, the agent is landing successfully more often than crashing. This is a good sign that the reward balance is improving.
+- **Lesson L16**: The generated-private gap is sensitive to changes in per-step penalties. Reducing penalties widens the gap because the generated reward improves more than the private reward. To close the gap, focus on changes that improve the private reward equally or more than the generated reward.

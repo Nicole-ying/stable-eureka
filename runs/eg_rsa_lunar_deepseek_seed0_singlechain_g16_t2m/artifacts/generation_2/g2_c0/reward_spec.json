@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_4c4946654e",
+  "rationale": "The previous generation catastrophically overcorrected: shaping at 15x produced 7691 per episode, completely dominating all other signals and causing a 7660 generated-private gap. The agent learned to hover near the pad indefinitely (901 steps) without ever landing. To fix this: (1) reduce shaping to 3x (gentle guidance, ~20-40 per episode), (2) increase velocity penalty to -0.5 to discourage excessive speed, (3) increase angle penalty to -0.5 to encourage stable orientation, (4) add a small per-step survival penalty of -0.1 to create urgency, (5) increase terminal bonus to 500 and tighten landing tolerances (position 0.15, velocity 0.3, angle 0.2) to make landing the dominant reward. This targets a balanced composition: shaping ~30, velocity -20, angle -10, survival -90, terminal 500.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "3.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Gentle shaping reward for proximity to pad (3x multiplier, faster decay)."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.5 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Moderate penalty on horizontal and vertical velocity to encourage controlled descent."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Penalize large angle and angular velocity."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.0",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Fuel penalty removed to avoid discouraging necessary engine use."
+    },
+    {
+      "id": "terminal",
+      "expression": "500.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.3 and abs(obs[3]) < 0.3 and abs(obs[4]) < 0.2)",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Large terminal bonus for successful landing with moderate tolerances."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_855daa76bb"
+}

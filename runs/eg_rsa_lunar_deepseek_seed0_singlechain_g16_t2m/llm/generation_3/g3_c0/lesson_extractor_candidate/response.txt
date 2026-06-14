@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A per-step survival penalty is added to the reward function but its magnitude is too small relative to the terminal bonus and shaping reward.",
+    "observation": "Candidate g3_c0 added a survival penalty of -0.1 per step via fuel_efficiency, but the shaping reward still dominates (shaping component return: 1444.66, fuel_efficiency: -100.0). The generated-private gap is 1484.76, indicating the generated return is still dominated by per-step rewards rather than the terminal bonus.",
+    "explanation": "The survival penalty of -0.1 per step accumulates to approximately -100 over 1000 steps, but the shaping reward accumulated to 1444.66, far outweighing the penalty. This means the agent can still accumulate large per-step rewards without landing, reducing the incentive to achieve the terminal bonus and causing a large generated-private gap.",
+    "recommendation": "Increase the magnitude of the survival penalty (e.g., -0.5 per step) to create a stronger urgency to land, or further reduce the shaping multiplier to ensure the terminal bonus dominates the total reward.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The reward function includes a large terminal bonus and multiple per-step components, but the per-step components collectively outweigh the terminal bonus.",
+    "observation": "In g3_c0, the shaping component contributed 1444.66, while the terminal bonus is only 250.0 (actual achieved). The survival penalty (-100) and other penalties are insufficient to offset the shaping reward, so the agent optimizes for per-step proximity rather than landing.",
+    "explanation": "When per-step rewards are large relative to the terminal bonus, the agent can achieve high generated return without completing the task, leading to a large generated-private gap and poor alignment with the hidden evaluator.",
+    "recommendation": "Ensure that the terminal bonus is the dominant component in the total reward, either by increasing its magnitude or by reducing per-step rewards and adding strong per-step penalties to make non-landing trajectories less rewarding.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated-private gap is very large (1484.76) despite a successful landing being achieved in the previous generation.",
+    "observation": "Candidate g3_c0 achieved a private return of 28.69, similar to the parent g2_c0 (267.8 adjusted?), but the generated return is 1513.45, resulting in a gap of 1484.76. The gap is primarily due to the shaping component dominating per-step rewards.",
+    "explanation": "A large generated-private gap indicates that the reward function is not aligned with the hidden evaluator. The agent can achieve high generated return by optimizing for per-step components (shaping) rather than the terminal landing condition that the evaluator values.",
+    "recommendation": "Focus on reducing the generated-private gap by adjusting component weights so that the terminal bonus is the primary driver of total reward. Use black-box selection feedback to guide weight adjustments.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "A per-step survival penalty is added to the reward function to create urgency for task completion.",
+    "observation": "The mutation added a fuel_efficiency component with expression '-0.1 * 1.0', intended as a per-step survival penalty. However, the survival penalty was too small (-0.1 per step) to effectively shift the agent's behavior toward landing quickly.",
+    "explanation": "Adding a survival penalty is a valid strategy to encourage faster task completion, but the penalty magnitude must be carefully calibrated. In this case, -0.1 per step accumulated to only -100 over the episode, which was negligible compared to the shaping reward of 1444.66.",
+    "recommendation": "When adding a survival penalty, ensure its magnitude is comparable to other per-step rewards. Consider setting the penalty to -0.5 or higher per step, or combine with reduced shaping to make the terminal bonus the dominant signal.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "A reward component uses a constant expression like '-0.1 * 1.0' to implement a per-step penalty.",
+    "observation": "The fuel_efficiency component uses expression '-0.1 * 1.0', which is a constant -0.1 per step. This does not depend on any observation or action, so it provides no state-dependent signal.",
+    "explanation": "Using a constant per-step penalty is a simple way to create survival pressure, but it does not differentiate between different states. The penalty is the same regardless of whether the agent is close to landing or far away, which may not effectively guide learning.",
+    "recommendation": "Consider making the survival penalty state-dependent, such as scaling it by distance from the pad or by time step, to provide more nuanced pressure. Alternatively, keep it constant but ensure its magnitude is large enough to dominate other per-step rewards.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  }
+]

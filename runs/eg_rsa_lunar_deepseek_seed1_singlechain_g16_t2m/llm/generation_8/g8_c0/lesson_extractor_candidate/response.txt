@@ -1,0 +1,38 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal success reward is set to +300 with strict thresholds (0.1, 0.1, 0.1) and crash penalty -50, while distance_reward is a simple -0.25 * distance without progress bonus.",
+    "observation": "The candidate achieved a selection score of -116.68, a generated return of -85.10, and a private_eval_return of -116.68, resulting in a large generated-private gap of 31.58. Terminal component contributed -50.0, indicating no successful landings occurred, and distance_reward (-16.21) and velocity_penalty (-17.84) dominated the negative reward.",
+    "explanation": "The tightened terminal thresholds (0.1 for distance, velocity, and angle) made successful landings extremely rare, so the agent consistently received the -50 crash penalty. Without a progress reward in distance_reward, the agent received only negative shaping throughout episodes, leading to low overall returns and a large gap with the private evaluator, which likely expects more frequent positive terminal outcomes.",
+    "recommendation": "Loosen terminal success thresholds (e.g., 0.2-0.5) or increase the success reward to +500 to encourage landing attempts, and consider adding a small progress bonus to distance_reward to provide intermediate positive feedback.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "All components are negative or zero except for the terminal success reward, which is rarely triggered due to strict thresholds.",
+    "observation": "The agent received negative rewards for distance, velocity, and angle at every step, with no positive shaping (fuel_efficiency disabled). The terminal component added -50 at episode end due to no landings.",
+    "explanation": "A reward structure with only negative components and a rare positive terminal reward discourages exploration and can cause the agent to learn to end episodes quickly to minimize cumulative penalties, rather than attempting the difficult landing task.",
+    "recommendation": "Introduce a small positive reward for reducing distance or velocity (e.g., progress bonus) to provide intermediate positive feedback and guide the agent toward the terminal success condition.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated-private gap is 31.58, with the generated return (-85.10) being less negative than the private return (-116.68).",
+    "observation": "The generated reward overestimates performance compared to the private evaluator, as the private return is significantly lower (more negative).",
+    "explanation": "The gap indicates misalignment: the generated reward may be too optimistic (e.g., less negative shaping) or the private evaluator includes additional penalties not captured in the generated reward (e.g., survival time or fuel usage).",
+    "recommendation": "Use black-box selection feedback to reduce generated-private mismatch by adjusting component weights or adding penalties that better match the private evaluator's signal without reverse engineering it.",
+    "confidence": 0.8,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "The candidate inherited from g3_c0 and applied changes: reduced terminal reward from +500 to +300, increased crash penalty from -25 to -50, tightened thresholds to (0.1, 0.1, 0.1), and removed progress reward from distance_reward.",
+    "observation": "These changes resulted in a lower selection score and larger generated-private gap compared to probable parent performance (parent had higher terminal reward and looser thresholds).",
+    "explanation": "Overly aggressive tightening of thresholds and reduction of terminal reward made the landing condition too hard to achieve, while removing the progress reward eliminated positive shaping. The mutation moved the reward further from the private evaluator's expected behavior.",
+    "recommendation": "When tightening thresholds, ensure the terminal success reward is high enough to incentivize reaching the condition, and retain or add intermediate progress rewards to guide the agent.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  }
+]

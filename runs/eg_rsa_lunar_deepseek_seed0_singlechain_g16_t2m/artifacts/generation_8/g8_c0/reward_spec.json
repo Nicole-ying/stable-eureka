@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_4c4946654e",
+  "rationale": "The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft landing ~20, generated return ~800-1000, with private return improving toward positive.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Smooth proximity reward with moderate multiplier (2.0) and faster decay (3.0) to guide toward pad without dominating."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.5 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Penalize high horizontal and vertical velocities to encourage controlled descent."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Moderate penalty on angle and angular velocity to maintain upright orientation."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.05 * float(action == 2)",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Small per-step penalty for main engine activation to discourage excessive thrust (action==2)."
+    },
+    {
+      "id": "terminal",
+      "expression": "1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 2.0 * np.exp(-5.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3])))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Large terminal bonus (1500) for successful landing with relaxed tolerances (no leg contact required). Plus a continuous soft landing bonus (2.0) that rewards being close to the pad with low velocity, bridging the gap to the terminal condition."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_133526ea21"
+}

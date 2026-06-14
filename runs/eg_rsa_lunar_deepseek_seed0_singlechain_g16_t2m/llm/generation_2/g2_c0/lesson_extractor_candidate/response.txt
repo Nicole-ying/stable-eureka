@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The previous generation had shaping at 15x producing ~7691 per episode, dominating all other signals and causing a ~7660 gap between generated and private returns.",
+    "observation": "An excessively high shaping multiplier (15x) dominated the reward composition, leading the agent to hover near the pad for 901 steps without landing, as the terminal bonus was negligible in comparison.",
+    "explanation": "When one reward component (shaping) is orders of magnitude larger than others (e.g., terminal bonus), the agent optimizes for that component alone, ignoring the true landing objective. The generated-private return gap of 7660 indicated severe misalignment between the learned behavior and the hidden evaluator's goal.",
+    "recommendation": "Keep all reward components within a similar order of magnitude. Use black-box selection feedback (private_eval_return) to detect dominance: if generated_return far exceeds private_eval_return, reduce the dominant component's weight.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The candidate g2_c0 has a generated-private gap of 534.5 (generated 802.3, private 267.8) despite reducing shaping to 3x and adding a terminal bonus of 500.",
+    "observation": "The generated return (802.3) is three times the private return (267.8), indicating the agent is still earning substantially more from the reward function than the hidden evaluator expects, likely due to the terminal bonus being awarded too frequently or the shaping still being too high relative to the private evaluator's landing criteria.",
+    "explanation": "The generated-private gap persists because the reward function's terminal bonus (500) may be triggered for landings that the private evaluator does not consider successful, or the shaping reward (~30 per step) accumulates over long episodes (289.5 steps) to ~870, which combined with terminal 500 exceeds the private return. The agent may be exploiting loose tolerances or still lingering near the pad.",
+    "recommendation": "Tighten terminal landing tolerances further (e.g., position < 0.1, velocity < 0.2, angle < 0.15) and consider reducing shaping multiplier to 1-2x to prevent accumulation. Use black-box selection feedback to tune until generated and private returns align.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "The candidate g2_c0 inherited from g1_c0 and added a fuel_efficiency component set to -0.0 (zero), which is effectively a no-op.",
+    "observation": "The fuel_efficiency component returns 0.0 always, contributing nothing to the reward. This is a dead component that wastes code but does not harm performance.",
+    "explanation": "Setting a component to a constant zero is a common mutation pattern to disable it while preserving the structure. It does not affect the reward sum but adds unnecessary complexity.",
+    "recommendation": "When mutating, either remove zero-valued components entirely or replace them with a meaningful signal. If the intent is to disable, omit the component from the spec to reduce code clutter.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "The reward code uses obs[6] and obs[7] in the terminal condition, checking if they exceed 0.5 to indicate landing legs or contact.",
+    "observation": "The terminal condition relies on obs[6] and obs[7] being boolean-like indicators. If the observation space does not include these indices as intended, the condition may always be false or cause indexing errors.",
+    "explanation": "Using hardcoded observation indices for binary flags is fragile. If the observation order changes or the indices are misaligned, the terminal bonus may never trigger, making the reward function ineffective.",
+    "recommendation": "Verify the observation indices against the environment's observation space. For robustness, consider using next_obs for terminal conditions or checking done flag alone with a landing success signal from info if available.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The candidate's episode length is 289.5 steps, and the action mean is 1.76 with std 0.92.",
+    "observation": "The action distribution has a mean of 1.76 (positive bias) and moderate std, suggesting the agent is applying consistent thrust rather than hovering or landing softly.",
+    "explanation": "A positive mean action indicates the agent is firing engines continuously, which may prevent controlled landing and increase fuel usage. This could be a side effect of the shaping reward encouraging proximity to the pad without penalizing excessive thrust.",
+    "recommendation": "Add a penalty on action magnitude (e.g., -0.05 * sum(action^2)) to discourage large continuous thrust. This promotes fuel-efficient descent and aligns with the landing objective.",
+    "confidence": 0.8,
+    "reuse_policy": "same_env"
+  }
+]

@@ -1,0 +1,48 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Candidate uses a terminal bonus conditioned on done and obs[6] > 0.5 and obs[7] > 0.5 and tight tolerances on position, velocity, and angle.",
+    "observation": "The terminal component contributed 0.0 reward across all episodes, meaning the agent never achieved the landing condition. The generated_return is -31.6 but the private_eval_return is -107.4, indicating a large gap (75.8).",
+    "explanation": "The terminal bonus is never triggered because the conditions are too strict (multiple thresholds on position, velocity, angle, and leg contact). The agent receives no positive reinforcement for partial progress toward landing, so the shaping and penalties dominate, leading to a large mismatch between generated and private returns.",
+    "recommendation": "Add intermediate rewards for partial landing milestones (e.g., reducing altitude, slowing descent, or touching ground) rather than relying solely on a hard-to-achieve terminal bonus. Rebalance the shaping component to provide more consistent positive reward for proximity to the pad.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Candidate has a velocity_penalty component with coefficient -0.5 on sum of absolute velocities.",
+    "observation": "The velocity_penalty component returned -44.18 on average per episode, which is the largest negative contribution. The shaping component returned only +13.23, resulting in a net negative reward most of the time.",
+    "observation": "The velocity_penalty component returned -44.18 on average per episode, which is the largest negative contribution. The shaping component returned only +13.23, resulting in a net negative reward most of the time.",
+    "explanation": "The velocity penalty is too aggressive relative to the positive shaping reward. This encourages the agent to stay nearly stationary rather than move toward the landing pad, causing low generated_return and high generated/private gap.",
+    "recommendation": "Reduce the velocity penalty coefficient (e.g., from -0.5 to -0.2 or -0.1) or add a velocity-based shaping that rewards controlled descent toward the pad instead of penalizing all velocity uniformly.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Candidate uses obs[6] and obs[7] for leg contact in the terminal condition.",
+    "observation": "The terminal bonus never fires, and the leg contact indices may not be correctly aligned with the environment's observation space. The validator did not flag errors, but the indices might be unused or mis-specified.",
+    "explanation": "If the observation indices for leg contact are incorrect or the environment does not provide those signals, the terminal condition will never be satisfied. This wastes the terminal reward component entirely.",
+    "recommendation": "Before using specific observation indices for terminal conditions, verify the observation space layout from the environment documentation or step.py. If uncertain, design terminal conditions that rely on more robust signals like position and velocity only.",
+    "confidence": 0.7,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Candidate has a fuel_efficiency component that penalizes action == 2 (main engine) and action in [1,3] (side engines) with a flat -0.1 per activation.",
+    "observation": "The fuel_efficiency component returned -0.23 on average, which is a small penalty. However, the action_mean is 0.08 and action_std is 0.46, indicating the agent uses discrete actions near 0 (no engine) most of the time but occasionally uses other actions.",
+    "explanation": "The fuel penalty is small enough that it does not severely impact behavior, but it adds a constant negative bias. Combined with the large velocity penalty, the agent learns to avoid moving, which is suboptimal.",
+    "recommendation": "Consider removing the fuel penalty entirely if it is not critical to the task objective, or reshape it to penalize only wasteful engine use (e.g., firing main engine when far from pad). Alternatively, increase the shaping reward to counteract the penalty.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Candidate has a large generated_private_gap (75.8) and both returns are negative.",
+    "observation": "The generated_return is -31.6 while the private_eval_return is -107.4, meaning the reward signal is significantly misaligned with the hidden evaluator's scoring.",
+    "explanation": "The reward function encourages staying still (due to high velocity penalty) and does not reward progress toward landing (terminal bonus never triggers). The hidden evaluator likely expects the agent to move toward the pad and land, which the current reward does not incentivize well.",
+    "recommendation": "Use black-box selection feedback to reduce generated/private mismatch. Focus on increasing the shaping reward for proximity to the pad and reducing the velocity penalty to allow controlled movement. Add intermediate landing rewards that align with the hidden evaluator's criteria.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

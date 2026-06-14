@@ -1,0 +1,96 @@
+{
+  "generation": 9,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g9_c0",
+      "parent_ids": [
+        "g3_c0"
+      ],
+      "status": "ok",
+      "selection_score": -120.40994333950785,
+      "private_eval_return": -120.40994333950785,
+      "generated_return": -64.55170738678875,
+      "generated_minus_private": 55.8582359527191,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 55.8582359527191,
+        "action_mean": 0.14966887417218544,
+        "action_std": 0.570914703756137,
+        "episode_length_mean": 75.5,
+        "component_returns": {
+          "distance_reward": -18.729883473658845,
+          "velocity_penalty": -19.49212176143524,
+          "angle_penalty": -1.3297021516946643,
+          "fuel_efficiency": 0.0,
+          "terminal": -25.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        2.0\n      ],\n      \"description\": \"Base distance penalty (-0.25 per unit distance) plus small progress reward (0.3 * reduction in distance), clipped to prevent excessive positive shaping\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for high linear speed to encourage gentle landing\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for non-zero angle to encourage upright orientation\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - fuel efficiency not directly observable\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0)\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+400) with relaxed thresholds (0.15), moderate crash penalty (-25), no survival bonus\"\n    }\n ",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 2.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g9_c0",
+      "parent_ids": [
+        "g3_c0"
+      ],
+      "status": "ok",
+      "selection_score": -120.40994333950785,
+      "private_eval_return": -120.40994333950785,
+      "generated_return": -64.55170738678875,
+      "generated_minus_private": 55.8582359527191,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 55.8582359527191,
+        "action_mean": 0.14966887417218544,
+        "action_std": 0.570914703756137,
+        "episode_length_mean": 75.5,
+        "component_returns": {
+          "distance_reward": -18.729883473658845,
+          "velocity_penalty": -19.49212176143524,
+          "angle_penalty": -1.3297021516946643,
+          "fuel_efficiency": 0.0,
+          "terminal": -25.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        2.0\n      ],\n      \"description\": \"Base distance penalty (-0.25 per unit distance) plus small progress reward (0.3 * reduction in distance), clipped to prevent excessive positive shaping\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for high linear speed to encourage gentle landing\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for non-zero angle to encourage upright orientation\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - fuel efficiency not directly observable\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0)\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+400) with relaxed thresholds (0.15), moderate crash penalty (-25), no survival bonus\"\n    }\n ",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 2.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward."
+    }
+  ],
+  "failed_candidates": []
+}

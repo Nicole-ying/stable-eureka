@@ -1,0 +1,177 @@
+Structured evidence for this generation:
+{
+  "generation": 1,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": -108.22529448005146,
+      "private_eval_return": -108.22529448005146,
+      "generated_return": -82.05488457466852,
+      "generated_minus_private": 26.17040990538294,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 26.17040990538294,
+        "action_mean": 0.11093990755007704,
+        "action_std": 0.4871417954768956,
+        "episode_length_mean": 64.9,
+        "component_returns": {
+          "distance_reward": -59.776411343211485,
+          "velocity_penalty": -36.52500260833985,
+          "angle_penalty": -2.143470623117173,
+          "fuel_efficiency": 0.0,
+          "terminal": 16.389999999999993
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Reduce velocity_penalty coefficient from -3.0 to -0.5 and distance_reward coefficient from -2.0 to -1.0 to encourage exploration and reduce the dominant velocity penalty. Add a small positive survival bonus (+0.1 per timestep) to encourage longer episodes. Reduce terminal crash penalty from -100 to -50 to avoid double punishment. Increase fuel_efficiency penalty to -0.5 to make it meaningful.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-1.0 * np.sqrt(next_obs[0]**2 + next_obs[1]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Negative penalty proportional to Euclidean distance to landing pad (0,0)\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Reduced penalty for high linear speed to allow exploration\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-2.0 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Negative penalty for non-zero angle\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.5 * float(action == 2)\",\n      \"clip\": [\n        -1.0,\n        0.0\n      ],\n      \"description\": \"Moderate negative penalty each time main engine is fired\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (100.0 if (next_obs[6] == 1.0 and next_obs[7] == 1.0 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1 and np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1) else -50.0) + (0.1 * float(not done))\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing, reduced crash penalty, and small survival bonus per timestep\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_49c61cf950\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-1.0 * np.sqrt(next_obs[0]**2 + next_obs[1]**2))\n    component_0 = max(min(component_0, 0.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-2.0 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.5 * float(action == 2))\n    component_3 = max(min(component_3, 0.0), -1.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (100.0 if (next_obs[6] == 1.0 and next_obs[7] == 1.0 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1 and np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1) else -50.0) + (0.1 * float(not done)))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Reduce velocity_penalty coefficient from -3.0 to -0.5 and distance_reward coefficient from -2.0 to -1.0 to encourage exploration and reduce the dominant velocity penalty. Add a small positive survival bonus (+0.1 per timestep) to encourage longer episodes. Reduce terminal crash penalty from -100 to -50 to avoid double punishment. Increase fuel_efficiency penalty to -0.5 to make it meaningful."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": -108.22529448005146,
+      "private_eval_return": -108.22529448005146,
+      "generated_return": -82.05488457466852,
+      "generated_minus_private": 26.17040990538294,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 26.17040990538294,
+        "action_mean": 0.11093990755007704,
+        "action_std": 0.4871417954768956,
+        "episode_length_mean": 64.9,
+        "component_returns": {
+          "distance_reward": -59.776411343211485,
+          "velocity_penalty": -36.52500260833985,
+          "angle_penalty": -2.143470623117173,
+          "fuel_efficiency": 0.0,
+          "terminal": 16.389999999999993
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Reduce velocity_penalty coefficient from -3.0 to -0.5 and distance_reward coefficient from -2.0 to -1.0 to encourage exploration and reduce the dominant velocity penalty. Add a small positive survival bonus (+0.1 per timestep) to encourage longer episodes. Reduce terminal crash penalty from -100 to -50 to avoid double punishment. Increase fuel_efficiency penalty to -0.5 to make it meaningful.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-1.0 * np.sqrt(next_obs[0]**2 + next_obs[1]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Negative penalty proportional to Euclidean distance to landing pad (0,0)\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Reduced penalty for high linear speed to allow exploration\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-2.0 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Negative penalty for non-zero angle\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.5 * float(action == 2)\",\n      \"clip\": [\n        -1.0,\n        0.0\n      ],\n      \"description\": \"Moderate negative penalty each time main engine is fired\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (100.0 if (next_obs[6] == 1.0 and next_obs[7] == 1.0 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1 and np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1) else -50.0) + (0.1 * float(not done))\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing, reduced crash penalty, and small survival bonus per timestep\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_49c61cf950\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-1.0 * np.sqrt(next_obs[0]**2 + next_obs[1]**2))\n    component_0 = max(min(component_0, 0.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-2.0 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.5 * float(action == 2))\n    component_3 = max(min(component_3, 0.0), -1.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (100.0 if (next_obs[6] == 1.0 and next_obs[7] == 1.0 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1 and np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1) else -50.0) + (0.1 * float(not done)))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Reduce velocity_penalty coefficient from -3.0 to -0.5 and distance_reward coefficient from -2.0 to -1.0 to encourage exploration and reduce the dominant velocity penalty. Add a small positive survival bonus (+0.1 per timestep) to encourage longer episodes. Reduce terminal crash penalty from -100 to -50 to avoid double punishment. Increase fuel_efficiency penalty to -0.5 to make it meaningful."
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 0
+
+## Latest reflection
+## Reflection Analysis – Generation 0
+
+### 1. What Worked
+
+- **Reward spec structure is valid**: The candidate passed validation (no errors) and was parsed correctly. All five required components (distance, velocity, angle, fuel, terminal) are present.
+- **Candidate generation succeeded**: One candidate was generated and it's marked "ok" — no structural failures in code generation.
+- **Terminal component is correctly triggering**: The `terminal` component contributed -80.0, meaning the episode ended with `done=True` and the landing conditions were not met (likely a crash). This confirms the terminal logic is executing.
+
+### 2. What Failed
+
+- **Extremely poor selection score**: The private_eval_return of **-112.17** is very low. This is the hidden evaluator's measure of reward quality.
+- **Massive generated-private gap**: The generated_return is **-435.30**, while private_eval_return is **-112.17** — a gap of **-323.13**. This indicates the reward function heavily penalizes the agent during training in ways the private evaluator does not.
+- **Component breakdown reveals the problem**:
+  - `distance_reward`: -134.48 (agent stays far from pad)
+  - `velocity_penalty`: -215.82 (dominant penalty — agent moves too fast)
+  - `angle_penalty`: -4.99 (minor)
+  - `fuel_efficiency`: 0.0 (agent rarely uses main engine? or action 2 isn't being selected)
+  - `terminal`: -80.0 (episode ends in crash/failure)
+- **The velocity_penalty is crushing the agent**: At -3.0 * speed, with speed values potentially 1-2, this quickly dominates the reward signal. The agent likely learns to stop moving entirely to avoid this penalty, preventing exploration.
+- **Short episodes**: Mean episode length of **70.1 steps** suggests episodes terminate early (likely from crashing or timeout), preventing the agent from learning to reach the pad.
+
+### 3. What to Try Next
+
+**Primary hypothesis**: The velocity penalty is too aggressive relative to the distance reward, causing the agent to prefer staying still (zero velocity) over moving toward the pad.
+
+**Recommended changes**:
+
+1. **Reduce velocity_penalty coefficient** from -3.0 to **-0.5 or -1.0** — the agent needs to move to explore, but current penalty makes movement prohibitively expensive.
+
+2. **Increase distance_reward coefficient** from -2.0 to **-1.0 or -0.5** — the distance penalty should be gentler to allow exploration without excessive punishment for being far from pad.
+
+3. **Consider adding a small positive reward for surviving** — e.g., +0.1 per timestep — to encourage longer episodes and more exploration.
+
+4. **Check if the terminal condition is too harsh**: The -100 crash penalty may be unnecessary if the step-wise penalties already punish bad states. Consider reducing to -50 or removing the crash penalty entirely, relying only on step penalties.
+
+5. **Consider removing or reducing the terminal crash penalty**: The -80 terminal contribution suggests crashes are happening frequently. A large negative terminal reward + large step penalties creates a "double punishment" that may not reflect the private evaluator's preferences.
+
+### 4. Lessons Supported or Contradicted
+
+**Supported lessons (new)**:
+- **Lesson L0**: Excessively high velocity penalties relative to distance rewards cause the agent to freeze and avoid movement, leading to poor exploration and low returns. The 3:2 ratio of velocity:distance penalty appears too aggressive.
+- **Lesson L1**: Large negative terminal rewards combined with harsh step penalties create a "double punishment" that may not align with the hidden evaluator's scoring. The -80 terminal contribution suggests crashes are being over-penalized.
+
+**No prior lessons to confirm or contradict** — this is the first generation with no memory context. These observations should be stored for future generations.
+
+## Recent environment lessons
+- failure_mode: Reduce the velocity_penalty coefficient to -0.5 or -1.0 and reduce the distance_reward coefficient to -0.5 or -1.0 to better balance exploration and movement.
+- failure_mode: Reduce the terminal crash penalty from -100 to -50 or remove it entirely, relying primarily on step penalties to shape behavior. Alternatively, ensure the terminal penalty is not redundant with step penalties.
+- general: Consider adding a small positive survival bonus (e.g., +0.1 per timestep) to encourage longer episodes and allow the agent more time to explore and learn.
+- reward_pattern: Ensure the fuel penalty coefficient is large enough to be noticeable but not so large that the agent avoids the main engine entirely. Consider adjusting the coefficient to -0.5 or -1.0 to provide meaningful feedback.
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_00fcdaa46c] type=failure_mode, confidence=0.85, condition=Terminal component uses a sparse +100/-100 signal only at done=True, and the environment has long episodes (mean 70 steps) with no intermediate shaping toward landing success., recommendation=Reduce the magnitude of per-step penalties (e.g., lower velocity_penalty coefficient from -3.0 to -1.0 or -0.5) and/or increase the positive terminal reward for successful landings to better align with the private evaluator's scoring.
+- [candidate_efbfa68f52] type=reward_pattern, confidence=0.9, condition=Component returns show velocity_penalty (-215.8) is the largest negative contributor, followed by distance_reward (-134.5), while angle_penalty (-5.0) and fuel_efficiency (0.0) are negligible., recommendation=Reduce the velocity penalty coefficient and/or add a small positive reward for moving toward the pad to encourage goal-directed exploration without excessive penalization of speed.
+- [candidate_1e487f9616] type=failure_mode, confidence=0.7, condition=Terminal condition requires next_obs[6]==1.0 and next_obs[7]==1.0, which are likely contact flags or leg status indicators, but their exact meaning is not guaranteed by the observation contract., recommendation=Verify the observation indices for landing success (e.g., check if the environment uses different flags or a continuous contact sensor). Consider using a threshold-based success condition on position and velocity instead of discrete flags.
+- [candidate_261790fc5e] type=general, confidence=0.6, condition=Fuel_efficiency component uses action == 2, which is a discrete action index, but the component return is 0.0., recommendation=Ensure the fuel_efficiency penalty is meaningful by increasing its coefficient (e.g., -1.0) and removing the clip, or verify that action 2 corresponds to the main engine in the environment's action space.
+
+Relevant environment-level lessons:
+- [environment_20bc574062] type=failure_mode, confidence=0.9, condition=velocity_penalty coefficient is more than 2x the distance_reward coefficient in a LunarLander-like environment, recommendation=Reduce the velocity_penalty coefficient to -0.5 or -1.0 and reduce the distance_reward coefficient to -0.5 or -1.0 to better balance exploration and movement.
+- [environment_ff6961f23f] type=failure_mode, confidence=0.85, condition=large negative terminal crash penalty combined with harsh step-wise penalties in a landing environment, recommendation=Reduce the terminal crash penalty from -100 to -50 or remove it entirely, relying primarily on step penalties to shape behavior. Alternatively, ensure the terminal penalty is not redundant with step penalties.
+- [environment_2c025472a9] type=general, confidence=0.8, condition=episode length is significantly below the maximum (70.1 steps) in a landing task, recommendation=Consider adding a small positive survival bonus (e.g., +0.1 per timestep) to encourage longer episodes and allow the agent more time to explore and learn.
+- [environment_576d609aab] type=reward_pattern, confidence=0.7, condition=fuel_efficiency component yields zero return over the entire training run, recommendation=Ensure the fuel penalty coefficient is large enough to be noticeable but not so large that the agent avoids the main engine entirely. Consider adjusting the coefficient to -0.5 or -1.0 to provide meaningful feedback.
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

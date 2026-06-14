@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "When distance and velocity penalties dominate the reward signal with large negative coefficients",
+    "observation": "Reducing velocity_penalty coefficient from -3.0 to -0.5 and distance_reward coefficient from -2.0 to -1.0 improved the generated-private gap by approximately 350 points (from -323 to +26).",
+    "explanation": "Overly large negative penalties for distance and velocity create a reward landscape that is too steep, causing the agent to accumulate large negative returns and hindering learning. Reducing these coefficients balances the signal and aligns the reward function more closely with the hidden evaluator.",
+    "recommendation": "When distance and velocity penalties dominate negative returns, reduce their coefficients significantly (e.g., by a factor of 2-6) to improve reward alignment and learning.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the terminal component uses a crash penalty of -100 and no survival bonus",
+    "observation": "Reducing the crash penalty from -100 to -50 and adding a +0.1 per-timestep survival bonus turned the terminal component from -80.0 to +16.39, a clear improvement.",
+    "explanation": "A large crash penalty combined with no per-step positive signal makes the terminal component overwhelmingly negative, discouraging exploration and causing early termination. Reducing the crash penalty and adding a small survival bonus rebalances the terminal signal.",
+    "recommendation": "Set crash penalties between -50 and -100 and add a small positive survival bonus (e.g., +0.1 to +0.5 per timestep) to encourage longer episodes and reduce negative terminal dominance.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When a fuel_efficiency component uses a discrete action index (e.g., action == 2) and returns zero",
+    "observation": "The fuel_efficiency component with coefficient -0.5 for action == 2 returned 0.0, indicating the action index may be incorrect or the agent avoids the main engine.",
+    "explanation": "If the action index does not correspond to the main engine in the environment, or if the agent learns to avoid that action due to other penalties, the fuel penalty never triggers and becomes a dead component.",
+    "recommendation": "Verify the action space mapping for the main engine. If the mapping is unknown, consider removing the fuel penalty or replacing it with a continuous action threshold (e.g., action > 0.5 for normalized continuous actions).",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "When a survival bonus of +0.1 per timestep is added to encourage longer episodes",
+    "observation": "Episode length did not improve (70.1 to 64.9 steps) with a +0.1 survival bonus, suggesting the bonus is too small to meaningfully affect behavior.",
+    "explanation": "A very small per-step bonus may be overwhelmed by larger negative penalties (e.g., distance, velocity) and fail to incentivize the agent to stay alive longer. A larger bonus is needed to compete with dominating negative signals.",
+    "recommendation": "Use a survival bonus of at least +0.5 per timestep when per-step penalties are in the range of -1 to -5, to provide a meaningful counterbalance.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When the terminal success reward is +100 but the agent still fails to achieve positive returns",
+    "observation": "Despite reducing penalties and adding a survival bonus, the agent still fails to land consistently, suggesting the +100 success reward may be insufficient relative to accumulated step penalties.",
+    "explanation": "If the agent accumulates around -100 to -200 in penalties over an episode, a +100 success reward does not provide enough net positive return to make landing attempts attractive. A larger success reward creates a stronger learning signal.",
+    "recommendation": "Increase the terminal success reward to +200 or +300 when per-step penalties are significant (e.g., total negative return over episode exceeds -100), to ensure successful landings yield a clearly positive net return.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  }
+]

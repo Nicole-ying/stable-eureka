@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_4c4946654e",
+  "rationale": "The previous generation (g2_c0) reduced shaping to 3x and added a terminal bonus of 500, achieving the first successful landing and a 58x improvement in private return (4.63 to 267.8). However, the generated-private gap remains large (534.5, ~2x private return). The key issue identified in feedback: the per-step survival penalty (-0.1) was planned but not implemented (fuel_efficiency was left at -0.0). This mutation adds a survival penalty of -0.1 per step via the fuel_efficiency component (renamed from zero to -0.1), reduces shaping multiplier from 3.0 to 2.0 to further reduce per-step accumulation, and slightly reduces velocity penalty from -0.5 to -0.4 to avoid overly penalizing necessary speed. These changes target a composition where terminal bonus dominates: survival penalty ~-29 (over ~290 steps), shaping ~180, velocity ~-30, angle ~-10, terminal 500. The terminal bonus remains at 500 with same tolerances (position 0.15, velocity 0.3, angle 0.2) since they were proven achievable.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Gentle shaping reward for proximity to pad (2x multiplier, faster decay)."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.4 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Moderate penalty on horizontal and vertical velocity to encourage controlled descent."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Penalize large angle and angular velocity."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.1 * 1.0",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Per-step survival penalty to create urgency for task completion."
+    },
+    {
+      "id": "terminal",
+      "expression": "500.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.3 and abs(obs[3]) < 0.3 and abs(obs[4]) < 0.2)",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Large terminal bonus for successful landing with moderate tolerances."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_1a1757a154"
+}

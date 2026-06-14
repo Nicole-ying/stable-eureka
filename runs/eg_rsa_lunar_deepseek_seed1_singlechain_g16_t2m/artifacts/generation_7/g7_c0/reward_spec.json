@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_cc14e8210d",
+  "rationale": "Based on feedback from generation 6: the agent crashed more often after relaxing thresholds and adding a survival bonus. Revert to stricter thresholds (position<0.12, velocity<0.12, angle<0.12), increase crash penalty to -25, remove survival bonus, keep terminal success at +500, and re-add progress reward to distance_reward. Per-step penalties remain reduced (distance -0.25, velocity -0.25, angle -0.5) as they showed minor improvement.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.5 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))",
+      "clip": [
+        -5.0,
+        5.0
+      ],
+      "description": "Base distance penalty (-0.25 per unit distance) plus progress reward (0.5 * reduction in distance)"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Reduced penalty for high linear speed"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * abs(next_obs[4])",
+      "clip": [
+        -5.0,
+        0.0
+      ],
+      "description": "Mild penalty for non-zero angle"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "0.0",
+      "clip": [
+        0.0,
+        0.0
+      ],
+      "description": "Disabled - always zero"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (500.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.12 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.12 and abs(next_obs[4]) < 0.12) else -25.0)",
+      "clip": [
+        -500.0,
+        500.0
+      ],
+      "description": "Large positive reward for successful landing (+500) with stricter thresholds, crash penalty (-25), no survival bonus"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_6234b9e9fd"
+}

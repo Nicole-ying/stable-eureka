@@ -1,0 +1,38 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal component uses strict success thresholds (position<0.12, velocity<0.12, angle<0.12) with a large positive reward (+500) and a modest crash penalty (-25), while per-step penalties are small.",
+    "observation": "The generated_return is -7.14, but the private_eval_return is -111.63, a gap of 104.49. Component returns show distance_reward -15.07, velocity_penalty -18.27, angle_penalty -1.30, fuel_efficiency 0.0, terminal +27.5. The agent occasionally achieves terminal success (+500) but most episodes accumulate large negative per-step penalties.",
+    "explanation": "The large generated/private gap indicates the agent's episodic performance is much worse than the generated reward suggests. The strict landing thresholds make success rare, while per-step penalties dominate, causing the agent to accumulate high negative returns. The private evaluator likely penalizes erratic flying or crashes more heavily than the simple -25 crash penalty captures.",
+    "recommendation": "Reduce the generated/private gap by increasing the crash penalty to match the private evaluator's effective cost, or relax success thresholds to make landing more achievable, thereby reducing the dominance of per-step penalties.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Progress reward added to distance_reward: 0.5 * (sqrt(obs[0]^2+obs[1]^2) - sqrt(next_obs[0]^2+next_obs[1]^2)).",
+    "observation": "distance_reward component return is -15.07, indicating the progress reward did not offset the base distance penalty (-0.25 per unit distance).",
+    "explanation": "The progress reward is positive only when the agent moves closer to the origin. In practice, the agent may not consistently reduce distance, so the base penalty dominates. The net effect is a large negative per-step distance penalty.",
+    "recommendation": "Increase the progress reward coefficient or reduce the base penalty further to make distance reduction more rewarding, or consider a purely progress-based distance reward.",
+    "confidence": 0.75,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Terminal component uses float(done) to detect episode end, with conditional logic for success or crash.",
+    "observation": "The terminal component contributes +27.5 on average, suggesting some episodes end in success, but the overall return is still low.",
+    "explanation": "The terminal reward correctly fires on done, but the high success reward (+500) is infrequent relative to the negative per-step accumulation. The crash penalty (-25) is too small to discourage crashing, leading to many crash-terminated episodes.",
+    "recommendation": "Increase crash penalty to at least -100 to better align with the private evaluator's cost, or add a survival bonus for each step without crashing to extend episode length and improve learning.",
+    "confidence": 0.80,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Candidate g7_c0 is mutated from g3_c0, reverting to stricter thresholds and removing survival bonus based on generation 6 feedback.",
+    "observation": "Despite reverting to stricter thresholds and removing survival bonus, the generated/private gap remains large.",
+    "explanation": "The mutation addressed crash frequency by tightening thresholds, but the core issue—imbalance between per-step penalties and terminal rewards—persists. The private evaluator likely penalizes the agent more heavily for poor flight behavior than the simple per-step penalties capture.",
+    "recommendation": "When mutating, also adjust the magnitude of per-step penalties relative to terminal rewards to reduce the generated/private gap, not just the success thresholds.",
+    "confidence": 0.70,
+    "reuse_policy": "same_env"
+  }
+]

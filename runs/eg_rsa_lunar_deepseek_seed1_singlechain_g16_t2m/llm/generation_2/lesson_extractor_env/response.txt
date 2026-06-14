@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "When distance_reward base coefficient is -1.0 and a progress reward of 0.5*(prev_dist - current_dist) is added",
+    "observation": "The distance_reward component returned -69.70, dominating the total negative signal, and the selection score dropped from -108.23 to -117.91.",
+    "explanation": "The base distance penalty still overwhelms the progress reward, causing the reward function to remain overly negative and misaligned with the private evaluator.",
+    "recommendation": "Reduce the base distance penalty coefficient to -0.5 and increase the progress reward coefficient to 1.0 to better balance shaping toward the landing pad.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+    {
+    "lesson_type": "failure_mode",
+    "condition": "When increasing the survival bonus from +0.1 to +0.5 and terminal success reward to +300",
+    "observation": "Episode length increased modestly from 64.9 to 71.5, but the generated-private gap widened from +26.17 to +30.26 and selection score worsened.",
+    "explanation": "The survival bonus prolongs episodes but the accumulated per-step penalties (especially distance) outweigh benefits, and the large survival bonus may misalign with the private evaluator's reward structure.",
+    "recommendation": "Reduce the survival bonus back to +0.1 or remove it and rely on stronger terminal success reward and per-step shaping to avoid misalignment.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+    {
+    "lesson_type": "failure_mode",
+    "condition": "When terminal success reward is set to +300 but per-step penalties accumulate to approximately -117 over 71.5 steps",
+    "observation": "The agent rarely earns the +300 success reward, and the net return remains negative (-117.91), indicating the success reward is insufficient.",
+    "explanation": "The ratio of success reward to accumulated penalties is too low for the agent to reliably discover and repeat successful landing behavior.",
+    "recommendation": "Increase the terminal success reward to +500 or further reduce per-step penalties so that successful episodes yield a clearly positive total return.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+    {
+    "lesson_type": "reward_pattern",
+    "condition": "When fuel_efficiency component checks action == 2 and action_mean is 0.86 with action_std 1.17",
+    "observation": "The fuel_efficiency component returned 0.0 across multiple generations despite a coefficient of -1.0, indicating action 2 is never selected.",
+    "explanation": "The action distribution shows the agent primarily uses action 0 (idle/hover) and rarely action 2 (main engine), making the fuel penalty component ineffective.",
+    "recommendation": "Remove the fuel_efficiency component entirely to simplify the reward function and avoid a useless signal that may confuse learning.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+    {
+    "lesson_type": "general",
+    "condition": "When terminal success condition uses next_obs[6]==1.0 and next_obs[7]==1.0 as contact flags",
+    "observation": "Despite a +300 success reward, the agent rarely earns it, suggesting the contact flags may not be triggered correctly or the indices are wrong.",
+    "explanation": "If the observation indices for contact flags are incorrect or the environment does not set them reliably, the success condition will never be met regardless of reward magnitude.",
+    "recommendation": "Simplify the terminal success condition to use only position, velocity, and angle thresholds (e.g., distance < 0.1, speed < 0.1, angle < 0.1) without relying on contact flags.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  }
+]

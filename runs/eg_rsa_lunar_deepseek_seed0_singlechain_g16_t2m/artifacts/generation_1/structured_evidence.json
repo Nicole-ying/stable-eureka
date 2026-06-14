@@ -1,0 +1,96 @@
+{
+  "generation": 1,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": 4.6305939148434785,
+      "private_eval_return": 4.6305939148434785,
+      "generated_return": 7665.382198414784,
+      "generated_minus_private": 7660.751604499941,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 7660.751604499941,
+        "action_mean": 1.9312985571587125,
+        "action_std": 0.7424405421233227,
+        "episode_length_mean": 901.0,
+        "component_returns": {
+          "shaping": 7691.358511092016,
+          "velocity_penalty": -12.528583570520222,
+          "angle_penalty": -13.447729106710355,
+          "fuel_efficiency": 0.0,
+          "terminal": 0.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Stronger shaping reward for proximity to landing pad (15x multiplier).\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.1 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Reduced velocity penalty to allow controlled movement.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize large angle and angular velocity.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Removed fuel penalty to avoid discouraging necessary engine use.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus for successful landing with relaxed tolerances.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_40b9d87439\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.1 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g1_c0",
+      "parent_ids": [
+        "g0_c0"
+      ],
+      "status": "ok",
+      "selection_score": 4.6305939148434785,
+      "private_eval_return": 4.6305939148434785,
+      "generated_return": 7665.382198414784,
+      "generated_minus_private": 7660.751604499941,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 7660.751604499941,
+        "action_mean": 1.9312985571587125,
+        "action_std": 0.7424405421233227,
+        "episode_length_mean": 901.0,
+        "component_returns": {
+          "shaping": 7691.358511092016,
+          "velocity_penalty": -12.528583570520222,
+          "angle_penalty": -13.447729106710355,
+          "fuel_efficiency": 0.0,
+          "terminal": 0.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Stronger shaping reward for proximity to landing pad (15x multiplier).\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.1 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Reduced velocity penalty to allow controlled movement.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize large angle and angular velocity.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Removed fuel penalty to avoid discouraging necessary engine use.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus for successful landing with relaxed tolerances.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_40b9d87439\"\n}",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(15.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.1 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(200.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on the feedback from generation 0, the main issues were: (1) shaping reward too weak relative to velocity penalty, (2) terminal bonus too small, (3) velocity penalty too harsh, (4) fuel penalty discourages necessary engine use. The new spec increases shaping magnitude (15x), reduces velocity penalty (-0.1), removes fuel penalty, and increases terminal bonus to 200. Terminal conditions are relaxed (position tolerance 0.2, velocity tolerance 0.5, angle tolerance 0.3) to make success more reachable."
+    }
+  ],
+  "failed_candidates": []
+}

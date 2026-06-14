@@ -1,0 +1,65 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Action mean saturates near maximum (e.g., 1.9983) despite a small fuel penalty.",
+    "observation": "The agent uses near-full throttle throughout the episode. The fuel efficiency penalty of -0.05 per main engine activation (total -50 over 1000 steps) is negligible compared to a terminal bonus of 1500+.",
+    "explanation": "A small per-step penalty is insufficient to counteract a large terminal incentive. The agent learns to ignore the penalty and maximize the terminal reward by rushing or hovering at full throttle.",
+    "recommendation": "Add a strong throttle penalty (e.g., -0.2 * (action[0]**2 + action[1]**2)) or increase the fuel penalty to at least 10-20% of the terminal bonus magnitude. Target a per-episode penalty of -100 to -200.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "A soft landing bonus provides continuous reward when the agent is close to the pad and has low velocity.",
+    "observation": "The soft landing bonus (2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|))) is earned throughout the episode, rewarding hovering near the pad rather than committing to a landing.",
+    "explanation": "A continuous proximity-based bonus can create a local optimum where the agent hovers near the pad for sustained reward, delaying or avoiding the actual landing event.",
+    "recommendation": "Make the soft landing bonus conditional on being very close to the pad (e.g., |x|<0.1 and |y|<0.1) so it bridges to landing rather than competing with it. Alternatively, implement it as a separate component for independent monitoring.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The generated-private gap exceeds 10x the private return magnitude or 1000 in absolute terms.",
+    "observation": "The generated-private gap is 2834.27, which is 241x the private return magnitude (-11.75). The gap has more than doubled from the previous generation.",
+    "explanation": "A massive gap indicates fundamental misalignment between the generated reward and the hidden evaluator. The reward structure is incentivizing behaviors that the evaluator penalizes heavily.",
+    "recommendation": "Add a hard validation threshold to reject candidates when the generated-private gap exceeds 1000 or the private return is below -10. Do not accept such candidates without repair.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The terminal bonus is still too large relative to penalties, and the agent earns it without controlled descent.",
+    "observation": "Despite reducing the terminal bonus from 2500 to 1500, the agent still earns 1805 (including soft landing) by surviving the full episode length of 1000 steps with near-full throttle.",
+    "explanation": "A large terminal bonus can dominate the reward signal, making the agent ignore penalties and shaping. The agent learns to survive until the end rather than landing efficiently.",
+    "recommendation": "Reduce the terminal bonus further (e.g., to 1000) and add a time penalty or survival cost (e.g., -0.1 per step) to create urgency to land quickly. Ensure the soft landing bonus is separate and smaller.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "No validation criteria are applied to detect degenerate policies (e.g., action mean > 1.5, gap > 500).",
+    "observation": "The candidate was accepted without repair despite a massive generated-private gap and saturated action mean. No validation errors were recorded.",
+    "explanation": "Without explicit validation thresholds, degenerate policies can be accepted and propagated, wasting generations on fundamentally misaligned reward structures.",
+    "recommendation": "Add validation criteria that monitor action mean (reject if > 1.5) and generated-private gap (reject if > 500) to flag degenerate policies before accepting candidates.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Multiple simultaneous changes (shaping +50%, terminal -40%, new fuel penalty, new soft landing bonus) create a regime shift that is not properly monitored.",
+    "observation": "The simultaneous changes in generation 8 led to a 165% increase in the generated-private gap and a saturated action mean. The impact of individual changes cannot be isolated.",
+    "explanation": "Making several large changes at once makes it difficult to attribute success or failure to specific components. Incremental changes (e.g., 25% adjustment per generation) allow better diagnosis and tuning.",
+    "recommendation": "Make incremental changes per generation (e.g., adjust one or two components at a time by no more than 25-50%) and monitor behavioral metrics like action mean/std and component returns to isolate effects.",
+    "confidence": 0.85,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The soft landing bonus is combined with the terminal component in a single expression.",
+    "observation": "The soft landing bonus and the terminal landing bonus are both in the 'terminal' component, earning 1805 total. It is impossible to distinguish how much comes from actual landing vs. hovering near the pad.",
+    "explanation": "Combining multiple reward signals into one component prevents independent monitoring and adjustment. The component return is a black box, masking the contribution of each sub-signal.",
+    "recommendation": "Implement the soft landing bonus as a separate component (e.g., 'soft_landing') to allow independent monitoring, scaling, and diagnosis of its effect on behavior.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  }
+]

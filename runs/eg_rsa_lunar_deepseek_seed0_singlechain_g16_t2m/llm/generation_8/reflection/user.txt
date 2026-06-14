@@ -1,0 +1,201 @@
+Structured evidence for this generation:
+{
+  "generation": 8,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g8_c0",
+      "parent_ids": [
+        "g2_c0"
+      ],
+      "status": "ok",
+      "selection_score": -11.745809754890525,
+      "private_eval_return": -11.745809754890525,
+      "generated_return": 2822.5199320027255,
+      "generated_minus_private": 2834.265741757616,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 2834.265741757616,
+        "action_mean": 1.9983,
+        "action_std": 0.6536796692570452,
+        "episode_length_mean": 1000.0,
+        "component_returns": {
+          "shaping": 1127.9177008983484,
+          "velocity_penalty": -62.27554940080372,
+          "angle_penalty": -18.564636124114003,
+          "fuel_efficiency": -28.635000000000268,
+          "terminal": 1805.0410318341553
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft landing ~20, generated return ~800-1000, with private return improving toward positive.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Smooth proximity reward with moderate multiplier (2.0) and faster decay (3.0) to guide toward pad without dominating.\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize high horizontal and vertical velocities to encourage controlled descent.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Moderate penalty on angle and angular velocity to maintain upright orientation.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.05 * float(action == 2)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Small per-step penalty for main engine activation to discourage excessive thrust (action==2).\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 ",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.05 * float(action == 2))\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 2.0 * np.exp(-5.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3]))))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft lan"
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g8_c0",
+      "parent_ids": [
+        "g2_c0"
+      ],
+      "status": "ok",
+      "selection_score": -11.745809754890525,
+      "private_eval_return": -11.745809754890525,
+      "generated_return": 2822.5199320027255,
+      "generated_minus_private": 2834.265741757616,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 2834.265741757616,
+        "action_mean": 1.9983,
+        "action_std": 0.6536796692570452,
+        "episode_length_mean": 1000.0,
+        "component_returns": {
+          "shaping": 1127.9177008983484,
+          "velocity_penalty": -62.27554940080372,
+          "angle_penalty": -18.564636124114003,
+          "fuel_efficiency": -28.635000000000268,
+          "terminal": 1805.0410318341553
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft landing ~20, generated return ~800-1000, with private return improving toward positive.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Smooth proximity reward with moderate multiplier (2.0) and faster decay (3.0) to guide toward pad without dominating.\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize high horizontal and vertical velocities to encourage controlled descent.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Moderate penalty on angle and angular velocity to maintain upright orientation.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.05 * float(action == 2)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Small per-step penalty for main engine activation to discourage excessive thrust (action==2).\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 ",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(2.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.3 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.05 * float(action == 2))\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(1500.0 * float(done and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.3) + 2.0 * np.exp(-5.0 * abs(obs[1])) * np.exp(-0.5 * (abs(obs[2]) + abs(obs[3]))))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "The previous candidate (g7) saw private return regress from +205 to -33 due to degenerate full-throttle behavior (action mean 1.9997). The agent learned to rush to the pad to claim the large terminal bonus (2500) without controlled descent. To fix: (1) reduce terminal bonus from 2500 to 1500 to reduce the incentive for extreme actions, (2) increase shaping multiplier from 1.5 to 2.0 to provide smoother guidance without overpowering other signals, (3) add a fuel efficiency penalty of -0.05 per main engine activation to discourage excessive thrust, (4) keep angle penalty moderate at -0.3 to maintain stability, (5) remove the leg contact requirement from terminal condition (as per lesson environment_2e9cb885a0) to make landing achievable, (6) add a soft landing bonus of 2.0 * exp(-5*|y|) * exp(-0.5*(|vx|+|vy|)) to bridge the gap between hovering and landing. These changes target a balanced composition: shaping ~400, velocity -50, angle -30, fuel -20, terminal ~1500 (earned ~500), soft lan"
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 7
+
+## Latest reflection
+## Reflection on Generation 7
+
+### 1. What worked
+
+- **Private_eval_return improved dramatically**: At **-33.34**, the private return has improved from **+205.07 (g6)** to **-33.34 (g7)** — a net change of **-238.41**. Wait — this is actually a **regression**. The private return went from positive back to negative. This is a significant failure, not a success. Let me re-examine.
+
+Actually, looking more carefully: the private return went from **+205.07** to **-33.34**. This is a **worse** private return. The agent is now being judged as net negative by the hidden evaluator. This is a clear regression.
+
+- **Terminal reward increased significantly**: From **210.12 (g6)** to **753.56 (g7)** — a **3.6x increase**. The softened landing criteria (position 0.2, velocity 0.8, angle 0.4) and removal of leg contact requirement are working. The agent is achieving the terminal bonus much more consistently.
+- **Shaping reward reduced dramatically**: From **1088.99 (g6)** to **362.99 (g7)** — a **67% reduction**. The shaping multiplier reduction from 3.0 to 1.5 achieved the target of ~300-500 per episode.
+- **Angle penalty reduced further**: From **-65.65 (g6)** to **-26.82 (g7)** — a **59% reduction**. Now at 7.4% of shaping, which is well within the 20-40% target range.
+- **Velocity penalty increased moderately**: From **-16.06 (g6)** to **-54.11 (g7)** — a **3.4x increase**. This is now larger than expected, but still manageable.
+- **Episode length is at maximum**: **1000 steps** — the agent is now surviving the full episode, which is consistent with successful landing (terminal reward triggers at episode end).
+
+### 2. What failed
+
+- **Private_eval_return regressed from +205.07 to -33.34**: This is the critical failure. Despite making the terminal bonus more achievable (753.56 earned) and reducing shaping (362.99), the hidden evaluator now judges the agent's behavior as net negative. The generated-private gap is **1068.96**, which is **32x** the private return magnitude.
+- **The generated-private gap increased**: From **1012.34 (g6)** to **1068.96 (g7)** — a **5.6% increase**. The gap is now larger in absolute terms, and relative to the private return it's catastrophic (32x vs 5x in g6).
+- **Action mean is at max (1.9997)**: The agent is outputting maximum thrust continuously. This suggests the policy has collapsed to a "full throttle" behavior, which may be causing the hidden evaluator to penalize the agent for excessive fuel use, instability, or other undesirable behaviors.
+- **Action std is low (0.653)**: Compared to g6's 0.92, the agent has reduced exploration. Combined with the max action mean, this suggests the policy has converged to a degenerate solution (always full throttle).
+- **The shaping reduction may have been too aggressive**: Going from 3.0 to 1.5 (50% reduction) in one step, combined with the terminal bonus increase from 2000 to 2500 and the softened criteria, may have created a new dynamic where the agent prioritizes the terminal bonus over all else, leading to degenerate behavior (full throttle to reach the pad quickly).
+- **No repair attempts were made**: Despite the regression in private return, the candidate was accepted without repair. The validation errors list is empty, but the behavioral regression was not caught.
+
+### 3. What to try next
+
+- **Add a throttle penalty or fuel efficiency component**: The action mean of 1.9997 indicates the agent is using maximum thrust throughout the episode. Add a small penalty on large throttle values (e.g., `-0.1 * (action[0]**2 + action[1]**2)`) to discourage excessive thrust. Target a per-episode penalty of -20 to -50.
+- **Reduce the terminal bonus**: The 2500 bonus is now being achieved regularly (753.56 earned), but it may be too large relative to other components, causing the agent to use extreme actions to reach it. Reduce to **1500** or **1000** to reduce the incentive for degenerate behavior.
+- **Increase shaping back slightly**: The reduction from 3.0 to 1.5 may have been too aggressive. Try **2.0** instead of 1.5 to provide stronger proximity guidance while keeping it below the terminal bonus.
+- **Add a descent reward**: Add `0.5 * (obs[3] < -0.1) * exp(-2.0 * sqrt(obs[0]**2 + obs[1]**2))` to encourage controlled descent rather than full-throttle hovering. This provides an alternative gradient that rewards proper landing technique.
+- **Consider adding a survival penalty**: Add `-0.1` per step to create urgency to land quickly. This would add -100 per episode (at 1000 steps), which combined with the throttle penalty would create a strong incentive to land efficiently.
+- **Increase the soft landing bonus further**: From 2.0 to **5.0** to provide a stronger gradient from hovering to landing, making the transition smoother.
+- **Monitor the action distribution**: The action mean of 1.9997 is a red flag. In the next generation, explicitly check whether the action mean drops below 1.5. If not, consider adding `action_std` and `action_mean` to the validation criteria.
+
+### 4. Which lessons seem supported or contradicted
+
+- **Supported**: "Monitor the actual terminal reward earned, not just the nominal bonus value." — The terminal reward increased from 210 to 753, showing the softened criteria worked. But the private return regressed, proving that making terminal reward achievable is necessary but not sufficient.
+- **Supported**: "A positive private return is a necessary but not sufficient condition for alignment." — The private return went from positive to negative, confirming that maintaining alignment requires ongoing monitoring.
+- **Contradicted (partially)**: "Reduce the generated-private gap by making landing achievable rather than by reducing shaping." — Making landing more achievable (terminal reward from 210 to 753) actually *increased* the gap (1012 to 1069). The gap reduction in g6 came from making the private return positive, not from making landing achievable. This lesson needs refinement.
+- **New lesson emerging**: "When the action mean saturates at maximum (e.g., 2.0), the policy has likely converged to a degenerate 'full throttle' solution. Add a throttle penalty or fuel efficiency component to discourage excessive thrust. Monitor action mean and std as key indicators of policy health."
+- **New lesson emerging**: "A large terminal bonus that is consistently achieved can cause the agent to use extreme actions (full throttle) to reach it, degrading overall behavior. Balance the terminal bonus with penalties on excessive thrust and reward controlled descent."
+- **New lesson emerging**: "Reducing shaping by 50% in one generation (3.0 to 1.5) while simultaneously increasing the terminal bonus (2000 to 2500) and softening criteria can create a regime shift where the agent optimizes for terminal reward at the expense of all other behaviors. Make such changes incrementally (e.g., 25% reduction in shaping per generation) and monitor behavioral metrics (action mean/std, episode length)."
+- **Contradicted**: "Target penalty components to be 20-40% of the shaping reward magnitude." — Angle penalty is now 7.4% of shaping (26.82/362.99), which is below the 20% target. Yet the agent is landing successfully. This suggests the lower bound of 20% may be too conservative when the terminal bonus is large and achievable.
+
+## Recent environment lessons
+- repair_rule: Ensure shaping provides a clear positive signal (at least 50-100 per episode) even when velocity penalties dominate. Add descending reward or increase shaping multiplier to create a gradient from hovering to landing. A large terminal bonus is only effective when combined with guidance.
+- mutation_rule: When reducing shaping, do so incrementally (e.g., reduce by 25-50% per generation) and monitor the shaping component return. Target shaping of 50-100 per episode to maintain guidance. A reduction from 2.0x to 1.0x is too aggressive if the previous generation had shaping of 1444.7.
+- general: Always check terminal reward in addition to episode length. If episode length drops but terminal reward is zero, the agent is likely crashing. Adjust the reward function to provide guidance toward successful landing, not just termination.
+- reward_pattern: Keep shaping reward magnitude at 50-70% of the terminal bonus to provide strong guidance while ensuring that landing remains the most rewarding outcome. If shaping exceeds 80% of the terminal bonus, reduce the shaping multiplier or increase the terminal bonus.
+- failure_mode: Keep angle penalty moderate so it discourages extreme angles without preventing the orientation adjustments needed for landing. Target total angle penalty per episode at 20-40% of the shaping reward. If angle penalty exceeds shaping reward, reduce the per-step angle penalty scaling factor.
+- reward_pattern: Reduce the generated-private gap by making landing achievable rather than by reducing shaping. Focus on balancing negative components (angle, velocity) so they don't prevent landing, and ensure the terminal bonus is large enough to dominate the total reward. Use black-box selection feedback to prioritize candidates with smaller gaps.
+- general: When episode length increases but terminal reward stays zero, check which negative component (angle penalty, velocity penalty, survival penalty) has become dominant. Reduce that component to allow the agent to perform the final maneuver. Also verify that the terminal conditions (tolerances for landing) are achievable given the agent's typical behavior.
+- general: After making a major adjustment to one reward component (e.g., increasing shaping 198x), immediately check whether any other component has become disproportionately large. Maintain balance by ensuring the largest negative component is no more than 20-30% of the largest positive component. If a new imbalance appears, adjust the offending component in the next generation.
+- reward_pattern: Ensure the terminal bonus is at least 1.5x the expected shaping reward per episode. If shaping exceeds terminal bonus, either reduce the shaping multiplier or increase the terminal bonus. A good rule of thumb is terminal bonus = 1.5 to 2.0 times the expected shaping reward.
+- reward_pattern: Monitor the actual terminal reward earned, not just the nominal bonus value. If actual terminal reward is less than 50% of shaping, either reduce the shaping multiplier or make the terminal condition more achievable (e.g., soften velocity/position/angle tolerances, remove unreliable leg contact flags).
+- failure_mode: Ensure the effective terminal reward (actual amount earned per episode) is at least 1.5x the shaping reward. This can be done by making the terminal condition more achievable (e.g., softening tolerances, removing unreliable conditions) or by reducing the shaping multiplier.
+- mutation_rule: Continue reducing the generated-private gap by making the generated reward more closely match the hidden evaluator's preferences. Focus on reducing shaping reward relative to terminal reward, and ensure the terminal condition is achievable. A gap of less than 2x the private return is a reasonable target.
+- repair_rule: Consider removing or reducing the leg contact requirement. Use only position, velocity, and angle criteria for landing success. Alternatively, check if the flags are set consistently by examining the environment's behavior.
+- prompt_rule: Scale the soft landing bonus to be at least 10-20% of the shaping reward. For example, increase it from 0.5 to 2.0 or more, depending on the shaping magnitude. Ensure the bonus provides a meaningful gradient that competes with the shaping signal.
+- general: Target penalty components to be 20-40% of the shaping reward magnitude. If a penalty is preventing the agent from achieving the terminal condition, reduce it iteratively until the agent can complete the task while still avoiding extreme behaviors.
+- failure_mode: Add a throttle penalty (e.g., -0.1 * action[0]**2) to discourage excessive thrust, and monitor action mean and std as key health indicators.
+- failure_mode: Reduce the terminal bonus (e.g., to 1500 or 1000) and add penalties on excessive thrust and rewards for controlled descent to balance the reward structure.
+- failure_mode: Make incremental changes (e.g., 25% adjustment per generation) and monitor behavioral metrics like action mean/std and episode length to detect regime shifts early.
+- general: Consider that the 20-40% penalty-to-shaping ratio guideline is conservative when terminal bonuses are large and achievable; adjust targets based on actual behavioral outcomes.
+- general: Add validation criteria that monitor action mean and std thresholds (e.g., action mean < 1.5) to flag degenerate policies before accepting candidates.
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_bcec3d07e4] type=mutation_rule, confidence=0.7, condition=Adding a continuous soft landing bonus (0.5 * exp(-2*|y|) * exp(-0.5*(|vx|+|vy|))) alongside a large terminal bonus., recommendation=Either make the soft landing bonus conditional on being very close to the pad (e.g., |x|<0.1, |y|<0.1) to bridge to landing, or remove it and rely solely on a higher terminal bonus to avoid misleading the agent.
+- [candidate_e3d3b9a5f9] type=general, confidence=0.8, condition=Terminal reward is zero across the episode despite high shaping and soft landing bonuses., recommendation=Consider relaxing the landing tolerances (e.g., position <0.2, angle <0.4) or reducing the shaping gradient to encourage the agent to attempt landing rather than hovering for continuous reward.
+- [candidate_bfca07fdc0] type=failure_mode, confidence=0.7, condition=Component returns show angle_penalty=-65.6 and velocity_penalty=-16.1, while shaping=1089 and terminal=210, yet private_eval_return is only 205., recommendation=Introduce a component that explicitly rewards landing-relevant conditions such as leg deployment (obs[6], obs[7]) or penalizes being airborne for too long, to break the hovering behavior.
+- [candidate_b5865061fb] type=failure_mode, confidence=0.8, condition=Shaping reward component dominates the total reward, overshadowing the terminal landing bonus., recommendation=Further reduce the shaping multiplier to 0.5 or 1.0 to weaken the hovering incentive, and increase the soft landing bonus (e.g., from 2.0 to 5.0) to provide a stronger gradient toward landing. Consider adding a small penalty for hovering or time spent to encourage earlier landing attempts.
+- [candidate_5dd1ec9bcf] type=reward_pattern, confidence=0.9, condition=Terminal reward component includes a large bonus (2500) but is rarely triggered, leading to high variance in generated return., recommendation=Adjust the terminal bonus to be within the clip range (e.g., set the bonus to 1000 instead of 2500, or increase the clip range to 2500). Ensure the landing criteria are achievable by the policy, possibly by relaxing velocity thresholds further (e.g., abs(obs[2]) < 1.0, abs(obs[3]) < 1.0).
+- [candidate_160fb0120a] type=mutation_rule, confidence=0.7, condition=Reducing shaping multiplier from 3.0 to 1.5 was insufficient to balance component contributions., recommendation=When component imbalance persists after a reduction, apply a more aggressive reduction (e.g., reduce shaping multiplier by 70-80%) or introduce a time-based penalty to discourage hovering. Use the generated_private_gap as a signal: a large gap indicates the reward structure does not match the private evaluator's priorities.
+- [candidate_2a500522a0] type=general, confidence=0.85, condition=The private evaluator return is negative (-33.3) while the generated return is positive (1035.6), indicating severe misalignment., recommendation=Use black-box selection feedback to reduce the generated/private mismatch. Focus on components that align with the private evaluator's likely goals: penalize fuel consumption more strongly (e.g., fuel_efficiency = -0.1 * abs(action[0])), reward smooth descent, and ensure terminal reward is the dominant signal. Avoid trying to infer the private evaluator's formula.
+- [candidate_4d9628bc8b] type=repair_rule, confidence=1.0, condition=The terminal reward expression uses a value (2500) that exceeds the component clip range ([-1000, 1000])., recommendation=Either increase the clip range to match the intended bonus (e.g., clip to [-1000, 2500]) or reduce the bonus to 1000 and ensure it is achievable. Always verify that clip ranges do not nullify the intended magnitude of reward components.
+
+Relevant environment-level lessons:
+- [environment_58b28b56d8] type=failure_mode, confidence=0.85, condition=The terminal bonus is large (e.g., 2000) but the agent rarely achieves it (e.g., only 210 earned), while the shaping reward is moderate but consistently earned (e.g., 1089)., recommendation=Ensure the effective terminal reward (actual amount earned per episode) is at least 1.5x the shaping reward. This can be done by making the terminal condition more achievable (e.g., softening tolerances, removing unreliable conditions) or by reducing the shaping multiplier.
+- [environment_b3052df72a] type=mutation_rule, confidence=0.8, condition=A positive private return has been achieved (e.g., 205.07) but the generated-private gap is still large (e.g., 1012.34, or 5x the private return)., recommendation=Continue reducing the generated-private gap by making the generated reward more closely match the hidden evaluator's preferences. Focus on reducing shaping reward relative to terminal reward, and ensure the terminal condition is achievable. A gap of less than 2x the private return is a reasonable target.
+- [environment_2e9cb885a0] type=repair_rule, confidence=0.7, condition=The reward includes a terminal bonus with leg contact conditions (e.g., obs[6] > 0.5 and obs[7] > 0.5) and the agent is failing to earn the terminal bonus despite appearing to land., recommendation=Consider removing or reducing the leg contact requirement. Use only position, velocity, and angle criteria for landing success. Alternatively, check if the flags are set consistently by examining the environment's behavior.
+- [environment_004638f424] type=prompt_rule, confidence=0.85, condition=A soft landing bonus is added to bridge the gap between hovering and landing, but its magnitude is small (e.g., 0.5) relative to the shaping reward (e.g., 1089)., recommendation=Scale the soft landing bonus to be at least 10-20% of the shaping reward. For example, increase it from 0.5 to 2.0 or more, depending on the shaping magnitude. Ensure the bonus provides a meaningful gradient that competes with the shaping signal.
+- [environment_af541095d7] type=general, confidence=0.9, condition=The angle penalty is reduced from a dominant negative component (e.g., -243.9) to a moderate level (e.g., -65.65) and the agent achieves a positive private return for the first time., recommendation=Target penalty components to be 20-40% of the shaping reward magnitude. If a penalty is preventing the agent from achieving the terminal condition, reduce it iteratively until the agent can complete the task while still avoiding extreme behaviors.
+- [environment_56b65bf8f2] type=failure_mode, confidence=0.85, condition=Action mean saturates at the maximum value (e.g., 2.0) and action std is low., recommendation=Add a throttle penalty (e.g., -0.1 * action[0]**2) to discourage excessive thrust, and monitor action mean and std as key health indicators.
+- [environment_71429aa6ca] type=failure_mode, confidence=0.8, condition=A large terminal bonus is consistently achieved after softening landing criteria., recommendation=Reduce the terminal bonus (e.g., to 1500 or 1000) and add penalties on excessive thrust and rewards for controlled descent to balance the reward structure.
+- [environment_0d8d04cd8a] type=failure_mode, confidence=0.75, condition=Shaping is reduced by 50% while terminal bonus is increased and criteria are softened in the same generation., recommendation=Make incremental changes (e.g., 25% adjustment per generation) and monitor behavioral metrics like action mean/std and episode length to detect regime shifts early.
+- [environment_0053e75cbd] type=general, confidence=0.7, condition=Angle penalty is below 20% of shaping reward (e.g., 7.4%) yet landing is successful., recommendation=Consider that the 20-40% penalty-to-shaping ratio guideline is conservative when terminal bonuses are large and achievable; adjust targets based on actual behavioral outcomes.
+- [environment_3c3bdba0cd] type=general, confidence=0.9, condition=No repair attempts are made despite a clear regression in private return., recommendation=Add validation criteria that monitor action mean and std thresholds (e.g., action mean < 1.5) to flag degenerate policies before accepting candidates.
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

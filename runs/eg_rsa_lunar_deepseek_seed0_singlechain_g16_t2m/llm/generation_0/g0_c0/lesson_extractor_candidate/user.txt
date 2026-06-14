@@ -1,0 +1,53 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 0
+Candidate ID: g0_c0
+
+Structured evidence:
+{
+  "generation": 0,
+  "candidate_id": "g0_c0",
+  "parent_ids": [],
+  "status": "ok",
+  "selection_score": -107.41828816641923,
+  "private_eval_return": -107.41828816641923,
+  "generated_return": -31.601716378944815,
+  "generated_minus_private": 75.81657178747442,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 75.81657178747442,
+    "action_mean": 0.08079268292682927,
+    "action_std": 0.45984817849322146,
+    "episode_length_mean": 65.6,
+    "component_returns": {
+      "shaping": 13.230131942142785,
+      "velocity_penalty": -44.18239903748035,
+      "angle_penalty": -0.419449283607246,
+      "fuel_efficiency": -0.22999999999999998,
+      "terminal": 0.0
+    },
+    "ppo_n_envs": 1,
+    "ppo_vec_env_type": "dummy",
+    "ppo_total_timesteps": 2000000,
+    "ppo_n_steps": 1024,
+    "ppo_batch_size": 64,
+    "ppo_n_epochs": 4,
+    "ppo_gae_lambda": 0.98,
+    "ppo_gamma": 0.999,
+    "ppo_ent_coef": 0.01,
+    "ppo_learning_rate": 0.0003,
+    "ppo_clip_range": 0.2,
+    "ppo_vf_coef": 0.5,
+    "ppo_max_grad_norm": 0.5
+  },
+  "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"Initial candidate RewardSpec based on the schema. Uses smooth shaping via exponential of distance, penalizes velocities, angle deviations, and engine usage, and gives a terminal success bonus for safe landing.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"1.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Encourage moving toward the landing pad at (0,0) by rewarding exponential of negative distance.\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.5 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize high horizontal and vertical velocities.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize large angle and angular velocity.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.1 * (float(action == 2) + float(action == 1 or action == 3))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize main engine and side engine usage.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"10.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.1 and abs(obs[1]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large bonus for successful landing with both legs grounded, near pad, low velocity, upright angle.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_016afc6a77\"\n}",
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(1.0 * np.exp(-2.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.5 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.2 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.1 * (float(action == 2) + float(action == 1 or action == 3)))\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(10.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.1 and abs(obs[1]) < 0.1 and abs(obs[2]) < 0.1 and abs(obs[3]) < 0.1 and abs(obs[4]) < 0.1))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+  "llm_rationale": "Initial candidate RewardSpec based on the schema. Uses smooth shaping via exponential of distance, penalizes velocities, angle deviations, and engine usage, and gives a terminal success bonus for safe landing."
+}
+
+Reflection report:
+Initial candidate RewardSpec based on the schema. Uses smooth shaping via exponential of distance, penalizes velocities, angle deviations, and engine usage, and gives a terminal success bonus for safe landing.
+
+Return JSON array of lessons. Do not include code blocks.

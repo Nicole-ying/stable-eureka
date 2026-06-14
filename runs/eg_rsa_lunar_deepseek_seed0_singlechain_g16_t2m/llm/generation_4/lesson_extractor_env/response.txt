@@ -1,0 +1,76 @@
+```json
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Per-step penalties dominate the reward function and episode length drops sharply but terminal reward is zero",
+    "observation": "When velocity_penalty (-0.5 per step) dominated the reward and shaping was weak (0.1 per step), episode length dropped from 1000 to 72.3 steps, but terminal reward was 0.0, indicating the agent crashed rather than landed successfully.",
+    "explanation": "A strong negative per-step penalty combined with weak shaping creates a reward landscape where the agent minimizes velocity to avoid penalty but receives no positive guidance toward the landing zone, resulting in quick crashes instead of successful landings.",
+    "recommendation": "When episode length drops dramatically, verify that terminal reward is non-zero to confirm the agent is landing successfully, not just crashing quickly. Ensure shaping provides a clear positive gradient (at least 20% of the largest penalty magnitude) to guide the agent toward the target.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Shaping reward is negligible compared to the largest penalty component",
+    "observation": "Shaping reward collapsed to 7.6 (only 6% of the velocity penalty of -47.4), providing almost no guidance toward the landing pad despite the agent terminating episodes quickly.",
+    "explanation": "When shaping is too weak relative to penalties, the agent has no incentive to navigate toward the landing zone. It learns to minimize penalties (e.g., by reducing velocity) but fails to achieve the terminal condition because there is no directional signal.",
+    "recommendation": "Ensure shaping provides at least 20% of the magnitude of the largest penalty component to create a meaningful gradient toward the target. Target shaping of 50-100 per episode for a landing task with velocity penalties in the -20 to -50 range.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated-private gap is small but the private return is deeply negative",
+    "observation": "The generated-private gap was 79.8 (0.66x private return), which is close to the target of <0.5x, but the private return itself was -120.9, the worst observed across generations.",
+    "explanation": "A small gap between generated and private return is only meaningful when the private return is positive or near zero. A negative private return with a small gap indicates the reward function is fundamentally misaligned — the gap alone is insufficient as a diagnostic.",
+    "recommendation": "Always check the sign and magnitude of the private return in addition to the gap. A negative private return with a small gap is worse than a positive private return with a larger gap. Prioritize making the private return positive before optimizing the gap.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Velocity penalty is the dominant reward component and the agent fails to land",
+    "observation": "The velocity penalty of -0.5 per step totaled -47.4 over 72.3 steps, making it the dominant component. The agent never achieved a successful landing (terminal reward = 0.0).",
+    "explanation": "An overly aggressive velocity penalty punishes the velocity needed to navigate toward the landing pad, causing the agent to minimize velocity at the expense of reaching the target zone. The agent crashes quickly because moving toward the pad incurs a high penalty.",
+    "recommendation": "Reduce velocity penalty to -0.2 per step or less, targeting a total of -15 to -25 per episode for a landing task. Add a separate explicit survival penalty (-0.3 per step) that creates urgency to land without punishing the velocity needed to navigate.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Estimating net per-step reward without accounting for all component contributions",
+    "observation": "The rationale claimed net per-step reward would be -1.5, but the actual dominant component was velocity_penalty (-0.5 per step) because no explicit survival penalty was added — the survival pressure came entirely from the velocity penalty.",
+    "explanation": "When estimating net per-step reward, every component's contribution must be explicitly accounted for. Conflating multiple objectives (e.g., velocity control and survival pressure) into a single component leads to inaccurate estimates and misaligned reward design.",
+    "recommendation": "When estimating net per-step reward, explicitly calculate each component's expected contribution and sum them. If multiple objectives are intended, use separate components with clear roles rather than relying on one component to serve multiple purposes.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Terminal bonus is large but the agent still fails to land because shaping provides no guidance",
+    "observation": "With a terminal bonus of 1000 (28x the net per-step total of -36 over 72 steps), the agent still failed to land because shaping reward was only 7.6 and provided no gradient toward the landing zone.",
+    "explanation": "A large terminal bonus alone is insufficient without a shaping gradient that guides the agent toward the landing zone. The agent must receive positive feedback for moving in the right direction during the episode, not just at termination.",
+    "recommendation": "Ensure shaping provides a clear positive signal (at least 50-100 per episode) even when velocity penalties dominate. Add descending reward or increase shaping multiplier to create a gradient from hovering to landing. A large terminal bonus is only effective when combined with guidance.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Reducing shaping multiplier too aggressively from a previous successful generation",
+    "observation": "Shaping multiplier was reduced from 2.0 (g3) to 1.0 (g4), causing shaping reward to drop from 1444.7 to 7.6 — a 190x reduction that eliminated the guidance signal.",
+    "explanation": "Reducing shaping multiplier too aggressively can collapse the guidance signal entirely, even if the absolute multiplier seems reasonable. The effective shaping depends on the interaction with other components and the agent's behavior.",
+    "recommendation": "When reducing shaping, do so incrementally (e.g., reduce by 25-50% per generation) and monitor the shaping component return. Target shaping of 50-100 per episode to maintain guidance. A reduction from 2.0x to 1.0x is too aggressive if the previous generation had shaping of 1444.7.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Episode length drops from maximum to short but terminal reward is zero",
+    "observation": "Episode length dropped from 1000 steps (g3) to 72.3 steps (g4), but terminal reward was 0.0, indicating the agent was crashing rather than landing successfully.",
+    "explanation": "A sharp drop in episode length is a positive sign that the agent is seeking termination, but it does not distinguish between successful landing and crashing. Terminal reward must be checked to confirm the agent is achieving the goal.",
+    "recommendation": "Always check terminal reward in addition to episode length. If episode length drops but terminal reward is zero, the agent is likely crashing. Adjust the reward function to provide guidance toward successful landing, not just termination.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  }
+]
+```

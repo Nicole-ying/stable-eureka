@@ -1,0 +1,56 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal success reward is reduced to 300, crash penalty increased to 50, and landing thresholds tightened to 0.1 in a lunar-lander-like environment",
+    "observation": "The agent crashed every episode (terminal component constant -50), generated return collapsed from -7.14 to -85.10, and no successful landings occurred.",
+    "explanation": "Simultaneously reducing terminal reward, increasing crash penalty, and tightening thresholds made success unachievable while making failure very costly, causing the agent to adopt a conservative but unsuccessful behavior.",
+    "recommendation": "When narrowing the generated-private gap, adjust only one or two parameters at a time. Avoid simultaneously reducing terminal reward, increasing crash penalty, and tightening thresholds. Relax thresholds slightly (e.g., 0.15) and keep crash penalty moderate (e.g., -25) to maintain achievability.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Generated-private gap is reduced primarily by collapsing the generated return rather than improving private return",
+    "observation": "The gap dropped from +104.49 to +31.58, but private return only declined by -5.05 while generated return collapsed by -77.96.",
+    "explanation": "A gap reduction achieved by making both returns worse is hollow. The goal is to improve private return with a small gap, not to artificially narrow the gap by degrading the generated reward signal.",
+    "recommendation": "Monitor both private return and gap direction. Prioritize changes that improve private return or keep it stable while reducing the gap. Avoid changes that cause generated return to plummet even if the gap narrows.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "Action mean and std drop dramatically (mean from 1.23 to 0.084, std from 1.25 to 0.44) after reward changes",
+    "observation": "The agent switched from aggressive exploitation to very conservative behavior, taking near-zero actions (mean 0.084) with low variability.",
+    "explanation": "Overly strict terminal conditions combined with a high crash penalty can cause the agent to learn a 'do nothing' policy to avoid the large negative terminal signal, especially when success is unachievable.",
+    "recommendation": "If action mean drops below 0.1 after reward tightening, relax terminal thresholds or reduce crash penalty to restore exploration. Ensure the agent can achieve success at least occasionally to maintain learning.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Removing a progress-based shaping reward in a lunar-lander-like environment with strict terminal conditions",
+    "observation": "The generated-private gap decreased from +104.49 to +31.58 after removing the progress reward, but the agent stopped landing successfully.",
+    "explanation": "Removing the progress reward eliminated the main shaping signal that guided the agent toward the landing pad. Without it, the sparse terminal reward alone was insufficient for learning, especially with strict thresholds.",
+    "recommendation": "If removing a progress reward eliminates all successful landings, re-add a modest progress reward (e.g., +0.3 * distance decrease) as a separate component with a small clip range. This provides shaping without dominating the reward signal.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Multiple reward parameters (terminal reward, crash penalty, thresholds) are changed simultaneously in a single generation",
+    "observation": "The combined changes caused unintended collapse: the agent crashed every episode and generated return dropped by -77.96.",
+    "explanation": "Changing multiple parameters at once makes it impossible to attribute effects to individual changes and increases the risk of overshooting the optimal configuration.",
+    "recommendation": "Change only one or two reward parameters per generation. If multiple changes are needed, test them incrementally across generations to isolate their individual effects.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "Terminal thresholds are set to 0.1 for all three conditions (position, velocity, angle) in a lunar-lander-like environment",
+    "observation": "The agent never achieved the thresholds, resulting in terminal = -50.0 every episode and no successful landings.",
+    "explanation": "Thresholds of 0.1 are extremely strict and may be near or beyond the agent's current capability, especially with reduced terminal reward and increased crash penalty. The agent needs achievable goals to learn.",
+    "recommendation": "Set initial terminal thresholds to values the agent can plausibly achieve (e.g., 0.15 or 0.2) and tighten them gradually over generations as performance improves.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  }
+]

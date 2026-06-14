@@ -1,0 +1,58 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "schema_version": "eg_rsa_reward_schema_v1_4c4946654e",
+  "rationale": "The previous generation had a deeply negative private return (-120.9) because the agent crashed instead of landing. Shaping was too weak (7.6 total) to guide toward the pad, while velocity penalty (-47.4) dominated, punishing the velocity needed to navigate. To fix: (1) increase shaping multiplier to 5.0 to provide clear guidance (~50-80 per episode), (2) reduce velocity penalty to -0.2 to allow controlled movement while still penalizing extreme speeds, (3) add a separate explicit survival penalty of -0.3 per step (via angle_penalty) to create urgency without conflating with velocity, (4) increase terminal bonus to 1500 to make successful landing dramatically more rewarding, (5) soften landing tolerances (velocity 0.5, position 0.2) to make landing achievable. This targets: shaping ~60, velocity -15, angle/survival -22, terminal 1500.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "5.0 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Stronger shaping reward for proximity to pad (5x multiplier) to provide clear guidance toward landing zone."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.2 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Reduced velocity penalty (-0.2) to allow controlled movement while still penalizing extreme speeds."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.3 - 0.2 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Explicit per-step survival penalty (-0.3) plus angle penalty to discourage large angles and create urgency to land."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.0",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Fuel penalty removed to avoid discouraging necessary engine use."
+    },
+    {
+      "id": "terminal",
+      "expression": "1500.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.2 and abs(obs[1]) < 0.2 and abs(obs[2]) < 0.5 and abs(obs[3]) < 0.5 and abs(obs[4]) < 0.2)",
+      "clip": [
+        -1000.0,
+        1000.0
+      ],
+      "description": "Large terminal bonus (1500) for successful landing with softened tolerances to make landing achievable."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [
+    -1000.0,
+    1000.0
+  ],
+  "spec_id": "reward_spec_4c04ac828e"
+}

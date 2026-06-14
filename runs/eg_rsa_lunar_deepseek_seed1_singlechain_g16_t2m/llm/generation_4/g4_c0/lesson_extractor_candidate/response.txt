@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Terminal component uses a large success reward (+300) with strict landing conditions and a moderate crash penalty (-50) while all other components provide negative or zero rewards.",
+    "observation": "Candidate g4_c0 has a generated-private gap of +28.86, generated_return -76.02, private_eval_return -104.88, and the terminal reward component contributed -15.0 on average, but the overall reward is still negative and misaligned.",
+    "explanation": "The large positive terminal reward (+300) is rarely achieved because the strict landing conditions (position < 0.1, velocity < 0.1, angle < 0.1) are hard to satisfy, so the agent mostly receives negative rewards from distance, velocity, and angle penalties, plus occasional -50 crash penalties. The generated return is higher than the private evaluator, indicating the reward signal still overestimates performance relative to the true objective.",
+    "recommendation": "Reduce the terminal success reward further (e.g., +50 to +100) or relax the landing thresholds to make success more attainable, and consider increasing the crash penalty to better align with the private evaluator's negative assessment.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+    {
+    "lesson_type": "reward_pattern",
+    "condition": "Multiple negative components dominate the total reward, while a large positive terminal reward is rarely triggered.",
+    "observation": "Component returns: distance_reward -24.84, velocity_penalty -34.15, angle_penalty -2.03, fuel_efficiency 0.0, terminal -15.0. The agent accumulates large negative rewards during the episode and only a small terminal component on average.",
+    "explanation": "The distance and velocity penalties are unbounded in practice (clipped at -5 each, but per-step accumulation leads to large negative sums over 59.7 steps). The terminal component is mostly -50 crash penalties, with rare +300 successes, resulting in a net negative terminal contribution. This imbalance makes the reward signal mostly negative, which can hinder learning.",
+    "recommendation": "Balance the per-step penalties to be smaller (e.g., -0.1 or -0.2) while keeping the progress reward positive, or add a small survival bonus to offset negative components and provide a clearer gradient toward success.",
+    "confidence": 0.75,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated_return (-76.02) is higher than the private_eval_return (-104.88), indicating the reward function overestimates performance.",
+    "observation": "Generated-private gap is +28.86, meaning the agent's behavior according to the generated reward is better than what the private evaluator measures.",
+    "explanation": "The reward function may be rewarding behaviors that are not aligned with the true objective (e.g., rewarding proximity or progress but not actual landing success). The large gap suggests the reward components do not capture the private evaluator's criteria accurately.",
+    "recommendation": "Use black-box selection feedback to iteratively adjust component weights or add new components that penalize behaviors that increase the gap, such as high speed near the ground or oscillations.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "A component (fuel_efficiency) is set to constant zero, providing no learning signal and wasting a slot in the reward structure.",
+    "observation": "fuel_efficiency component return is 0.0 and is clipped to [0.0, 0.0], making it inactive.",
+    "explanation": "Including a zero-valued component does not affect the total reward but adds unnecessary complexity. It may also mislead the mutation process into thinking the component is active when it is not.",
+    "recommendation": "Remove zero-valued components from the reward spec to simplify the reward function and focus mutation efforts on meaningful components.",
+    "confidence": 0.9,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "The candidate was mutated from g3_c0 by removing the survival bonus and reducing the terminal success reward from +500 to +300.",
+    "observation": "The generated-private gap remained large (+28.86) and both returns are still negative, indicating the mutation did not sufficiently close the gap.",
+    "explanation": "Simply reducing the terminal reward magnitude and removing the survival bonus did not address the underlying misalignment caused by overly negative per-step penalties or the difficulty of achieving the terminal success condition.",
+    "recommendation": "When mutating to reduce the generated-private gap, also adjust per-step penalties to be less negative or introduce a small positive shaping reward that encourages behaviors aligned with the private evaluator.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  }
+]

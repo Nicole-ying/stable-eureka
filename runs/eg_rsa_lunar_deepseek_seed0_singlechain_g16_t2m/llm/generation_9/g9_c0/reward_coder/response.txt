@@ -1,0 +1,38 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "rationale": "Roll back toward the best-so-far parent (g8) which had high generated return (2822) but severe generated-private gap (2834) and degenerate action mean (1.9983). The key failure is that the terminal bonus (1500) and soft landing bonus are too large and reward hovering near the pad. To fix: (1) reduce terminal bonus to 1000 and remove the soft landing bonus from terminal; (2) add a strong throttle penalty -0.2 per main engine activation to compete with terminal bonus (~-200 per episode); (3) add a per-step survival cost -0.05 to create urgency (~-50 per episode); (4) reduce shaping back to 1.5 to prevent reward dominance; (5) increase velocity penalty to -0.8 to encourage controlled descent; (6) keep angle penalty at -0.5. This targets terminal ~1000, throttle -200, survival -50, shaping ~500, velocity -80, angle -20. The soft landing bonus is removed entirely because it was exploited for continuous reward without landing.",
+  "components": [
+    {
+      "id": "shaping",
+      "expression": "1.5 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))",
+      "clip": [-1000.0, 1000.0],
+      "description": "Gentle shaping reward for proximity to pad (1.5x multiplier, fast decay)."
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.8 * (abs(obs[2]) + abs(obs[3]))",
+      "clip": [-1000.0, 1000.0],
+      "description": "Stronger penalty on horizontal and vertical velocity to encourage controlled descent."
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-0.5 * (abs(obs[4]) + 0.5 * abs(obs[5]))",
+      "clip": [-1000.0, 1000.0],
+      "description": "Penalize large angle and angular velocity."
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "-0.2 * float(action == 2) - 0.05 * float(action == 1 or action == 3) - 0.05",
+      "clip": [-1000.0, 1000.0],
+      "description": "Strong throttle penalty (-0.2 per main engine activation), small side engine penalty (-0.05), and per-step survival cost (-0.05) to encourage fuel efficiency and fast landing."
+    },
+    {
+      "id": "terminal",
+      "expression": "1000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.3 and abs(obs[3]) < 0.3 and abs(obs[4]) < 0.2)",
+      "clip": [-1000.0, 1000.0],
+      "description": "Large terminal bonus (1000) for successful landing with moderate tolerances. No soft landing bonus to prevent hovering exploitation."
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [-1000.0, 1000.0]
+}

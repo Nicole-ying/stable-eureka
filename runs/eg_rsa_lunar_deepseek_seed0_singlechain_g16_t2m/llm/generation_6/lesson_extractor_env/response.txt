@@ -1,0 +1,58 @@
+```json
+[
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "The generated reward includes a shaping component that rewards proximity to a goal and a terminal bonus for achieving the goal, and the actual terminal reward earned is less than 50% of the shaping reward.",
+    "observation": "In generation 6, shaping reward was 1088.99 while actual terminal reward earned was only 210.12, creating a 5.2x ratio. The agent hovered near the pad rather than committing to landing, because hovering yielded more reward than landing.",
+    "explanation": "When the effective shaping reward (the amount actually earned per episode) greatly exceeds the actual terminal reward earned, the agent learns that hovering near the goal is more rewarding than attempting the challenging landing maneuver. The nominal terminal bonus value is irrelevant if the agent cannot consistently achieve the landing criteria.",
+    "recommendation": "Monitor the actual terminal reward earned, not just the nominal bonus value. If actual terminal reward is less than 50% of shaping, either reduce the shaping multiplier or make the terminal condition more achievable (e.g., soften velocity/position/angle tolerances, remove unreliable leg contact flags).",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "The terminal bonus is large (e.g., 2000) but the agent rarely achieves it (e.g., only 210 earned), while the shaping reward is moderate but consistently earned (e.g., 1089).",
+    "observation": "In generation 6, the terminal bonus was 2000 but only 210.12 was earned, while shaping was 1088.99. The effective shaping-to-terminal ratio was 5.2:1, causing the agent to hover rather than land.",
+    "explanation": "A large but rarely achieved terminal bonus is less influential than a smaller but consistently earned shaping reward. The agent optimizes for the reward it actually receives, not the reward that is theoretically available. This creates a local optimum where the agent hovers near the goal without committing to the final approach.",
+    "recommendation": "Ensure the effective terminal reward (actual amount earned per episode) is at least 1.5x the shaping reward. This can be done by making the terminal condition more achievable (e.g., softening tolerances, removing unreliable conditions) or by reducing the shaping multiplier.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "mutation_rule",
+    "condition": "A positive private return has been achieved (e.g., 205.07) but the generated-private gap is still large (e.g., 1012.34, or 5x the private return).",
+    "observation": "In generation 6, private return was 205.07 (positive for the first time) but the generated-private gap was 1012.34, which is 4.9x the private return. The gap remains a critical misalignment even though the private return is now positive.",
+    "explanation": "A positive private return is a necessary but not sufficient condition for alignment. The generated reward may still be overvaluing the agent's behavior by a large factor. The hidden evaluator likely heavily discounts or penalizes behaviors that the generated reward rewards (e.g., hovering near the pad).",
+    "recommendation": "Continue reducing the generated-private gap by making the generated reward more closely match the hidden evaluator's preferences. Focus on reducing shaping reward relative to terminal reward, and ensure the terminal condition is achievable. A gap of less than 2x the private return is a reasonable target.",
+    "confidence": 0.8,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "The reward includes a terminal bonus with leg contact conditions (e.g., obs[6] > 0.5 and obs[7] > 0.5) and the agent is failing to earn the terminal bonus despite appearing to land.",
+    "observation": "In generation 6, the terminal bonus of 2000 required both legs to be in contact (obs[6] > 0.5 and obs[7] > 0.5). The agent only earned 210.12 from the terminal component, suggesting the leg contact flags may be unreliable or rarely set.",
+    "explanation": "Leg contact flags in some environments are unreliable or only briefly set during a landing. If the agent must satisfy these flags at the exact moment done becomes True, it may fail to receive the terminal bonus even when it has successfully landed. This creates a training signal that landing is not rewarding.",
+    "recommendation": "Consider removing or reducing the leg contact requirement. Use only position, velocity, and angle criteria for landing success. Alternatively, check if the flags are set consistently by examining the environment's behavior.",
+    "confidence": 0.7,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "prompt_rule",
+    "condition": "A soft landing bonus is added to bridge the gap between hovering and landing, but its magnitude is small (e.g., 0.5) relative to the shaping reward (e.g., 1089).",
+    "observation": "In generation 6, a soft landing bonus of 0.5 * exp(-2.0*|y|) * exp(-0.5*(|vx|+|vy|)) was added. The shaping reward was 1088.99, making the soft landing bonus too weak to overcome the shaping signal.",
+    "explanation": "A soft landing bonus provides a gradient from hovering to touchdown, but its magnitude must be competitive with the shaping reward. If the shaping reward is orders of magnitude larger, the agent will ignore the soft landing bonus and continue hovering.",
+    "recommendation": "Scale the soft landing bonus to be at least 10-20% of the shaping reward. For example, increase it from 0.5 to 2.0 or more, depending on the shaping magnitude. Ensure the bonus provides a meaningful gradient that competes with the shaping signal.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The angle penalty is reduced from a dominant negative component (e.g., -243.9) to a moderate level (e.g., -65.65) and the agent achieves a positive private return for the first time.",
+    "observation": "In generation 6, reducing the angle penalty from -243.9 to -65.65 (a 73% reduction) directly enabled the agent to achieve a positive private return (205.07) and earn terminal reward (210.12).",
+    "explanation": "When a penalty component dominates the reward signal, the agent focuses on avoiding the penalized behavior rather than learning the desired behavior. Reducing the penalty to a moderate level allows the agent to explore the necessary actions (e.g., adjusting orientation for landing) without being excessively punished.",
+    "recommendation": "Target penalty components to be 20-40% of the shaping reward magnitude. If a penalty is preventing the agent from achieving the terminal condition, reduce it iteratively until the agent can complete the task while still avoiding extreme behaviors.",
+    "confidence": 0.9,
+    "reuse_policy": "similar_env"
+  }
+]
+```

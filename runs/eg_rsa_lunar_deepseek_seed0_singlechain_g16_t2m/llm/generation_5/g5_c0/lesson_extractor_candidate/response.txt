@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Shaping reward is based solely on exponential distance to the landing pad without considering angular alignment or velocity direction.",
+    "observation": "Shaping component achieved 1504.2 total reward, dominating the total and causing a huge generated-private gap of 1240.9, while the private evaluator return was -10.82, indicating no landing occurred.",
+    "explanation": "The high shaping reward (1504.2) indicates the agent learned to hover near the pad but not to land, because shaping only rewards proximity. The terminal bonus conditioned on landing was never triggered (0.0), so the agent optimized for proximity without satisfying landing conditions.",
+    "recommendation": "Include a shaping term that also rewards proper orientation and low-speed descent near the pad, or reduce shaping magnitude to avoid rewarding stationary hovering far from landing conditions.",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "Terminal bonus is large (1500) but conditioned on multiple strict criteria including leg contact flags (obs[6], obs[7]) and tight position/velocity/angle tolerances.",
+    "observation": "Terminal component returned 0.0 despite high shaping reward, meaning the agent never satisfied the landing conditions to trigger the bonus.",
+    "explanation": "A large terminal bonus that is rarely achieved provides no learning signal during most of training. The agent receives no intermediate feedback that its current behavior is steps away from triggering the bonus, so it optimizes for the only reward it consistently gets: shaping.",
+    "recommendation": "Include a smaller intermediate reward for partial progress toward landing (e.g., low altitude with low vertical speed) to bridge the gap between proximity and successful landing.",
+    "confidence": 0.85,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "component_imbalance",
+    "condition": "Shaping reward magnitude (5.0 * exp) produces ~1500 total per episode while velocity penalty is only -30 and angle penalty is -244, and terminal is 0.",
+    "observation": "Shaping component (1504.2) is 6 times larger than angle penalty (-243.9) and 50 times larger than velocity penalty (-30.2), making the agent insensitive to penalties for dangerous velocities or excessive angles.",
+    "explanation": "When one component dominates total reward, the agent ignores penalties that would otherwise discourage unsafe behavior. The agent is rewarded for getting close to the pad regardless of speed or orientation, which prevents it from learning to land safely.",
+    "recommendation": "Normalize component magnitudes so that shaping, velocity penalty, angle penalty, and terminal bonus have comparable expected contributions per episode (e.g., each within a factor of 2-3 of each other).",
+    "confidence": 0.9,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "repair_rule",
+    "condition": "Reward uses obs[6] and obs[7] as leg contact indicators for the terminal condition, but these observations may not be reliable indicators of landing success in all environments.",
+    "observation": "Terminal bonus was never triggered (0.0) despite the agent hovering near the pad (high shaping), suggesting leg contact conditions may not have been met even when the agent was close to landing.",
+    "explanation": "Relying on specific observation indices (obs[6], obs[7]) as hard thresholds for landing is brittle; the agent may be near the pad but not have those specific flags set, or the environment may define landing differently.",
+    "recommendation": "Use continuous criteria for landing (e.g., altitude near zero with low vertical speed) rather than binary observation flags, or verify that the flags are actually set upon landing in this environment.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The generated return (1230.1) is high and positive while the private evaluator return (-10.82) is negative, indicating a large generated-private gap of 1240.9.",
+    "observation": "The reward function is being exploited: the agent achieves high generated reward without achieving the private evaluator's objective of successful landing.",
+    "explanation": "The reward function incentivizes proximity to the pad (shaping) but not the full landing sequence. The private evaluator likely measures successful landing, which requires satisfying all landing conditions. The agent optimizes the proxy (proximity) instead of the true objective (landing).",
+    "recommendation": "Redesign the reward to be more aligned with the private evaluator's objective by rewarding only behaviors that lead to landing, e.g., penalizing hovering without progress, or requiring descent velocity to be negative near the pad.",
+    "confidence": 0.95,
+    "reuse_policy": "same_env"
+  }
+]

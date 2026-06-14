@@ -1,0 +1,38 @@
+{
+  "reward_spec_version": "eg_rsa_reward_spec_v1",
+  "rationale": "Based on feedback, reduce distance_reward base coefficient from -1.0 to -0.5 and increase progress reward coefficient from 0.5 to 1.0 to better balance shaping. Increase terminal success reward from +300 to +500 to ensure positive net return. Remove fuel_efficiency component (always zero). Keep velocity_penalty at -0.5, angle_penalty at -1.0, survival bonus at +0.5, and crash penalty at -50.",
+  "components": [
+    {
+      "id": "distance_reward",
+      "expression": "-0.5 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 1.0 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))",
+      "clip": [-5.0, 5.0],
+      "description": "Base distance penalty (-0.5 per unit distance) plus progress reward (1.0 * reduction in distance)"
+    },
+    {
+      "id": "velocity_penalty",
+      "expression": "-0.5 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)",
+      "clip": [-5.0, 0.0],
+      "description": "Reduced penalty for high linear speed to allow exploration"
+    },
+    {
+      "id": "angle_penalty",
+      "expression": "-1.0 * abs(next_obs[4])",
+      "clip": [-5.0, 0.0],
+      "description": "Mild penalty for non-zero angle (reduced from -2.0 to avoid discouraging necessary tilting)"
+    },
+    {
+      "id": "fuel_efficiency",
+      "expression": "0.0",
+      "clip": [0.0, 0.0],
+      "description": "Disabled - action==2 condition never triggered"
+    },
+    {
+      "id": "terminal",
+      "expression": "float(done) * (500.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.1 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.1 and abs(next_obs[4]) < 0.1) else -50.0) + (0.5 * float(not done))",
+      "clip": [-500.0, 500.0],
+      "description": "Large positive reward for successful landing (+500), crash penalty (-50), and survival bonus (+0.5 per timestep)"
+    }
+  ],
+  "total": "sum_components",
+  "final_clip": [-1000.0, 1000.0]
+}

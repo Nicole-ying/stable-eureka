@@ -1,0 +1,218 @@
+Structured evidence for this generation:
+{
+  "generation": 9,
+  "num_candidates": 1,
+  "num_ok": 1,
+  "top_candidates": [
+    {
+      "candidate_id": "g9_c0",
+      "parent_ids": [
+        "g3_c0"
+      ],
+      "status": "ok",
+      "selection_score": -120.40994333950785,
+      "private_eval_return": -120.40994333950785,
+      "generated_return": -64.55170738678875,
+      "generated_minus_private": 55.8582359527191,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 55.8582359527191,
+        "action_mean": 0.14966887417218544,
+        "action_std": 0.570914703756137,
+        "episode_length_mean": 75.5,
+        "component_returns": {
+          "distance_reward": -18.729883473658845,
+          "velocity_penalty": -19.49212176143524,
+          "angle_penalty": -1.3297021516946643,
+          "fuel_efficiency": 0.0,
+          "terminal": -25.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        2.0\n      ],\n      \"description\": \"Base distance penalty (-0.25 per unit distance) plus small progress reward (0.3 * reduction in distance), clipped to prevent excessive positive shaping\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for high linear speed to encourage gentle landing\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for non-zero angle to encourage upright orientation\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - fuel efficiency not directly observable\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0)\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+400) with relaxed thresholds (0.15), moderate crash penalty (-25), no survival bonus\"\n    }\n ",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 2.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward."
+    }
+  ],
+  "bottom_candidates": [
+    {
+      "candidate_id": "g9_c0",
+      "parent_ids": [
+        "g3_c0"
+      ],
+      "status": "ok",
+      "selection_score": -120.40994333950785,
+      "private_eval_return": -120.40994333950785,
+      "generated_return": -64.55170738678875,
+      "generated_minus_private": 55.8582359527191,
+      "repair_attempts": 0,
+      "repair_success": false,
+      "validation_errors": [],
+      "diagnostics": {
+        "generated_private_gap": 55.8582359527191,
+        "action_mean": 0.14966887417218544,
+        "action_std": 0.570914703756137,
+        "episode_length_mean": 75.5,
+        "component_returns": {
+          "distance_reward": -18.729883473658845,
+          "velocity_penalty": -19.49212176143524,
+          "angle_penalty": -1.3297021516946643,
+          "fuel_efficiency": 0.0,
+          "terminal": -25.0
+        },
+        "ppo_n_envs": 1,
+        "ppo_vec_env_type": "dummy",
+        "ppo_total_timesteps": 2000000,
+        "ppo_n_steps": 1024,
+        "ppo_batch_size": 64,
+        "ppo_n_epochs": 4,
+        "ppo_gae_lambda": 0.98,
+        "ppo_gamma": 0.999,
+        "ppo_ent_coef": 0.01,
+        "ppo_learning_rate": 0.0003,
+        "ppo_clip_range": 0.2,
+        "ppo_vf_coef": 0.5,
+        "ppo_max_grad_norm": 0.5
+      },
+      "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_cc14e8210d\",\n  \"rationale\": \"Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward.\",\n  \"components\": [\n    {\n      \"id\": \"distance_reward\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2))\",\n      \"clip\": [\n        -5.0,\n        2.0\n      ],\n      \"description\": \"Base distance penalty (-0.25 per unit distance) plus small progress reward (0.3 * reduction in distance), clipped to prevent excessive positive shaping\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2)\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for high linear speed to encourage gentle landing\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * abs(next_obs[4])\",\n      \"clip\": [\n        -5.0,\n        0.0\n      ],\n      \"description\": \"Moderate penalty for non-zero angle to encourage upright orientation\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"0.0\",\n      \"clip\": [\n        0.0,\n        0.0\n      ],\n      \"description\": \"Disabled - fuel efficiency not directly observable\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0)\",\n      \"clip\": [\n        -500.0,\n        500.0\n      ],\n      \"description\": \"Large positive reward for successful landing (+400) with relaxed thresholds (0.15), moderate crash penalty (-25), no survival bonus\"\n    }\n ",
+      "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: distance_reward\n    component_0 = float(-0.25 * np.sqrt(next_obs[0]**2 + next_obs[1]**2) + 0.3 * (np.sqrt(obs[0]**2 + obs[1]**2) - np.sqrt(next_obs[0]**2 + next_obs[1]**2)))\n    component_0 = max(min(component_0, 2.0), -5.0)\n    components['distance_reward'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.25 * np.sqrt(next_obs[2]**2 + next_obs[3]**2))\n    component_1 = max(min(component_1, 0.0), -5.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * abs(next_obs[4]))\n    component_2 = max(min(component_2, 0.0), -5.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(0.0)\n    component_3 = max(min(component_3, 0.0), 0.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(float(done) * (400.0 if (np.sqrt(next_obs[0]**2 + next_obs[1]**2) < 0.15 and np.sqrt(next_obs[2]**2 + next_obs[3]**2) < 0.15 and abs(next_obs[4]) < 0.15) else -25.0))\n    component_4 = max(min(component_4, 500.0), -500.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+      "llm_rationale": "Based on generation 8 feedback: the agent crashed every episode (terminal=-50) due to overly strict thresholds (0.1/0.1/0.1), reduced terminal reward (+300), and increased crash penalty (-50). To restore landing success while keeping gap small: (1) relax terminal thresholds to position<0.15, velocity<0.15, angle<0.15, (2) reduce crash penalty to -25, (3) increase terminal success reward to +400, (4) re-add a small progress reward (+0.3 * distance decrease) clipped to [0, 2] to guide the agent toward the pad without dominating the signal, (5) keep simple distance penalty (-0.25 * distance) and velocity penalty (-0.25 * speed), (6) keep angle penalty (-0.5 * abs(angle)). These changes are conservative: only 2 parameters changed from parent (thresholds, crash penalty) plus a modest progress reward."
+    }
+  ],
+  "failed_candidates": []
+}
+
+Previous environment memory:
+# Environment Memory
+
+env_alias: Env-90b964d9
+latest_generation: 8
+
+## Latest reflection
+## Reflection Analysis – Generation 8
+
+### 1. What Worked
+
+- **Selection score (private_eval_return) improved modestly**: From **-111.63** (generation 7) to **-116.68** (generation 8) — a **-5.05 point decline**. However, this is still better than generation 6 (-118.75), so the overall trend is slightly positive, but the improvement is very small.
+- **Generated-private gap decreased significantly**: From **+104.49** (generation 7) to **+31.58** (generation 8) — a **-72.91 point reduction**. This is a dramatic improvement in alignment. The changes (reducing terminal success reward to +300, increasing crash penalty to -50, tightening thresholds to 0.1, removing progress reward) successfully reduced the gap.
+- **Action mean dropped dramatically**: From **1.23** (generation 7) to **0.084** (generation 8) — a **-93.2% reduction**. The action std also dropped from **1.25** to **0.44**. The agent is now taking much more conservative, less random actions. This suggests the reward function is no longer encouraging aggressive exploitation.
+- **Angle_penalty remains very low**: Only **-1.05** total, continuing excellent angle control.
+
+### 2. What Failed
+
+- **Generated return collapsed**: From **-7.14** (generation 7) to **-85.10** (generation 8) — a **-77.96 point decline**. The agent is now performing much worse according to the generated reward. The terminal component dropped from **+27.50** to **-50.00**, meaning the agent is now crashing in every episode (terminal = -50.0 always, no successes).
+- **Distance_reward and velocity_penalty both worsened**: Distance_reward from **-15.07** to **-16.21** (-1.14 decline), velocity_penalty from **-18.27** to **-17.84** (+0.43 improvement). The agent is still far from the pad and moving too fast.
+- **Episode length increased slightly**: From **65.8** to **67.8** steps, but all episodes end in crashes (terminal = -50.0). The agent is surviving longer but never landing successfully.
+- **The gap reduction came from making both returns worse, not from improving the private return**: The private return dropped by -5.05 while the generated return dropped by -77.96. The gap narrowed because the generated return fell more than the private return, not because the private return improved. This is a hollow victory.
+
+### 3. What to Try Next
+
+**Primary hypothesis**: The changes (terminal success reward +300, crash penalty -50, thresholds 0.1/0.1/0.1, no progress reward) were too aggressive. The agent cannot achieve the strict thresholds (position<0.1, velocity<0.1, angle<0.1) with the small per-step penalties and no progress reward. The net reward over an episode is now so negative that the agent is crashing every time. The crash penalty of -50 is too high relative to the per-step penalties (max -5 each), making crashes extremely costly but successes impossible to achieve.
+
+**Recommended changes**:
+
+1. **Slightly relax the terminal thresholds** — The 0.1/0.1/0.1 thresholds proved too strict for the agent to achieve. Try **position<0.15, velocity<0.15, angle<0.15** to make success achievable again. This aligns with the recommendation from `environment_b325f89d5e` which suggested 0.12/0.12/0.12, but we need to find the right balance.
+
+2. **Reduce the crash penalty** — The crash penalty of -50 is too harsh. The agent is crashing every episode with no successes. Reduce to **-25** to make crashes less costly while still maintaining a strong disincentive. This was the crash penalty in generation 7 that produced +27.50 terminal component.
+
+3. **Increase the terminal success reward slightly** — The +300 reward was not enough to overcome the negative per-step penalties and the -50 crash penalty. Try **+400** to make success more rewarding. This is still lower than the original +500 but provides a stronger signal.
+
+4. **Re-add a small progress reward** — The progress reward was removed to reduce the gap, but now the agent cannot learn to approach the pad at all. Add a modest progress reward: **+0.3 * (sqrt(obs[0]^2+obs[1]^2) - sqrt(next_obs[0]^2+next_obs[1]^2))**. This is smaller than the previous +0.5 to avoid overfitting.
+
+5. **Keep distance_reward as simple penalty** — Keep `-0.25 * sqrt(next_obs[0]^2 + next_obs[1]^2)` without the progress component, but add the progress reward as a separate component or combine them. This maintains the simple distance penalty while providing a shaping signal.
+
+**Specific reward spec changes for next generation**:
+- Distance_reward: `-0.25 * sqrt(next_obs[0]^2 + next_obs[1]^2)` (keep simple, no progress)
+- Progress_reward (NEW): `+0.3 * (sqrt(obs[0]^2+obs[1]^2) - sqrt(next_obs[0]^2+next_obs[1]^2))`, clip [0, 2.0]
+- Velocity_penalty: `-0.25 * sqrt(next_obs[2]^2 + next_obs[3]^2)` (keep)
+- Angle_penalty: `-0.5 * abs(next_obs[4])` (keep)
+- Terminal success: **+400** for successful landing, **-25** for crash
+- Thresholds: **position<0.15, velocity<0.15, angle<0.15** (relax slightly)
+
+### 4. Lessons Supported or Contradicted
+
+**Supported lessons**:
+- **environment_f6b88ffc0f (reward_pattern)**: STRONGLY SUPPORTED — "When the generated-private gap is large, avoid adding progress or shaping rewards that provide strong per-step signals. Instead, use simple distance penalties without progress components to reduce misalignment." Removing the progress reward reduced the gap from +104.49 to +31.58.
+- **environment_fda4e35d8a (failure_mode)**: SUPPORTED — "Reduce the terminal success reward to +300 to lower the incentive for aggressive exploitation." The gap decreased dramatically, but the agent stopped landing altogether.
+- **environment_96091da136 (general)**: PARTIALLY SUPPORTED — "Continue using strict terminal thresholds with a nonzero crash penalty and no survival bonus to drive landing behavior. However, combine with a modest terminal success reward (e.g., +300) to avoid overfitting." The strict thresholds worked but the +300 reward was too low to achieve success.
+- **environment_52bbf3dcd6 (reward_pattern)**: STRONGLY SUPPORTED — "Monitor action statistics after reward changes. If action mean and std increase significantly, the reward may be encouraging overly aggressive behavior." The action mean dropped from 1.23 to 0.084, confirming the previous reward was encouraging aggression.
+- **environment_4580b3abf2 (general)**: SUPPORTED — "When the gap widens despite improving both returns, the reward function likely overemphasizes criteria not valued by the private evaluator. Revert shaping rewards, reduce terminal reward magnitude, and tighten thresholds." This exact approach reduced the gap.
+
+**Contradicted lessons**:
+- **candidate_2b197efd63 (failure_mode)**: CONTRADICTED — "Reduce the generated/private gap by increasing the crash penalty to match the private evaluator's effective cost, or relax success thresholds to make landing more achievable." Increasing the crash penalty to -50 made the agent crash every episode. The thresholds need to be relaxed, not tightened further.
+- **candidate_c2eb4618ff (general)**: CONTRADICTED — "Increase crash penalty to at least -100 to better align with the private evaluator's cost." Increasing to -50 already made the agent crash every episode. -100 would be even worse.
+- **candidate_1a43a921e3 (component_imbalance)**: CONTRADICTED — "Either increase the terminal success reward further (e.g., +600 or more) to make the sparse signal more dominant, or add a small positive per-step reward." Reducing to +300 made the agent stop landing. This lesson's recommendation to increase the reward would likely worsen the gap.
+- **candidate_eab41e2309 (reward_pattern)**: CONTRADICTED — "Remove the survival bonus to force the agent to focus on achieving the terminal condition." Removing the survival bonus (already removed in gen 7) and reducing the terminal reward caused the agent to stop landing.
+
+**New lessons to store**:
+- **Lesson L23**: Reducing the terminal success reward to +300, increasing the crash penalty to -50, and tightening thresholds to 0.1/0.1/0.1 simultaneously caused the agent to crash every episode (terminal = -50.0). The thresholds were too strict for the agent to achieve with the reduced terminal reward and increased crash penalty. A balance is needed between strictness and achievability.
+- **Lesson L24**: The generated-private gap can be reduced by making both returns worse, but this is not a meaningful improvement. The goal should be to improve the private return while keeping the gap small, not to artificially narrow the gap by collapsing the generated return.
+- **Lesson L25**: Action mean dropping from 1.23 to 0.084 after reducing terminal reward and increasing crash penalty suggests the agent switched from aggressive exploitation to overly conservative behavior. The action std dropping from 1.25 to 0.44 confirms the agent is now taking very similar actions (mean 0.084, std 0.44 suggests mostly zero actions). This may indicate the agent is doing nothing (hovering or drifting) until the episode times out or crashes.
+
+## Recent environment lessons
+- reward_pattern: To close the gap, focus on changes that improve the private reward equally or more than the generated reward, such as adjusting terminal success or crash penalties.
+- reward_pattern: Maintain or slightly increase the terminal success reward and keep crash penalty low to sustain positive terminal component and reduce crash frequency.
+- failure_mode: Consider removing the progress reward and using a simple distance-based penalty (e.g., -0.25 * sqrt(next_obs[0]^2 + next_obs[1]^2)) to directly reward being close to the pad.
+- failure_mode: Consider adding a velocity threshold bonus that rewards low speed near the pad, or increase the crash penalty for high-speed crashes to discourage fast approaches.
+- general: Remove the fuel_efficiency component entirely from the reward specification.
+- failure_mode: Keep terminal thresholds stricter (e.g., position<0.12, velocity<0.12, angle<0.12) and maintain a crash penalty of at least -25 to discourage dangerous behavior; remove the survival bonus.
+- failure_mode: Remove the survival bonus entirely; instead, focus on increasing the terminal success reward and crash penalty to drive landing behavior.
+- failure_mode: Set the crash penalty to at least -25 or higher to maintain a strong disincentive against crashes.
+- general: When reducing per-step penalties, simultaneously increase the crash penalty and keep terminal thresholds moderate; avoid adding a survival bonus that may distract from landing.
+- reward_pattern: When the generated-private gap is large, avoid adding progress or shaping rewards that provide strong per-step signals. Instead, use simple distance penalties without progress components to reduce misalignment.
+- failure_mode: Reduce the terminal success reward to +300 to lower the incentive for aggressive exploitation of the generated reward's success condition, and consider tightening thresholds further (e.g., position<0.1, velocity<0.1, angle<0.1) to better match private evaluator criteria.
+- general: Continue using strict terminal thresholds with a nonzero crash penalty and no survival bonus to drive landing behavior. However, combine with a modest terminal success reward (e.g., +300) to avoid overfitting.
+- reward_pattern: Monitor action statistics after reward changes. If action mean and std increase significantly, the reward may be encouraging overly aggressive behavior. Reduce terminal reward magnitude or add smoothness penalties to encourage gentler control.
+- general: When the gap widens despite improving both returns, the reward function likely overemphasizes criteria not valued by the private evaluator. Revert shaping rewards, reduce terminal reward magnitude, and tighten thresholds to better align with the private evaluator.
+- failure_mode: When narrowing the generated-private gap, adjust only one or two parameters at a time. Avoid simultaneously reducing terminal reward, increasing crash penalty, and tightening thresholds. Relax thresholds slightly (e.g., 0.15) and keep crash penalty moderate (e.g., -25) to maintain achievability.
+- failure_mode: Monitor both private return and gap direction. Prioritize changes that improve private return or keep it stable while reducing the gap. Avoid changes that cause generated return to plummet even if the gap narrows.
+- mutation_rule: If action mean drops below 0.1 after reward tightening, relax terminal thresholds or reduce crash penalty to restore exploration. Ensure the agent can achieve success at least occasionally to maintain learning.
+- reward_pattern: If removing a progress reward eliminates all successful landings, re-add a modest progress reward (e.g., +0.3 * distance decrease) as a separate component with a small clip range. This provides shaping without dominating the reward signal.
+- general: Change only one or two reward parameters per generation. If multiple changes are needed, test them incrementally across generations to isolate their individual effects.
+- general: Set initial terminal thresholds to values the agent can plausibly achieve (e.g., 0.15 or 0.2) and tighten them gradually over generations as performance improves.
+
+Retrieved memory context:
+Relevant candidate-level lessons:
+- [candidate_2b197efd63] type=failure_mode, confidence=0.85, condition=Terminal component uses strict success thresholds (position<0.12, velocity<0.12, angle<0.12) with a large positive reward (+500) and a modest crash penalty (-25), while per-step penalties are small., recommendation=Reduce the generated/private gap by increasing the crash penalty to match the private evaluator's effective cost, or relax success thresholds to make landing more achievable, thereby reducing the dominance of per-step penalties.
+- [candidate_12e8c0442b] type=reward_pattern, confidence=0.75, condition=Progress reward added to distance_reward: 0.5 * (sqrt(obs[0]^2+obs[1]^2) - sqrt(next_obs[0]^2+next_obs[1]^2))., recommendation=Increase the progress reward coefficient or reduce the base penalty further to make distance reduction more rewarding, or consider a purely progress-based distance reward.
+- [candidate_c2eb4618ff] type=general, confidence=0.8, condition=Terminal component uses float(done) to detect episode end, with conditional logic for success or crash., recommendation=Increase crash penalty to at least -100 to better align with the private evaluator's cost, or add a survival bonus for each step without crashing to extend episode length and improve learning.
+- [candidate_8136cc5142] type=mutation_rule, confidence=0.7, condition=Candidate g7_c0 is mutated from g3_c0, reverting to stricter thresholds and removing survival bonus based on generation 6 feedback., recommendation=When mutating, also adjust the magnitude of per-step penalties relative to terminal rewards to reduce the generated/private gap, not just the success thresholds.
+- [candidate_81c9282dd1] type=failure_mode, confidence=0.85, condition=Terminal success reward is set to +300 with strict thresholds (0.1, 0.1, 0.1) and crash penalty -50, while distance_reward is a simple -0.25 * distance without progress bonus., recommendation=Loosen terminal success thresholds (e.g., 0.2-0.5) or increase the success reward to +500 to encourage landing attempts, and consider adding a small progress bonus to distance_reward to provide intermediate positive feedback.
+- [candidate_7225012155] type=reward_pattern, confidence=0.9, condition=All components are negative or zero except for the terminal success reward, which is rarely triggered due to strict thresholds., recommendation=Introduce a small positive reward for reducing distance or velocity (e.g., progress bonus) to provide intermediate positive feedback and guide the agent toward the terminal success condition.
+- [candidate_f589a61312] type=prompt_rule, confidence=0.5, condition=The generated-private gap is 31.58, with the generated return (-85.10) being less negative than the private return (-116.68)., recommendation=Use private_eval_return only as black-box selection feedback. Reduce generated/private mismatch by adjusting reward component scales and behavior diagnostics, without inferring or reconstructing hidden evaluator internals.
+- [candidate_4573c1a79f] type=mutation_rule, confidence=0.85, condition=The candidate inherited from g3_c0 and applied changes: reduced terminal reward from +500 to +300, increased crash penalty from -25 to -50, tightened thresholds to (0.1, 0.1, 0.1), and removed progress reward from distance_reward., recommendation=When tightening thresholds, ensure the terminal success reward is high enough to incentivize reaching the condition, and retain or add intermediate progress rewards to guide the agent.
+
+Relevant environment-level lessons:
+- [environment_fda4e35d8a] type=failure_mode, confidence=0.8, condition=The terminal success reward is set to +500 with strict thresholds (position<0.12, velocity<0.12, angle<0.12) and a crash penalty of -25, recommendation=Reduce the terminal success reward to +300 to lower the incentive for aggressive exploitation of the generated reward's success condition, and consider tightening thresholds further (e.g., position<0.1, velocity<0.1, angle<0.1) to better match private evaluator criteria.
+- [environment_96091da136] type=general, confidence=0.9, condition=Stricter terminal thresholds (position<0.12, velocity<0.12, angle<0.12) and a crash penalty of -25 are applied without a survival bonus, recommendation=Continue using strict terminal thresholds with a nonzero crash penalty and no survival bonus to drive landing behavior. However, combine with a modest terminal success reward (e.g., +300) to avoid overfitting.
+- [environment_52bbf3dcd6] type=reward_pattern, confidence=0.75, condition=Action mean exceeds 1.0 and action std exceeds 1.0 after reward changes, recommendation=Monitor action statistics after reward changes. If action mean and std increase significantly, the reward may be encouraging overly aggressive behavior. Reduce terminal reward magnitude or add smoothness penalties to encourage gentler control.
+- [environment_4580b3abf2] type=general, confidence=0.85, condition=A change improves the generated return significantly (+38.21) but improves the private return only modestly (+7.12), causing the gap to widen, recommendation=When the gap widens despite improving both returns, the reward function likely overemphasizes criteria not valued by the private evaluator. Revert shaping rewards, reduce terminal reward magnitude, and tighten thresholds to better align with the private evaluator.
+- [environment_1732f7824e] type=failure_mode, confidence=0.85, condition=Terminal success reward is reduced to 300, crash penalty increased to 50, and landing thresholds tightened to 0.1 in a lunar-lander-like environment, recommendation=When narrowing the generated-private gap, adjust only one or two parameters at a time. Avoid simultaneously reducing terminal reward, increasing crash penalty, and tightening thresholds. Relax thresholds slightly (e.g., 0.15) and keep crash penalty moderate (e.g., -25) to maintain achievability.
+- [environment_502df69813] type=failure_mode, confidence=0.9, condition=Generated-private gap is reduced primarily by collapsing the generated return rather than improving private return, recommendation=Monitor both private return and gap direction. Prioritize changes that improve private return or keep it stable while reducing the gap. Avoid changes that cause generated return to plummet even if the gap narrows.
+- [environment_3c61b06be2] type=mutation_rule, confidence=0.8, condition=Action mean and std drop dramatically (mean from 1.23 to 0.084, std from 1.25 to 0.44) after reward changes, recommendation=If action mean drops below 0.1 after reward tightening, relax terminal thresholds or reduce crash penalty to restore exploration. Ensure the agent can achieve success at least occasionally to maintain learning.
+- [environment_3427582ebd] type=reward_pattern, confidence=0.85, condition=Removing a progress-based shaping reward in a lunar-lander-like environment with strict terminal conditions, recommendation=If removing a progress reward eliminates all successful landings, re-add a modest progress reward (e.g., +0.3 * distance decrease) as a separate component with a small clip range. This provides shaping without dominating the reward signal.
+- [environment_f6f5744518] type=general, confidence=0.9, condition=Multiple reward parameters (terminal reward, crash penalty, thresholds) are changed simultaneously in a single generation, recommendation=Change only one or two reward parameters per generation. If multiple changes are needed, test them incrementally across generations to isolate their individual effects.
+- [environment_604279c2a1] type=general, confidence=0.8, condition=Terminal thresholds are set to 0.1 for all three conditions (position, velocity, angle) in a lunar-lander-like environment, recommendation=Set initial terminal thresholds to values the agent can plausibly achieve (e.g., 0.15 or 0.2) and tighten them gradually over generations as performance improves.
+
+Relevant cross-environment lessons:
+- none
+
+Write:
+1. What worked.
+2. What failed.
+3. What to try next.
+4. Which lessons seem supported or contradicted.

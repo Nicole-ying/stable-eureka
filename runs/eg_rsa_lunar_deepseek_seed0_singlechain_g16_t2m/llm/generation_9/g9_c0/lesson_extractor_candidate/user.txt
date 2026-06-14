@@ -1,0 +1,55 @@
+Scope: candidate
+Env alias: Env-90b964d9
+Generation: 9
+Candidate ID: g9_c0
+
+Structured evidence:
+{
+  "generation": 9,
+  "candidate_id": "g9_c0",
+  "parent_ids": [
+    "g2_c0"
+  ],
+  "status": "ok",
+  "selection_score": -114.9996757826176,
+  "private_eval_return": -114.9996757826176,
+  "generated_return": -77.10667988543426,
+  "generated_minus_private": 37.89299589718334,
+  "repair_attempts": 0,
+  "repair_success": false,
+  "validation_errors": [],
+  "diagnostics": {
+    "generated_private_gap": 37.89299589718334,
+    "action_mean": 0.13043478260869565,
+    "action_std": 0.5433596708559623,
+    "episode_length_mean": 75.9,
+    "component_returns": {
+      "shaping": 9.61914794901981,
+      "velocity_penalty": -81.85243057928979,
+      "angle_penalty": -0.8133972551642727,
+      "fuel_efficiency": -4.059999999999994,
+      "terminal": 0.0
+    },
+    "ppo_n_envs": 1,
+    "ppo_vec_env_type": "dummy",
+    "ppo_total_timesteps": 2000000,
+    "ppo_n_steps": 1024,
+    "ppo_batch_size": 64,
+    "ppo_n_epochs": 4,
+    "ppo_gae_lambda": 0.98,
+    "ppo_gamma": 0.999,
+    "ppo_ent_coef": 0.01,
+    "ppo_learning_rate": 0.0003,
+    "ppo_clip_range": 0.2,
+    "ppo_vf_coef": 0.5,
+    "ppo_max_grad_norm": 0.5
+  },
+  "reward_spec_head": "{\n  \"reward_spec_version\": \"eg_rsa_reward_spec_v1\",\n  \"schema_version\": \"eg_rsa_reward_schema_v1_4c4946654e\",\n  \"rationale\": \"Roll back toward the best-so-far parent (g8) which had high generated return (2822) but severe generated-private gap (2834) and degenerate action mean (1.9983). The key failure is that the terminal bonus (1500) and soft landing bonus are too large and reward hovering near the pad. To fix: (1) reduce terminal bonus to 1000 and remove the soft landing bonus from terminal; (2) add a strong throttle penalty -0.2 per main engine activation to compete with terminal bonus (~-200 per episode); (3) add a per-step survival cost -0.05 to create urgency (~-50 per episode); (4) reduce shaping back to 1.5 to prevent reward dominance; (5) increase velocity penalty to -0.8 to encourage controlled descent; (6) keep angle penalty at -0.5. This targets terminal ~1000, throttle -200, survival -50, shaping ~500, velocity -80, angle -20. The soft landing bonus is removed entirely because it was exploited for continuous reward without landing.\",\n  \"components\": [\n    {\n      \"id\": \"shaping\",\n      \"expression\": \"1.5 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Gentle shaping reward for proximity to pad (1.5x multiplier, fast decay).\"\n    },\n    {\n      \"id\": \"velocity_penalty\",\n      \"expression\": \"-0.8 * (abs(obs[2]) + abs(obs[3]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Stronger penalty on horizontal and vertical velocity to encourage controlled descent.\"\n    },\n    {\n      \"id\": \"angle_penalty\",\n      \"expression\": \"-0.5 * (abs(obs[4]) + 0.5 * abs(obs[5]))\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Penalize large angle and angular velocity.\"\n    },\n    {\n      \"id\": \"fuel_efficiency\",\n      \"expression\": \"-0.2 * float(action == 2) - 0.05 * float(action == 1 or action == 3) - 0.05\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Strong throttle penalty (-0.2 per main engine activation), small side engine penalty (-0.05), and per-step survival cost (-0.05) to encourage fuel efficiency and fast landing.\"\n    },\n    {\n      \"id\": \"terminal\",\n      \"expression\": \"1000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.3 and abs(obs[3]) < 0.3 and abs(obs[4]) < 0.2)\",\n      \"clip\": [\n        -1000.0,\n        1000.0\n      ],\n      \"description\": \"Large terminal bonus (1000) for successful landing with moderate tolerances. No soft landing bonus to prevent hovering exploitation.\"\n    }\n  ],\n  \"total\": \"sum_components\",\n  \"final_clip\": [\n    -1000.0,\n    1000.0\n  ],\n  \"spec_id\": \"reward_spec_95848acdec\"\n}",
+  "reward_code_head": "def compute_reward(obs, action, next_obs, done, info):\n    components = {}\n    # component: shaping\n    component_0 = float(1.5 * np.exp(-3.0 * np.sqrt(obs[0]**2 + obs[1]**2)))\n    component_0 = max(min(component_0, 1000.0), -1000.0)\n    components['shaping'] = float(component_0)\n    # component: velocity_penalty\n    component_1 = float(-0.8 * (abs(obs[2]) + abs(obs[3])))\n    component_1 = max(min(component_1, 1000.0), -1000.0)\n    components['velocity_penalty'] = float(component_1)\n    # component: angle_penalty\n    component_2 = float(-0.5 * (abs(obs[4]) + 0.5 * abs(obs[5])))\n    component_2 = max(min(component_2, 1000.0), -1000.0)\n    components['angle_penalty'] = float(component_2)\n    # component: fuel_efficiency\n    component_3 = float(-0.2 * float(action == 2) - 0.05 * float(action == 1 or action == 3) - 0.05)\n    component_3 = max(min(component_3, 1000.0), -1000.0)\n    components['fuel_efficiency'] = float(component_3)\n    # component: terminal\n    component_4 = float(1000.0 * float(done and obs[6] > 0.5 and obs[7] > 0.5 and abs(obs[0]) < 0.15 and abs(obs[1]) < 0.15 and abs(obs[2]) < 0.3 and abs(obs[3]) < 0.3 and abs(obs[4]) < 0.2))\n    component_4 = max(min(component_4, 1000.0), -1000.0)\n    components['terminal'] = float(component_4)\n    total_reward = component_0 + component_1 + component_2 + component_3 + component_4\n    total_reward = max(min(total_reward, 1000.0), -1000.0)\n    return float(total_reward), components\n",
+  "llm_rationale": "Roll back toward the best-so-far parent (g8) which had high generated return (2822) but severe generated-private gap (2834) and degenerate action mean (1.9983). The key failure is that the terminal bonus (1500) and soft landing bonus are too large and reward hovering near the pad. To fix: (1) reduce terminal bonus to 1000 and remove the soft landing bonus from terminal; (2) add a strong throttle penalty -0.2 per main engine activation to compete with terminal bonus (~-200 per episode); (3) add a per-step survival cost -0.05 to create urgency (~-50 per episode); (4) reduce shaping back to 1.5 to prevent reward dominance; (5) increase velocity penalty to -0.8 to encourage controlled descent; (6) keep angle penalty at -0.5. This targets terminal ~1000, throttle -200, survival -50, shaping ~500, velocity -80, angle -20. The soft landing bonus is removed entirely because it was exploited for continuous reward without landing."
+}
+
+Reflection report:
+Roll back toward the best-so-far parent (g8) which had high generated return (2822) but severe generated-private gap (2834) and degenerate action mean (1.9983). The key failure is that the terminal bonus (1500) and soft landing bonus are too large and reward hovering near the pad. To fix: (1) reduce terminal bonus to 1000 and remove the soft landing bonus from terminal; (2) add a strong throttle penalty -0.2 per main engine activation to compete with terminal bonus (~-200 per episode); (3) add a per-step survival cost -0.05 to create urgency (~-50 per episode); (4) reduce shaping back to 1.5 to prevent reward dominance; (5) increase velocity penalty to -0.8 to encourage controlled descent; (6) keep angle penalty at -0.5. This targets terminal ~1000, throttle -200, survival -50, shaping ~500, velocity -80, angle -20. The soft landing bonus is removed entirely because it was exploited for continuous reward without landing.
+
+Return JSON array of lessons. Do not include code blocks.

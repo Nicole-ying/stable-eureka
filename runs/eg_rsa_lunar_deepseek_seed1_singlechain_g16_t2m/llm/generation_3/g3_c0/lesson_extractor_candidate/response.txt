@@ -1,0 +1,47 @@
+[
+  {
+    "lesson_type": "failure_mode",
+    "condition": "Generated return (74.2) is much higher than private evaluator return (-94.0), with a gap of +168.3.",
+    "observation": "The reward function produces high positive returns during training, but the private evaluator assigns a strongly negative score, indicating that the learned behavior is not aligned with the true objective.",
+    "explanation": "The terminal component provides a large +500 reward for condition (position, velocity, angle < 0.1) and +0.5 survival bonus, while distance_reward and velocity_penalty are clipped at -5 each. This makes the reward dominated by the survival bonus and infrequent large terminal rewards, which can cause the agent to learn to stay alive and occasionally trigger the success condition, but the private evaluator penalizes behaviors that do not actually achieve the intended task performance.",
+    "recommendation": "Reduce the survival bonus (e.g., from +0.5 to +0.1) and lower the terminal success reward (e.g., from +500 to +200) to decrease the generated/private gap. Use black-box selection feedback to tune until generated and private returns are closer.",
+    "confidence": 0.85,
+    "reuse_policy": "similar_env"
+  },
+  {
+    "lesson_type": "reward_pattern",
+    "condition": "distance_reward component combines a base penalty (-0.5 * distance) and a progress term (+1.0 * distance reduction), with per-component clip [-5,5].",
+    "observation": "The distance_reward component has a net return of -36.7, which is a large negative contribution despite the progress term.",
+    "explanation": "The base penalty scales with absolute distance, which can be large when the agent is far from origin. The progress term rewards reduction in distance but is bounded by the clip, while the base penalty is not fully compensated. This imbalance leads to a net negative shaping signal that may discourage exploration.",
+    "recommendation": "Consider increasing the progress reward coefficient relative to the base penalty (e.g., progress coefficient of 2.0) or reducing the base penalty further (e.g., -0.25) to provide a more positive net signal for moving toward the target.",
+    "confidence": 0.7,
+    "reuse_policy": "same_env"
+  },
+  {
+    "lesson_type": "failure_mode",
+    "condition": "fuel_efficiency component is hardcoded to 0.0 and clipped to [0,0].",
+    "observation": "The fuel_efficiency component always returns zero and does not contribute to the reward or learning.",
+    "explanation": "The expression was designed to condition on action==2, but that condition never triggered, so the component was disabled by setting it to 0.0. This wastes a slot in the reward function and does not provide any meaningful signal.",
+    "recommendation": "Remove the fuel_efficiency component entirely from the reward spec and code to simplify the reward function and avoid misleading component names.",
+    "confidence": 0.95,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The reward function uses next_obs for distance, velocity, and angle calculations, and obs for progress computation.",
+    "observation": "All next_obs indices (0,1,2,3,4) are used correctly and no indexing errors occur; the usage is valid per the reward contract.",
+    "explanation": "The code accesses next_obs[0], next_obs[1] for position, next_obs[2], next_obs[3] for velocity, and next_obs[4] for angle, which are all valid and within bounds. No issues with next_obs availability.",
+    "recommendation": "No change needed for next_obs usage; it is correctly used in this candidate.",
+    "confidence": 0.98,
+    "reuse_policy": "global"
+  },
+  {
+    "lesson_type": "general",
+    "condition": "The reward code uses np.sqrt, abs, and basic arithmetic without import statements.",
+    "observation": "The code uses np.sqrt and abs, which are available in the reward execution namespace without import. No import statements are present.",
+    "explanation": "np and math are available by default, and the code does not attempt to import them. All used functions are supported.",
+    "recommendation": "No change needed; the code follows the allowed namespace rules.",
+    "confidence": 0.99,
+    "reuse_policy": "global"
+  }
+]
