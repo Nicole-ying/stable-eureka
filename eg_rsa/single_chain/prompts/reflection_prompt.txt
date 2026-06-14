@@ -20,6 +20,9 @@ Rules:
 - Do not assume hidden success labels unless explicitly present in evidence.
 - You may recommend small, medium, large, or restructuring edits. There is no hard limit on how many terms may change.
 - If recommending a large edit, justify why small edits are unlikely to fix the observed failure.
+- Always compare the current candidate against best_iteration_evidence. If the current candidate is worse than the best, prefer rollback_to_best or revise from the best parent rather than continuing from the worse candidate.
+- Treat completion/success bonuses as event rewards by default. A state-level completion bonus outside a terminal/event gate can create repeated state-bonus collection, stalling, or hovering. Recommend such a design only if it includes a one-shot latch, cooldown, or clear progress-delta logic.
+- For any proposed edit, run a failure-mode check: how could the new reward increase generated reward while hurting the primary metric?
 - Do not propose exact Python code. Describe reward-design changes and validation metrics.
 - Return valid JSON only. Do not use Markdown.
 
@@ -29,11 +32,11 @@ Required JSON structure:
   "iteration": null,
   "candidate_id": "...",
   "diagnosis": {
-    "outcome_label": "passive_no_action_policy | passive_no_thrust_policy | wrong_action_mode_policy | crash_policy | hovering_or_timeout_policy | proxy_reward_hacking | component_dominance | promising_policy | successful_policy | unclear_policy",
+    "outcome_label": "passive_no_action_policy | passive_no_thrust_policy | wrong_action_mode_policy | crash_policy | hovering_or_timeout_policy | proxy_reward_misalignment | repeated_state_bonus_collection | component_dominance | promising_policy | successful_policy | unclear_policy",
     "main_problem": "...",
     "evidence": [],
     "root_cause_hypotheses": [],
-    "reward_hacking_flags": {},
+    "reward_misalignment_flags": {},
     "bad_local_optimum_flags": {},
     "confidence": 0.0
   },
@@ -45,6 +48,12 @@ Required JSON structure:
     "what_to_preserve": [],
     "what_to_change": [],
     "what_to_avoid": []
+  },
+  "failure_mode_check_for_next_edit": {
+    "possible_new_failure_mode": "...",
+    "repeatable_bonus_risk": "...",
+    "stalling_or_timeout_risk": "...",
+    "primary_metric_alignment_risk": "..."
   },
   "expected_metric_changes": {},
   "validation_metrics": [],
