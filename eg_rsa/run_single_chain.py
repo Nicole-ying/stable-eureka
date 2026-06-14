@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +46,10 @@ def copy_inputs(config: Dict[str, Any], run_dir: Path) -> Dict[str, str]:
     return {"task_description": task_description, "step_code": step_code}
 
 
+def as_json_text(data: Dict[str, Any]) -> str:
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
 def run(config_path: str) -> Path:
     config_path = Path(config_path)
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
@@ -77,7 +82,7 @@ def run(config_path: str) -> Path:
     target_alignment_contract = JsonAgent("TargetAlignmentAgent", llm_client, target_prompt).run(
         {
             **sandbox_inputs,
-            "environment_understanding_json": yaml.safe_dump(environment_understanding, allow_unicode=True, sort_keys=False),
+            "environment_understanding_json": as_json_text(environment_understanding),
         },
         agents_dir / "target_alignment_contract.json",
         raw_dir / "target_alignment_contract_raw.txt",
@@ -86,8 +91,8 @@ def run(config_path: str) -> Path:
     initial_reward = JsonAgent("InitialRewardSchemaAndCodeAgent", llm_client, reward_prompt).run(
         {
             **sandbox_inputs,
-            "environment_understanding_json": yaml.safe_dump(environment_understanding, allow_unicode=True, sort_keys=False),
-            "target_alignment_contract_json": yaml.safe_dump(target_alignment_contract, allow_unicode=True, sort_keys=False),
+            "environment_understanding_json": as_json_text(environment_understanding),
+            "target_alignment_contract_json": as_json_text(target_alignment_contract),
         },
         agents_dir / "initial_reward_schema_and_code.json",
         raw_dir / "initial_reward_schema_and_code_raw.txt",
