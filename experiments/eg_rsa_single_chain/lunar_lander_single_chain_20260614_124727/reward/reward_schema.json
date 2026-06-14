@@ -1,0 +1,87 @@
+{
+  "version": "initial_v0",
+  "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+  "design_principle": "Sparse terminal reward for successful landing combined with dense shaping penalties during flight. Anti-hacking measures prevent sleep exploitation by requiring position verification at termination.",
+  "components": [
+    {
+      "id": "distance_to_pad",
+      "purpose": "Shape behavior toward horizontal center (state[0] = 0)",
+      "uses": [
+        "state[0]"
+      ],
+      "expected_effect": "Encourages agent to move horizontally toward landing pad during flight",
+      "anti_hacking_role": "Prevents boundary bouncing by penalizing distance from target"
+    },
+    {
+      "id": "velocity_control",
+      "purpose": "Penalize high linear velocities for safe descent",
+      "uses": [
+        "state[2]",
+        "state[3]"
+      ],
+      "expected_effect": "Reduces crash risk and encourages controlled landing approach",
+      "anti_hacking_role": "Prevents contact hacking via high-velocity impacts"
+    },
+    {
+      "id": "angle_control",
+      "purpose": "Encourage upright orientation near pad (state[4] approx 0)",
+      "uses": [
+        "state[4]",
+        "terminated"
+      ],
+      "expected_effect": "Promotes stable landing posture before contact",
+      "anti_hacking_role": "Prevents sideways crashes that trigger leg sensors"
+    },
+    {
+      "id": "angular_velocity_control",
+      "purpose": "Penalize high rotation rates during descent",
+      "uses": [
+        "state[5]"
+      ],
+      "expected_effect": "Reduces spinning behavior and improves landing stability",
+      "anti_hacking_role": "Prevents rotational exploitation of termination conditions"
+    },
+    {
+      "id": "leg_contact",
+      "purpose": "Verify ground contact at successful terminations only",
+      "uses": [
+        "state[6]",
+        "state[7]",
+        "terminated"
+      ],
+      "expected_effect": "Confirms physical landing occurred before awarding success bonus",
+      "anti_hacking_role": "Prevents sleep hacking without actual pad contact"
+    },
+    {
+      "id": "fuel_cost",
+      "purpose": "Continuous penalty on engine usage (m_power + s_power)",
+      "uses": [
+        "m_power",
+        "s_power"
+      ],
+      "expected_effect": "Encourages fuel-efficient trajectories per task goal",
+      "anti_hacking_role": "Prevents hovering indefinitely by making flight costly"
+    },
+    {
+      "id": "terminal_success_bonus",
+      "purpose": "Large positive reward for verified successful landing at termination",
+      "uses": [
+        "state[0]",
+        "state[6]",
+        "state[7]",
+        "terminated"
+      ],
+      "expected_effect": "Primary success signal distinguishing pad landings from failures",
+      "anti_hacking_role": "Requires position verification to prevent sleep exploitation"
+    },
+    {
+      "id": "unsafe_terminal_penalty",
+      "purpose": "Heavy penalty for crash or out-of-bounds termination",
+      "uses": [
+        "terminated"
+      ],
+      "expected_effect": "Strongly discourages failure modes over successful landings",
+      "anti_hacking_role": "Prevents boundary exploitation and crash-based reward maximization"
+    }
+  ]
+}

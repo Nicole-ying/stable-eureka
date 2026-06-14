@@ -1,0 +1,133 @@
+{
+  "file_type": "target_alignment_contract",
+  "environment_name": "Lunar Lander (Rocket Trajectory Optimization)",
+  "primary_objective": {
+    "description": "Land the rocket safely on the landing pad at world coordinates (0,0) as quickly and fuel-efficiently as possible.",
+    "constraints": [
+      "Do not crash into terrain",
+      "Stay within viewport bounds (abs(state[0]) < 1.0)",
+      "Terminate via physics sleep only after stable contact on pad"
+    ]
+  },
+  "objective_decomposition": [
+    {
+      "component": "Landing Accuracy",
+      "description": "Minimize horizontal distance from center (state[0] approx 0) at termination.",
+      "priority": 1
+    },
+    {
+      "component": "Stability Check",
+      "description": "Ensure legs are in contact with ground (state[6], state[7]) and lander is not moving excessively before sleep.",
+      "priority": 2
+    },
+    {
+      "component": "Efficiency",
+      "description": "Minimize fuel consumption (m_power + s_power) and time steps to reach stable landing.",
+      "priority": 3
+    }
+  ],
+  "metric_priority": [
+    "fitness_score",
+    "cumulative_reward",
+    "termination_reason"
+  ],
+  "primary_selection_metric": "fitness_score",
+  "proxy_metrics": [
+    {
+      "name": "reward",
+      "description": "Immediate scalar reward returned by compute_reward. Used for gradient updates but not final selection.",
+      "reliability": "low"
+    },
+    {
+      "name": "fuel_consumption_estimate",
+      "description": "Sum of m_power and s_power over episode steps.",
+      "reliability": "medium"
+    }
+  ],
+  "diagnostic_metrics": [
+    {
+      "name": "termination_reason",
+      "values": ["game_over_crash", "out_of_bounds_x", "physics_sleep"],
+      "interpretation": "Physics sleep is only success if state[0] near 0 and legs contact."
+    },
+    {
+      "name": "final_state_vector",
+      "description": "State vector at termination step.",
+      "key_indices": [0, 1, 6, 7]
+    }
+  ],
+  "success_criteria": {
+    "success_like_terminal": {
+      "role": "behavioral diagnostic, not official ground truth unless explicitly provided",
+      "conditions": [
+        "terminated == True",
+        "self.game_over == False (No crash)",
+        "abs(state[0]) < 0.15 (Near pad center horizontally)",
+        "(state[6] == 1.0 or state[7] == 1.0) OR not self.lander.awake (Stable contact/sleep)"
+      ]
+    }
+  },
+  "failure_modes": {
+    "crash_termination": {
+      "condition": "self.game_over is True",
+      "consequence": "Immediate episode end, negative fitness/reward expected."
+    },
+    "out_of_bounds_loss": {
+      "condition": "abs(state[0]) >= 1.0",
+      "consequence": "Lander lost off-screen, immediate termination."
+    },
+    "sleep_hacking_failure": {
+      "condition": "not self.lander.awake AND abs(state[0]) > threshold OR legs not touching pad",
+      "consequence": "Agent stops moving to end episode without landing (exploiting sleep termination)."
+    }
+  },
+  "reward_hacking_definitions": {
+    "proxy_reward_hacking": {
+      "description": "Optimizing immediate reward signal while failing physical success criteria.",
+      "detection_pattern": "High cumulative reward but low fitness_score or failure to land on pad."
+    },
+    "terminal_hacking": {
+      "description": "Exploiting termination conditions (sleep) without achieving landing goal.",
+      "detection_pattern": "Episode terminates via 'not self.lander.awake' with state[0] far from 0 or legs not contacting ground properly."
+    },
+    "hovering_hacking": {
+      "description": "Maintaining flight indefinitely to accumulate time-based rewards if step penalty is missing.",
+      "detection_pattern": "Episode exceeds max_steps limit without termination (if applicable) or fuel usage remains low while position does not converge."
+    },
+    "contact_hacking": {
+      "description": "Triggering leg contact sensors by crashing into terrain rather than landing softly.",
+      "detection_pattern": "Legs report ground_contact but self.game_over is True (crash) or velocity at termination is high."
+    }
+  },
+  "controller_decision_rules": {
+    "selection_priority": [
+      "Maximize fitness_score",
+      "Verify success_criteria conditions met for top candidates"
+    ],
+    "acceptance_rules": [
+      "Policy accepted if mean(fitness_score) > threshold AND crash_rate < limit.",
+      "Policy must demonstrate landing on pad (state[0] approx 0) in majority of successful episodes."
+    ],
+    "rejection_rules": [
+      "Reject policies that terminate via sleep off-pad consistently (>5% frequency).",
+      "Reject policies with high crash rate despite high reward scores (indicates misaligned reward)."
+    ],
+    "patch_budget_rules": [
+      "If fitness_score diverges from physical success criteria, flag for reward function audit."
+    ]
+  },
+  "reward_generator_constraints": {
+    "must_include": [
+      "Penalty for fuel usage (m_power + s_power).",
+      "Bonus for landing on pad (state[0] proximity and leg contact at sleep termination).",
+      "Heavy penalty for crash or out-of-bounds."
+    ],
+    "must_avoid": [
+      "Rewarding 'not self.lander.awake' without verifying position/contact.",
+      "Positive step rewards that encourage hovering indefinitely (unless bounded by max steps)."
+    ],
+    "preferred_design": [
+      "Sparse reward at successful landing + dense shaping for distance/fuel."
+    ]
+  }
+}

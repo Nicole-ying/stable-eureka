@@ -1,0 +1,179 @@
+[
+  {
+    "run_name": "v3a_less_shaping",
+    "total_timesteps": 100000,
+    "train_time_seconds": 472.5,
+    "eval_episodes": 10,
+    "generated_return_mean": 661.3044416683572,
+    "generated_return_std": 327.14906568858777,
+    "hidden_return_mean": -28.471015206534823,
+    "hidden_return_std": 123.80850389402096,
+    "generated_hidden_gap": 689.775456874892,
+    "episode_length_mean": 163.7,
+    "episode_length_std": 189.2754870552444,
+    "landing_rate": 0.7,
+    "crash_rate": 0.3,
+    "final_distance_mean": 0.24672297326664663,
+    "final_distance_std": 0.2768691949068171,
+    "action_mean": 1.7361026267562614,
+    "action_std": 0.9730630823450187,
+    "action_distribution": {
+      "0": 0.16371411117898596,
+      "1": 0.14905314599877825,
+      "2": 0.4746487477092242,
+      "3": 0.2125839951130116
+    },
+    "component_returns": {
+      "shaping": 133.73301708707865,
+      "velocity_penalty": -25.62691180998536,
+      "angle_penalty": -6.801663608736234,
+      "terminal": 560.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v3",
+    "reward_file": "rewards/v3/v3a_less_shaping.py",
+    "wall_time_seconds": 474.2,
+    "reward_code": "\"\"\"\nv3a_less_shaping: v2d base, shaping reduced from 3.0 to 2.0.\nLess incentive to hover near pad, more incentive to land.\nTerminal=800, soft landing conditions, no crash penalty.\n100k steps.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    # Reduced shaping (2.0 instead of 3.0)\n    shaping = 2.0 * np.exp(-2.0 * dist)\n\n    # Gentle velocity penalty\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n\n    # Gentle angle penalty\n    angle_penalty = -0.3 * abs(angle)\n\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 800.0\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v3b_minimal_shaping",
+    "total_timesteps": 100000,
+    "train_time_seconds": 205.6,
+    "eval_episodes": 10,
+    "generated_return_mean": 190.12709776757288,
+    "generated_return_std": 405.7576156195463,
+    "hidden_return_mean": -158.94052279214557,
+    "hidden_return_std": 44.02639712816208,
+    "generated_hidden_gap": 349.0676205597184,
+    "episode_length_mean": 66.7,
+    "episode_length_std": 12.704723531033645,
+    "landing_rate": 0.2,
+    "crash_rate": 0.7,
+    "final_distance_mean": 0.34549604780864007,
+    "final_distance_std": 0.1785161505571347,
+    "action_mean": 0.4197901049475262,
+    "action_std": 0.94880874622001,
+    "action_distribution": {
+      "0": 0.7991004497751124,
+      "1": 0.09145427286356822,
+      "2": 0.0,
+      "3": 0.10944527736131934
+    },
+    "component_returns": {
+      "shaping": 19.560065880215415,
+      "velocity_penalty": -22.884452887322528,
+      "angle_penalty": -6.548515225320005,
+      "terminal": 200.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v3",
+    "reward_file": "rewards/v3/v3b_minimal_shaping.py",
+    "wall_time_seconds": 206.2,
+    "reward_code": "\"\"\"\nv3b_minimal_shaping: Even less shaping (1.5) + bigger terminal (1000).\nThe terminal bonus should be the overwhelmingly dominant signal.\nShaping is just a gentle nudge toward the pad.\n100k steps.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    # Minimal shaping \u2014 just enough to find the pad\n    shaping = 1.5 * np.exp(-2.0 * dist)\n\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 1000.0  # Massive bonus\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v3c_mild_penalty",
+    "total_timesteps": 100000,
+    "train_time_seconds": 205.2,
+    "eval_episodes": 10,
+    "generated_return_mean": 169.60286935758236,
+    "generated_return_std": 370.6925471638172,
+    "hidden_return_mean": -128.4145350400587,
+    "hidden_return_std": 84.15515900937207,
+    "generated_hidden_gap": 298.01740439764103,
+    "episode_length_mean": 305.9,
+    "episode_length_std": 348.44754268038685,
+    "landing_rate": 0.0,
+    "crash_rate": 0.8,
+    "final_distance_mean": 0.3316732817750958,
+    "final_distance_std": 0.11483542114440386,
+    "action_mean": 1.7613599215429878,
+    "action_std": 0.8181882932865321,
+    "action_distribution": {
+      "0": 0.08009153318077804,
+      "1": 0.2422360248447205,
+      "2": 0.513893429225237,
+      "3": 0.16377901274926446
+    },
+    "component_returns": {
+      "shaping": 261.0620699180696,
+      "velocity_penalty": -32.22316702430676,
+      "angle_penalty": -29.236033536180816,
+      "terminal": -30.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v3",
+    "reward_file": "rewards/v3/v3c_mild_penalty.py",
+    "wall_time_seconds": 208.0,
+    "reward_code": "\"\"\"\nv3c_mild_penalty: v3a base + mild non-landing penalty (-30 instead of -50).\nCreates mild urgency without the fear of the harsh -50 penalty.\nSoft landing conditions, terminal=800, shaping=2.0.\n100k steps.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    shaping = 2.0 * np.exp(-2.0 * dist)\n\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 800.0\n        else:\n            terminal = -30.0  # Mild penalty, not harsh -50\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v3d_progress_hybrid",
+    "total_timesteps": 100000,
+    "train_time_seconds": 206.3,
+    "eval_episodes": 10,
+    "generated_return_mean": 1.4272725526272612,
+    "generated_return_std": 19.152508723588245,
+    "hidden_return_mean": -199.28539685913535,
+    "hidden_return_std": 158.34100902819665,
+    "generated_hidden_gap": 200.71266941176262,
+    "episode_length_mean": 103.3,
+    "episode_length_std": 26.034784423920243,
+    "landing_rate": 0.0,
+    "crash_rate": 1.0,
+    "final_distance_mean": 0.25256310239449375,
+    "final_distance_std": 0.09400482617933825,
+    "action_mean": 1.5769603097773475,
+    "action_std": 1.016862501483953,
+    "action_distribution": {
+      "0": 0.1936108422071636,
+      "1": 0.2371732817037754,
+      "2": 0.36786060019361083,
+      "3": 0.20135527589545016
+    },
+    "component_returns": {
+      "shaping": 59.42660155550713,
+      "progress": 2.3190424432022705,
+      "velocity_penalty": -24.320079615123586,
+      "angle_penalty": -15.998291830958573,
+      "terminal": -20.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v3",
+    "reward_file": "rewards/v3/v3d_progress_hybrid.py",
+    "wall_time_seconds": 207.3,
+    "reward_code": "\"\"\"\nv3d_progress_hybrid: Combine distance shaping + progress potential.\nreward = shaping + progress + velocity_penalty + angle_penalty + terminal\nProgress = potential(next) - potential(now) gives reward for moving toward pad.\nThis provides BOTH directional shaping AND progress-based reward.\n100k steps.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    prev_x, prev_y = obs[0], obs[1]\n    next_x, next_y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    prev_dist = np.sqrt(prev_x**2 + prev_y**2)\n    next_dist = np.sqrt(next_x**2 + next_y**2)\n\n    # Distance shaping\n    shaping = 2.0 * np.exp(-2.0 * next_dist)\n\n    # Progress: reward for reducing distance\n    progress = 2.0 * (prev_dist - next_dist)\n\n    # Penalties\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n\n    terminal = 0.0\n    if done:\n        near_pad = abs(next_x) < 0.3 and next_y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 800.0\n        else:\n            terminal = -20.0\n\n    total = shaping + progress + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"progress\": progress,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  }
+]

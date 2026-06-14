@@ -1,0 +1,178 @@
+[
+  {
+    "run_name": "v1_balanced_components",
+    "total_timesteps": 30000,
+    "train_time_seconds": 63.4,
+    "eval_episodes": 10,
+    "generated_return_mean": -85.4075477259767,
+    "generated_return_std": 29.78059520237099,
+    "hidden_return_mean": -187.01352522333127,
+    "hidden_return_std": 97.22554968370609,
+    "generated_hidden_gap": 101.60597749735457,
+    "episode_length_mean": 75.5,
+    "episode_length_std": 19.095811058973116,
+    "landing_rate": 0.0,
+    "crash_rate": 1.0,
+    "final_distance_mean": 0.25819358301170486,
+    "final_distance_std": 0.13268365585501804,
+    "action_mean": 1.9880794701986755,
+    "action_std": 0.9999289479604319,
+    "action_distribution": {
+      "0": 0.0,
+      "1": 0.5059602649006623,
+      "2": 0.0,
+      "3": 0.49403973509933774
+    },
+    "component_returns": {
+      "distance_reward": 25.158010725110863,
+      "velocity_penalty": -37.55391409754753,
+      "angle_penalty": -26.811644353540032,
+      "contact_bonus": 3.8,
+      "fuel_penalty": 0.0,
+      "terminal": -50.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v1",
+    "reward_file": "rewards/v1/v1_balanced_components.py",
+    "wall_time_seconds": 64.4,
+    "reward_code": "\"\"\"\nv1_balanced_components: Multiple balanced reward components.\n- Distance: exponential shaping toward pad\n- Velocity: penalty for high speed\n- Angle: penalty for tilt\n- Contact: bonus for leg contact near pad\n- Fuel: small penalty for engine use\n- Terminal: large bonus for successful landing, penalty for crash\n\nEach component scaled to ~10-100 range per episode.\nTerminal dominates (500) to make landing the clear goal.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    # --- Distance shaping (smooth gradient to pad) ---\n    dist = np.sqrt(x**2 + y**2)\n    distance_reward = 2.0 * np.exp(-2.5 * dist)  # max 2.0 at pad, decays fast\n\n    # --- Velocity penalty (smooth landing) ---\n    velocity_penalty = -0.4 * (abs(vx) + abs(vy))\n\n    # --- Angle penalty (stay upright) ---\n    angle_penalty = -0.5 * abs(angle)\n\n    # --- Leg contact bonus (encourage touching ground near pad) ---\n    near_pad = abs(x) < 0.25 and y < 0.2\n    leg_contact = (left_leg > 0.5) or (right_leg > 0.5)\n    contact_bonus = 2.0 if (leg_contact and near_pad) else 0.0\n\n    # --- Fuel efficiency ---\n    fuel_penalty = -0.05 if action == 2 else 0.0  # main engine costs fuel\n\n    # --- Terminal ---\n    terminal = 0.0\n    if done:\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.3 and abs(vy) < 0.3\n        upright = abs(angle) < 0.15\n        on_pad = abs(x) < 0.15 and y < 0.15\n\n        if both_legs and on_pad and slow and upright:\n            terminal = 500.0  # Successful landing\n        else:\n            terminal = -50.0  # Crash or out of bounds\n\n    total = distance_reward + velocity_penalty + angle_penalty + contact_bonus + fuel_penalty + terminal\n    total = float(np.clip(total, -1000.0, 1000.0))\n\n    return total, {\n        \"distance_reward\": distance_reward,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"contact_bonus\": contact_bonus,\n        \"fuel_penalty\": fuel_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v1_distance_shaping",
+    "total_timesteps": 30000,
+    "train_time_seconds": 60.4,
+    "eval_episodes": 10,
+    "generated_return_mean": 87.10342201222298,
+    "generated_return_std": 246.35137891800312,
+    "hidden_return_mean": -120.51429745783642,
+    "hidden_return_std": 148.05765692557796,
+    "generated_hidden_gap": 207.6177194700594,
+    "episode_length_mean": 141.6,
+    "episode_length_std": 99.87211823126611,
+    "landing_rate": 0.1,
+    "crash_rate": 0.9,
+    "final_distance_mean": 0.8668593545998913,
+    "final_distance_std": 0.5352326230547998,
+    "action_mean": 1.4018361581920904,
+    "action_std": 1.1766187389174463,
+    "action_distribution": {
+      "0": 0.3785310734463277,
+      "1": 0.0346045197740113,
+      "2": 0.393361581920904,
+      "3": 0.19350282485875706
+    },
+    "component_returns": {
+      "shaping": 118.31007295365313,
+      "velocity_penalty": -29.137620467009064,
+      "angle_penalty": -7.069030474421015,
+      "terminal": 5.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v1",
+    "reward_file": "rewards/v1/v1_distance_shaping.py",
+    "wall_time_seconds": 61.7,
+    "reward_code": "\"\"\"\nv1_distance_shaping: Continuous distance-based shaping.\nUses exp(-\u03b1*dist) to create a smooth gradient toward the landing pad.\n+ terminal bonus for landing.\n\nHypothesis: The exponential decay gives strong gradient near the pad\nwithout overwhelming penalties far away.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    # Distance to pad\n    dist = np.sqrt(x**2 + y**2)\n\n    # Shaping: positive reward for being near pad, decays exponentially\n    # At dist=0: +3.0, at dist=0.5: +1.1, at dist=1.0: +0.15, at dist=2.0: ~0\n    shaping = 3.0 * np.exp(-2.0 * dist)\n\n    # Gentle velocity penalty to discourage excessive speed\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n\n    # Gentle angle penalty\n    angle_penalty = -0.3 * abs(angle)\n\n    # Terminal reward\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.15 and y < 0.15\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.3 and abs(vy) < 0.3\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 500.0\n        else:\n            terminal = -50.0  # Penalty for crashing, but not too harsh\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v1_progress_potential",
+    "total_timesteps": 30000,
+    "train_time_seconds": 64.2,
+    "eval_episodes": 10,
+    "generated_return_mean": -111.51039399112533,
+    "generated_return_std": 3.6929689644084234,
+    "hidden_return_mean": -213.13583382376814,
+    "hidden_return_std": 123.50803014954018,
+    "generated_hidden_gap": 101.62543983264281,
+    "episode_length_mean": 66.3,
+    "episode_length_std": 9.685556256612212,
+    "landing_rate": 0.1,
+    "crash_rate": 0.9,
+    "final_distance_mean": 0.27214427633992216,
+    "final_distance_std": 0.13217271127799243,
+    "action_mean": 0.32428355957767724,
+    "action_std": 0.6301607861701212,
+    "action_distribution": {
+      "0": 0.7647058823529411,
+      "1": 0.14630467571644043,
+      "2": 0.0889894419306184,
+      "3": 0.0
+    },
+    "component_returns": {
+      "progress": 2.2723684645489506,
+      "velocity_penalty": -8.989670776017011,
+      "angle_penalty": -4.203091679657265,
+      "fuel_penalty": -0.5900000000000001,
+      "terminal": -100.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v1",
+    "reward_file": "rewards/v1/v1_progress_potential.py",
+    "wall_time_seconds": 64.8,
+    "reward_code": "\"\"\"\nv1_progress_potential: Potential-based reward shaping.\nreward = potential(next_obs) - potential(obs)\nwhere potential = -distance_to_pad (negative, so reducing distance gives +reward)\n\nThis is mathematically correct: the optimal policy under shaped reward\nis the same as under the original potential function.\n\nAlso includes small auxiliary penalties and terminal bonus.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    # Potential: negative distance to pad\n    # Higher (less negative) = better\n    prev_x, prev_y = obs[0], obs[1]\n    next_x, next_y = next_obs[0], next_obs[1]\n\n    prev_dist = np.sqrt(prev_x**2 + prev_y**2)\n    next_dist = np.sqrt(next_x**2 + next_y**2)\n\n    # Potential-based shaping: reward for reducing distance\n    # When moving toward pad: next_dist < prev_dist \u2192 positive reward\n    potential_old = -2.0 * prev_dist\n    potential_new = -2.0 * next_dist\n    progress = potential_new - potential_old\n\n    # Small auxiliary penalties for stability\n    # (these don't change the optimal policy, just speed up learning)\n    velocity_penalty = -0.1 * (abs(next_obs[2]) + abs(next_obs[3]))\n    angle_penalty = -0.1 * abs(next_obs[4])\n\n    # Penalize main engine usage (fuel efficiency)\n    fuel_penalty = -0.1 if action == 2 else 0.0\n\n    # Terminal reward\n    terminal = 0.0\n    if done:\n        near_pad = abs(next_x) < 0.15 and next_y < 0.15\n        both_legs = next_obs[6] > 0.5 and next_obs[7] > 0.5\n        slow = abs(next_obs[2]) < 0.3 and abs(next_obs[3]) < 0.3\n        upright = abs(next_obs[4]) < 0.2\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 300.0\n        else:\n            terminal = -100.0\n\n    total = progress + velocity_penalty + angle_penalty + fuel_penalty + terminal\n\n    return float(total), {\n        \"progress\": progress,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"fuel_penalty\": fuel_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v1_sparse_terminal",
+    "total_timesteps": 30000,
+    "train_time_seconds": 56.7,
+    "eval_episodes": 10,
+    "generated_return_mean": -100.0,
+    "generated_return_std": 0.0,
+    "hidden_return_mean": -629.2661956674206,
+    "hidden_return_std": 273.27285359198606,
+    "generated_hidden_gap": 529.2661956674206,
+    "episode_length_mean": 117.8,
+    "episode_length_std": 34.3709179394441,
+    "landing_rate": 0.0,
+    "crash_rate": 1.0,
+    "final_distance_mean": 3.571315118919442,
+    "final_distance_std": 1.2425902454858275,
+    "action_mean": 1.9023769100169778,
+    "action_std": 0.4855932473909357,
+    "action_distribution": {
+      "0": 0.0466893039049236,
+      "1": 0.031409168081494056,
+      "2": 0.8947368421052632,
+      "3": 0.027164685908319185
+    },
+    "component_returns": {
+      "terminal": -100.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v1",
+    "reward_file": "rewards/v1/v1_sparse_terminal.py",
+    "wall_time_seconds": 57.7,
+    "reward_code": "\"\"\"\nv1_sparse_terminal: Pure sparse reward.\nOnly reward is at episode end:\n  +100 for successful landing\n  -100 for crash/failure\n  0 during flight\n\nHypothesis: With enough training, the agent can learn from sparse rewards alone.\nRisk: May not learn at all if exploration never finds a landing.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    total = 0.0\n    components = {}\n\n    if done:\n        # Landing condition\n        x, y = next_obs[0], next_obs[1]\n        vx, vy = next_obs[2], next_obs[3]\n        angle = next_obs[4]\n        left_leg = next_obs[6]\n        right_leg = next_obs[7]\n\n        near_pad = abs(x) < 0.2 and y < 0.2\n        both_legs_down = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n\n        if both_legs_down and near_pad and slow and upright:\n            total = 100.0\n            components[\"terminal\"] = 100.0\n        else:\n            total = -100.0\n            components[\"terminal\"] = -100.0\n    else:\n        components[\"terminal\"] = 0.0\n\n    return float(total), components\n"
+  }
+]

@@ -1,0 +1,179 @@
+[
+  {
+    "run_name": "v2a_no_crash_penalty",
+    "total_timesteps": 50000,
+    "train_time_seconds": 99.6,
+    "eval_episodes": 10,
+    "generated_return_mean": 13.659086652547938,
+    "generated_return_std": 53.32747025411373,
+    "hidden_return_mean": -335.14634224498093,
+    "hidden_return_std": 242.00217943754203,
+    "generated_hidden_gap": 348.8054288975289,
+    "episode_length_mean": 325.6,
+    "episode_length_std": 177.34666616545124,
+    "landing_rate": 0.0,
+    "crash_rate": 1.0,
+    "final_distance_mean": 2.781018072556752,
+    "final_distance_std": 2.055034510990161,
+    "action_mean": 2.0092137592137593,
+    "action_std": 0.64336616374042,
+    "action_distribution": {
+      "0": 0.0,
+      "1": 0.2023955773955774,
+      "2": 0.585995085995086,
+      "3": 0.21160933660933662
+    },
+    "component_returns": {
+      "shaping": 68.7009258295175,
+      "velocity_penalty": -44.16160701354571,
+      "angle_penalty": -10.880232163423893,
+      "terminal": 0.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v2",
+    "reward_file": "rewards/v2/v2a_no_crash_penalty.py",
+    "wall_time_seconds": 102.8,
+    "reward_code": "\"\"\"\nv2a_no_crash_penalty: v1_distance_shaping + NO crash penalty.\nSame shaping structure but terminal=0 for non-landing instead of -50.\nThis removes the fear of attempting a landing.\nHypothesis: Agent will attempt more landings without the crash penalty.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    # Distance shaping (same as v1_distance_shaping)\n    shaping = 3.0 * np.exp(-2.0 * dist)\n\n    # Gentle velocity penalty\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n\n    # Gentle angle penalty\n    angle_penalty = -0.3 * abs(angle)\n\n    # Terminal: +500 for landing, 0 for anything else (NO CRASH PENALTY)\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.15 and y < 0.15\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.3 and abs(vy) < 0.3\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 500.0\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v2b_big_terminal",
+    "total_timesteps": 50000,
+    "train_time_seconds": 94.3,
+    "eval_episodes": 10,
+    "generated_return_mean": 378.92730333006114,
+    "generated_return_std": 408.23766597202416,
+    "hidden_return_mean": -244.613362649954,
+    "hidden_return_std": 194.9704501098748,
+    "generated_hidden_gap": 623.5406659800151,
+    "episode_length_mean": 556.6,
+    "episode_length_std": 443.51126254019755,
+    "landing_rate": 0.0,
+    "crash_rate": 0.5,
+    "final_distance_mean": 0.861518098606008,
+    "final_distance_std": 0.6952247086725756,
+    "action_mean": 2.0032339202299676,
+    "action_std": 0.6439332109278101,
+    "action_distribution": {
+      "0": 0.0,
+      "1": 0.20571325907294286,
+      "2": 0.5853395616241466,
+      "3": 0.20894717930291054
+    },
+    "component_returns": {
+      "shaping": 433.6284675410765,
+      "velocity_penalty": -36.608865435383194,
+      "angle_penalty": -18.09229877563228,
+      "terminal": 0.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v2",
+    "reward_file": "rewards/v2/v2b_big_terminal.py",
+    "wall_time_seconds": 99.4,
+    "reward_code": "\"\"\"\nv2b_big_terminal: v1_distance_shaping + BIG terminal bonus + no crash penalty.\nTerminal = 1000 for landing (was 500). No crash penalty.\nThe landing bonus should dominate all per-step shaping rewards.\nHypothesis: A massive terminal bonus makes landing the unambiguous goal.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    # Distance shaping\n    shaping = 3.0 * np.exp(-2.0 * dist)\n\n    # Gentle velocity penalty\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n\n    # Gentle angle penalty\n    angle_penalty = -0.3 * abs(angle)\n\n    # Terminal: MASSIVE bonus for landing, 0 otherwise\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.15 and y < 0.15\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.3 and abs(vy) < 0.3\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 1000.0  # Doubled from v1\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v2c_step_urgency",
+    "total_timesteps": 50000,
+    "train_time_seconds": 95.0,
+    "eval_episodes": 10,
+    "generated_return_mean": 6.194796958218168,
+    "generated_return_std": 13.279914117407449,
+    "hidden_return_mean": -196.63275386501806,
+    "hidden_return_std": 74.15080919986923,
+    "generated_hidden_gap": 202.82755082323624,
+    "episode_length_mean": 74.2,
+    "episode_length_std": 12.081390648431166,
+    "landing_rate": 0.0,
+    "crash_rate": 1.0,
+    "final_distance_mean": 0.2622676392958486,
+    "final_distance_std": 0.19013502788219355,
+    "action_mean": 0.7412398921832885,
+    "action_std": 0.9245950955416748,
+    "action_distribution": {
+      "0": 0.4797843665768194,
+      "1": 0.40970350404312667,
+      "2": 0.0,
+      "3": 0.1105121293800539
+    },
+    "component_returns": {
+      "shaping": 42.23549466268861,
+      "velocity_penalty": -22.162207078842552,
+      "angle_penalty": -10.168490625627893,
+      "step_penalty": -3.7099999999999946,
+      "terminal": 0.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v2",
+    "reward_file": "rewards/v2/v2c_step_urgency.py",
+    "wall_time_seconds": 95.7,
+    "reward_code": "\"\"\"\nv2c_step_urgency: v2b + small per-step penalty to create urgency.\n-0.05 per step means ~-5 to -10 total over a typical episode.\nThis creates mild pressure to finish the episode (by landing)\nwithout being harsh enough to cause crashes.\nHypothesis: A tiny step penalty tips the balance toward landing.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    # Distance shaping\n    shaping = 3.0 * np.exp(-2.0 * dist)\n\n    # Gentle velocity penalty\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n\n    # Gentle angle penalty\n    angle_penalty = -0.3 * abs(angle)\n\n    # Tiny per-step penalty for urgency\n    step_penalty = -0.05\n\n    # Terminal: big bonus for landing, 0 for timeout/crash\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.15 and y < 0.15\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.3 and abs(vy) < 0.3\n        upright = abs(angle) < 0.2\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 1000.0\n\n    total = shaping + velocity_penalty + angle_penalty + step_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"step_penalty\": step_penalty,\n        \"terminal\": terminal,\n    }\n"
+  },
+  {
+    "run_name": "v2d_soft_landing",
+    "total_timesteps": 50000,
+    "train_time_seconds": 117.1,
+    "eval_episodes": 10,
+    "generated_return_mean": 558.3774018220299,
+    "generated_return_std": 879.4159564861709,
+    "hidden_return_mean": -85.67330298895692,
+    "hidden_return_std": 97.94512469113883,
+    "generated_hidden_gap": 644.0507048109869,
+    "episode_length_mean": 263.9,
+    "episode_length_std": 368.15552420138965,
+    "landing_rate": 0.1,
+    "crash_rate": 0.6,
+    "final_distance_mean": 0.18180734397522286,
+    "final_distance_std": 0.14193173056285252,
+    "action_mean": 1.3467222432739674,
+    "action_std": 1.1103818097037954,
+    "action_distribution": {
+      "0": 0.36377415687760517,
+      "1": 0.0651762031072376,
+      "2": 0.43160287987874196,
+      "3": 0.1394467601364153
+    },
+    "component_returns": {
+      "shaping": 512.9853398324028,
+      "velocity_penalty": -24.65071897749023,
+      "angle_penalty": -9.957219032883222,
+      "terminal": 80.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v2",
+    "reward_file": "rewards/v2/v2d_soft_landing.py",
+    "wall_time_seconds": 125.5,
+    "reward_code": "\"\"\"\nv2d_soft_landing: v1_distance_shaping + softer landing conditions + bigger bonus.\nRelaxed conditions make landing easier to achieve early in training.\nTerminal=800, no crash penalty.\nHypothesis: Easier landing conditions help the agent discover landing sooner,\nthen it can refine toward cleaner landings.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n\n    dist = np.sqrt(x**2 + y**2)\n\n    # Distance shaping\n    shaping = 3.0 * np.exp(-2.0 * dist)\n\n    # Gentle velocity penalty\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n\n    # Gentle angle penalty\n    angle_penalty = -0.3 * abs(angle)\n\n    # Terminal: generous landing conditions + big bonus\n    terminal = 0.0\n    if done:\n        # Softer conditions than v1:\n        # position within 0.3 (was 0.15), velocity within 0.5 (was 0.3), angle within 0.3 (was 0.2)\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n\n        if both_legs and near_pad and slow and upright:\n            terminal = 800.0\n\n    total = shaping + velocity_penalty + angle_penalty + terminal\n    return float(total), {\n        \"shaping\": shaping,\n        \"velocity_penalty\": velocity_penalty,\n        \"angle_penalty\": angle_penalty,\n        \"terminal\": terminal,\n    }\n"
+  }
+]

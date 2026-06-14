@@ -1,0 +1,65 @@
+experiment:
+  parent: experiments/eg_rsa_single_chain
+  name: lunar_lander_single_chain
+  use_datetime: true
+
+# Single-chain LLM settings. This reuses eg_rsa.llm.client_factory.
+eg_rsa:
+  edit_agent:
+    # Options: ollama, deepseek
+    backend: ollama
+    model: qwen3.5:27b
+    host: http://localhost:11434
+    temperature: 0.1
+    timeout: 600
+    # For DeepSeek, switch backend to deepseek and export DEEPSEEK_API_KEY.
+    # backend: deepseek
+    # model: deepseek-chat
+    # credential_env: DEEPSEEK_API_KEY
+    # temperature: 0.1
+    # timeout: 600
+
+environment:
+  name: lunar_lander
+  family: box2d_lander
+  class_name: LunarLander
+  task_description_path: envs/lunar_lander/task_description.txt
+  step_path: envs/lunar_lander/step.py
+  env_code_dir: envs/lunar_lander/env_code
+  max_episode_steps: 1000
+  kwargs:
+    continuous: false
+    gravity: -10.0
+    enable_wind: false
+
+rl:
+  algo: ppo
+  algo_params:
+    policy: MlpPolicy
+    learning_rate: 0.0003
+    n_steps: 2048
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.999
+    gae_lambda: 0.95
+    clip_range: 0.2
+    ent_coef: 0.0
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+  architecture:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+    activation_fn: ReLU
+    share_features_extractor: false
+  training:
+    total_timesteps: 200000
+    num_envs: 4
+    seed: 0
+    device: cuda
+    verbose: 1
+  eval:
+    seed: 1000
+    n_eval_episodes: 5
+    num_evals: 5
+    deterministic: true

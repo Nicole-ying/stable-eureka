@@ -1,0 +1,182 @@
+[
+  {
+    "run_name": "v6a_v5a_250k",
+    "total_timesteps": 250000,
+    "train_time_seconds": 542.2,
+    "eval_episodes": 10,
+    "generated_return_mean": 543.1413922215092,
+    "generated_return_std": 420.7862444519929,
+    "hidden_return_mean": -17.301445562152857,
+    "hidden_return_std": 159.15993722310648,
+    "generated_hidden_gap": 560.4428377836621,
+    "episode_length_mean": 322.6,
+    "episode_length_std": 189.44138935301334,
+    "landing_rate": 0.2,
+    "crash_rate": 0.8,
+    "final_distance_mean": 0.6451503111863379,
+    "final_distance_std": 0.4972191944869779,
+    "action_mean": 2.0551766893986363,
+    "action_std": 0.9336610985235325,
+    "action_distribution": {
+      "0": 0.08648481091134531,
+      "1": 0.15034097954122752,
+      "2": 0.38468691878487293,
+      "3": 0.3784872907625543
+    },
+    "component_returns": {
+      "shaping": 271.31204249030986,
+      "velocity_penalty": -32.38267561962718,
+      "angle_penalty": -6.109974649173469,
+      "step_penalty": -9.677999999999974,
+      "terminal": 320.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v6",
+    "reward_file": "rewards/v6/v6a_v5a_250k.py",
+    "wall_time_seconds": 545.3,
+    "reward_code": "\"\"\"\nv6a: v5a exact copy, 250k steps.\nv5a was first positive at 150k. More training = cleaner landings.\nStep penalty (-0.03) prevents hover exploit.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n    dist = np.sqrt(x**2 + y**2)\n    shaping = 2.0 * np.exp(-2.0 * dist)\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n    step_penalty = -0.03\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n        if both_legs and near_pad and slow and upright:\n            terminal = 800.0\n    total = shaping + velocity_penalty + angle_penalty + step_penalty + terminal\n    return float(total), {\"shaping\":shaping,\"velocity_penalty\":velocity_penalty,\"angle_penalty\":angle_penalty,\"step_penalty\":step_penalty,\"terminal\":terminal}\n"
+  },
+  {
+    "run_name": "v6b_bigger_terminal",
+    "total_timesteps": 250000,
+    "train_time_seconds": 506.8,
+    "eval_episodes": 10,
+    "generated_return_mean": 364.87202306223526,
+    "generated_return_std": 553.0474655317233,
+    "hidden_return_mean": -113.69697075470754,
+    "hidden_return_std": 28.791727907554293,
+    "generated_hidden_gap": 478.5689938169428,
+    "episode_length_mean": 71.0,
+    "episode_length_std": 8.809086218218097,
+    "landing_rate": 0.3,
+    "crash_rate": 0.4,
+    "final_distance_mean": 0.24239704775649282,
+    "final_distance_std": 0.15203504742012916,
+    "action_mean": 0.528169014084507,
+    "action_std": 0.9560309822594,
+    "action_distribution": {
+      "0": 0.7211267605633803,
+      "1": 0.11267605633802817,
+      "2": 0.08309859154929577,
+      "3": 0.08309859154929577
+    },
+    "component_returns": {
+      "shaping": 31.43332116753091,
+      "velocity_penalty": -21.613620439380245,
+      "angle_penalty": -2.8176776659153986,
+      "step_penalty": -2.13,
+      "terminal": 360.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v6",
+    "reward_file": "rewards/v6/v6b_bigger_terminal.py",
+    "wall_time_seconds": 507.5,
+    "reward_code": "\"\"\"\nv6b: v5a + terminal=1200, 250k steps.\nBigger landing bonus to incentivize landing even more.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n    dist = np.sqrt(x**2 + y**2)\n    shaping = 2.0 * np.exp(-2.0 * dist)\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n    step_penalty = -0.03\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n        if both_legs and near_pad and slow and upright:\n            terminal = 1200.0\n    total = shaping + velocity_penalty + angle_penalty + step_penalty + terminal\n    return float(total), {\"shaping\":shaping,\"velocity_penalty\":velocity_penalty,\"angle_penalty\":angle_penalty,\"step_penalty\":step_penalty,\"terminal\":terminal}\n"
+  },
+  {
+    "run_name": "v6c_cleaner_landing",
+    "total_timesteps": 250000,
+    "train_time_seconds": 510.9,
+    "eval_episodes": 10,
+    "generated_return_mean": 98.9508904830646,
+    "generated_return_std": 303.76824683293216,
+    "hidden_return_mean": -129.77821125899652,
+    "hidden_return_std": 16.541554427662575,
+    "generated_hidden_gap": 228.72910174206112,
+    "episode_length_mean": 63.2,
+    "episode_length_std": 11.04355015382282,
+    "landing_rate": 0.1,
+    "crash_rate": 0.8,
+    "final_distance_mean": 0.3122460342579167,
+    "final_distance_std": 0.1596431587275508,
+    "action_mean": 1.2658227848101267,
+    "action_std": 1.191572312614603,
+    "action_distribution": {
+      "0": 0.31962025316455694,
+      "1": 0.3876582278481013,
+      "2": 0.0,
+      "3": 0.2927215189873418
+    },
+    "component_returns": {
+      "shaping": 25.94400454982565,
+      "velocity_penalty": -22.07463094251512,
+      "angle_penalty": -3.0224831242459183,
+      "step_penalty": -1.8960000000000004,
+      "terminal": 100.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v6",
+    "reward_file": "rewards/v6/v6c_cleaner_landing.py",
+    "wall_time_seconds": 511.5,
+    "reward_code": "\"\"\"\nv6c: v5a + tighter landing conditions for cleaner landings.\npos<0.2, y<0.2, vel<0.4, angle<0.2. Terminal=1000.\nTighter conditions \u2192 better landing quality \u2192 better hidden score.\n250k steps.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n    dist = np.sqrt(x**2 + y**2)\n    shaping = 2.0 * np.exp(-2.0 * dist)\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n    step_penalty = -0.03\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.2 and y < 0.2\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.4 and abs(vy) < 0.4\n        upright = abs(angle) < 0.2\n        if both_legs and near_pad and slow and upright:\n            terminal = 1000.0\n    total = shaping + velocity_penalty + angle_penalty + step_penalty + terminal\n    return float(total), {\"shaping\":shaping,\"velocity_penalty\":velocity_penalty,\"angle_penalty\":angle_penalty,\"step_penalty\":step_penalty,\"terminal\":terminal}\n"
+  },
+  {
+    "run_name": "v6d_faster_shaping_decay",
+    "total_timesteps": 250000,
+    "train_time_seconds": 503.9,
+    "eval_episodes": 10,
+    "generated_return_mean": 627.4438792833564,
+    "generated_return_std": 472.9894727883191,
+    "hidden_return_mean": -7.053502648770444,
+    "hidden_return_std": 23.58027773662713,
+    "generated_hidden_gap": 634.4973819321268,
+    "episode_length_mean": 734.9,
+    "episode_length_std": 404.9561581208514,
+    "landing_rate": 0.0,
+    "crash_rate": 0.3,
+    "final_distance_mean": 0.3043312838004237,
+    "final_distance_std": 0.18309173489335648,
+    "action_mean": 1.6180432711933597,
+    "action_std": 1.0426245355826353,
+    "action_distribution": {
+      "0": 0.2460198666485236,
+      "1": 0.06939719689753708,
+      "2": 0.5051027350659953,
+      "3": 0.17948020138794393
+    },
+    "component_returns": {
+      "shaping": 694.0714296774232,
+      "velocity_penalty": -32.51901280130519,
+      "angle_penalty": -12.061537592761274,
+      "step_penalty": -22.04700000000026,
+      "terminal": 0.0
+    },
+    "ppo_config": {
+      "n_steps": 1024,
+      "batch_size": 64,
+      "n_epochs": 4,
+      "gae_lambda": 0.98,
+      "gamma": 0.999,
+      "learning_rate": 0.0003,
+      "ent_coef": 0.01
+    },
+    "batch": "v6",
+    "reward_file": "rewards/v6/v6d_faster_shaping_decay.py",
+    "wall_time_seconds": 510.5,
+    "reward_code": "\"\"\"\nv6d: v5a + faster shaping decay (exp(-3*dist) instead of exp(-2*dist)).\nShaping drops off faster with distance \u2192 less incentive to loiter at intermediate distances.\nTerminal=1000, step=-0.03. 250k steps.\n\"\"\"\nimport numpy as np\n\ndef compute_reward(obs, action, next_obs, done, info):\n    x, y = next_obs[0], next_obs[1]\n    vx, vy = next_obs[2], next_obs[3]\n    angle = next_obs[4]\n    left_leg = next_obs[6]\n    right_leg = next_obs[7]\n    dist = np.sqrt(x**2 + y**2)\n    shaping = 2.0 * np.exp(-3.0 * dist)  # faster decay\n    speed = np.sqrt(vx**2 + vy**2)\n    velocity_penalty = -0.3 * speed\n    angle_penalty = -0.3 * abs(angle)\n    step_penalty = -0.03\n    terminal = 0.0\n    if done:\n        near_pad = abs(x) < 0.3 and y < 0.25\n        both_legs = left_leg > 0.5 and right_leg > 0.5\n        slow = abs(vx) < 0.5 and abs(vy) < 0.5\n        upright = abs(angle) < 0.3\n        if both_legs and near_pad and slow and upright:\n            terminal = 1000.0\n    total = shaping + velocity_penalty + angle_penalty + step_penalty + terminal\n    return float(total), {\"shaping\":shaping,\"velocity_penalty\":velocity_penalty,\"angle_penalty\":angle_penalty,\"step_penalty\":step_penalty,\"terminal\":terminal}\n"
+  }
+]
