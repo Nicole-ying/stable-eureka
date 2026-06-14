@@ -16,10 +16,14 @@ Rules:
 - The function must return:
   return float(reward), individual_reward
 - individual_reward must be a dictionary with numeric component diagnostics.
-- Include component keys that later training can aggregate, such as distance_to_pad, velocity_control, angle_control, angular_velocity_control, leg_contact, fuel_cost, terminal_reward, time_pressure, success_like_terminal, unsafe_terminal, out_of_bounds, total_reward.
+- The schema must separate component_catalog, active_reward_terms, diagnostic_terms, and dormant_terms.
+- component_catalog may include all components that may become useful later; the initial active_reward_terms should be a simple, exploration-friendly subset.
+- Use behavior_trajectory_prior and target_alignment_contract to decide which components should be active in iter0 and which should remain diagnostic or dormant.
+- Do not activate every plausible component in iter0 unless the task evidence strongly justifies it.
+- Prefer initial rewards that provide reachable progress signals and avoid over-constraining early exploration.
+- If the task likely needs phase-dependent behavior, make that explicit in the schema and code comments/diagnostics.
 - Use only state, m_power, s_power, terminated, and safe internal self attributes created by this reward function.
 - Do not use unconfirmed info keys, hidden official reward internals, files, network, subprocess, eval, exec, open, or external side effects.
-- The schema should be specific enough for later patch search, but not too fragmented. Prefer 6 to 9 components.
 - Avoid reward hacking described in target_alignment_contract.
 - Generated reward is a training proxy; do not optimize it as the final task objective.
 - Return valid JSON only. Do not use Markdown or code fences.
@@ -32,19 +36,36 @@ Required JSON structure:
     "version": "initial_v0",
     "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
     "design_principle": "...",
-    "components": [
+    "behavior_trajectory_prior_used": {},
+    "component_catalog": [
       {
         "id": "...",
+        "type": "reward_term | condition_term | diagnostic_term",
+        "status": "active | diagnostic | dormant",
         "purpose": "...",
         "uses": [],
         "expected_effect": "...",
+        "activation_reason": "...",
         "anti_hacking_role": "..."
       }
-    ]
+    ],
+    "active_reward_terms": [],
+    "diagnostic_terms": [],
+    "dormant_terms": [],
+    "iteration_policy": {
+      "iter0_principle": "simple, exploration-friendly, not over-constrained",
+      "future_search_principle": "future iterations may activate, deactivate, reshape, or replace components when training evidence justifies it; edits are not artificially limited but must declare scope, reason, risks, and validation metrics"
+    }
   },
   "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    ...",
   "expected_behavior": {},
-  "known_risks": []
+  "known_risks": [],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "success_like_uses_multiple_relevant_signal_groups_when_available": true
+  }
 }
 
 Input environment_understanding.json:
