@@ -1,0 +1,232 @@
+{
+  "file_type": "target_alignment_contract",
+  "environment_name": "Lunar Lander",
+  "primary_objective": {
+    "description": "Land the lander on the pad at coordinates (0,0) safely.",
+    "optimization_criteria": [
+      "Minimize time taken to land",
+      "Minimize fuel spent (engine usage)"
+    ],
+    "constraints": [
+      "Do not crash into the moon surface with body",
+      "Stay within viewport bounds (abs(x) < 1.0)",
+      "Maintain upright orientation upon landing"
+    ]
+  },
+  "objective_decomposition": [
+    {
+      "component": "Landing Success",
+      "description": "Achieve leg contact with ground while maintaining stability.",
+      "signals": [
+        "state[6]",
+        "state[7]"
+      ]
+    },
+    {
+      "component": "Trajectory Efficiency",
+      "description": "Reduce distance to target and velocity efficiently.",
+      "signals": [
+        "state[0]",
+        "state[1]",
+        "state[2]",
+        "state[3]"
+      ]
+    },
+    {
+      "component": "Orientation Control",
+      "description": "Align lander angle to 0 radians before touchdown.",
+      "signals": [
+        "state[4]",
+        "state[5]"
+      ]
+    },
+    {
+      "component": "Resource Management",
+      "description": "Minimize engine power usage (m_power, s_power).",
+      "signals": [
+        "m_power",
+        "s_power"
+      ]
+    }
+  ],
+  "behavior_trajectory_alignment": {
+    "phase_objectives": [
+      {
+        "phase": "Descent and Alignment",
+        "objective": "Reduce vertical velocity and align angle to 0.",
+        "expected_signals": [
+          "state[1] decreasing",
+          "abs(state[4]) approaching 0"
+        ]
+      },
+      {
+        "phase": "Correction",
+        "objective": "Correct horizontal drift towards x=0.",
+        "expected_signals": [
+          "state[0] approaching 0"
+        ]
+      },
+      {
+        "phase": "Landing",
+        "objective": "Touch down with legs while maintaining low velocity and upright angle.",
+        "expected_signals": [
+          "leg contact booleans becoming 1.0",
+          "low state[2]/3"
+        ]
+      }
+    ],
+    "phase_diagnostics": [
+      {
+        "phase": "Descent and Alignment",
+        "check": "Vertical velocity should decrease monotonically after initial impulse."
+      },
+      {
+        "phase": "Landing",
+        "check": "Leg contact must coincide with low angular velocity (state[5])."
+      }
+    ],
+    "behaviors_that_may_be_good_temporarily_but_bad_if_persistent": [
+      "High vertical velocity during initial descent phase.",
+      "Temporary deviation from x=0 to correct momentum."
+    ],
+    "behaviors_that_should_not_be_overpenalized_early": [
+      "Initial random force causing high velocity or angle deviation.",
+      "Exploratory thruster usage before trajectory is established."
+    ]
+  },
+  "metric_priority": [
+    "fitness_score",
+    "cumulative_reward",
+    "episode_length",
+    "fuel_consumed"
+  ],
+  "primary_selection_metric": "fitness_score",
+  "proxy_metrics": [
+    "reward",
+    "step_count",
+    "total_fuel_spent"
+  ],
+  "diagnostic_metrics": [
+    "leg_contact_state",
+    "landing_velocity_norm",
+    "landing_angle_deviation",
+    "crash_indicator"
+  ],
+  "success_criteria": {
+    "success_like_terminal": {
+      "role": "behavioral diagnostic, not official ground truth unless explicitly provided",
+      "conditions": [
+        "state[6] == 1.0 or state[7] == 1.0 (Leg contact)",
+        "abs(state[4]) < threshold (Upright orientation)",
+        "sqrt(state[2]^2 + state[3]^2) < threshold (Low velocity)"
+      ],
+      "required_signal_groups": [
+        "contact_signals",
+        "stability_signals"
+      ]
+    }
+  },
+  "failure_modes": {
+    "crash": {
+      "condition": "Lander body contacts moon surface.",
+      "signal": "self.game_over triggered or high impact velocity."
+    },
+    "out_of_bounds": {
+      "condition": "abs(state[0]) >= 1.0",
+      "signal": "Termination flag set in step.py"
+    },
+    "timeout": {
+      "condition": "Episode exceeds maximum steps (implicit).",
+      "signal": "High episode_length without landing."
+    }
+  },
+  "bad_local_optima": {
+    "passive_policy": {
+      "description": "Agent does nothing until crash or timeout.",
+      "detection": "Low action variance, high step count, no leg contact."
+    },
+    "wrong_action_mode_policy": {
+      "description": "Using continuous actions in discrete mode or vice versa incorrectly.",
+      "detection": "Action space mismatch errors or suboptimal control granularity."
+    },
+    "hovering_or_stalling": {
+      "description": "Agent hovers indefinitely to minimize fuel cost if time is not penalized sufficiently.",
+      "detection": "High step count, stable altitude, no leg contact."
+    },
+    "unstable_fast_completion": {
+      "description": "Crashing intentionally if crash penalty is lower than landing reward (unlikely but possible).",
+      "detection": "Immediate termination with high negative fitness_score."
+    },
+    "proxy_contact_or_terminal_behavior": {
+      "description": "Touching legs to ground at high velocity or wrong angle.",
+      "detection": "Leg contact true, but state[2]/3/4 exceed safe thresholds."
+    }
+  },
+  "reward_hacking_definitions": {
+    "proxy_reward_hacking": {
+      "description": "Maximizing intermediate reward terms (e.g., distance reduction) without achieving landing.",
+      "mitigation": "Ensure terminal bonus outweighs cumulative progress rewards."
+    },
+    "terminal_hacking": {
+      "description": "Forcing termination to collect a fixed end-of-episode reward.",
+      "mitigation": "Differentiate success and failure terminal rewards significantly."
+    },
+    "hovering_hacking": {
+      "description": "Exploiting lack of time penalty by staying airborne indefinitely.",
+      "mitigation": "Include step_count or time penalty in reward function."
+    },
+    "component_dominance_hacking": {
+      "description": "Optimizing fuel usage at the expense of safety or time (e.g., freefall crash).",
+      "mitigation": "Balance fuel cost against crash penalties and landing bonuses."
+    }
+  },
+  "controller_decision_rules": {
+    "selection_priority": [
+      "fitness_score > threshold",
+      "cumulative_reward > baseline",
+      "episode_length < max_steps"
+    ],
+    "acceptance_rules": [
+      "Agent achieves leg contact with low velocity and upright angle.",
+      "Fitness score indicates successful landing."
+    ],
+    "rejection_rules": [
+      "Agent crashes (body contact).",
+      "Agent goes out of bounds.",
+      "Agent hovers beyond maximum allowed steps without landing attempt."
+    ],
+    "edit_scope_policy": {
+      "principle": "Allow the LLM to propose small or large edits, but require explicit justification, risks, and validation metrics.",
+      "required_fields_for_future_edits": [
+        "edit_scope",
+        "reason",
+        "risk",
+        "expected_metric_changes",
+        "validation_metrics"
+      ]
+    }
+  },
+  "reward_generator_constraints": {
+    "must_include_in_schema_catalog": [
+      "distance_to_target",
+      "velocity_penalty",
+      "orientation_penalty",
+      "fuel_cost",
+      "time_step_penalty"
+    ],
+    "must_avoid": [
+      "Hidden physics constants (SCALE, VIEWPORT_W)",
+      "Future state predictions",
+      "Direct access to self.game_over flag without context"
+    ],
+    "preferred_design": [
+      "Sparse terminal reward for landing success.",
+      "Dense negative rewards for fuel and time."
+    ],
+    "initial_reward_guidance": [
+      "Encourage survival and basic control rather than immediate landing to allow learning of physics dynamics.",
+      "Penalize high velocity at leg contact heavily."
+    ]
+  },
+  "agent_name": "TargetAlignmentAgent"
+}

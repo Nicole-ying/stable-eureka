@@ -1,0 +1,171 @@
+{
+  "file_type": "initial_reward_schema_and_code",
+  "environment_name": "Lunar Lander",
+  "reward_schema": {
+    "version": "initial_v0",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Sparse terminal reward for landing success/failure combined with dense shaping penalties for fuel consumption, time steps, velocity magnitude, and orientation deviation to guide safe exploration.",
+    "behavior_trajectory_prior_used": {
+      "phases_considered": [
+        "Descent and Alignment",
+        "Correction",
+        "Landing"
+      ],
+      "signals_utilized": [
+        "state[0] (X position)",
+        "state[1] (Y position)",
+        "state[2], state[3] (Velocity)",
+        "state[4] (Angle)",
+        "state[6], state[7] (Leg Contact)"
+      ],
+      "prior_assumptions": [
+        "Successful landing requires leg contact, low velocity, and upright orientation.",
+        "Fuel and time should be minimized but not at the cost of safety."
+      ]
+    },
+    "component_catalog": [
+      {
+        "id": "fuel_cost",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize engine usage to encourage efficiency.",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Agent minimizes unnecessary thrusting.",
+        "activation_reason": "Task explicitly requires minimizing fuel spent.",
+        "anti_hacking_role": "Prevents freefall crash by making fuel expensive but not prohibitive."
+      },
+      {
+        "id": "time_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize episode length to discourage hovering.",
+        "uses": [
+          "step_count"
+        ],
+        "expected_effect": "Agent attempts to land faster.",
+        "activation_reason": "Task requires landing as fast as possible; prevents infinite hovering local optimum.",
+        "anti_hacking_role": "Mitigates 'hovering hacking'."
+      },
+      {
+        "id": "velocity_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize high linear velocity to encourage soft landing.",
+        "uses": [
+          "state[2]",
+          "state[3]"
+        ],
+        "expected_effect": "Agent reduces speed before touchdown.",
+        "activation_reason": "High velocity at contact implies crash; shaping helps learn physics.",
+        "anti_hacking_role": "Prevents 'proxy_contact' hacking where agent touches legs at high speed."
+      },
+      {
+        "id": "orientation_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize deviation from upright angle.",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Agent aligns lander vertically before landing.",
+        "activation_reason": "Upright orientation is required for safe landing.",
+        "anti_hacking_role": "Ensures stability during descent."
+      },
+      {
+        "id": "terminal_success",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Large positive reward for successful landing conditions at termination.",
+        "uses": [
+          "state[6]",
+          "state[7]",
+          "state[2]",
+          "state[3]",
+          "state[4]"
+        ],
+        "expected_effect": "Strong signal for goal achievement.",
+        "activation_reason": "Primary objective is to land safely.",
+        "anti_hacking_role": "Differentiates success from failure termination."
+      },
+      {
+        "id": "terminal_failure",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Large negative reward for crash or out-of-bounds.",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Strong signal to avoid failure states.",
+        "activation_reason": "Crash/Out of bounds are hard constraints.",
+        "anti_hacking_role": "Prevents 'crash loop' if success reward is not sufficiently higher."
+      },
+      {
+        "id": "distance_shaping",
+        "type": "reward_term",
+        "status": "dormant",
+        "purpose": "Reward proximity to landing pad center.",
+        "uses": [
+          "state[0]",
+          "state[1]"
+        ],
+        "expected_effect": "Encourages moving towards target.",
+        "activation_reason": "May encourage hovering near pad without landing; deferred for iter1.",
+        "anti_hacking_role": "N/A"
+      }
+    ],
+    "active_reward_terms": [
+      "fuel_cost",
+      "time_penalty",
+      "velocity_penalty",
+      "orientation_penalty",
+      "terminal_success",
+      "terminal_failure"
+    ],
+    "diagnostic_terms": [
+      "step_count",
+      "total_fuel_spent",
+      "landing_velocity_norm",
+      "landing_angle_deviation"
+    ],
+    "dormant_terms": [
+      "distance_shaping"
+    ],
+    "iteration_policy": {
+      "iter0_principle": "simple, exploration-friendly, not over-constrained",
+      "future_search_principle": "future iterations may activate, deactivate, reshape, or replace components when training evidence justifies it; edits are not artificially limited but must declare scope, reason, risks, and validation metrics"
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Initialize internal tracking attributes if not present (lazy init for episode start)\n    if not hasattr(self, '_reward_step_count'):\n        self._reset_reward_counters()\n    \n    # Increment step count\n    self._reward_step_count += 1\n    \n    # Calculate fuel cost for this step\n    current_fuel = m_power + s_power\n    self._total_fuel_spent += current_fuel\n    \n    # Weights\n    W_FUEL = 0.1\n    W_TIME = 0.1\n    W_VEL = 0.5\n    W_ANG = 0.5\n    R_SUCCESS = 100.0\n    R_FAILURE = -100.0\n    \n    # Shaping Rewards (Dense)\n    fuel_reward = -current_fuel * W_FUEL\n    time_reward = -W_TIME\n    \n    # Velocity magnitude penalty (state[2]=vx, state[3]=vy)\n    vel_mag = abs(state[2]) + abs(state[3])\n    velocity_reward = -vel_mag * W_VEL\n    \n    # Orientation penalty (state[4]=angle)\n    angle_deviation = abs(state[4])\n    orientation_reward = -angle_deviation * W_ANG\n    \n    reward = fuel_reward + time_reward + velocity_reward + orientation_reward\n    individual_reward = {\n        'fuel_cost': float(fuel_reward),\n        'time_penalty': float(time_reward),\n        'velocity_penalty': float(velocity_reward),\n        'orientation_penalty': float(orientation_reward),\n        'step_count': int(self._reward_step_count),\n        'total_fuel_spent': float(self._total_fuel_spent)\n    }\n    \n    # Terminal Logic\n    if terminated:\n        leg_contact = (state[6] == 1.0) or (state[7] == 1.0)\n        is_upright = angle_deviation < 0.15  # Approx threshold for upright in normalized space\n        is_slow = vel_mag < 1.0               # Threshold for safe landing velocity\n        \n        if leg_contact and is_upright and is_slow:\n            reward += R_SUCCESS\n            individual_reward['terminal_bonus'] = float(R_SUCCESS)\n            individual_reward['landing_velocity_norm'] = float(vel_mag)\n            individual_reward['landing_angle_deviation'] = float(angle_deviation)\n            individual_reward['success_flag'] = 1.0\n        else:\n            reward += R_FAILURE\n            individual_reward['terminal_penalty'] = float(R_FAILURE)\n            individual_reward['success_flag'] = 0.0\n    \n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "early_exploration": "Agent will receive negative feedback for fuel usage and time, encouraging it to move towards the pad while managing thrust.",
+    "mid_training": "Velocity and orientation penalties should guide the agent to stabilize before attempting landing.",
+    "terminal_signal": "Clear distinction between success (legs + stable) and failure (crash/timeout) via large terminal rewards."
+  },
+  "known_risks": [
+    {
+      "risk": "Threshold Sensitivity",
+      "description": "Hardcoded thresholds for 'upright' and 'slow' may not align perfectly with hidden physics constants, potentially misclassifying safe landings as failures or vice versa.",
+      "mitigation": "Monitor diagnostic terms in future iterations to adjust thresholds."
+    },
+    {
+      "risk": "Counter Persistence",
+      "description": "If environment reset does not clear self._reward_step_count, counters will accumulate across episodes.",
+      "mitigation": "Added lazy init check; assumes standard Gym-like reset behavior clears attributes or re-instantiates env."
+    },
+    {
+      "risk": "Over-penalization",
+      "description": "High velocity/angle penalties might discourage necessary maneuvers (e.g., high speed correction).",
+      "mitigation": "Weights are tuned to be shaping signals, not hard constraints; terminal reward dominates goal achievement."
+    }
+  ],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "success_like_uses_multiple_relevant_signal_groups_when_available": true
+  },
+  "agent_name": "InitialRewardSchemaAndCodeAgent"
+}

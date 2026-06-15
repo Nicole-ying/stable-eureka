@@ -1,0 +1,137 @@
+{
+  "version": "initial_v0",
+  "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+  "design_principle": "Sparse terminal reward for landing success/failure combined with dense shaping penalties for fuel consumption, time steps, velocity magnitude, and orientation deviation to guide safe exploration.",
+  "behavior_trajectory_prior_used": {
+    "phases_considered": [
+      "Descent and Alignment",
+      "Correction",
+      "Landing"
+    ],
+    "signals_utilized": [
+      "state[0] (X position)",
+      "state[1] (Y position)",
+      "state[2], state[3] (Velocity)",
+      "state[4] (Angle)",
+      "state[6], state[7] (Leg Contact)"
+    ],
+    "prior_assumptions": [
+      "Successful landing requires leg contact, low velocity, and upright orientation.",
+      "Fuel and time should be minimized but not at the cost of safety."
+    ]
+  },
+  "component_catalog": [
+    {
+      "id": "fuel_cost",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize engine usage to encourage efficiency.",
+      "uses": [
+        "m_power",
+        "s_power"
+      ],
+      "expected_effect": "Agent minimizes unnecessary thrusting.",
+      "activation_reason": "Task explicitly requires minimizing fuel spent.",
+      "anti_hacking_role": "Prevents freefall crash by making fuel expensive but not prohibitive."
+    },
+    {
+      "id": "time_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize episode length to discourage hovering.",
+      "uses": [
+        "step_count"
+      ],
+      "expected_effect": "Agent attempts to land faster.",
+      "activation_reason": "Task requires landing as fast as possible; prevents infinite hovering local optimum.",
+      "anti_hacking_role": "Mitigates 'hovering hacking'."
+    },
+    {
+      "id": "velocity_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize high linear velocity to encourage soft landing.",
+      "uses": [
+        "state[2]",
+        "state[3]"
+      ],
+      "expected_effect": "Agent reduces speed before touchdown.",
+      "activation_reason": "High velocity at contact implies crash; shaping helps learn physics.",
+      "anti_hacking_role": "Prevents 'proxy_contact' hacking where agent touches legs at high speed."
+    },
+    {
+      "id": "orientation_penalty",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Penalize deviation from upright angle.",
+      "uses": [
+        "state[4]"
+      ],
+      "expected_effect": "Agent aligns lander vertically before landing.",
+      "activation_reason": "Upright orientation is required for safe landing.",
+      "anti_hacking_role": "Ensures stability during descent."
+    },
+    {
+      "id": "terminal_success",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Large positive reward for successful landing conditions at termination.",
+      "uses": [
+        "state[6]",
+        "state[7]",
+        "state[2]",
+        "state[3]",
+        "state[4]"
+      ],
+      "expected_effect": "Strong signal for goal achievement.",
+      "activation_reason": "Primary objective is to land safely.",
+      "anti_hacking_role": "Differentiates success from failure termination."
+    },
+    {
+      "id": "terminal_failure",
+      "type": "reward_term",
+      "status": "active",
+      "purpose": "Large negative reward for crash or out-of-bounds.",
+      "uses": [
+        "terminated"
+      ],
+      "expected_effect": "Strong signal to avoid failure states.",
+      "activation_reason": "Crash/Out of bounds are hard constraints.",
+      "anti_hacking_role": "Prevents 'crash loop' if success reward is not sufficiently higher."
+    },
+    {
+      "id": "distance_shaping",
+      "type": "reward_term",
+      "status": "dormant",
+      "purpose": "Reward proximity to landing pad center.",
+      "uses": [
+        "state[0]",
+        "state[1]"
+      ],
+      "expected_effect": "Encourages moving towards target.",
+      "activation_reason": "May encourage hovering near pad without landing; deferred for iter1.",
+      "anti_hacking_role": "N/A"
+    }
+  ],
+  "active_reward_terms": [
+    "fuel_cost",
+    "time_penalty",
+    "velocity_penalty",
+    "orientation_penalty",
+    "terminal_success",
+    "terminal_failure"
+  ],
+  "diagnostic_terms": [
+    "step_count",
+    "total_fuel_spent",
+    "landing_velocity_norm",
+    "landing_angle_deviation"
+  ],
+  "dormant_terms": [
+    "distance_shaping"
+  ],
+  "iteration_policy": {
+    "iter0_principle": "simple, exploration-friendly, not over-constrained",
+    "future_search_principle": "future iterations may activate, deactivate, reshape, or replace components when training evidence justifies it; edits are not artificially limited but must declare scope, reason, risks, and validation metrics"
+  }
+}
