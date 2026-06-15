@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from .expert_audits import build_expert_audit_pack
 from .json_tools import read_json, write_json, read_text
 
 
@@ -25,6 +26,7 @@ class EvidenceBuilder:
         evals = _read_json_if_exists(training_dir / "evals.json")
         reward_schema = _read_json_if_exists(reward_dir / "reward_schema.json")
         reward_code = _read_text_if_exists(reward_dir / "reward_code.py")
+        task_model = _read_json_if_exists(base / "agents" / "task_model.json") or _read_json_if_exists(base / "environment_understanding_summary.json")
 
         component_means = (
             final_eval.get("component_means")
@@ -73,6 +75,18 @@ class EvidenceBuilder:
             "reward_code_digest": _code_digest(reward_code),
             "automatic_diagnosis_hints": automatic_hints,
         }
+
+        expert_audit_pack = build_expert_audit_pack(
+            evidence=evidence,
+            reward_schema=reward_schema,
+            reward_code=reward_code,
+            task_model=task_model,
+        )
+        evidence["expert_audit_pack"] = expert_audit_pack
+        evidence["automatic_diagnosis_hints"] = _dedupe(
+            automatic_hints + expert_audit_pack.get("automatic_hints", [])
+        )
+
         if output_path is not None:
             write_json(output_path, evidence)
         return evidence
@@ -226,3 +240,13 @@ def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any],
     if any((ep.get("length") or 0) < 120 for ep in episodes) and metrics.get("success_like_terminal_rate", 0.0) <= 0.01:
         hints.append("Episodes terminate early without success-like behavior; consider exploration-friendly progress signals before adding stronger penalties.")
     return hints
+
+
+def _dedupe(items: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for item in items:
+        if item not in seen:
+            out.append(item)
+            seen.add(item)
+    return out
