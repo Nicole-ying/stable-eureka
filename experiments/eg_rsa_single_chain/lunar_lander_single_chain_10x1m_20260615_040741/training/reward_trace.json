@@ -1,0 +1,402 @@
+{
+  "file_type": "reward_trace",
+  "candidate_id": "single_chain_iter0",
+  "generation": 0,
+  "creation_type": "initial_llm_generation",
+  "primary_metrics": {
+    "fitness_score": -118.43750889107196,
+    "selection_metric": "fitness_score"
+  },
+  "proxy_metrics": {
+    "generated_reward": -140.21334797143936,
+    "generated_minus_fitness_gap": -21.775839080367405
+  },
+  "behavior_metrics": {
+    "episode_length": 72.2,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "action_distribution": {
+      "1": 0.036011080332409975,
+      "0": 0.9418282548476454,
+      "3": 0.0221606648199446
+    }
+  },
+  "component_returns": {
+    "cumulative_fuel": 891.6,
+    "fitness_score": -118.43750889107196,
+    "fuel_penalty": -2.1,
+    "is_successful_landing": 0.4,
+    "leg_contact": 3.8,
+    "orientation_shaping": -2.5314495933009313,
+    "position_shaping_x": -30.002716789245603,
+    "position_shaping_y": -98.35918148446083,
+    "step_cost": -7.21999999999999,
+    "step_count": 13505.4,
+    "terminal_success_reward_diagnostic": 40.0,
+    "velocity_magnitude": 82.44064936532122,
+    "velocity_penalty_at_contact_diagnostic": -7.169731807540837
+  },
+  "alignment_flags": {
+    "hovering_risk": false,
+    "proxy_reward_hacking_risk": false,
+    "terminal_hacking_risk": false
+  },
+  "environment_understanding_summary": {
+    "primary_objective": "Land at the pad (0,0) as fast as possible with least fuel spent",
+    "secondary_constraints": [
+      "Avoid crashing into moon surface",
+      "Stay within viewport bounds"
+    ]
+  },
+  "target_alignment_summary": {
+    "description": "Land the rocket at coordinates (0,0) as fast as possible with minimal fuel consumption.",
+    "constraints": [
+      "Avoid crashing into moon surface (game_over)",
+      "Stay within viewport bounds (abs(x) < 1.0)",
+      "Ensure stable landing (low velocity/angle at contact)"
+    ]
+  },
+  "reward_schema_summary": {
+    "version": "initial_v0",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Exploration-friendly initial reward with step cost, light fuel penalty, and position/orientation shaping. Terminal success detection is diagnostic-only in iter0 to avoid over-constraining early learning.",
+    "behavior_trajectory_prior_used": {
+      "phase_1_descent_alignment": "Reward progress toward pad center (state[0] near 0) and upright orientation (state[4] near 0)",
+      "phase_2_soft_landing": "Diagnostic-only velocity penalty at contact; terminal success detection via state inspection",
+      "avoid_overpenalizing_fuel": "Light fuel cost to allow exploratory thrusting during initial correction maneuvers"
+    },
+    "component_catalog": [
+      {
+        "id": "step_cost",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage episode completion speed, prevent infinite hovering",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Small negative reward per step (-0.1) to discourage stalling without overwhelming other signals",
+        "activation_reason": "Essential for preventing passive policy local optima where agent does nothing until crash",
+        "anti_hacking_role": "Prevents hovering indefinitely near ground"
+      },
+      {
+        "id": "fuel_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage fuel efficiency without over-constraining early exploration",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Light penalty (-0.5 * (m_power + s_power)) to encourage efficient thrusting while allowing correction maneuvers",
+        "activation_reason": "Task goal includes minimizing fuel; light weight allows learning basic control first",
+        "anti_hacking_role": "Prevents wasteful continuous thrusting without progress"
+      },
+      {
+        "id": "position_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage descent toward pad center (0,0)",
+        "uses": [
+          "state[0]",
+          "state[1]"
+        ],
+        "expected_effect": "Positive reward for reducing X error and Y height; guides agent toward landing zone",
+        "activation_reason": "Core task objective is landing at pad; provides dense progress signal during descent phase",
+        "anti_hacking_role": "Prevents agent from drifting away from pad while avoiding crash penalty"
+      },
+      {
+        "id": "orientation_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage upright orientation for stable landing",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Positive reward when angle approaches 0 (upright); critical for successful touchdown",
+        "activation_reason": "Upright orientation is prerequisite for soft landing; provides shaping during alignment phase",
+        "anti_hacking_role": "Prevents agent from learning to land sideways or upside down"
+      },
+      {
+        "id": "terminal_success_reward",
+        "type": "reward_term",
+        "status": "diagnostic",
+        "purpose": "Detect successful landing via state inspection at termination",
+        "uses": [
+          "state[0]",
+          "state[2:5]",
+          "state[6:7]",
+          "terminated"
+        ],
+        "expected_effect": "Large positive reward (+100) only if terminated AND leg contact AND near center AND low velocity AND upright",
+        "activation_reason": "Kept diagnostic in iter0 to avoid over-constraining; will be activated when agent shows basic control capability",
+        "anti_hacking_role": "Distinguishes soft landing from crash termination"
+      },
+      {
+        "id": "velocity_penalty_at_contact",
+        "type": "reward_term",
+        "status": "diagnostic",
+        "purpose": "Penalize high velocity when legs touch ground (hard landing)",
+        "uses": [
+          "state[2:5]",
+          "state[6:7]"
+        ],
+        "expected_effect": "Negative reward proportional to velocity magnitude at contact; discourages hard crashes",
+        "activation_reason": "Diagnostic in iter0 to avoid conflicting with exploration; will activate once basic descent is learned",
+        "anti_hacking_role": "Prevents agent from exploiting 'not awake' by crashing hard enough to stop physics"
+      },
+      {
+        "id": "cumulative_fuel_tracking",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track total fuel consumption for diagnostics and future reward shaping",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Maintains running sum of fuel used; enables fuel efficiency metrics in individual_reward",
+        "activation_reason": "Required for diagnostic tracking even if not directly rewarded yet",
+        "anti_hacking_role": "None - purely diagnostic"
+      },
+      {
+        "id": "step_counter",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track episode duration for diagnostics and time efficiency metrics",
+        "uses": [],
+        "expected_effect": "Maintains step count; enables time-based termination detection",
+        "activation_reason": "Required for diagnostic tracking of episode length",
+        "anti_hacking_role": "None - purely diagnostic"
+      },
+      {
+        "id": "crash_penalty",
+        "type": "dormant_term",
+        "status": "dormant",
+        "purpose": "Heavy penalty for crash termination (game_over or out of bounds)",
+        "uses": [
+          "terminated",
+          "state"
+        ],
+        "expected_effect": "Large negative reward (-100) on crash; will activate when agent needs explicit failure signal",
+        "activation_reason": "Dormant in iter0 to avoid over-penalizing early exploration failures",
+        "anti_hacking_role": "Prevents immediate crash exploitation if step cost is too high"
+      },
+      {
+        "id": "angular_velocity_penalty",
+        "type": "dormant_term",
+        "status": "dormant",
+        "purpose": "Penalize high angular velocity during flight (instability)",
+        "uses": [
+          "state[5]"
+        ],
+        "expected_effect": "Negative reward for rapid rotation; encourages stable trajectory",
+        "activation_reason": "Dormant in iter0 to allow exploratory orientation corrections",
+        "anti_hacking_role": "Prevents oscillating behavior that wastes fuel"
+      }
+    ],
+    "active_reward_terms": [
+      "step_cost",
+      "fuel_penalty",
+      "position_shaping",
+      "orientation_shaping"
+    ],
+    "diagnostic_terms": [
+      "terminal_success_reward",
+      "velocity_penalty_at_contact",
+      "cumulative_fuel_tracking",
+      "step_counter"
+    ],
+    "dormant_terms": [
+      "crash_penalty",
+      "angular_velocity_penalty"
+    ],
+    "iteration_policy": {
+      "iter0_principle": "simple, exploration-friendly, not over-constrained - focus on basic descent and alignment without terminal success pressure",
+      "future_search_principle": "future iterations may activate terminal_success_reward, velocity_penalty_at_contact, crash_penalty when training evidence shows agent has learned basic control; edits must declare scope, reason, risks, and validation metrics"
+    }
+  },
+  "trajectory_examples": [
+    {
+      "episode_id": 0,
+      "length": 82,
+      "return_generated": -171.4630282521248,
+      "return_fitness": -141.2852645984816,
+      "final_state": [
+        0.5615951418876648,
+        -0.2555088698863983,
+        1.108023762702942,
+        -0.2274322807788849,
+        -0.21887286007404327,
+        0.8650773167610168,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unknown_terminal",
+      "component_returns": {
+        "cumulative_fuel": 322.0,
+        "fitness_score": -141.2852645984816,
+        "fuel_penalty": -2.0,
+        "is_successful_landing": 0.0,
+        "leg_contact": 4.0,
+        "orientation_shaping": -3.815268399193883,
+        "position_shaping_x": -47.111486625671375,
+        "position_shaping_y": -110.3362722802162,
+        "step_cost": -8.199999999999987,
+        "step_count": 3567.0,
+        "terminal_success_reward_diagnostic": 0.0,
+        "velocity_magnitude": 98.84511798654918,
+        "velocity_penalty_at_contact_diagnostic": -11.31124241241304
+      },
+      "action_histogram": {
+        "1": 4,
+        "0": 78
+      }
+    },
+    {
+      "episode_id": 1,
+      "length": 52,
+      "return_generated": -80.03468963503838,
+      "return_fitness": -97.38911205010314,
+      "final_state": [
+        0.20177611708641052,
+        -0.042765237390995026,
+        0.2803772985935211,
+        -0.0017588029149919748,
+        -0.04382874071598053,
+        -1.2684152126312256,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unknown_terminal",
+      "component_returns": {
+        "cumulative_fuel": 357.0,
+        "fitness_score": -97.38911205010314,
+        "fuel_penalty": -1.5,
+        "is_successful_landing": 1.0,
+        "leg_contact": 3.0,
+        "orientation_shaping": -1.1292351697047707,
+        "position_shaping_x": -10.978085327148435,
+        "position_shaping_y": -61.227368931770314,
+        "step_cost": -5.1999999999999975,
+        "step_count": 5850.0,
+        "terminal_success_reward_diagnostic": 100.0,
+        "velocity_magnitude": 66.94469899786004,
+        "velocity_penalty_at_contact_diagnostic": -2.8038280905217974
+      },
+      "action_histogram": {
+        "1": 3,
+        "0": 49
+      }
+    },
+    {
+      "episode_id": 2,
+      "length": 79,
+      "return_generated": -177.03050363063812,
+      "return_fitness": -127.47620360485394,
+      "final_state": [
+        -0.5832816362380981,
+        -0.07014826685190201,
+        -1.0882556438446045,
+        -1.100919246673584,
+        0.14397594332695007,
+        5.492802143096924,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unknown_terminal",
+      "component_returns": {
+        "cumulative_fuel": 977.0,
+        "fitness_score": -127.47620360485394,
+        "fuel_penalty": -3.5,
+        "is_successful_landing": 0.0,
+        "leg_contact": 4.0,
+        "orientation_shaping": -3.4098975099477684,
+        "position_shaping_x": -47.1210693359375,
+        "position_shaping_y": -115.09953652381898,
+        "step_cost": -7.899999999999988,
+        "step_count": 14220.0,
+        "terminal_success_reward_diagnostic": 0.0,
+        "velocity_magnitude": 94.1783317629741,
+        "velocity_penalty_at_contact_diagnostic": -15.48006253306899
+      },
+      "action_histogram": {
+        "3": 6,
+        "0": 72,
+        "1": 1
+      }
+    },
+    {
+      "episode_id": 3,
+      "length": 70,
+      "return_generated": -133.6792688369751,
+      "return_fitness": -117.1495291217611,
+      "final_state": [
+        0.44207295775413513,
+        -0.12708298861980438,
+        0.6228170394897461,
+        -0.05625653266906738,
+        0.09423847496509552,
+        0.6328462362289429,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unknown_terminal",
+      "component_returns": {
+        "cumulative_fuel": 1254.0,
+        "fitness_score": -117.1495291217611,
+        "fuel_penalty": -2.0,
+        "is_successful_landing": 0.0,
+        "leg_contact": 4.0,
+        "orientation_shaping": -2.1855272479442647,
+        "position_shaping_x": -31.83361511230469,
+        "position_shaping_y": -90.66012740135191,
+        "step_cost": -6.999999999999991,
+        "step_count": 17955.0,
+        "terminal_success_reward_diagnostic": 0.0,
+        "velocity_magnitude": 83.65923867239825,
+        "velocity_penalty_at_contact_diagnostic": -6.253525902614603
+      },
+      "action_histogram": {
+        "1": 4,
+        "0": 66
+      }
+    },
+    {
+      "episode_id": 4,
+      "length": 78,
+      "return_generated": -138.85924950242043,
+      "return_fitness": -108.88743508016003,
+      "final_state": [
+        -0.16171827912330627,
+        -0.04106711223721504,
+        6.9724008788796255e-09,
+        -7.040275917802319e-09,
+        -0.02058498002588749,
+        -2.9291374659123903e-08,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unknown_terminal",
+      "component_returns": {
+        "cumulative_fuel": 1548.0,
+        "fitness_score": -108.88743508016003,
+        "fuel_penalty": -1.5,
+        "is_successful_landing": 1.0,
+        "leg_contact": 4.0,
+        "orientation_shaping": -2.117319639713969,
+        "position_shaping_x": -12.969327545166019,
+        "position_shaping_y": -114.47260228514672,
+        "step_cost": -7.799999999999988,
+        "step_count": 25935.0,
+        "terminal_success_reward_diagnostic": 100.0,
+        "velocity_magnitude": 68.57585940682455,
+        "velocity_penalty_at_contact_diagnostic": -9.90857500277732e-08
+      },
+      "action_histogram": {
+        "3": 2,
+        "0": 75,
+        "1": 1
+      }
+    }
+  ]
+}

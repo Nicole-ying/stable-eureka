@@ -1,0 +1,212 @@
+{
+  "file_type": "revised_reward_schema_and_code",
+  "parent_candidate_id": "single_chain_iter0",
+  "candidate_id": "single_chain_iter1",
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "Address passive free-fall policy (94% Action 0) by removing Y-descent reward exploitation, adding continuous velocity penalty to discourage uncontrolled acceleration, and activating terminal success signal (+100) to provide a clear goal state. Crash penalty remains dormant per memory evidence that harsh failure signals hindered learning.",
+    "preserved_design": [
+      "step_cost (-0.1) to prevent infinite loops",
+      "fuel_penalty structure (light weight -0.5)",
+      "orientation_shaping (upright angle penalty)",
+      "diagnostic tracking for fuel and steps"
+    ],
+    "changed_design": [
+      "Removed position_shaping_y term (-y_pos * 1.5) which incentivized uncontrolled free-fall",
+      "Activated terminal_success_reward (+100) in training loop when safe landing conditions are met at termination",
+      "Added active velocity_control_flight term to penalize high vertical velocity magnitude continuously during flight"
+    ],
+    "risk": [
+      "High velocity penalty might encourage hovering near ground if step cost is insufficient to drive descent",
+      "Terminal success threshold (velocity < 0.5) must be reachable; otherwise agent may give up on landing",
+      "Velocity penalty weight needs calibration to balance against fuel cost of braking"
+    ],
+    "expected_metric_changes": {
+      "action_distribution_action_2_probability": "Increase from ~0% to >5%",
+      "velocity_magnitude_at_contact_mean": "Decrease significantly (controlled descent)",
+      "success_like_terminal_rate": "Increase from 0.0 to >0.1",
+      "fitness_score": "Improve (less negative) as agent learns controlled descent"
+    },
+    "validation_metrics": [
+      "action_distribution_action_2_probability",
+      "velocity_magnitude_at_contact_mean",
+      "success_like_terminal_rate",
+      "episode_length_stability"
+    ],
+    "repeatable_bonus_safety_check": "Terminal success reward is gated by 'terminated' flag, ensuring it can only be collected once per episode at the final step."
+  },
+  "reward_schema": {
+    "version": "iter1_v0",
+    "reward_function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "design_principle": "Stabilization-focused reward removing free-fall incentives. Dense signals for X-alignment and orientation, sparse terminal success signal, continuous velocity penalty to enforce braking.",
+    "behavior_trajectory_prior_used": {
+      "phase_1_descent_alignment": "Reward X alignment (state[0] near 0) and upright orientation (state[4] near 0). Y-descent is no longer directly rewarded to prevent free-fall exploitation.",
+      "phase_2_soft_landing": "Active velocity penalty during flight discourages high speed. Terminal success reward (+100) provides goal signal for safe contact.",
+      "avoid_overpenalizing_fuel": "Light fuel cost (-0.5) maintained to allow necessary braking thrusts"
+    },
+    "component_catalog": [
+      {
+        "id": "step_cost",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage episode completion speed, prevent infinite hovering",
+        "uses": [
+          "terminated"
+        ],
+        "expected_effect": "Small negative reward per step (-0.1) to discourage stalling without overwhelming other signals",
+        "activation_reason": "Essential for preventing passive policy local optima where agent does nothing until crash",
+        "anti_hacking_role": "Prevents hovering indefinitely near ground"
+      },
+      {
+        "id": "fuel_penalty",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage fuel efficiency without over-constraining early exploration",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Light penalty (-0.5 * (m_power + s_power)) to encourage efficient thrusting while allowing correction maneuvers",
+        "activation_reason": "Task goal includes minimizing fuel; light weight allows learning basic control first",
+        "anti_hacking_role": "Prevents wasteful continuous thrusting without progress"
+      },
+      {
+        "id": "position_shaping_x",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage alignment with pad center X coordinate (0)",
+        "uses": [
+          "state[0]"
+        ],
+        "expected_effect": "Positive reward for reducing X error; guides agent toward landing zone without incentivizing Y free-fall",
+        "activation_reason": "Core task objective is landing at pad; provides dense progress signal during alignment phase",
+        "anti_hacking_role": "Prevents agent from drifting away from pad while avoiding crash penalty"
+      },
+      {
+        "id": "orientation_shaping",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Encourage upright orientation for stable landing",
+        "uses": [
+          "state[4]"
+        ],
+        "expected_effect": "Positive reward when angle approaches 0 (upright); critical for successful touchdown",
+        "activation_reason": "Upright orientation is prerequisite for soft landing; provides shaping during alignment phase",
+        "anti_hacking_role": "Prevents agent from learning to land sideways or upside down"
+      },
+      {
+        "id": "velocity_control_flight",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Penalize high vertical velocity during flight to discourage uncontrolled free-fall",
+        "uses": [
+          "state[3]"
+        ],
+        "expected_effect": "Negative reward proportional to squared vertical velocity; encourages braking before contact",
+        "activation_reason": "Breaks the free-fall exploit by making high descent speed costly during flight",
+        "anti_hacking_role": "Prevents agent from exploiting gravity to reach ground quickly without control"
+      },
+      {
+        "id": "terminal_success_reward",
+        "type": "reward_term",
+        "status": "active",
+        "purpose": "Detect successful landing via state inspection at termination",
+        "uses": [
+          "state[0]",
+          "state[2:5]",
+          "state[6:7]",
+          "terminated"
+        ],
+        "expected_effect": "Large positive reward (+100) only if terminated AND leg contact AND near center AND low velocity AND upright",
+        "activation_reason": "Activated to provide clear goal signal for safe landing behavior during training",
+        "anti_hacking_role": "Distinguishes soft landing from crash termination"
+      },
+      {
+        "id": "cumulative_fuel_tracking",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track total fuel consumption for diagnostics and future reward shaping",
+        "uses": [
+          "m_power",
+          "s_power"
+        ],
+        "expected_effect": "Maintains running sum of fuel used; enables fuel efficiency metrics in individual_reward",
+        "activation_reason": "Required for diagnostic tracking even if not directly rewarded yet",
+        "anti_hacking_role": "None - purely diagnostic"
+      },
+      {
+        "id": "step_counter",
+        "type": "diagnostic_term",
+        "status": "active",
+        "purpose": "Track episode duration for diagnostics and time efficiency metrics",
+        "uses": [],
+        "expected_effect": "Maintains step count; enables time-based termination detection",
+        "activation_reason": "Required for diagnostic tracking of episode length",
+        "anti_hacking_role": "None - purely diagnostic"
+      },
+      {
+        "id": "crash_penalty",
+        "type": "dormant_term",
+        "status": "dormant",
+        "purpose": "Heavy penalty for crash termination (game_over or out of bounds)",
+        "uses": [
+          "terminated",
+          "state"
+        ],
+        "expected_effect": "Large negative reward (-100) on crash; will activate when agent needs explicit failure signal",
+        "activation_reason": "Dormant to avoid over-penalizing early exploration failures per memory evidence",
+        "anti_hacking_role": "Prevents immediate crash exploitation if step cost is too high"
+      },
+      {
+        "id": "angular_velocity_penalty",
+        "type": "dormant_term",
+        "status": "dormant",
+        "purpose": "Penalize high angular velocity during flight (instability)",
+        "uses": [
+          "state[5]"
+        ],
+        "expected_effect": "Negative reward for rapid rotation; encourages stable trajectory",
+        "activation_reason": "Dormant to allow exploratory orientation corrections",
+        "anti_hacking_role": "Prevents oscillating behavior that wastes fuel"
+      }
+    ],
+    "active_reward_terms": [
+      "step_cost",
+      "fuel_penalty",
+      "position_shaping_x",
+      "orientation_shaping",
+      "velocity_control_flight",
+      "terminal_success_reward"
+    ],
+    "diagnostic_terms": [
+      "cumulative_fuel_tracking",
+      "step_counter"
+    ],
+    "dormant_terms": [
+      "crash_penalty",
+      "angular_velocity_penalty"
+    ],
+    "iteration_policy": {
+      "iter1_principle": "Stabilization: Remove free-fall incentives, activate terminal goal, add velocity control. Monitor for hovering risk.",
+      "future_search_principle": "Future iterations may adjust velocity penalty weight or activate crash_penalty if agent learns to hover indefinitely"
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Initialize internal state tracking (safe per environment_understanding)\n    if not hasattr(self, '_step_counter'):\n        self._step_counter = 0\n    if not hasattr(self, '_cumulative_fuel'):\n        self._cumulative_fuel = 0.0\n    \n    # Extract state components for readability\n    x_pos = state[0]  # Normalized X position (0 = pad center)\n    y_pos = state[1]  # Normalized Y height\n    vx = state[2]     # Velocity X\n    vy = state[3]     # Velocity Y\n    angle = state[4]  # Lander angle in radians\n    ang_vel = state[5]  # Angular velocity\n    leg_contact_0 = state[6]\n    leg_contact_1 = state[7]\n    \n    # === ACTIVE REWARD TERMS ===\n    \n    # 1. Step cost: small negative per step to encourage speed (prevents hovering)\n    step_cost = -0.1\n    \n    # 2. Fuel penalty: light penalty on engine usage (allows exploration)\n    fuel_penalty = -0.5 * (m_power + s_power)\n    \n    # 3. Position shaping X: reward progress toward pad center X (removed Y term to prevent free-fall exploit)\n    x_shaping = -abs(x_pos) * 2.0\n    position_shaping_x = x_shaping\n    \n    # 4. Orientation shaping: reward upright angle (near 0 radians)\n    orientation_shaping = -abs(angle) * 3.0\n    \n    # 5. Velocity control flight: penalize high vertical velocity during flight to discourage uncontrolled descent\n    # Using squared penalty for smooth gradient, scaled to be significant but not prohibitive\n    velocity_control_flight = -1.0 * (vy ** 2)\n    \n    # === ACTIVE TERMINAL SUCCESS REWARD ===\n    \n    # Terminal success detection (active in iter1)\n    leg_contact = (leg_contact_0 == 1.0 or leg_contact_1 == 1.0)\n    near_center = abs(x_pos) < 0.5\n    low_velocity = abs(vx) < 0.5 and abs(vy) < 0.5\n    upright = abs(angle) < 0.5\n    is_successful_landing = terminated and leg_contact and near_center and low_velocity and upright\n    terminal_success_reward = 100.0 if is_successful_landing else 0.0\n    \n    # === COMPUTE TOTAL REWARD (active terms only) ===\n    reward = step_cost + fuel_penalty + position_shaping_x + orientation_shaping + velocity_control_flight + terminal_success_reward\n    \n    # === UPDATE INTERNAL STATE FOR DIAGNOSTICS ===\n    self._step_counter += 1\n    self._cumulative_fuel += m_power + s_power\n    \n    # === BUILD INDIVIDUAL REWARD DICTIONARY ===\n    individual_reward = {\n        'step_cost': float(step_cost),\n        'fuel_penalty': float(fuel_penalty),\n        'position_shaping_x': float(x_shaping),\n        'orientation_shaping': float(orientation_shaping),\n        'velocity_control_flight': float(velocity_control_flight),\n        'terminal_success_reward': float(terminal_success_reward),\n        'cumulative_fuel': float(self._cumulative_fuel),\n        'step_count': int(self._step_counter),\n        'is_successful_landing': 1.0 if is_successful_landing else 0.0,\n        'leg_contact': float(leg_contact_0 + leg_contact_1),\n        'velocity_magnitude': float((vx**2 + vy**2)**0.5)\n    }\n    \n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "short_term": "Agent should reduce Action 0 probability and increase thrusting (Action 2) to manage vertical velocity penalty.",
+    "long_term": "Agent learns controlled descent balancing fuel cost, step cost, and velocity penalty to achieve terminal success (+100)."
+  },
+  "known_risks": [
+    "Hovering risk: If velocity penalty is too high relative to step cost, agent may hover indefinitely.",
+    "Terminal reachability: Success thresholds (velocity < 0.5) must be achievable with available thrust."
+  ],
+  "self_check": {
+    "active_terms_match_code": true,
+    "diagnostic_terms_are_recorded": true,
+    "no_dormant_term_affects_reward": true,
+    "uses_only_allowed_inputs_or_safe_internal_state": true,
+    "does_not_call_custom_self_methods": true,
+    "completion_bonus_is_event_gated_or_one_shot": true
+  },
+  "agent_name": "RewardRevisionAgent"
+}

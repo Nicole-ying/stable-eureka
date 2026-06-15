@@ -1,0 +1,127 @@
+{
+  "file_type": "environment_understanding_summary",
+  "environment_name": "Rocket Landing Optimization",
+  "task_goal": {
+    "primary_objective": "Land at the pad (0,0) as fast as possible with least fuel spent",
+    "secondary_constraints": [
+      "Avoid crashing into moon surface",
+      "Stay within viewport bounds"
+    ]
+  },
+  "reward_function_interface": {
+    "expected_signature": "compute_reward(state, m_power, s_power, terminated)",
+    "available_inputs": {
+      "state": "8-dimensional numpy array [x_norm, y_norm, vx_norm, vy_norm, angle, ang_vel_norm, leg_contact_0, leg_contact_1]",
+      "m_power": "Float representing main engine power applied in current step (0.0 or 1.0 in discrete)",
+      "s_power": "Float representing side engine power applied in current step (0.0 or 1.0 in discrete)",
+      "terminated": "Boolean indicating if episode ended this step"
+    },
+    "not_directly_available": [
+      "Step count / Time elapsed",
+      "Cumulative fuel used",
+      "Wind state variables (wind_idx, torque_idx)"
+    ],
+    "safe_internal_state_that_reward_may_maintain": [
+      "step_counter",
+      "cumulative_fuel_consumption"
+    ]
+  },
+  "state_space": {
+    "dimension": 8,
+    "indices": {
+      "0": "Normalized X position (0 = center/pad)",
+      "1": "Normalized Y position (relative to helipad/ground)",
+      "2": "Normalized linear velocity X",
+      "3": "Normalized linear velocity Y",
+      "4": "Lander angle in radians",
+      "5": "Scaled angular velocity",
+      "6": "Left leg ground contact (0.0 or 1.0)",
+      "7": "Right leg ground contact (0.0 or 1.0)"
+    }
+  },
+  "action_space": {
+    "configured_or_inferred_action_space": "Discrete [0, 3] per task description; Code supports Continuous [-1, 1]^2",
+    "code_supported_action_spaces": [
+      "Discrete (4 actions)",
+      "Continuous (2 dimensions)"
+    ],
+    "action_semantics": {
+      "discrete_0": "Do nothing (coast)",
+      "discrete_1": "Fire left orientation engine (rotate counter-clockwise)",
+      "discrete_2": "Fire main engine (thrust downwards relative to lander)",
+      "discrete_3": "Fire right orientation engine (rotate clockwise)"
+    }
+  },
+  "termination_modes": [
+    {
+      "condition": "Crash",
+      "code_check": "self.game_over == True",
+      "description": "Lander body contacts moon surface"
+    },
+    {
+      "condition": "Out of Bounds",
+      "code_check": "abs(state[0]) >= 1.0",
+      "description": "Lander X coordinate exceeds viewport limits"
+    },
+    {
+      "condition": "Not Awake",
+      "code_check": "not self.lander.awake",
+      "description": "Physics object stopped moving (could be soft landing or crash)"
+    }
+  ],
+  "success_like_ending": {
+    "description": "Lander touches down gently on pad and stops moving",
+    "signals": {
+      "leg_contact": "state[6] == 1.0 or state[7] == 1.0",
+      "position": "abs(state[0]) < threshold (near center)",
+      "velocity": "Low absolute values in state[2], state[3]",
+      "angle": "state[4] near 0 (upright)",
+      "termination_trigger": "not self.lander.awake"
+    },
+    "is_official_ground_truth": false
+  },
+  "failure_like_endings": {
+    "crash": "self.game_over triggered by body collision",
+    "out_of_bounds": "state[0] exceeds +/- 1.0",
+    "hard_landing": "Leg contact with high velocity (inferred from state)"
+  },
+  "behavior_trajectory_prior": {
+    "successful_trajectory_phases": [
+      {
+        "phase": "Descent and Alignment",
+        "expected_behavior": "Reduce Y position, align X to 0, correct angle to upright",
+        "available_signals": [
+          "state[0], state[1], state[4]"
+        ],
+        "reward_design_implication": "Should reward progress towards target coordinates and orientation"
+      },
+      {
+        "phase": "Soft Landing",
+        "expected_behavior": "Reduce velocity to near zero while maintaining contact",
+        "available_signals": [
+          "state[2], state[3], state[6], state[7]"
+        ],
+        "reward_design_implication": "Should penalize high velocity at contact and reward termination via 'not awake'"
+      }
+    ],
+    "behaviors_not_to_overpenalize_early": [
+      "High fuel consumption during initial correction maneuvers",
+      "Brief hovering to stabilize orientation"
+    ],
+    "likely_bad_local_optima": [
+      "Crashing immediately if crash penalty is lower than time/fuel cost of flying",
+      "Hovering indefinitely near ground if time step cost is zero or negative reward for landing is too high"
+    ],
+    "exploration_implications_for_initial_reward": "Initial reward should encourage descent and orientation correction without punishing fuel usage too harshly to allow learning basic control"
+  },
+  "reward_design_risks": [
+    "Reward hacking by oscillating near ground to avoid 'not awake' termination if not properly penalized",
+    "Ambiguity in 'game_over' flag requiring state inspection to distinguish crash from success",
+    "Time step cost missing from inputs requires internal counter maintenance"
+  ],
+  "reward_hacking_risks": [
+    "Agent might learn to crash immediately if negative reward for crash is small compared to cumulative time/fuel penalty",
+    "Agent might hover indefinitely if landing penalty outweighs time cost",
+    "Agent might exploit 'not awake' condition by crashing hard enough to stop physics simulation"
+  ]
+}

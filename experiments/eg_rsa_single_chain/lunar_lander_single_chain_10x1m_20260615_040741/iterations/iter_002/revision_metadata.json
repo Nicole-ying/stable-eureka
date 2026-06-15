@@ -1,0 +1,33 @@
+{
+  "edit_scope": "medium",
+  "reason": "Address passive 'do nothing' policy (94% Action 0) by adding dense velocity penalty during flight to discourage uncontrolled free-fall, and activating terminal success reward (+100) to provide a clear goal signal. Crash penalty remains dormant per reflection decision and retrieved memory indicating harsh failure penalties hindered learning in similar contexts.",
+  "preserved_design": [
+    "step_cost (-0.1) to prevent infinite loops",
+    "fuel_penalty structure (light weight -0.5)",
+    "position_shaping (X/Y alignment weights preserved)",
+    "orientation_shaping (upright angle penalty)"
+  ],
+  "changed_design": [
+    "Added active velocity_control term: Penalize high velocity magnitude continuously during flight to incentivize braking",
+    "Activated terminal_success_reward (+100) in training reward when safe landing conditions are met at termination",
+    "Kept crash_penalty dormant to avoid discouraging exploration with harsh failure signals"
+  ],
+  "risk": [
+    "High velocity penalty might encourage hovering near ground if step cost is insufficient to drive descent",
+    "Terminal success threshold (velocity < 0.5) must be reachable; otherwise agent may give up on landing",
+    "Velocity penalty weight needs calibration to balance against fuel cost of braking"
+  ],
+  "expected_metric_changes": {
+    "action_distribution_action_2_probability": "Increase from ~0% to >5%",
+    "velocity_magnitude_at_contact_mean": "Decrease significantly (controlled descent)",
+    "success_like_terminal_rate": "Increase from 0.0 to >0.1",
+    "fitness_score": "Improve (less negative) as agent learns controlled descent"
+  },
+  "validation_metrics": [
+    "action_distribution_action_2_probability",
+    "velocity_magnitude_at_contact_mean",
+    "success_like_terminal_rate",
+    "episode_length_stability"
+  ],
+  "repeatable_bonus_safety_check": "Terminal success reward is gated by 'terminated' flag, ensuring it can only be collected once per episode at the final step."
+}

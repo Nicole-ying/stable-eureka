@@ -1,0 +1,33 @@
+{
+  "edit_scope": "medium",
+  "reason": "Address passive free-fall policy (94% Action 0) by removing Y-descent reward exploitation, adding continuous velocity penalty to discourage uncontrolled acceleration, and activating terminal success signal (+100) to provide a clear goal state. Crash penalty remains dormant per memory evidence that harsh failure signals hindered learning.",
+  "preserved_design": [
+    "step_cost (-0.1) to prevent infinite loops",
+    "fuel_penalty structure (light weight -0.5)",
+    "orientation_shaping (upright angle penalty)",
+    "diagnostic tracking for fuel and steps"
+  ],
+  "changed_design": [
+    "Removed position_shaping_y term (-y_pos * 1.5) which incentivized uncontrolled free-fall",
+    "Activated terminal_success_reward (+100) in training loop when safe landing conditions are met at termination",
+    "Added active velocity_control_flight term to penalize high vertical velocity magnitude continuously during flight"
+  ],
+  "risk": [
+    "High velocity penalty might encourage hovering near ground if step cost is insufficient to drive descent",
+    "Terminal success threshold (velocity < 0.5) must be reachable; otherwise agent may give up on landing",
+    "Velocity penalty weight needs calibration to balance against fuel cost of braking"
+  ],
+  "expected_metric_changes": {
+    "action_distribution_action_2_probability": "Increase from ~0% to >5%",
+    "velocity_magnitude_at_contact_mean": "Decrease significantly (controlled descent)",
+    "success_like_terminal_rate": "Increase from 0.0 to >0.1",
+    "fitness_score": "Improve (less negative) as agent learns controlled descent"
+  },
+  "validation_metrics": [
+    "action_distribution_action_2_probability",
+    "velocity_magnitude_at_contact_mean",
+    "success_like_terminal_rate",
+    "episode_length_stability"
+  ],
+  "repeatable_bonus_safety_check": "Terminal success reward is gated by 'terminated' flag, ensuring it can only be collected once per episode at the final step."
+}
