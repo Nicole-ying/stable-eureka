@@ -11,9 +11,8 @@ import yaml
 
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.single_chain.agents import JsonAgent
-from eg_rsa.single_chain.env_builder import load_env_class, prepare_env_code
 from eg_rsa.single_chain.json_tools import read_text, write_json, write_text
-from eg_rsa.single_chain.reward_validation import write_reward_code_files
+from eg_rsa.single_chain.reward_guard import prepare_guarded_reward_env
 from eg_rsa.single_chain.trainer import SingleChainPPOTrainer
 
 
@@ -69,6 +68,7 @@ def run(config_path: str) -> Path:
     write_text(prompts_out / "environment_understanding_prompt.txt", env_prompt)
     write_text(prompts_out / "target_alignment_prompt.txt", target_prompt)
     write_text(prompts_out / "initial_reward_schema_code_prompt.txt", reward_prompt)
+    write_text(prompts_out / "reward_repair_prompt.txt", read_text(PROMPT_DIR / "reward_repair_prompt.txt"))
 
     agents_dir = run_dir / "agents"
     raw_dir = agents_dir / "raw_llm_outputs"
@@ -100,15 +100,16 @@ def run(config_path: str) -> Path:
 
     reward_schema = initial_reward.get("reward_schema") or {}
     reward_code = initial_reward.get("reward_code") or ""
-    reward_dir = run_dir / "reward"
-    write_json(reward_dir / "reward_schema.json", reward_schema)
-    validation = write_reward_code_files(reward_code, reward_dir)
-    if not validation.get("valid", False):
-        raise RuntimeError(f"Generated reward code failed validation. See {reward_dir / 'validation_report.json'}")
-
-    env_cfg = config.get("environment", {}) or {}
-    env_py = prepare_env_code(ROOT / env_cfg["env_code_dir"], run_dir / "env_code", reward_code)
-    env_cls = load_env_class(env_py, env_cfg.get("class_name", "LunarLander"))
+    env_cls, reward_schema, reward_code, guard_summary = prepare_guarded_reward_env(
+        config=config,
+        output_dir=run_dir,
+        reward_schema=reward_schema,
+        reward_code=reward_code,
+        environment_understanding=environment_understanding,
+        target_alignment_contract=target_alignment_contract,
+        llm_client=llm_client,
+        repair_dir=agents_dir / "reward_repairs",
+    )
 
     trainer = SingleChainPPOTrainer(
         config=config,
