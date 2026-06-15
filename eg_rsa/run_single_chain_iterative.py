@@ -14,6 +14,8 @@ from eg_rsa.run_single_chain import run as run_bootstrap
 from eg_rsa.single_chain.agents import JsonAgent
 from eg_rsa.single_chain.controller import SearchController, write_controller_decision
 from eg_rsa.single_chain.evidence import EvidenceBuilder
+from eg_rsa.single_chain.expert_memory import build_expert_memory_context
+from eg_rsa.single_chain.expert_priors import get_expert_priors
 from eg_rsa.single_chain.json_tools import read_json, read_text, write_json, write_text
 from eg_rsa.single_chain.memory_manager import MemoryManager
 from eg_rsa.single_chain.reward_guard import prepare_guarded_reward_env
@@ -57,6 +59,11 @@ def run_iterative(
     memory_path = run_dir / memory_cfg.get("path", "memory/reward_memory.jsonl")
     memory = MemoryManager(memory_path, top_k=int(memory_cfg.get("retrieve_top_k", 5)))
     controller = SearchController(config)
+
+    expert_priors = get_expert_priors()
+    write_json(run_dir / "expert_reward_design_priors.json", expert_priors)
+    expert_blueprint = _load_expert_blueprint(run_dir)
+    write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
 
     env_understanding = read_json(run_dir / "agents" / "environment_understanding.json")
     target_contract = read_json(run_dir / "agents" / "target_alignment_contract.json")
@@ -107,6 +114,12 @@ def run_iterative(
         parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
         retrieved = memory.retrieve(parent_evidence)
         write_json(search_dir / "retrieved_memory.json", {"items": retrieved})
+        expert_memory_context = build_expert_memory_context(
+            current_evidence=parent_evidence,
+            best_evidence=best_evidence,
+            retrieved_memory=retrieved,
+            output_path=search_dir / "expert_memory_context.json",
+        )
 
         current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
         current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
@@ -114,6 +127,9 @@ def run_iterative(
         reflection_prompt = read_text(PROMPT_DIR / "reflection_prompt.txt")
         reflection = JsonAgent("ReflectionAgent", llm_client, reflection_prompt).run(
             {
+                "expert_reward_design_priors_json": as_json_text(expert_priors),
+                "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
+                "expert_memory_context_json": as_json_text(expert_memory_context),
                 "environment_understanding_summary_json": as_json_text(env_summary),
                 "target_alignment_contract_summary_json": as_json_text(target_summary),
                 "current_reward_schema_json": as_json_text(current_reward_schema),
@@ -142,13 +158,29 @@ def run_iterative(
             current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
             search_dir = parent_dir / "search"
             search_dir.mkdir(parents=True, exist_ok=True)
+            retrieved = memory.retrieve(parent_evidence)
+            expert_memory_context = build_expert_memory_context(
+                current_evidence=parent_evidence,
+                best_evidence=best_evidence,
+                retrieved_memory=retrieved,
+                output_path=search_dir / "expert_memory_context.json",
+            )
 
         retrieved_after_reflection = memory.retrieve(parent_evidence, reflection)
         write_json(search_dir / "retrieved_memory_after_reflection.json", {"items": retrieved_after_reflection})
+        expert_memory_context = build_expert_memory_context(
+            current_evidence=parent_evidence,
+            best_evidence=best_evidence,
+            retrieved_memory=retrieved_after_reflection,
+            output_path=search_dir / "expert_memory_context_after_reflection.json",
+        )
 
         revision_prompt = read_text(PROMPT_DIR / "reward_revision_prompt.txt")
         revision = JsonAgent("RewardRevisionAgent", llm_client, revision_prompt).run(
             {
+                "expert_reward_design_priors_json": as_json_text(expert_priors),
+                "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
+                "expert_memory_context_json": as_json_text(expert_memory_context),
                 "environment_understanding_summary_json": as_json_text(env_summary),
                 "target_alignment_contract_summary_json": as_json_text(target_summary),
                 "current_reward_schema_json": as_json_text(current_reward_schema),
@@ -214,6 +246,33 @@ def run_iterative(
 
     write_text(run_dir / "ITERATIVE_DONE.txt", "single-chain iterative search finished\n")
     return run_dir
+
+
+def _load_expert_blueprint(run_dir: Path) -> Dict[str, Any]:
+    for path in [
+        run_dir / "expert_reward_design_blueprint.json",
+        run_dir / "agents" / "expert_reward_design_blueprint.json",
+    ]:
+        if path.exists():
+            try:
+                return read_json(path)
+            except Exception:
+                pass
+    return {
+        "file_type": "expert_reward_design_blueprint",
+        "fallback": True,
+        "initial_reward_architecture": {
+            "active_objective_terms": [],
+            "active_progress_terms": [],
+            "mild_regularizers": [],
+            "diagnostic_only_terms": [],
+        },
+        "initial_reward_hard_constraints": [
+            "Separate objective, progress, regularizers, and diagnostics.",
+            "Do not rely mainly on dense penalties.",
+            "Use expert_memory_context to avoid repeating rejected edit patterns."
+        ],
+    }
 
 
 def _materialize_revision(
