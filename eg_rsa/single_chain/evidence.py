@@ -8,13 +8,7 @@ from .json_tools import read_json, write_json, read_text
 
 
 class EvidenceBuilder:
-    """Compress raw training artifacts into a compact LLM-ready evidence file.
-
-    Raw trajectory/eval files can become too long for local LLM contexts. This
-    builder keeps the key metrics, dominant components, action usage, and a few
-    representative trajectory endings so ReflectionAgent receives evidence rather
-    than full logs.
-    """
+    """Compress raw training artifacts into a compact LLM-ready evidence file."""
 
     @staticmethod
     def build(run_or_iter_dir: str | Path, output_path: str | Path | None = None, top_k_components: int = 8, max_episodes: int = 5) -> Dict[str, Any]:
@@ -40,6 +34,7 @@ class EvidenceBuilder:
         )
         dominant_components = _dominant_components(component_means, top_k=top_k_components)
         action_distribution = final_eval.get("action_distribution") or reward_trace.get("behavior_metrics", {}).get("action_distribution", {})
+        action_space_report = final_eval.get("action_space_report") or reward_trace.get("behavior_metrics", {}).get("action_space_report", {})
         primary_metrics = {
             "fitness_score": _num(final_eval.get("fitness_score", reward_trace.get("primary_metrics", {}).get("fitness_score"))),
             "generated_reward": _num(final_eval.get("reward", reward_trace.get("proxy_metrics", {}).get("generated_reward"))),
@@ -51,7 +46,7 @@ class EvidenceBuilder:
 
         episodes = trajectory_summary.get("episodes") or reward_trace.get("trajectory_examples") or []
         episode_summaries = [_episode_digest(ep) for ep in episodes[:max_episodes]]
-        automatic_hints = _automatic_hints(primary_metrics, component_means, action_distribution, episode_summaries)
+        automatic_hints = _automatic_hints(primary_metrics, component_means, action_distribution, action_space_report, episode_summaries)
 
         evidence = {
             "file_type": "iteration_evidence",
@@ -60,6 +55,7 @@ class EvidenceBuilder:
             "primary_metrics": primary_metrics,
             "behavior_summary": {
                 "action_distribution": action_distribution,
+                "action_space_report": action_space_report,
                 "dominant_action": _dominant_action(action_distribution),
                 "success_like_terminal_rate": primary_metrics["success_like_terminal_rate"],
                 "unsafe_terminal_rate": primary_metrics["unsafe_terminal_rate"],
@@ -167,6 +163,8 @@ def _summarize_evals(evals: Dict[str, Any]) -> Dict[str, Any]:
                 "best": max(values) if all(isinstance(v, (int, float)) for v in values) else None,
                 "num_points": len(values),
             }
+    if isinstance(evals.get("action_space_report"), list) and evals.get("action_space_report"):
+        summary["action_space_report_last"] = evals["action_space_report"][-1]
     return summary
 
 
@@ -208,13 +206,16 @@ def _extract_individual_reward_keys(code: str) -> List[str]:
     return keys
 
 
-def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any], action_distribution: Dict[str, Any], episodes: List[Dict[str, Any]]) -> List[str]:
+def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any], action_distribution: Dict[str, Any], action_space_report: Dict[str, Any], episodes: List[Dict[str, Any]]) -> List[str]:
     hints: List[str] = []
     dom = _dominant_action(action_distribution)
     if dom["probability"] >= 0.95:
         hints.append(f"Policy collapsed to a single dominant action: {dom['action']} with probability {dom['probability']:.3f}.")
     if str(dom["action"]) in {"0", "0.0"} and dom["probability"] >= 0.95:
         hints.append("No-action/passive policy likely: reward may over-penalize control or fail to provide reachable progress signals.")
+    unused = action_space_report.get("unused_action_keys") or []
+    if unused:
+        hints.append("Unused discrete actions detected during evaluation: " + ", ".join(map(str, unused)) + ". Check whether the reward makes necessary actions unattractive.")
     if metrics.get("success_like_terminal_rate", 0.0) <= 0.01:
         hints.append("Success-like terminal behavior was not discovered during evaluation.")
     if _num(component_means.get("fuel_cost")) == 0.0 and str(dom["action"]) in {"0", "0.0"}:
