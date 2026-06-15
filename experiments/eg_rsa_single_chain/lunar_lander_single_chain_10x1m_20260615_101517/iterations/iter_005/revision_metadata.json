@@ -1,0 +1,36 @@
+{
+  "edit_scope": "medium",
+  "reason": "The main engine reward is too easy to obtain (any distance decrease gives +2). The hovering penalty (-0.5) is too weak to discourage non-descending engine use. We need to make the main engine reward conditional on both distance decreasing AND vertical descent (vy < 0), but we must avoid the failed pattern from iter_003 where the main engine reward was conditional only on vy<0 (which caused the agent to stop using the main engine). By keeping the distance-decreasing condition AND adding a vy<0 condition, the agent must both move toward the pad AND descend to get the reward. This prevents the agent from collecting reward by moving sideways or upward. Additionally, we increase the hovering penalty to -2.0 (from -0.5) to strongly discourage hovering without descent. We also increase the success bonus to +300 to make landing more attractive relative to per-step rewards. The descent reward scale is increased to 1.0 to provide stronger shaping for reducing vertical speed.",
+  "preserved_design": [
+    "objective_success_bonus: +300 for successful landing (increased from +200)",
+    "crash_penalty: -100 for termination without success",
+    "progress shaping: -1*distance -0.3*|vy|",
+    "fuel cost: -0.03*m_power -0.02*s_power",
+    "angle penalty: -0.05*|angle|",
+    "descent reward: reward for reducing vertical speed when main engine is on and vy < 0"
+  ],
+  "changed_design": [
+    "main engine reward: changed from +2.0 when m_power>0 AND distance decreasing to +2.0 when m_power>0 AND distance decreasing AND vy < 0 (descent-conditioned)",
+    "hovering penalty: increased from -0.5 to -2.0 when |vy| < 0.1 AND distance not decreasing",
+    "descent reward scale: increased from 0.5 to 1.0",
+    "success bonus: increased from +200 to +300"
+  ],
+  "rejected_patterns_avoided": [
+    "Do not make main engine reward conditional only on vy<0 (failed pattern from iter_002 to iter_003).",
+    "Do not reduce progress shaping strength (failed pattern from iter_000 to iter_001).",
+    "Do not add a reward for doing nothing (action 0).",
+    "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "episode_length": "decrease from 755.2 to <500",
+    "fitness_score": "increase from 113.33 to >150",
+    "main_engine_reward_mean": "decrease from 449.2 to <300",
+    "hovering_penalty_mean": "become more negative (stronger penalty)"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate > 0.1",
+    "episode_length < 500",
+    "fitness_score > 150"
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy is optimizing a combination of main engine reward (+2 per step when m_power>0 and distance decreasing) and side engine usage (s_power mean 436.2), while progress shaping (-245.5) and hovering penalty (-151.4) are large negative components. The policy avoids descending to the pad because the main engine reward is easily collected by firing the main engine while staying far from the pad (distance mean 224.9). The progress-conditioned main engine reward only requires distance to decrease, not to reach the pad, so the agent can collect +2 per step indefinitely by slowly descending from a high altitude. The hovering penalty (-0.5) is too weak to overcome the +2 main engine reward. The success bonus (+200) is rarely achieved because the agent never gets close enough to the pad to trigger both legs contact and low velocity. The descent reward (0.5*(prev_vy - vy)) is negligible (mean -0.89) because the agent does not consistently descend.",
+    "component_interaction_diagnosis": "The main engine reward (+2 per step) dominates the progress shaping (-1*distance -0.3*|vy|) and hovering penalty (-0.5). The agent can collect +2 per step by firing the main engine while distance decreases slowly, which yields a net positive reward even when far from the pad. The progress shaping penalizes distance but the main engine reward more than compensates. The hovering penalty is too small to discourage the agent from maintaining near-zero vertical velocity while still decreasing distance slowly. The success bonus is too sparse to influence behavior because the agent never reaches the landing condition. The descent reward is negligible because the agent does not consistently descend (vy is not consistently negative).",
+    "failed_pattern_reuse_check": "The previous edit (iter_006 to iter_007) increased hovering penalty to -2.0 and added a distance threshold (distance < 0.5) to the main engine reward, but fitness decreased. The distance threshold made the main engine reward unavailable when far from the pad, but the agent could not learn to descend because the progress shaping was too weak to overcome the loss of the main engine reward. The current edit should not add a hard distance threshold to the main engine reward. Instead, the main engine reward should be restructured to reward descending toward the pad with a magnitude that decreases as the agent gets closer, and the hovering penalty should be increased to make hovering unprofitable even when the main engine reward is available.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "edit_scope": "medium",
+      "reason": "The current reward has a fundamental design flaw: the main engine reward (+2 per step) is too large and can be collected indefinitely by slowly descending from a high altitude. The hovering penalty (-0.5) is too weak to counteract this. The success bonus (+200) is too sparse. A medium revision is needed to restructure the main engine reward to be a one-time or diminishing reward for descending, increase the hovering penalty, and add a progress bonus for getting close to the pad."
+    },
+    "hard_constraints_for_next_revision": [
+      "Do not add a hard distance threshold to the main engine reward (failed pattern from iter_006 to iter_007).",
+      "Do not reduce the main engine reward below +0.5 per step (failed pattern from iter_007 to iter_008).",
+      "Do not increase the hovering penalty above -2.0 per step (failed pattern from iter_006 to iter_007).",
+      "Do not add a reward for doing nothing (action 0).",
+      "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+    ],
+    "expected_metric_changes": {
+      "success_like_terminal_rate": "increase from 0.0 to >0.1",
+      "episode_length": "decrease from 755.2 to <500",
+      "fitness_score": "increase from 113.33 to >150",
+      "main_engine_reward_mean": "decrease from 449.2 to <300",
+      "hovering_penalty_mean": "increase in magnitude from -151.4 to > -300",
+      "progress_mean": "increase from -245.5 to > -200"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate > 0.1",
+      "episode_length < 500",
+      "fitness_score > 150"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "iter_004",
+    "candidate_id": "iter_009",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "reason": "Restructure the main engine reward to be a one-time bonus of +10 when the agent first descends below a distance threshold (distance < 0.5), instead of a per-step reward. This prevents the agent from collecting large rewards by slowly descending from high altitude. Increase the hovering penalty from -0.5 to -1.5 per step when |vy|<0.1 and distance is not decreasing, to make hovering more costly. Add a small progress bonus of +0.1 * (prev_distance - distance) when distance is decreasing, to provide continuous feedback for descending. Keep the success bonus at +200, crash penalty at -100, progress shaping at -1*distance -0.3*|vy|, fuel costs at -0.03*m_power -0.02*s_power, angle penalty at -0.05*|angle|, and descent reward at 0.5*(prev_vy - vy) when m_power>0 and vy<0. The expected behavior is that the agent will descend to the pad to collect the one-time main engine bonus and the success bonus, while the increased hovering penalty will discourage hovering.",
+      "preserved_design": [
+        "objective_success_bonus: +200 for successful landing",
+        "crash_penalty: -100 for termination without success",
+        "progress shaping: -1*distance -0.3*|vy|",
+        "fuel cost: -0.03*m_power -0.02*s_power",
+        "angle penalty: -0.05*|angle|",
+        "descent reward: 0.5*(prev_vy - vy) when m_power>0 and vy<0"
+      ],
+      "changed_design": [
+        "main engine reward: changed from +2.0 per step when m_power>0 and distance decreasing to a one-time bonus of +10 when distance < 0.5 (first time only, tracked via self.main_engine_bonus_claimed)",
+        "hovering penalty: increased from -0.5 to -1.5 per step when |vy|<0.1 and distance >= previous_distance",
+        "added progress bonus: +0.1 * (prev_distance - distance) when distance < prev_distance, to provide continuous feedback for descending"
+      ],
+      "rejected_patterns_avoided": [
+        "Do not add a hard distance threshold to the main engine reward (failed pattern from iter_006 to iter_007). Instead, use a one-time bonus when close to pad.",
+        "Do not reduce the main engine reward below +0.5 per step (failed pattern from iter_007 to iter_008). Instead, replace per-step reward with one-time bonus.",
+        "Do not increase the hovering penalty above -2.0 per step (failed pattern from iter_006 to iter_007). Increased to -1.5, which is less than -2.0.",
+        "Do not add a reward for doing nothing (action 0).",
+        "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+      ],
+      "expected_metric_changes": {
+        "success_like_terminal_rate": "increase from 0.0 to >0.1",
+        "episode_length": "decrease from 755.2 to <500",
+        "fitness_score": "increase from 113.33 to >150",
+        "main_engine_reward_mean": "decrease from 449.2 to <10 (one-time bonus)",
+        "hovering_penalty_mean": "increase in magnitude from -151.4 to > -300",
+        "progress_mean": "increase from -245.5 to > -200 (due to progress bonus)"
+      },
+      "validation_metrics": [
+        "success_like_terminal_rate > 0.1",
+        "episode_length < 500",
+        "fitness_score > 150"
+      ]
+    },
+    "reward_schema": {
+      "objective_success_bonus": "If both legs contact ground and |x| < 0.1 and |y| < 0.1 and |vy| < 0.5 and |angle| < 0.1: +200",
+      "progress_shaping": "-1 * sqrt(x^2 + y^2) - 0.3 * |vy|",
+      "regularizers": "-0.03 * m_power - 0.02 * s_power - 0.05 * |angle|",
+      "crash_penalty": "If terminated and not success: -100",
+      "main_engine_bonus": "If distance < 0.5 and not already claimed: +10 (one-time bonus, tracked via self.main_engine_bonus_claimed)",
+      "progress_bonus": "If distance < prev_distance: +0.1 * (prev_distance - distance) (continuous feedback for descending)",
+      "descent_reward": "If m_power > 0 and vy < 0: +0.5 * (prev_vy - vy) where prev_vy is the previous vertical velocity (stored in self.last_vy)",
+      "hovering_penalty": "If |vy| < 0.1 and distance >= previous_distance: -1.5 (penalty for hovering without progress)",
+      "diagnostics": "distance, vy, leg_contact, angle, angular_velocity, m_power, s_power, crash, main_engine_bonus, progress_bonus, descent_reward, hovering_penalty, prev_distance"
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    x, y, vx, vy, angle, angular_velocity, leg_left, leg_right = state\n    distance = (x**2 + y**2)**0.5\n    both_legs = leg_left > 0.5 and leg_right > 0.5\n    success = both_legs and abs(x) < 0.1 and abs(y) < 0.1 and abs(vy) < 0.5 and abs(angle) < 0.1\n    if success:\n        objective_bonus = 200.0\n    else:\n        objective_bonus = 0.0\n    progress = -1.0 * distance - 0.3 * abs(vy)\n    regularizers = -0.03 * m_power - 0.02 * s_power - 0.05 * abs(angle)\n    if terminated and not success:\n        crash_penalty = -100.0\n    else:\n        crash_penalty = 0.0\n    # One-time main engine bonus when close to pad\n    if not hasattr(self, 'main_engine_bonus_claimed'):\n        self.main_engine_bonus_claimed = False\n    if distance < 0.5 and not self.main_engine_bonus_claimed:\n        main_engine_bonus = 10.0\n        self.main_engine_bonus_claimed = True\n    else:\n        main_engine_bonus = 0.0\n    # Progress bonus for descending\n    if not hasattr(self, 'prev_distance'):\n        self.prev_distance = distance\n    if distance < self.prev_distance:\n        progress_bonus = 0.1 * (self.prev_distance - distance)\n    else:\n        progress_bonus = 0.0\n    # Descent reward\n    if m_power > 0 and vy < 0:\n        if not hasattr(self, 'last_vy'):\n            self.last_vy = vy\n        descent_reward = 0.5 * (self.last_vy - vy)\n        self.last_vy = vy\n    else:\n        descent_reward = 0.0\n        if hasattr(self, 'last_vy'):\n            del self.last_vy\n    # Hovering penalty\n    if abs(vy) < 0.1 and distance >= self.prev_distance:\n        hovering_penalty = -1.5\n    else:\n        hovering_penalty = 0.0\n    self.prev_distance = distance\n    reward = objective_bonus + progress + regularizers + crash_penalty + main_engine_bonus + progress_bonus + descent_reward + hovering_penalty\n    individual_reward = {\n        'objective_bonus': objective_bonus,\n        'progress': progress,\n        'regularizers': regularizers,\n        'crash_penalty': crash_penalty,\n        'main_engine_bonus': main_engine_bonus,\n        'progress_bonus': progress_bonus,\n        'descent_reward': descent_reward,\n        'hovering_penalty': hovering_penalty,\n        'distance': distance,\n        'vy': vy,\n        'leg_contact': both_legs,\n        'angle': angle,\n        'angular_velocity': angular_velocity,\n        'm_power': m_power,\n        's_power': s_power,\n        'crash': 1.0 if (terminated and not success) else 0.0\n    }\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "phase_1": "The agent will fire the main engine to descend toward the pad, collecting the progress bonus (+0.1 per unit distance decrease) and the descent reward. The hovering penalty (-1.5) will discourage hovering. The one-time main engine bonus (+10) will be collected when the agent first gets within 0.5 distance of the pad.",
+      "phase_2": "Near the pad, the agent will fine-tune its position and velocity to achieve the success condition (both legs contact, low velocity, near pad). The progress shaping (-1*distance -0.3*|vy|) will guide the agent to the pad center.",
+      "phase_3": "The agent will land softly with both legs contacting the pad, collecting the success bonus (+200). The crash penalty (-100) will discourage crashes."
+    },
+    "known_risks": [
+      "The one-time main engine bonus (+10) may be too small to incentivize descending if the progress bonus and descent reward are insufficient. If the agent does not descend, the hovering penalty may dominate and cause the agent to crash.",
+      "The progress bonus (+0.1 per unit distance decrease) may be too small to overcome the hovering penalty (-1.5) if the agent is hovering. The agent may still prefer to hover if the progress bonus is too weak.",
+      "The descent reward (0.5*(prev_vy - vy)) may be negative if vy increases (i.e., the agent slows its descent), which could discourage the agent from descending. This is a known issue from the current reward.",
+      "The agent may learn to oscillate between descending and hovering to collect the progress bonus without reaching the pad."
+    ],
+    "self_check": {
+      "interface_compliance": "The function signature matches compute_reward(self, state, m_power, s_power, terminated). Returns float(reward), individual_reward.",
+      "internal_state_usage": "Uses self.prev_distance, self.last_vy, and self.main_engine_bonus_claimed. All are initialized with hasattr checks.",
+      "no_custom_helper_methods": "No custom self helper methods are called.",
+      "no_rejected_patterns": "Does not add a hard distance threshold to main engine reward (failed pattern). Does not reduce main engine reward below +0.5 (failed pattern). Does not increase hovering penalty above -2.0 (failed pattern). Does not add reward for action 0 or orientation engines.",
+      "event_gated_reward": "The main engine bonus is a one-time event-gated reward (claimed once when distance < 0.5). The progress bonus is continuous but small. The success bonus is event-gated on landing."
+    }
+  }
+}

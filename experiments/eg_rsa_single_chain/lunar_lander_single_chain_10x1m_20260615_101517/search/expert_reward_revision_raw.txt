@@ -1,0 +1,94 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy learns to do nothing (action 0) 85% of the time, leading to uncontrolled descent and crash. The progress shaping (-1*distance -0.3*|vy|) is strongly negative, but the crash penalty (-100) dominates, so the agent cannot find a better policy. The success bonus is never reached because the agent never attempts to land properly. The previous edit (reducing progress shaping and adding main engine reward) failed because it did not address the core issue: the agent needs a strong, immediate positive signal for using the main engine to descend, not just a small bonus.",
+    "component_interaction_diagnosis": "The crash penalty (-100) and progress shaping (-91.6) together create a large negative return that overwhelms any positive signal. The agent receives -100 for crashing and -91.6 for moving away from the pad, but no positive reward for using the main engine to descend. The main engine reward added in the previous edit (+0.5) was too weak to overcome the negative shaping. The agent needs a much stronger incentive to fire the main engine and descend toward the pad.",
+    "failed_pattern_reuse_check": "The previous edit (medium scope) added a main engine reward of +0.5 but it was too weak. This revision will increase the main engine reward significantly and also add a positive reward for reducing vertical speed (vy) when the main engine is firing, to directly encourage controlled descent. We will not reduce progress shaping further because it already provides useful gradient; instead we will add a strong positive counterbalance.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "edit_scope": "medium",
+      "reason": "The policy is stuck in a local optimum of doing nothing and crashing. We need to add a strong positive reward for using the main engine (action 2) to descend, and also reward reducing vertical speed when the engine is on. This is a medium edit because we are adding two new terms but keeping the overall structure."
+    },
+    "hard_constraints_for_next_revision": [
+      "Do not reduce progress shaping further; it provides useful gradient.",
+      "Do not add a reward for doing nothing (action 0).",
+      "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+    ],
+    "expected_metric_changes": {
+      "action_2_probability": "increase from 0.014 to >0.3",
+      "episode_length": "increase from 72.2 to >100",
+      "success_like_terminal_rate": "increase from 0.0 to >0.0",
+      "fitness_score": "increase from -124.6 to >-100"
+    },
+    "validation_metrics": [
+      "action_2_probability > 0.3",
+      "episode_length > 100",
+      "success_like_terminal_rate > 0.0"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "single_chain_iter0",
+    "candidate_id": "single_chain_iter1",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "reason": "Add a strong positive reward for using the main engine (m_power > 0) to encourage descent, and a reward for reducing vertical speed when the main engine is firing. Keep progress shaping, success bonus, crash penalty, and regularizers unchanged. The main engine reward is set to +2.0 per step to provide a clear positive signal that can overcome the negative progress shaping.",
+      "preserved_design": [
+        "objective_success_bonus: +100 for successful landing",
+        "crash_penalty: -100 for termination without success",
+        "progress shaping: -1*distance -0.3*|vy|",
+        "fuel cost: -0.03*m_power -0.02*s_power",
+        "angle penalty: -0.05*|angle|"
+      ],
+      "changed_design": [
+        "added main engine reward: +2.0 when m_power > 0 (action 2 fired)",
+        "added descent reward: +0.5 * (prev_vy - vy) when m_power > 0 and vy < 0 (reward for reducing downward speed)"
+      ],
+      "rejected_patterns_avoided": [
+        "Do not reduce progress shaping further (previous edit failed).",
+        "Do not add a reward for doing nothing (action 0).",
+        "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+      ],
+      "expected_metric_changes": {
+        "action_2_probability": "increase from 0.014 to >0.3",
+        "episode_length": "increase from 72.2 to >100",
+        "success_like_terminal_rate": "increase from 0.0 to >0.0",
+        "fitness_score": "increase from -124.6 to >-100"
+      },
+      "validation_metrics": [
+        "action_2_probability > 0.3",
+        "episode_length > 100",
+        "success_like_terminal_rate > 0.0"
+      ]
+    },
+    "reward_schema": {
+      "objective_success_bonus": "If both legs contact ground and |x| < 0.1 and |y| < 0.1 and |vy| < 0.5 and |angle| < 0.1: +100",
+      "progress_shaping": "-1 * sqrt(x^2 + y^2) - 0.3 * |vy|",
+      "regularizers": "-0.03 * m_power - 0.02 * s_power - 0.05 * |angle|",
+      "crash_penalty": "If terminated and not success: -100",
+      "main_engine_reward": "If m_power > 0: +2.0",
+      "descent_reward": "If m_power > 0 and vy < 0: +0.5 * (prev_vy - vy) where prev_vy is the previous vertical velocity (stored in self.last_vy)",
+      "diagnostics": "distance, vy, leg_contact, angle, angular_velocity, m_power, s_power, crash, main_engine_reward, descent_reward"
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    x, y, vx, vy, angle, angular_velocity, leg_left, leg_right = state\n    distance = (x**2 + y**2)**0.5\n    both_legs = leg_left > 0.5 and leg_right > 0.5\n    success = both_legs and abs(x) < 0.1 and abs(y) < 0.1 and abs(vy) < 0.5 and abs(angle) < 0.1\n    if success:\n        objective_bonus = 100.0\n    else:\n        objective_bonus = 0.0\n    progress = -1.0 * distance - 0.3 * abs(vy)\n    regularizers = -0.03 * m_power - 0.02 * s_power - 0.05 * abs(angle)\n    if terminated and not success:\n        crash_penalty = -100.0\n    else:\n        crash_penalty = 0.0\n    # Main engine reward\n    if m_power > 0:\n        main_engine_reward = 2.0\n    else:\n        main_engine_reward = 0.0\n    # Descent reward: reward for reducing vertical speed when main engine is on\n    if m_power > 0 and vy < 0:\n        if not hasattr(self, 'last_vy'):\n            self.last_vy = vy\n        descent_reward = 0.5 * (self.last_vy - vy)\n        self.last_vy = vy\n    else:\n        descent_reward = 0.0\n        if hasattr(self, 'last_vy'):\n            del self.last_vy\n    reward = objective_bonus + progress + regularizers + crash_penalty + main_engine_reward + descent_reward\n    individual_reward = {\n        'objective_bonus': objective_bonus,\n        'progress': progress,\n        'regularizers': regularizers,\n        'crash_penalty': crash_penalty,\n        'main_engine_reward': main_engine_reward,\n        'descent_reward': descent_reward,\n        'distance': distance,\n        'vy': vy,\n        'leg_contact': both_legs,\n        'angle': angle,\n        'angular_velocity': angular_velocity,\n        'm_power': m_power,\n        's_power': s_power,\n        'crash': 1.0 if (terminated and not success) else 0.0\n    }\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "phase_1": "The agent will fire the main engine (action 2) more frequently to get the +2.0 reward, causing it to descend toward the pad.",
+      "phase_2": "As the agent descends, the progress shaping will provide additional gradient to move toward the pad. The descent reward will encourage smooth reduction of vertical speed.",
+      "phase_3": "If the agent reaches the pad with both legs and low velocity, it will receive the +100 success bonus."
+    },
+    "known_risks": [
+      "The agent might learn to fire the main engine continuously without descending (e.g., if it can hover), but the progress shaping and descent reward should prevent this.",
+      "The descent reward uses internal state (self.last_vy) which may cause issues if the environment resets without clearing it. We handle this by deleting the attribute when the engine is off.",
+      "The main engine reward might cause the agent to fire the engine even when it is not needed, but the fuel cost (-0.03*m_power) will penalize excessive use."
+    ],
+    "self_check": {
+      "interface_compliant": true,
+      "no_custom_helper_methods": true,
+      "uses_hasattr_or_self": true,
+      "returns_float_and_dict": true,
+      "no_rejected_patterns": true,
+      "component_scale_reasoning_included": true
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy is optimizing a combination of main engine reward (+2 per step when m_power>0 and distance decreasing) and side engine usage (s_power mean 436.2), while progress shaping (-245.5) and hovering penalty (-151.4) are large negative components. The policy avoids descending to the pad because the main engine reward is easily collected by firing the main engine while staying far from the pad (distance mean 224.9). The progress-conditioned main engine reward only requires distance to decrease, not to reach the pad, so the agent can collect +2 per step indefinitely by slowly descending from a high altitude. The hovering penalty (-0.5) is too weak to overcome the +2 main engine reward. The success bonus (+200) is rarely achieved because the agent never gets close enough to the pad to trigger both legs contact and low velocity. The descent reward (0.5*(prev_vy - vy)) is negligible (mean -0.89) because the agent does not consistently descend.",
+  "component_interaction_diagnosis": "The main engine reward (+2 per step) dominates the progress shaping (-1*distance -0.3*|vy|) and hovering penalty (-0.5). The agent can collect +2 per step by firing the main engine while distance decreases slowly, which yields a net positive reward even when far from the pad. The progress shaping penalizes distance but the main engine reward more than compensates. The hovering penalty is too small to discourage the agent from maintaining near-zero vertical velocity while still decreasing distance slowly. The success bonus is too sparse to influence behavior because the agent never reaches the landing condition. The descent reward is negligible because the agent does not consistently descend (vy is not consistently negative).",
+  "failed_pattern_reuse_check": "The previous edit (iter_006 to iter_007) increased hovering penalty to -2.0 and added a distance threshold (distance < 0.5) to the main engine reward, but fitness decreased. The distance threshold made the main engine reward unavailable when far from the pad, but the agent could not learn to descend because the progress shaping was too weak to overcome the loss of the main engine reward. The current edit should not add a hard distance threshold to the main engine reward. Instead, the main engine reward should be restructured to reward descending toward the pad with a magnitude that decreases as the agent gets closer, and the hovering penalty should be increased to make hovering unprofitable even when the main engine reward is available.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "reason": "The current reward has a fundamental design flaw: the main engine reward (+2 per step) is too large and can be collected indefinitely by slowly descending from a high altitude. The hovering penalty (-0.5) is too weak to counteract this. The success bonus (+200) is too sparse. A medium revision is needed to restructure the main engine reward to be a one-time or diminishing reward for descending, increase the hovering penalty, and add a progress bonus for getting close to the pad."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not add a hard distance threshold to the main engine reward (failed pattern from iter_006 to iter_007).",
+    "Do not reduce the main engine reward below +0.5 per step (failed pattern from iter_007 to iter_008).",
+    "Do not increase the hovering penalty above -2.0 per step (failed pattern from iter_006 to iter_007).",
+    "Do not add a reward for doing nothing (action 0).",
+    "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "episode_length": "decrease from 755.2 to <500",
+    "fitness_score": "increase from 113.33 to >150",
+    "main_engine_reward_mean": "decrease from 449.2 to <300",
+    "hovering_penalty_mean": "increase in magnitude from -151.4 to > -300",
+    "progress_mean": "increase from -245.5 to > -200"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate > 0.1",
+    "episode_length < 500",
+    "fitness_score > 150"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

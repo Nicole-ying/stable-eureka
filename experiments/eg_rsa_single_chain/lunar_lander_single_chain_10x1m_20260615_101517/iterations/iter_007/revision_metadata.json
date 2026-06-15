@@ -1,0 +1,36 @@
+{
+  "edit_scope": "medium",
+  "reason": "Increase the hovering penalty from -0.5 to -2.0 per step when |vy|<0.1 and distance is not decreasing, to make hovering more costly. Add a distance threshold to the main engine reward: the +2.0 reward only applies when distance < 0.5 (close to pad). This prevents the policy from collecting engine rewards while far from the pad. Keep all other components unchanged. The goal is to force the policy to descend to the pad before it can collect significant engine rewards, and to make hovering unprofitable.",
+  "preserved_design": [
+    "objective_success_bonus: +200 for successful landing",
+    "crash_penalty: -100 for termination without success",
+    "progress shaping: -1*distance -0.3*|vy|",
+    "fuel cost: -0.03*m_power -0.02*s_power",
+    "angle penalty: -0.05*|angle|",
+    "descent reward: 0.5*(prev_vy - vy) when m_power>0 and vy<0",
+    "progress-conditioned main engine reward: +2.0 when m_power>0 and distance decreasing"
+  ],
+  "changed_design": [
+    "hovering penalty: increased from -0.5 to -2.0 per step when |vy|<0.1 and distance >= previous_distance",
+    "main engine reward: added distance threshold (distance < 0.5) so that +2.0 only applies when close to pad"
+  ],
+  "rejected_patterns_avoided": [
+    "Do not make main engine reward conditional on vy<0 (failed pattern from iter_002 to iter_003).",
+    "Do not reduce progress shaping strength (failed pattern from iter_000 to iter_001).",
+    "Do not add a reward for doing nothing (action 0).",
+    "Do not add a reward for orientation engines (actions 1 and 3) unless necessary.",
+    "Do not remove the progress-conditioned main engine reward; instead, add a distance threshold."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "episode_length": "decrease from 755.2 to <500",
+    "fitness_score": "increase from 113.33 to >150",
+    "hovering_penalty_mean": "increase in magnitude from -151.4 to > -300",
+    "main_engine_reward_mean": "decrease from 449.2 to <300"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate > 0.1",
+    "episode_length < 500",
+    "fitness_score > 150"
+  ]
+}

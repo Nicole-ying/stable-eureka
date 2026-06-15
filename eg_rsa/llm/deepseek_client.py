@@ -14,6 +14,8 @@ class DeepSeekClient:
         temperature: float = 0.2,
         timeout: float = 300.0,
     ):
+        import httpx
+        import certifi
         from openai import OpenAI
 
         credential = os.environ.get(credential_env)
@@ -27,6 +29,10 @@ class DeepSeekClient:
             api_key=credential,
             base_url=base_url,
             timeout=self.timeout,
+            http_client=httpx.Client(
+                verify=certifi.where(),
+                timeout=self.timeout,
+            ),
         )
 
     def generate(self, prompt: str) -> str:

@@ -1,0 +1,42 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander-v2",
+  "expert_blueprint": {
+    "intended_behavior_phases": [
+      "Phase 1: Stabilize and descend toward pad using main engine and orientation control.",
+      "Phase 2: Fine-tune horizontal position and vertical velocity near pad.",
+      "Phase 3: Soft landing with both legs contacting pad, minimal residual velocity."
+    ],
+    "component_scale_reasoning": {
+      "objective_success_bonus": "Large positive reward (+100) for achieving both legs contact near pad with low velocity, to make success clearly distinguishable.",
+      "progress_shaping": "Moderate negative reward for distance from pad (-1 * distance) and vertical speed (-0.3 * |vy|) to guide descent; these are reachable and provide continuous feedback.",
+      "regularizers": "Mild penalties for fuel use (-0.03 * m_power, -0.02 * s_power) to encourage efficiency without discouraging necessary engine use; small penalty for angle deviation (-0.05 * |angle|) to promote upright posture.",
+      "crash_penalty": "Large negative reward (-100) for crashes to strongly discourage failure.",
+      "diagnostics": "Include distance, vertical speed, leg contact, angle, angular velocity, fuel usage, and crash indicator for monitoring."
+    },
+    "component_interaction_check": "The success bonus dominates when landing is achieved; progress shaping ensures the agent moves toward the pad; regularizers are mild enough not to overpower the shaping; crash penalty is high to avoid dangerous behavior."
+  },
+  "reward_schema": {
+    "objective_success_bonus": "If both legs contact ground and |x| < 0.1 and |y| < 0.1 and |vy| < 0.5 and |angle| < 0.1: +100",
+    "progress_shaping": "-1 * sqrt(x^2 + y^2) - 0.3 * |vy|",
+    "regularizers": "-0.03 * m_power - 0.02 * s_power - 0.05 * |angle|",
+    "crash_penalty": "If terminated and not success: -100",
+    "diagnostics": "distance, vy, leg_contact, angle, angular_velocity, m_power, s_power, crash"
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    x, y, vx, vy, angle, angular_velocity, leg_left, leg_right = state\n    distance = (x**2 + y**2)**0.5\n    both_legs = leg_left > 0.5 and leg_right > 0.5\n    success = both_legs and abs(x) < 0.1 and abs(y) < 0.1 and abs(vy) < 0.5 and abs(angle) < 0.1\n    if success:\n        objective_bonus = 100.0\n    else:\n        objective_bonus = 0.0\n    progress = -1.0 * distance - 0.3 * abs(vy)\n    regularizers = -0.03 * m_power - 0.02 * s_power - 0.05 * abs(angle)\n    if terminated and not success:\n        crash_penalty = -100.0\n    else:\n        crash_penalty = 0.0\n    reward = objective_bonus + progress + regularizers + crash_penalty\n    individual_reward = {\n        'objective_bonus': objective_bonus,\n        'progress': progress,\n        'regularizers': regularizers,\n        'crash_penalty': crash_penalty,\n        'distance': distance,\n        'vy': vy,\n        'leg_contact': both_legs,\n        'angle': angle,\n        'angular_velocity': angular_velocity,\n        'm_power': m_power,\n        's_power': s_power,\n        'crash': 1.0 if (terminated and not success) else 0.0\n    }\n    return float(reward), individual_reward",
+  "expected_behavior": "The agent should learn to descend toward the landing pad, using the main engine to control vertical speed and orientation engines to correct horizontal drift and maintain upright angle. It should avoid crashes and aim for a soft landing with both legs on the pad. The progress shaping provides continuous feedback, while the success bonus rewards precise landing. Regularizers mildly penalize fuel use and large angles but do not dominate.",
+  "known_risks": [
+    "The agent might hover indefinitely to avoid crash penalty while collecting small progress rewards; the success bonus should incentivize landing.",
+    "If progress shaping is too strong, the agent may land quickly but imprecisely; the success condition requires low velocity and near-zero position.",
+    "The crash penalty might cause the agent to avoid moving altogether; however, the progress shaping encourages movement toward the pad.",
+    "Fuel penalties might discourage engine use; they are set low to avoid this."
+  ],
+  "self_check": {
+    "interface_compliance": "Function signature matches: compute_reward(self, state, m_power, s_power, terminated) -> (float, dict).",
+    "no_external_dependencies": "No files, network, subprocess, eval, exec, open, or custom helper methods.",
+    "diagnostics_included": "individual_reward contains numeric diagnostics: distance, vy, leg_contact, angle, angular_velocity, m_power, s_power, crash.",
+    "objective_signal_active": "Success bonus is active when both legs contact and position/velocity/angle conditions are met.",
+    "regularizers_mild": "Penalties for fuel and angle are small relative to shaping and success bonus.",
+    "no_dense_penalty_dominated": "Reward includes positive objective bonus and progress shaping; penalties are mild."
+  }
+}

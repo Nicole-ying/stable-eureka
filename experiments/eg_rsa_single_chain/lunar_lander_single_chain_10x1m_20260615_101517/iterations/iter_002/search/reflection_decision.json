@@ -1,0 +1,29 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy is optimizing a hovering behavior: it fires the main engine (action 2) ~53% of the time, but never lands successfully (0% success-like terminal rate). The dominant reward component is main_engine_reward (+2 per step when m_power>0), which provides a large positive signal (~1027 per episode) that overwhelms the negative progress shaping (-320 per episode). The agent can collect this reward indefinitely by hovering, avoiding both the crash penalty and the need to land. The descent reward is ineffective because it requires vy<0 and m_power>0, but the agent can hover with vy≈0 and still collect the main engine reward. The success bonus (+100) is too small relative to the ~1027 main engine reward, so landing is not attractive.",
+  "component_interaction_diagnosis": "The main_engine_reward (+2 per step) is the dominant component by absolute return (1027.2). It is independent of descent or progress, so the agent can collect it while hovering. The progress shaping (-1*distance -0.3*|vy|) is negative but not strong enough to overcome the positive main engine reward. The descent reward (0.5*(prev_vy - vy)) is small and only activates when vy<0, which the agent avoids by hovering. The success bonus (+100) is a one-time event that is dwarfed by the per-step main engine reward over a 1000-step episode. The crash penalty (-100) is also a one-time event, so the agent prefers to avoid it by never descending too fast or crashing.",
+  "failed_pattern_reuse_check": "Previous edit (iter_002 to iter_003) attempted to condition main engine reward on vy<0 and add a hovering penalty, but it failed (fitness dropped by -45.28). That edit also increased success bonus to +200 and descent reward scale to 1.0. The failure suggests that making main engine reward conditional on descent was too restrictive and caused the agent to lose the main engine reward signal entirely when not descending, leading to unclear behavior. We should not repeat that pattern of making main engine reward conditional on vy<0. Instead, we should keep the main engine reward but make it conditional on progress toward the pad (e.g., decreasing distance) to encourage descent while still providing a positive signal.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "reason": "The current reward has a strong hovering bias due to unconditional main engine reward. We need to make the main engine reward conditional on progress toward the pad (decreasing distance) to encourage descent, while keeping the positive signal strong enough to maintain engine use. We will also increase the success bonus to +200 to make landing more attractive, and add a small penalty for hovering (vy≈0 and distance not decreasing) to discourage the current behavior. This is a medium edit because we are modifying the main engine reward condition and adding a hovering penalty, but preserving the overall structure."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not make main engine reward conditional on vy<0 (failed pattern from iter_002 to iter_003).",
+    "Do not reduce progress shaping strength (failed pattern from iter_000 to iter_001).",
+    "Do not add a reward for doing nothing (action 0).",
+    "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "episode_length": "decrease from 975.6 to <500",
+    "action_2_probability": "remain >0.3 but with more varied timing",
+    "fitness_score": "increase from 39.66 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate > 0.1",
+    "episode_length < 500",
+    "fitness_score > 100"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

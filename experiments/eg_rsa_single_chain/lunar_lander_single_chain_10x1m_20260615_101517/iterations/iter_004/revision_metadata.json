@@ -1,0 +1,34 @@
+{
+  "edit_scope": "medium",
+  "reason": "Replace the unconditional main engine reward (+2 per step when m_power>0) with a progress-conditioned main engine reward: +2 per step only when m_power>0 AND distance is decreasing (i.e., current distance < previous distance). This encourages the agent to use the main engine to descend toward the pad, not to hover. Add a small hovering penalty (-0.5 per step) when vy is near zero (|vy| < 0.1) and distance is not decreasing, to discourage the current hovering behavior. Increase the success bonus to +200 to make landing more attractive relative to the per-step rewards. Keep the descent reward (0.5*(prev_vy - vy)) but it will now be more effective because the agent will be descending. Keep progress shaping, crash penalty, and regularizers unchanged.",
+  "preserved_design": [
+    "objective_success_bonus: +200 for successful landing (increased from +100)",
+    "crash_penalty: -100 for termination without success",
+    "progress shaping: -1*distance -0.3*|vy|",
+    "fuel cost: -0.03*m_power -0.02*s_power",
+    "angle penalty: -0.05*|angle|",
+    "descent reward: 0.5*(prev_vy - vy) when m_power>0 and vy<0"
+  ],
+  "changed_design": [
+    "main engine reward: changed from unconditional +2.0 when m_power>0 to +2.0 only when m_power>0 AND distance is decreasing (current distance < previous distance)",
+    "added hovering penalty: -0.5 when |vy| < 0.1 AND distance is not decreasing (to discourage hovering)",
+    "success bonus: increased from +100 to +200"
+  ],
+  "rejected_patterns_avoided": [
+    "Do not make main engine reward conditional on vy<0 (failed pattern from iter_002 to iter_003).",
+    "Do not reduce progress shaping strength (failed pattern from iter_000 to iter_001).",
+    "Do not add a reward for doing nothing (action 0).",
+    "Do not add a reward for orientation engines (actions 1 and 3) unless necessary."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "episode_length": "decrease from 975.6 to <500",
+    "action_2_probability": "remain >0.3 but with more varied timing",
+    "fitness_score": "increase from 39.66 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate > 0.1",
+    "episode_length < 500",
+    "fitness_score > 100"
+  ]
+}
