@@ -13,11 +13,10 @@ from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.run_single_chain import run as run_bootstrap
 from eg_rsa.single_chain.agents import JsonAgent
 from eg_rsa.single_chain.controller import SearchController, write_controller_decision
-from eg_rsa.single_chain.env_builder import load_env_class, prepare_env_code
 from eg_rsa.single_chain.evidence import EvidenceBuilder
 from eg_rsa.single_chain.json_tools import read_json, read_text, write_json, write_text
 from eg_rsa.single_chain.memory_manager import MemoryManager
-from eg_rsa.single_chain.reward_validation import write_reward_code_files
+from eg_rsa.single_chain.reward_guard import prepare_guarded_reward_env
 from eg_rsa.single_chain.trainer import SingleChainPPOTrainer
 
 
@@ -68,9 +67,6 @@ def run_iterative(
 
     next_iteration_start = _next_iteration_index(run_dir)
 
-    # Existing runs should resume from the known elite by default, not from the
-    # last produced candidate. This prevents a rejected candidate from becoming
-    # the parent after restart.
     if start_best_dir:
         best_dir = Path(start_best_dir)
         best_evidence = EvidenceBuilder.build(best_dir, output_path=best_dir / "iteration_evidence.json")
@@ -169,7 +165,7 @@ def run_iterative(
         if candidate_dir.exists():
             raise FileExistsError(f"Refusing to overwrite existing candidate directory: {candidate_dir}")
         candidate_dir.mkdir(parents=True, exist_ok=True)
-        _materialize_revision(config, candidate_dir, revision, env_summary, target_summary, next_iteration)
+        _materialize_revision(config, candidate_dir, revision, env_summary, target_summary, llm_client, next_iteration)
 
         candidate_evidence = EvidenceBuilder.build(candidate_dir, output_path=candidate_dir / "iteration_evidence.json")
         decision = controller.decide(
@@ -210,7 +206,7 @@ def run_iterative(
             write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped after {consecutive_rejections} consecutive rejected candidates.\n")
             break
 
-        next_parent_dir = Path(decision.get("rollback", {}).get("next_parent_dir") or candidate_dir)
+        next_parent_dir = Path(decision.get("next_search_parent", {}).get("dir") or decision.get("rollback", {}).get("next_parent_dir") or candidate_dir)
         if not next_parent_dir.exists():
             next_parent_dir = best_dir
         parent_dir = next_parent_dir
@@ -226,23 +222,25 @@ def _materialize_revision(
     revision: Dict[str, Any],
     env_summary: Dict[str, Any],
     target_summary: Dict[str, Any],
+    llm_client: Any,
     iteration: int,
 ) -> None:
     reward_schema = revision.get("reward_schema") or {}
     reward_code = revision.get("reward_code") or ""
-    reward_dir = next_dir / "reward"
-    write_json(reward_dir / "reward_schema.json", reward_schema)
-    validation = write_reward_code_files(reward_code, reward_dir)
-    if not validation.get("valid", False):
-        raise RuntimeError(f"Revised reward failed validation. See {reward_dir / 'validation_report.json'}")
+    env_cls, reward_schema, reward_code, guard_summary = prepare_guarded_reward_env(
+        config=config,
+        output_dir=next_dir,
+        reward_schema=reward_schema,
+        reward_code=reward_code,
+        environment_understanding=env_summary,
+        target_alignment_contract=target_summary,
+        llm_client=llm_client,
+        repair_dir=next_dir / "search" / "reward_repairs",
+    )
 
     write_json(next_dir / "environment_understanding_summary.json", env_summary)
     write_json(next_dir / "target_alignment_summary.json", target_summary)
     write_json(next_dir / "revision_metadata.json", revision.get("edit_summary", {}))
-
-    env_cfg = config.get("environment", {}) or {}
-    env_py = prepare_env_code(ROOT / env_cfg["env_code_dir"], next_dir / "env_code", reward_code)
-    env_cls = load_env_class(env_py, env_cfg.get("class_name", "LunarLander"))
 
     trainer = SingleChainPPOTrainer(
         config=config,
