@@ -141,14 +141,7 @@ def run_iterative(
             search_dir / "expert_reward_revision_bundle.json",
             search_dir / "expert_reward_revision_raw.txt",
         )
-        reflection = revision_bundle.get("reflection_decision") or {
-            "file_type": "reflection_decision",
-            "agent_name": "ExpertRewardRevisionAgent",
-            "source": "expert_reward_revision_bundle",
-            "search_decision": revision_bundle.get("search_decision", {}),
-            "causal_diagnosis": revision_bundle.get("causal_diagnosis", {}),
-        }
-        revision = revision_bundle.get("revised_reward_schema_and_code") or revision_bundle
+        reflection, revision = _normalize_revision_bundle(revision_bundle)
         write_json(search_dir / "reflection_decision.json", reflection)
         write_json(search_dir / "revised_reward_schema_and_code.json", revision)
 
@@ -209,6 +202,49 @@ def run_iterative(
 
     write_text(run_dir / "ITERATIVE_DONE.txt", "single-chain iterative search finished\n")
     return run_dir
+
+
+def _normalize_revision_bundle(bundle: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    reflection = bundle.get("reflection_decision")
+    if not isinstance(reflection, dict):
+        reflection = {
+            "file_type": "reflection_decision",
+            "agent_name": "ExpertRewardRevisionAgent",
+            "source": "expert_reward_revision_bundle_fallback",
+            "causal_diagnosis": bundle.get("causal_diagnosis", ""),
+            "component_interaction_diagnosis": bundle.get("component_interaction_diagnosis", ""),
+            "failed_pattern_reuse_check": bundle.get("failed_pattern_reuse_check", ""),
+            "search_decision": bundle.get("search_decision", {}),
+            "hard_constraints_for_next_revision": bundle.get("hard_constraints_for_next_revision", []),
+            "expected_metric_changes": bundle.get("expected_metric_changes", {}),
+            "validation_metrics": bundle.get("validation_metrics", []),
+        }
+    reflection["search_decision"] = _normalize_search_decision(reflection.get("search_decision"))
+    reflection.setdefault("file_type", "reflection_decision")
+    reflection.setdefault("agent_name", "ExpertRewardRevisionAgent")
+
+    revision = bundle.get("revised_reward_schema_and_code")
+    if not isinstance(revision, dict):
+        revision = bundle
+    revision.setdefault("file_type", "revised_reward_schema_and_code")
+    return reflection, revision
+
+
+def _normalize_search_decision(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        value.setdefault("recommended_next_action", "revise_reward")
+        return value
+    if isinstance(value, str):
+        return {
+            "recommended_next_action": "revise_reward",
+            "reason": value,
+            "schema_normalized_from": "string",
+        }
+    return {
+        "recommended_next_action": "revise_reward",
+        "reason": "missing_or_invalid_search_decision",
+        "schema_normalized_from": type(value).__name__,
+    }
 
 
 def _read_json_with_fallback(primary: Path, fallback: Path) -> Dict[str, Any]:
