@@ -6,7 +6,7 @@ The current design is intentionally not a heavy multi-agent workflow. Expert rew
 
 ## Bootstrap pipeline
 
-The bootstrap path now uses two LLM calls before PPO training:
+The bootstrap path uses two LLM calls before PPO training:
 
 ```text
 task_description.txt + step.py
@@ -28,14 +28,16 @@ python -m eg_rsa.run_single_chain --config eg_rsa/single_chain/configs/lunar_lan
 
 ## Iterative pipeline
 
+Each revision iteration uses one LLM call before PPO training:
+
 ```text
 trained parent artifacts
   -> EvidenceBuilder
   -> iteration_evidence.json
   -> MemoryManager retrieves compact memories
   -> ExpertMemoryContext builds prescriptive constraints
-  -> ReflectionAgent reads evidence + expert context
-  -> RewardRevisionAgent reads reflection + expert context
+  -> ExpertRewardRevisionAgent
+  -> reflection_decision + revised_reward_schema + revised_reward_code
   -> RewardGuard before PPO
   -> PPO training for one new candidate
   -> SearchController accepts, rejects, or selects next parent
@@ -69,11 +71,10 @@ The runner creates:
   memory/reward_memory.jsonl
   search/
     expert_memory_context.json
+    expert_reward_revision_bundle.json
+    expert_reward_revision_raw.txt
     reflection_decision.json
-    reflection_raw.txt
-    expert_memory_context_after_reflection.json
     revised_reward_schema_and_code.json
-    reward_revision_raw.txt
   iterations/iter_001/
     reward/reward_schema.json
     reward/reward_code.py
@@ -95,7 +96,8 @@ The runner creates:
 ## Design choices
 
 - Bootstrap uses `TaskModelAgent` plus `ExpertRewardDesignerAgent`, not separate environment, target, architect, and reward agents.
-- Expert knowledge is static framework prior plus task-specific reasoning inside the reward designer output.
+- Iteration uses `ExpertRewardRevisionAgent`, not separate reflection and revision agents.
+- Expert knowledge is static framework prior plus task-specific reasoning inside the reward designer/revision outputs.
 - `ExpertMemoryContext` turns repeated measured failures into hard constraints for the next revision.
 - `RewardGuard` prevents invalid generated reward code from reaching expensive PPO training.
 - `SearchController` prevents a worse candidate from becoming the next edit parent; a selected parent is not retrained, only used as the next reward-edit base.
