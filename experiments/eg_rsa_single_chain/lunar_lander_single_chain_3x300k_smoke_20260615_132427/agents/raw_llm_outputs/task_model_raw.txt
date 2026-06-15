@@ -1,0 +1,58 @@
+{
+  "file_type": "task_model",
+  "environment_name": "LunarLander-v2",
+  "reward_function_interface": "compute_reward(state, m_power, s_power, terminated) -> (reward, individual_reward_dict)",
+  "primary_objective": "Land on the pad at (0,0) with legs in contact, minimizing time and fuel use.",
+  "state_space_summary": "8-dim: normalized x, y, linear velocities (x,y), angle, angular velocity, two leg contact booleans.",
+  "action_space_summary": "Discrete: 0=do nothing, 1=fire left orientation engine, 2=fire main engine, 3=fire right orientation engine.",
+  "intended_behavior_phases": [
+    "Phase 1: Stabilize and descend toward pad vicinity using main engine and orientation corrections.",
+    "Phase 2: Fine-tune horizontal position and vertical velocity for soft landing on pad.",
+    "Phase 3: Touch down with both legs on pad, zero velocity, upright orientation."
+  ],
+  "necessary_behaviors": [
+    "Use main engine to control vertical descent rate.",
+    "Use orientation engines to maintain upright angle and correct horizontal drift.",
+    "Avoid crashing (body contact with ground) and going out-of-bounds (|x|>=1).",
+    "Maintain lander awake (non-zero velocity or contact)."
+  ],
+  "success_signals_available_to_reward": [
+    "Both legs in contact with ground (state[6]==1 and state[7]==1).",
+    "Lander position near (0,0) (state[0] and state[1] close to 0).",
+    "Low linear and angular velocities at touchdown.",
+    "Episode termination without crash or out-of-bounds."
+  ],
+  "failure_or_stop_signals_available_to_reward": [
+    "Crash (game_over flag).",
+    "Out-of-bounds (|state[0]| >= 1.0).",
+    "Lander not awake (state becomes stationary without ground contact)."
+  ],
+  "dangerous_local_optima": [
+    "Hovering indefinitely at safe altitude without landing (avoids crash but never succeeds).",
+    "Landing off-pad but with legs down (avoids crash but misses primary objective).",
+    "Excessive orientation engine use causing oscillation or fuel waste without progress."
+  ],
+  "primary_selection_metric": "Success rate of landing on pad with both legs in contact and low velocity.",
+  "proxy_metrics": [
+    "Distance to pad (x,y).",
+    "Vertical speed magnitude.",
+    "Angle deviation from upright.",
+    "Fuel consumption (cumulative m_power and s_power)."
+  ],
+  "diagnostic_metrics": [
+    "Crash rate.",
+    "Out-of-bounds rate.",
+    "Average episode length.",
+    "Average final distance to pad.",
+    "Average final vertical speed.",
+    "Average final angle."
+  ],
+  "reward_design_constraints": [
+    "Reward must be computed from state, m_power, s_power, and terminated flag only.",
+    "Must return a scalar reward and a dictionary of individual reward components.",
+    "Encourage landing on pad (primary) while penalizing crash and out-of-bounds heavily.",
+    "Provide dense shaping for progress (e.g., distance reduction, velocity control) to avoid sparse reward issue.",
+    "Keep fuel penalty mild to avoid discouraging necessary engine use.",
+    "Avoid positive reward for hovering or off-pad landing."
+  ]
+}

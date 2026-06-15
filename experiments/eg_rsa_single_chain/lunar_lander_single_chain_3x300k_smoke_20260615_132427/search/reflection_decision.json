@@ -1,0 +1,33 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy only uses actions 1 (left orientation engine) and 3 (right orientation engine), never using action 0 (do nothing) or action 2 (main engine). The dominant reward component is distance_shaping (-730 mean return), which penalizes being far from the pad but does not reward descending. The policy learns to oscillate laterally using orientation engines, which reduces horizontal distance but never descends, leading to episodes that end without success (0% success rate). The crash penalty (-80 mean) is large but only applied at termination, so the policy avoids crashing by staying aloft but never attempts to land. The objective_success_bonus (+20 mean) is rarely achieved because the policy never fires the main engine to descend.",
+  "component_interaction_diagnosis": "distance_shaping dominates the reward signal (abs return 730) and is always negative, so the policy is primarily driven to reduce distance to pad. However, reducing distance without descending is possible by moving laterally, which only requires orientation engines (actions 1 and 3). The main engine (action 2) would increase downward velocity, which is penalized by velocity_regularizer (-0.1*|vy|) and would also increase distance_shaping if it moves the lander away from the pad. The hovering_penalty (-0.1) is too weak to overcome the combined disincentive to descend. The descending_progress_bonus added in the previous revision was not effective because it required tracking previous_y, which is not available in the stateless compute_reward function (no self attributes used).",
+  "action_coverage_diagnosis": "Actions 0 (do nothing) and 2 (main engine) are unused. Action 2 is essential for descending and landing. Action 0 is useful for stable phases near the pad. The previous revision attempted to incentivize action 2 via descending_progress_bonus, but that required stateful tracking (previous_y) which is not possible without self attributes. The stable_idle_bonus for action 0 was also ineffective because the policy never reaches a stable state near the pad. The reward must directly incentivize using the main engine to descend, without requiring memory of previous state.",
+  "failed_pattern_reuse_check": "The previous revision (medium scope) added descending_progress_bonus and stable_idle_bonus but failed because: (1) descending_progress_bonus required previous_y which is not accessible in the stateless compute_reward; (2) stable_idle_bonus was too weak and only triggered when already stable, which never happened. This revision must not repeat the pattern of adding stateful progress bonuses. Instead, directly reward using action 2 (main engine) when above the pad, and reward using action 0 when stable and near the pad.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "reason": "The current reward fails to incentivize descending and landing. The policy avoids the main engine because it increases downward velocity (penalized) and does not directly reduce distance. We need to add direct rewards for using action 2 (main engine) when the lander is above the pad, and for using action 0 when stable and near the pad. These rewards must be stateless (no previous_y). We also need to reduce the dominance of distance_shaping by lowering its weight. The previous attempt to add descending_progress_bonus failed because it required state; we replace it with a direct action-based reward."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not use stateful progress bonuses that require previous state (e.g., previous_y).",
+    "Directly reward using action 2 (main engine) when the lander is above the pad and not yet landed.",
+    "Directly reward using action 0 (do nothing) when the lander is stable, near the pad, and not yet landed.",
+    "Reduce distance_shaping weight to prevent dominance.",
+    "Ensure all diagnostic variables are initialized before any conditional assignment."
+  ],
+  "expected_metric_changes": {
+    "action_2_usage": "increase from 0.0 to at least 0.1",
+    "action_0_usage": "increase from 0.0 to at least 0.05",
+    "success_like_terminal_rate": "increase from 0.0 to at least 0.05",
+    "distance_shaping_abs_return": "decrease from 730 to below 150",
+    "fitness_score": "improve from -122 to above -100"
+  },
+  "validation_metrics": [
+    "action_2_usage > 0.05",
+    "action_0_usage > 0.02",
+    "success_like_terminal_rate > 0.02",
+    "distance_shaping_abs_return < 200"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

@@ -1,0 +1,143 @@
+{
+  "memory_type": "reward_transition",
+  "iteration_from": 1,
+  "iteration_to": 2,
+  "parent_candidate_id": "single_chain_iter0",
+  "candidate_id": "iter_002",
+  "before_metrics": {
+    "fitness_score": -122.24948220349609,
+    "generated_reward": -798.4831800818444,
+    "episode_length": 75.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "after_metrics": {
+    "fitness_score": -43.87851277727582,
+    "generated_reward": -240.4147164011374,
+    "episode_length": 88.2,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "metric_delta": {
+    "episode_length": 13.200000000000003,
+    "fitness_score": 78.37096942622026,
+    "generated_reward": 558.0684636807069,
+    "out_of_bounds_rate": 0.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0
+  },
+  "before_behavior": {
+    "action_distribution": {
+      "1": 0.5493333333333333,
+      "3": 0.45066666666666666
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "1",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [
+        "0",
+        "2"
+      ],
+      "coverage_ratio": 0.5
+    },
+    "dominant_action": {
+      "action": "1",
+      "probability": 0.5493333333333333
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "early_failure_or_uncontrolled_terminal"
+  },
+  "after_behavior": {
+    "action_distribution": {
+      "1": 0.21315192743764172,
+      "0": 0.13151927437641722,
+      "3": 0.2789115646258503,
+      "2": 0.3764172335600907
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [],
+      "coverage_ratio": 1.0
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.3764172335600907
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "early_failure_or_uncontrolled_terminal"
+  },
+  "reflection_diagnosis": {},
+  "edit_summary": {
+    "edit_scope": "medium",
+    "reason": "The policy never uses action 2 (main engine) or action 0 (do nothing). The main engine is essential for descending and landing. We add direct rewards for using these actions under appropriate conditions: (1) main_engine_bonus: +0.5 when action==2 and y>0 (above ground) to encourage descending; (2) stable_idle_bonus: +0.2 when action==0 and speed<0.1 and |angle|<0.1 and y<0.1 (near ground) to encourage stable hovering before landing. We also reduce distance_shaping weight from -10 to -2 to prevent dominance, and increase hovering_penalty from -0.1 to -0.5 to discourage indefinite hovering. These changes are stateless and directly target the unused actions.",
+    "preserved_design": [
+      "objective_success_bonus (+100) for successful landing",
+      "crash_penalty (-100) for failure",
+      "velocity_regularizer (-0.1 * |vy|)",
+      "angle_regularizer (-0.05 * |angle|)",
+      "fuel_penalty (-0.01 * (m_power + s_power))"
+    ],
+    "changed_design": [
+      "distance_shaping weight reduced from -10 to -2",
+      "hovering_penalty increased from -0.1 to -0.5",
+      "added main_engine_bonus: +0.5 if action==2 and y>0 (above ground) to encourage descending",
+      "added stable_idle_bonus: +0.2 if action==0 and speed<0.1 and |angle|<0.1 and y<0.1 (near ground) to encourage stable idle before landing"
+    ],
+    "rejected_patterns_avoided": [
+      "Not repeating stateful progress bonus: main_engine_bonus is stateless, based on current y and action.",
+      "Not repeating single_component_dominance: distance_shaping weight reduced from -10 to -2, budget ~2*max_distance (~2.8) per step, total per episode ~200, down from 730.",
+      "Not repeating unused_discrete_actions: direct action-based rewards for actions 0 and 2."
+    ],
+    "action_coverage_plan": "Action 2 (main engine) is directly rewarded with +0.5 per step when the lander is above ground (y>0). This creates a strong incentive to fire the main engine to descend. Action 0 (do nothing) is rewarded with +0.2 per step when the lander is stable, near the ground (y<0.1), and upright. This encourages the policy to use action 0 during the final approach phase. Actions 1 and 3 remain useful for orientation control. The increased hovering_penalty (-0.5) discourages indefinite hovering without descending.",
+    "expected_metric_changes": {
+      "action_2_usage": "increase from 0.0 to at least 0.1",
+      "action_0_usage": "increase from 0.0 to at least 0.05",
+      "success_like_terminal_rate": "increase from 0.0 to at least 0.05",
+      "distance_shaping_abs_return": "decrease from 730 to below 200",
+      "fitness_score": "improve from -122 to above -100"
+    },
+    "validation_metrics": [
+      "action_2_usage > 0.05",
+      "action_0_usage > 0.02",
+      "success_like_terminal_rate > 0.02",
+      "distance_shaping_abs_return < 200"
+    ]
+  },
+  "acceptance": {
+    "accepted_as_elite": true,
+    "reason": "fitness_score improved"
+  },
+  "reuse_policy": "positive_reference",
+  "lesson": "A medium reward revision from behavior 'early_failure_or_uncontrolled_terminal' to 'early_failure_or_uncontrolled_terminal' improved fitness_score by 78.371. Changed design summary: ['distance_shaping weight reduced from -10 to -2', 'hovering_penalty increased from -0.1 to -0.5', 'added main_engine_bonus: +0.5 if action==2 and y>0 (above ground) to encourage descending', 'added stable_idle_bonus: +0.2 if action==0 and speed<0.1 and |angle|<0.1 and y<0.1 (near ground) to encourage stable idle before landing']. Original diagnosis: unknown."
+}

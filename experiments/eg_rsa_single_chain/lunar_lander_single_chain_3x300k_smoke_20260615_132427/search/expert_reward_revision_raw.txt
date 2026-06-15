@@ -1,0 +1,100 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy only uses actions 1 (left orientation engine) and 3 (right orientation engine), never using action 0 (do nothing) or action 2 (main engine). The dominant reward component is distance_shaping (-730 mean return), which penalizes being far from the pad but does not reward descending. The policy learns to oscillate laterally using orientation engines, which reduces horizontal distance but never descends, leading to episodes that end without success (0% success rate). The crash penalty (-80 mean) is large but only applied at termination, so the policy avoids crashing by staying aloft but never attempts to land. The objective_success_bonus (+20 mean) is rarely achieved because the policy never fires the main engine to descend.",
+    "component_interaction_diagnosis": "distance_shaping dominates the reward signal (abs return 730) and is always negative, so the policy is primarily driven to reduce distance to pad. However, reducing distance without descending is possible by moving laterally, which only requires orientation engines (actions 1 and 3). The main engine (action 2) would increase downward velocity, which is penalized by velocity_regularizer (-0.1*|vy|) and would also increase distance_shaping if it moves the lander away from the pad. The hovering_penalty (-0.1) is too weak to overcome the combined disincentive to descend. The descending_progress_bonus added in the previous revision was not effective because it required tracking previous_y, which is not available in the stateless compute_reward function (no self attributes used).",
+    "action_coverage_diagnosis": "Actions 0 (do nothing) and 2 (main engine) are unused. Action 2 is essential for descending and landing. Action 0 is useful for stable phases near the pad. The previous revision attempted to incentivize action 2 via descending_progress_bonus, but that required stateful tracking (previous_y) which is not possible without self attributes. The stable_idle_bonus for action 0 was also ineffective because the policy never reaches a stable state near the pad. The reward must directly incentivize using the main engine to descend, without requiring memory of previous state.",
+    "failed_pattern_reuse_check": "The previous revision (medium scope) added descending_progress_bonus and stable_idle_bonus but failed because: (1) descending_progress_bonus required previous_y which is not accessible in the stateless compute_reward; (2) stable_idle_bonus was too weak and only triggered when already stable, which never happened. This revision must not repeat the pattern of adding stateful progress bonuses. Instead, directly reward using action 2 (main engine) when above the pad, and reward using action 0 when stable and near the pad.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "edit_scope": "medium",
+      "reason": "The current reward fails to incentivize descending and landing. The policy avoids the main engine because it increases downward velocity (penalized) and does not directly reduce distance. We need to add direct rewards for using action 2 (main engine) when the lander is above the pad, and for using action 0 when stable and near the pad. These rewards must be stateless (no previous_y). We also need to reduce the dominance of distance_shaping by lowering its weight. The previous attempt to add descending_progress_bonus failed because it required state; we replace it with a direct action-based reward."
+    },
+    "hard_constraints_for_next_revision": [
+      "Do not use stateful progress bonuses that require previous state (e.g., previous_y).",
+      "Directly reward using action 2 (main engine) when the lander is above the pad and not yet landed.",
+      "Directly reward using action 0 (do nothing) when the lander is stable, near the pad, and not yet landed.",
+      "Reduce distance_shaping weight to prevent dominance.",
+      "Ensure all diagnostic variables are initialized before any conditional assignment."
+    ],
+    "expected_metric_changes": {
+      "action_2_usage": "increase from 0.0 to at least 0.1",
+      "action_0_usage": "increase from 0.0 to at least 0.05",
+      "success_like_terminal_rate": "increase from 0.0 to at least 0.05",
+      "distance_shaping_abs_return": "decrease from 730 to below 150",
+      "fitness_score": "improve from -122 to above -100"
+    },
+    "validation_metrics": [
+      "action_2_usage > 0.05",
+      "action_0_usage > 0.02",
+      "success_like_terminal_rate > 0.02",
+      "distance_shaping_abs_return < 200"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "single_chain_iter0",
+    "candidate_id": "single_chain_iter1",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "reason": "The policy never uses action 2 (main engine) or action 0 (do nothing). The main engine is essential for descending and landing. We add direct rewards for using these actions under appropriate conditions: (1) main_engine_bonus: +0.5 when action==2 and y>0 (above ground) to encourage descending; (2) stable_idle_bonus: +0.2 when action==0 and speed<0.1 and |angle|<0.1 and y<0.1 (near ground) to encourage stable hovering before landing. We also reduce distance_shaping weight from -10 to -2 to prevent dominance, and increase hovering_penalty from -0.1 to -0.5 to discourage indefinite hovering. These changes are stateless and directly target the unused actions.",
+      "preserved_design": [
+        "objective_success_bonus (+100) for successful landing",
+        "crash_penalty (-100) for failure",
+        "velocity_regularizer (-0.1 * |vy|)",
+        "angle_regularizer (-0.05 * |angle|)",
+        "fuel_penalty (-0.01 * (m_power + s_power))"
+      ],
+      "changed_design": [
+        "distance_shaping weight reduced from -10 to -2",
+        "hovering_penalty increased from -0.1 to -0.5",
+        "added main_engine_bonus: +0.5 if action==2 and y>0 (above ground) to encourage descending",
+        "added stable_idle_bonus: +0.2 if action==0 and speed<0.1 and |angle|<0.1 and y<0.1 (near ground) to encourage stable idle before landing"
+      ],
+      "rejected_patterns_avoided": [
+        "Not repeating stateful progress bonus: main_engine_bonus is stateless, based on current y and action.",
+        "Not repeating single_component_dominance: distance_shaping weight reduced from -10 to -2, budget ~2*max_distance (~2.8) per step, total per episode ~200, down from 730.",
+        "Not repeating unused_discrete_actions: direct action-based rewards for actions 0 and 2."
+      ],
+      "action_coverage_plan": "Action 2 (main engine) is directly rewarded with +0.5 per step when the lander is above ground (y>0). This creates a strong incentive to fire the main engine to descend. Action 0 (do nothing) is rewarded with +0.2 per step when the lander is stable, near the ground (y<0.1), and upright. This encourages the policy to use action 0 during the final approach phase. Actions 1 and 3 remain useful for orientation control. The increased hovering_penalty (-0.5) discourages indefinite hovering without descending.",
+      "expected_metric_changes": {
+        "action_2_usage": "increase from 0.0 to at least 0.1",
+        "action_0_usage": "increase from 0.0 to at least 0.05",
+        "success_like_terminal_rate": "increase from 0.0 to at least 0.05",
+        "distance_shaping_abs_return": "decrease from 730 to below 200",
+        "fitness_score": "improve from -122 to above -100"
+      },
+      "validation_metrics": [
+        "action_2_usage > 0.05",
+        "action_0_usage > 0.02",
+        "success_like_terminal_rate > 0.02",
+        "distance_shaping_abs_return < 200"
+      ]
+    },
+    "reward_schema": {
+      "objective_success_bonus": "float, +100 if both legs contact ground, |x|<0.1, |y|<0.1, |vy|<0.1, |angle|<0.1",
+      "crash_penalty": "float, -100 if terminated and not success",
+      "distance_shaping": "float, -2 * sqrt(x^2 + y^2)",
+      "velocity_regularizer": "float, -0.1 * |vy|",
+      "angle_regularizer": "float, -0.05 * |angle|",
+      "fuel_penalty": "float, -0.01 * (m_power + s_power)",
+      "hovering_penalty": "float, -0.5 if speed<0.1 and not leg_contact and not terminated",
+      "main_engine_bonus": "float, +0.5 if action==2 and y>0",
+      "stable_idle_bonus": "float, +0.2 if action==0 and speed<0.1 and |angle|<0.1 and y<0.1 and not leg_contact and not terminated"
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state variables\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    angular_vel = state[5]\n    leg1 = state[6]\n    leg2 = state[7]\n\n    # Initialize diagnostic variables\n    distance_to_pad = 0.0\n    vertical_velocity = 0.0\n    angle_val = 0.0\n    leg_contact_both = 0.0\n    crash_or_out_of_bounds = 0.0\n    hovering = 0.0\n    objective_success_bonus = 0.0\n    crash_penalty = 0.0\n    distance_shaping = 0.0\n    velocity_regularizer = 0.0\n    angle_regularizer = 0.0\n    fuel_penalty = 0.0\n    hovering_penalty = 0.0\n    main_engine_bonus = 0.0\n    stable_idle_bonus = 0.0\n\n    # Compute distance to pad\n    distance_to_pad = (x**2 + y**2)**0.5\n    vertical_velocity = abs(vy)\n    angle_val = abs(angle)\n    leg_contact_both = 1.0 if (leg1 > 0.5 and leg2 > 0.5) else 0.0\n\n    # Objective success bonus: both legs on ground, near pad, low velocity, upright\n    if leg_contact_both > 0.5 and abs(x) < 0.1 and abs(y) < 0.1 and abs(vy) < 0.1 and abs(angle) < 0.1:\n        objective_success_bonus = 100.0\n\n    # Crash or out-of-bounds penalty\n    if terminated and objective_success_bonus == 0.0:\n        crash_or_out_of_bounds = 1.0\n        crash_penalty = -100.0\n\n    # Distance shaping (reduced weight)\n    distance_shaping = -2.0 * distance_to_pad\n\n    # Velocity regularizer\n    velocity_regularizer = -0.1 * vertical_velocity\n\n    # Angle regularizer\n    angle_regularizer = -0.05 * angle_val\n\n    # Fuel penalty\n    fuel_penalty = -0.01 * (m_power + s_power)\n\n    # Hovering penalty: low speed, no ground contact, not terminated (increased)\n    speed = (vx**2 + vy**2)**0.5\n    if speed < 0.1 and leg_contact_both < 0.5 and not terminated:\n        hovering = 1.0\n        hovering_penalty = -0.5\n\n    # Main engine bonus: reward using action 2 when above ground\n    # Note: action is not directly available in compute_reward, so we infer from m_power\n    # m_power > 0 indicates main engine firing (action 2)\n    if m_power > 0 and y > 0:\n        main_engine_bonus = 0.5\n\n    # Stable idle bonus: reward using action 0 when stable and near ground\n    # s_power == 0 and m_power == 0 indicates action 0 (do nothing)\n    if m_power == 0 and s_power == 0 and speed < 0.1 and abs(angle) < 0.1 and y < 0.1 and leg_contact_both < 0.5 and not terminated:\n        stable_idle_bonus = 0.2\n\n    # Total reward\n    reward = objective_success_bonus + crash_penalty + distance_shaping + velocity_regularizer + angle_regularizer + fuel_penalty + hovering_penalty + main_engine_bonus + stable_idle_bonus\n\n    # Individual reward dictionary\n    individual_reward = {\n        'objective_success_bonus': objective_success_bonus,\n        'crash_penalty': crash_penalty,\n        'distance_shaping': distance_shaping,\n        'velocity_regularizer': velocity_regularizer,\n        'angle_regularizer': angle_regularizer,\n        'fuel_penalty': fuel_penalty,\n        'hovering_penalty': hovering_penalty,\n        'main_engine_bonus': main_engine_bonus,\n        'stable_idle_bonus': stable_idle_bonus,\n        'distance_to_pad': distance_to_pad,\n        'vertical_velocity': vertical_velocity,\n        'angle': angle_val,\n        'leg_contact_both': leg_contact_both,\n        'crash_or_out_of_bounds': crash_or_out_of_bounds,\n        'hovering': hovering\n    }\n\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "expected_action_distribution_change": "Action 2 (main engine) usage should increase from 0% to at least 10% because the main_engine_bonus (+0.5 per step when y>0) directly rewards firing the main engine. Action 0 (do nothing) usage should increase from 0% to at least 5% because the stable_idle_bonus (+0.2 per step) rewards being stable and idle near the ground. Actions 1 and 3 usage may decrease slightly but remain significant for orientation control. The policy should start descending toward the pad, leading to more successful landings."
+    },
+    "known_risks": [
+      "The main_engine_bonus is inferred from m_power>0, which may also be true during landing when both legs contact (but then objective_success_bonus dominates). This is acceptable.",
+      "The stable_idle_bonus requires m_power==0 and s_power==0, which may also occur during free fall. The condition y<0.1 ensures it only triggers near the ground.",
+      "If the policy learns to oscillate between firing main engine and idling to collect both bonuses, the hovering_penalty (-0.5) should discourage prolonged idling without descending."
+    ],
+    "self_check": {
+      "all_diagnostic_variables_initialized_before_branches": true,
+      "does_not_call_custom_self_methods": true
+    }
+  }
+}

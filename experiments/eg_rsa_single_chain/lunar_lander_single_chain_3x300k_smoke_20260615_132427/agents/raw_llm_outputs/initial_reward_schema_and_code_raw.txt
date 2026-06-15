@@ -1,0 +1,55 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander-v2",
+  "expert_blueprint": {
+    "intended_behavior_phases": [
+      "Phase 1: Stabilize and descend toward pad vicinity using main engine and orientation corrections.",
+      "Phase 2: Fine-tune horizontal position and vertical velocity for soft landing on pad.",
+      "Phase 3: Touch down with both legs on pad, zero velocity, upright orientation."
+    ],
+    "component_scale_reasoning": {
+      "objective_success_bonus": "Large positive reward (+100) for successful landing (both legs on ground, near pad, low velocity) to strongly incentivize task completion.",
+      "crash_penalty": "Large negative reward (-100) for crash or out-of-bounds to discourage failure.",
+      "distance_shaping": "Moderate shaping (-10 * distance_to_pad) to provide dense progress feedback toward the pad.",
+      "velocity_regularizer": "Mild penalty (-0.1 * |vertical_velocity|) to encourage soft landing without discouraging necessary descent.",
+      "angle_regularizer": "Mild penalty (-0.05 * |angle|) to encourage upright posture.",
+      "fuel_penalty": "Very mild penalty (-0.01 * (m_power + s_power)) to discourage excessive fuel use without hindering necessary engine firings.",
+      "hovering_penalty": "Small penalty (-0.1) when hovering (low speed, no ground contact) to discourage indefinite hovering."
+    },
+    "diagnostic_terms": [
+      "distance_to_pad",
+      "vertical_velocity",
+      "angle",
+      "leg_contact_both",
+      "crash_or_out_of_bounds",
+      "hovering"
+    ]
+  },
+  "reward_schema": {
+    "objective_success_bonus": "float, +100 if both legs contact ground, |x|<0.1, |y|<0.1, |vertical_velocity|<0.1, |angle|<0.1",
+    "crash_penalty": "float, -100 if terminated and not success",
+    "distance_shaping": "float, -10 * sqrt(x^2 + y^2)",
+    "velocity_regularizer": "float, -0.1 * |vertical_velocity|",
+    "angle_regularizer": "float, -0.05 * |angle|",
+    "fuel_penalty": "float, -0.01 * (m_power + s_power)",
+    "hovering_penalty": "float, -0.1 if |velocity|<0.1 and not leg_contact and not terminated"
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state variables\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    angular_vel = state[5]\n    leg1 = state[6]\n    leg2 = state[7]\n\n    # Initialize diagnostic variables\n    distance_to_pad = 0.0\n    vertical_velocity = 0.0\n    angle_val = 0.0\n    leg_contact_both = 0.0\n    crash_or_out_of_bounds = 0.0\n    hovering = 0.0\n    objective_success_bonus = 0.0\n    crash_penalty = 0.0\n    distance_shaping = 0.0\n    velocity_regularizer = 0.0\n    angle_regularizer = 0.0\n    fuel_penalty = 0.0\n    hovering_penalty = 0.0\n\n    # Compute distance to pad\n    distance_to_pad = (x**2 + y**2)**0.5\n    vertical_velocity = abs(vy)\n    angle_val = abs(angle)\n    leg_contact_both = 1.0 if (leg1 > 0.5 and leg2 > 0.5) else 0.0\n\n    # Objective success bonus: both legs on ground, near pad, low velocity, upright\n    if leg_contact_both > 0.5 and abs(x) < 0.1 and abs(y) < 0.1 and abs(vy) < 0.1 and abs(angle) < 0.1:\n        objective_success_bonus = 100.0\n\n    # Crash or out-of-bounds penalty\n    if terminated and objective_success_bonus == 0.0:\n        crash_or_out_of_bounds = 1.0\n        crash_penalty = -100.0\n\n    # Distance shaping\n    distance_shaping = -10.0 * distance_to_pad\n\n    # Velocity regularizer\n    velocity_regularizer = -0.1 * vertical_velocity\n\n    # Angle regularizer\n    angle_regularizer = -0.05 * angle_val\n\n    # Fuel penalty\n    fuel_penalty = -0.01 * (m_power + s_power)\n\n    # Hovering penalty: low speed, no ground contact, not terminated\n    speed = (vx**2 + vy**2)**0.5\n    if speed < 0.1 and leg_contact_both < 0.5 and not terminated:\n        hovering = 1.0\n        hovering_penalty = -0.1\n\n    # Total reward\n    reward = objective_success_bonus + crash_penalty + distance_shaping + velocity_regularizer + angle_regularizer + fuel_penalty + hovering_penalty\n\n    # Individual reward dictionary\n    individual_reward = {\n        'objective_success_bonus': objective_success_bonus,\n        'crash_penalty': crash_penalty,\n        'distance_shaping': distance_shaping,\n        'velocity_regularizer': velocity_regularizer,\n        'angle_regularizer': angle_regularizer,\n        'fuel_penalty': fuel_penalty,\n        'hovering_penalty': hovering_penalty,\n        'distance_to_pad': distance_to_pad,\n        'vertical_velocity': vertical_velocity,\n        'angle': angle_val,\n        'leg_contact_both': leg_contact_both,\n        'crash_or_out_of_bounds': crash_or_out_of_bounds,\n        'hovering': hovering\n    }\n\n    return float(reward), individual_reward",
+  "expected_behavior": "The agent should learn to descend toward the pad, maintain upright orientation, control vertical velocity, and land softly on the pad with both legs. The large success bonus encourages landing, while distance shaping provides dense guidance. Mild penalties prevent excessive fuel use and hovering. The agent should avoid crashes and out-of-bounds due to large penalties.",
+  "known_risks": [
+    "The agent might learn to hover just above the pad to avoid crash penalty while collecting distance shaping, but the hovering penalty and lack of success bonus should discourage this.",
+    "The agent might land off-pad with legs down to avoid crash penalty, but the distance shaping and success bonus require proximity to pad.",
+    "The agent might use excessive orientation engines, but the fuel penalty is mild and may not fully prevent oscillation.",
+    "The success condition may be too strict (all thresholds must be met), potentially leading to sparse success signal initially."
+  ],
+  "self_check": {
+    "objective_signal_active": true,
+    "reachable_progress_feedback": true,
+    "mild_regularizers": true,
+    "diagnostics_included": true,
+    "no_dense_penalty_dominated": true,
+    "all_variables_initialized_before_branches": true,
+    "no_external_side_effects": true,
+    "returns_float_and_dict": true
+  }
+}
