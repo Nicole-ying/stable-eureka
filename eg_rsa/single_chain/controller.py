@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from .json_tools import write_json
 
 
 class SearchController:
-    """Environment-agnostic candidate acceptance and rollback policy.
+    """Environment-agnostic candidate acceptance and parent-selection policy.
+
+    Important distinction:
+    - A trained candidate is never trained again.
+    - When a new candidate is rejected, the next LLM revision uses the current
+      elite reward/schema/code as the parent input.
+    - Only the newly generated child candidate is trained.
 
     The controller never uses task-specific thresholds such as LunarLander landing
     distances. It only compares the configured primary metric, generic behavior
-    labels, and measured regressions. Its job is to prevent a bad revision from
-    becoming the next parent just because it finished training.
+    labels, and measured regressions.
     """
 
     def __init__(self, config: Dict[str, Any]):
@@ -20,8 +25,12 @@ class SearchController:
         search_cfg = config.get("search", {}) or {}
         self.primary_metric = controller_cfg.get("primary_metric") or search_cfg.get("primary_metric") or "fitness_score"
         self.accept_if_primary_improves = bool(controller_cfg.get("accept_if_primary_improves", True))
-        self.rollback_on_rejection = bool(controller_cfg.get("rollback_on_rejection", True))
-        self.use_best_as_parent_after_rejection = bool(controller_cfg.get("use_best_as_parent_after_rejection", True))
+        self.use_elite_as_parent_after_rejection = bool(
+            controller_cfg.get(
+                "use_elite_as_parent_after_rejection",
+                controller_cfg.get("use_best_as_parent_after_rejection", True),
+            )
+        )
         self.allow_non_improving_parent = bool(controller_cfg.get("allow_non_improving_parent", False))
         self.reject_behavior_regression = bool(controller_cfg.get("reject_behavior_regression", True))
         self.stop_after_consecutive_rejections = int(controller_cfg.get("stop_after_consecutive_rejections", 0) or 0)
@@ -63,15 +72,24 @@ class SearchController:
             accepted_as_parent = False
 
         rejected = not accepted_as_parent
+
         next_parent_dir = str(candidate_dir)
-        next_parent_source = "candidate"
-        if rejected and self.rollback_on_rejection:
-            next_parent_dir = str(best_dir if self.use_best_as_parent_after_rejection else parent_dir)
-            next_parent_source = "elite" if self.use_best_as_parent_after_rejection else "parent"
+        next_parent_source = "accepted_candidate"
+        if rejected:
+            next_parent_dir = str(best_dir if self.use_elite_as_parent_after_rejection else parent_dir)
+            next_parent_source = "elite_parent" if self.use_elite_as_parent_after_rejection else "previous_parent"
 
         should_stop = False
         if self.stop_after_consecutive_rejections > 0 and rejected:
             should_stop = (consecutive_rejections + 1) >= self.stop_after_consecutive_rejections
+
+        next_search_parent = {
+            "source": next_parent_source,
+            "dir": next_parent_dir,
+            "uses_existing_trained_artifact_as_parent_only": True,
+            "will_retrain_selected_parent": False,
+            "will_train_new_child_candidate_next": True,
+        }
 
         return {
             "file_type": "controller_decision",
@@ -95,10 +113,12 @@ class SearchController:
             "accepted_as_elite": accepted_as_elite,
             "rejected": rejected,
             "rejection_reasons": rejection_reasons,
+            "next_search_parent": next_search_parent,
             "rollback": {
-                "enabled": bool(rejected and self.rollback_on_rejection),
+                "enabled": rejected,
                 "next_parent_source": next_parent_source,
                 "next_parent_dir": next_parent_dir,
+                "will_retrain_selected_parent": False,
             },
             "should_stop": should_stop,
         }
@@ -120,8 +140,6 @@ class SearchController:
         p_len = _metric(parent, "episode_length")
         c_len = _metric(candidate, "episode_length")
 
-        # Generic signs of regression: success-like behavior collapses, or an
-        # episode becomes much longer without primary-metric improvement.
         if p_success > 0.0 and c_success <= 0.0:
             return True
         if p_len > 0 and c_len > 3.0 * p_len and _metric(candidate, self.primary_metric) <= _metric(parent, self.primary_metric):
