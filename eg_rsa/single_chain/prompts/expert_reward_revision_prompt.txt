@@ -10,10 +10,14 @@ Rules:
 - Use direct hasattr/self attributes if internal state is needed.
 - Initialize every diagnostic variable before any if/else branch that may conditionally assign it.
 - Use expert_memory_context as hard guidance.
+- If expert_memory_context.search_mode_recommendation exists, treat next_search_mode as the required search mode unless you explicitly justify a safer override.
+- If expert_memory_context.expert_audit_pack exists, address reward_scale_audit, reward_payment_audit, trajectory_phase_report, and objective_signal_alignment_audit in the diagnosis.
 - Do not repeat rejected edit patterns unless the context changed and you explain why.
 - Include component scale reasoning and expected behavior change.
 - Analyze action_space_report if present. If some discrete actions were unused, decide whether any unused action is necessary for success and explain how the revised reward changes action coverage.
+- If all discrete actions are already used but success_like_terminal_rate remains near zero, shift from action-coverage repair to trajectory-phase guidance.
 - Completion-like rewards should be event gated, one-shot, or progress based.
+- Repeatable positive action/control bonuses must be phase-conditioned, progress-conditioned, diminishing, or explicitly justified.
 - search_decision must be a JSON object, not a string.
 
 Required JSON shape:
@@ -24,9 +28,11 @@ Required JSON shape:
     "causal_diagnosis": "...",
     "component_interaction_diagnosis": "...",
     "action_coverage_diagnosis": "...",
+    "expert_audit_diagnosis": "...",
     "failed_pattern_reuse_check": "...",
     "search_decision": {
       "recommended_next_action": "revise_reward",
+      "next_search_mode": "from expert_memory_context.search_mode_recommendation.next_search_mode when present",
       "edit_scope": "small | medium | large | restructuring",
       "reason": "..."
     },
@@ -40,18 +46,22 @@ Required JSON shape:
     "candidate_id": "...",
     "edit_summary": {
       "edit_scope": "small | medium | large | restructuring",
+      "next_search_mode": "...",
       "reason": "...",
       "preserved_design": [],
       "changed_design": [],
       "rejected_patterns_avoided": [],
       "action_coverage_plan": "...",
+      "phase_guidance_plan": "...",
+      "payment_mode_plan": "...",
       "expected_metric_changes": {},
       "validation_metrics": []
     },
     "reward_schema": {},
     "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    ...",
     "expected_behavior": {
-      "expected_action_distribution_change": "..."
+      "expected_action_distribution_change": "...",
+      "expected_phase_change": "..."
     },
     "known_risks": [],
     "self_check": {
