@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -28,7 +29,12 @@ def as_json_text(data: Dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> Path:
+def run_iterative(
+    config_path: str,
+    bootstrap_run_dir: Optional[str] = None,
+    start_parent_dir: Optional[str] = None,
+    start_best_dir: Optional[str] = None,
+) -> Path:
     config_path = Path(config_path)
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
@@ -60,17 +66,45 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
     write_json(run_dir / "environment_understanding_summary.json", env_summary)
     write_json(run_dir / "target_alignment_summary.json", target_summary)
 
-    # Parent means the candidate whose reward will be edited next.
-    parent_dir = run_dir
-    parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
-    best_dir = parent_dir
-    best_evidence: Dict[str, Any] = parent_evidence
+    next_iteration_start = _next_iteration_index(run_dir)
+
+    # Existing runs should resume from the known elite by default, not from the
+    # last produced candidate. This prevents a rejected candidate from becoming
+    # the parent after restart.
+    if start_best_dir:
+        best_dir = Path(start_best_dir)
+        best_evidence = EvidenceBuilder.build(best_dir, output_path=best_dir / "iteration_evidence.json")
+    elif (run_dir / "best_iteration_evidence.json").exists():
+        best_evidence = read_json(run_dir / "best_iteration_evidence.json")
+        best_dir = _candidate_dir_for_evidence(run_dir, best_evidence) or run_dir
+        best_evidence = EvidenceBuilder.build(best_dir, output_path=best_dir / "iteration_evidence.json")
+    else:
+        best_dir = run_dir
+        best_evidence = EvidenceBuilder.build(best_dir, output_path=best_dir / "iteration_evidence.json")
+
+    if start_parent_dir:
+        parent_dir = Path(start_parent_dir)
+        parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
+    elif next_iteration_start > 1:
+        parent_dir = best_dir
+        parent_evidence = best_evidence
+    else:
+        parent_dir = run_dir
+        parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
+
     write_json(run_dir / "best_iteration_evidence.json", best_evidence)
     write_text(run_dir / "BEST_PARENT.txt", str(best_dir) + "\n")
+    write_text(run_dir / "CURRENT_PARENT.txt", str(parent_dir) + "\n")
+    write_json(run_dir / "resume_state.json", {
+        "next_iteration_start": next_iteration_start,
+        "parent_dir": str(parent_dir),
+        "best_dir": str(best_dir),
+        "total_iterations": total_iterations,
+    })
 
     consecutive_rejections = 0
 
-    for next_iteration in range(1, total_iterations):
+    for next_iteration in range(next_iteration_start, total_iterations):
         search_dir = parent_dir / "search"
         search_dir.mkdir(parents=True, exist_ok=True)
 
@@ -100,7 +134,6 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
             write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped at iteration {next_iteration - 1}: stop_success\n")
             break
 
-        # If the LLM explicitly asks to roll back, use the elite as the edit parent immediately.
         if reflection.get("search_decision", {}).get("recommended_next_action") == "rollback_to_best" and best_dir != parent_dir:
             write_json(search_dir / "controller_pre_revision_decision.json", {
                 "action": "rollback_to_best_before_revision",
@@ -133,6 +166,8 @@ def run_iterative(config_path: str, bootstrap_run_dir: Optional[str] = None) -> 
         )
 
         candidate_dir = run_dir / "iterations" / f"iter_{next_iteration:03d}"
+        if candidate_dir.exists():
+            raise FileExistsError(f"Refusing to overwrite existing candidate directory: {candidate_dir}")
         candidate_dir.mkdir(parents=True, exist_ok=True)
         _materialize_revision(config, candidate_dir, revision, env_summary, target_summary, next_iteration)
 
@@ -224,6 +259,32 @@ def _materialize_revision(
     write_json(next_dir / "reward_trace.json", reward_trace)
 
 
+def _next_iteration_index(run_dir: Path) -> int:
+    iterations_dir = run_dir / "iterations"
+    if not iterations_dir.exists():
+        return 1
+    max_idx = 0
+    for child in iterations_dir.iterdir():
+        if not child.is_dir():
+            continue
+        match = re.fullmatch(r"iter_(\d+)", child.name)
+        if match:
+            max_idx = max(max_idx, int(match.group(1)))
+    return max_idx + 1
+
+
+def _candidate_dir_for_evidence(run_dir: Path, evidence: Dict[str, Any]) -> Optional[Path]:
+    candidate_id = str(evidence.get("candidate_id") or "")
+    if candidate_id in {"single_chain_iter0", "iter_000", run_dir.name}:
+        return run_dir
+    match = re.fullmatch(r"iter_(\d+)", candidate_id)
+    if match:
+        path = run_dir / "iterations" / f"iter_{int(match.group(1)):03d}"
+        if path.exists():
+            return path
+    return None
+
+
 def _environment_summary(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "file_type": "environment_understanding_summary",
@@ -264,8 +325,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run iterative EG-RSA single-chain reward search")
     parser.add_argument("--config", required=True, help="Path to EG-RSA single-chain YAML config")
     parser.add_argument("--bootstrap-run-dir", default=None, help="Optional existing single-chain run dir to continue from")
+    parser.add_argument("--start-parent-dir", default=None, help="Optional candidate directory to edit next")
+    parser.add_argument("--start-best-dir", default=None, help="Optional elite candidate directory")
     args = parser.parse_args()
-    run_dir = run_iterative(args.config, bootstrap_run_dir=args.bootstrap_run_dir)
+    run_dir = run_iterative(
+        args.config,
+        bootstrap_run_dir=args.bootstrap_run_dir,
+        start_parent_dir=args.start_parent_dir,
+        start_best_dir=args.start_best_dir,
+    )
     print(f"EG-RSA iterative single-chain search finished: {run_dir}")
 
 
