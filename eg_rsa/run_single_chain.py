@@ -59,19 +59,16 @@ def run(config_path: str) -> Path:
     sandbox_inputs = copy_inputs(config, run_dir)
     llm_client = build_llm_client(config)
     if llm_client is None:
-        raise RuntimeError("single_chain requires an LLM backend: eg_rsa.edit_agent.backend must be ollama or deepseek")
+        raise RuntimeError("single_chain requires an LLM backend")
 
     prompts_out = run_dir / "agent_prompts"
     prompts_out.mkdir(parents=True, exist_ok=True)
-    env_prompt = read_text(PROMPT_DIR / "environment_understanding_prompt.txt")
-    target_prompt = read_text(PROMPT_DIR / "target_alignment_prompt.txt")
-    architect_prompt = read_text(PROMPT_DIR / "expert_reward_architect_prompt.txt")
-    reward_prompt = read_text(PROMPT_DIR / "initial_reward_schema_code_prompt.txt")
-    write_text(prompts_out / "environment_understanding_prompt.txt", env_prompt)
-    write_text(prompts_out / "target_alignment_prompt.txt", target_prompt)
-    write_text(prompts_out / "expert_reward_architect_prompt.txt", architect_prompt)
-    write_text(prompts_out / "initial_reward_schema_code_prompt.txt", reward_prompt)
-    write_text(prompts_out / "reward_repair_prompt.txt", read_text(PROMPT_DIR / "reward_repair_prompt.txt"))
+    task_model_prompt = read_text(PROMPT_DIR / "task_model_prompt.txt")
+    reward_designer_prompt = read_text(PROMPT_DIR / "expert_reward_designer_prompt.txt")
+    repair_prompt = read_text(PROMPT_DIR / "reward_repair_prompt.txt")
+    write_text(prompts_out / "task_model_prompt.txt", task_model_prompt)
+    write_text(prompts_out / "expert_reward_designer_prompt.txt", reward_designer_prompt)
+    write_text(prompts_out / "reward_repair_prompt.txt", repair_prompt)
 
     expert_priors = get_expert_priors()
     write_json(run_dir / "expert_reward_design_priors.json", expert_priors)
@@ -79,44 +76,29 @@ def run(config_path: str) -> Path:
     agents_dir = run_dir / "agents"
     raw_dir = agents_dir / "raw_llm_outputs"
 
-    environment_understanding = JsonAgent("EnvironmentUnderstandingAgent", llm_client, env_prompt).run(
+    task_model = JsonAgent("TaskModelAgent", llm_client, task_model_prompt).run(
         sandbox_inputs,
-        agents_dir / "environment_understanding.json",
-        raw_dir / "environment_understanding_raw.txt",
+        agents_dir / "task_model.json",
+        raw_dir / "task_model_raw.txt",
     )
 
-    target_alignment_contract = JsonAgent("TargetAlignmentAgent", llm_client, target_prompt).run(
+    initial_reward = JsonAgent("ExpertRewardDesignerAgent", llm_client, reward_designer_prompt).run(
         {
             **sandbox_inputs,
-            "environment_understanding_json": as_json_text(environment_understanding),
-        },
-        agents_dir / "target_alignment_contract.json",
-        raw_dir / "target_alignment_contract_raw.txt",
-    )
-
-    expert_blueprint = JsonAgent("ExpertRewardArchitectAgent", llm_client, architect_prompt).run(
-        {
-            **sandbox_inputs,
+            "task_model_json": as_json_text(task_model),
             "expert_reward_design_priors_json": as_json_text(expert_priors),
-            "environment_understanding_json": as_json_text(environment_understanding),
-            "target_alignment_contract_json": as_json_text(target_alignment_contract),
-        },
-        agents_dir / "expert_reward_design_blueprint.json",
-        raw_dir / "expert_reward_design_blueprint_raw.txt",
-    )
-    write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
-
-    initial_reward = JsonAgent("InitialRewardSchemaAndCodeAgent", llm_client, reward_prompt).run(
-        {
-            **sandbox_inputs,
-            "expert_reward_design_priors_json": as_json_text(expert_priors),
-            "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
-            "environment_understanding_json": as_json_text(environment_understanding),
-            "target_alignment_contract_json": as_json_text(target_alignment_contract),
         },
         agents_dir / "initial_reward_schema_and_code.json",
         raw_dir / "initial_reward_schema_and_code_raw.txt",
     )
+
+    expert_blueprint = initial_reward.get("expert_blueprint") or {}
+    write_json(run_dir / "task_model.json", task_model)
+    write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
+
+    # Compatibility outputs for older analysis utilities and iterative resume code.
+    write_json(agents_dir / "environment_understanding.json", _environment_compat_from_task_model(task_model))
+    write_json(agents_dir / "target_alignment_contract.json", _target_compat_from_task_model(task_model))
 
     reward_schema = initial_reward.get("reward_schema") or {}
     reward_code = initial_reward.get("reward_code") or ""
@@ -125,8 +107,8 @@ def run(config_path: str) -> Path:
         output_dir=run_dir,
         reward_schema=reward_schema,
         reward_code=reward_code,
-        environment_understanding=environment_understanding,
-        target_alignment_contract=target_alignment_contract,
+        environment_understanding=task_model,
+        target_alignment_contract=task_model,
         llm_client=llm_client,
         repair_dir=agents_dir / "reward_repairs",
     )
@@ -135,14 +117,50 @@ def run(config_path: str) -> Path:
         config=config,
         output_dir=run_dir / "training",
         env_cls=env_cls,
-        environment_understanding=environment_understanding,
-        target_alignment_contract=target_alignment_contract,
+        environment_understanding=task_model,
+        target_alignment_contract=task_model,
         reward_schema=reward_schema,
     )
     reward_trace = trainer.train()
     write_json(run_dir / "reward_trace.json", reward_trace)
     write_text(run_dir / "DONE.txt", "single-chain EG-RSA bootstrap run finished\n")
     return run_dir
+
+
+def _environment_compat_from_task_model(task_model: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "file_type": "environment_understanding",
+        "source": "task_model_compat",
+        "environment_name": task_model.get("environment_name"),
+        "task_goal": task_model.get("primary_objective"),
+        "reward_function_interface": task_model.get("reward_function_interface"),
+        "state_space": task_model.get("state_space_summary"),
+        "action_space": task_model.get("action_space_summary"),
+        "termination_modes": task_model.get("failure_or_stop_signals_available_to_reward"),
+        "success_like_ending": task_model.get("success_signals_available_to_reward"),
+        "failure_like_endings": task_model.get("failure_or_stop_signals_available_to_reward"),
+        "behavior_trajectory_prior": task_model.get("intended_behavior_phases"),
+        "reward_design_risks": task_model.get("dangerous_local_optima"),
+    }
+
+
+def _target_compat_from_task_model(task_model: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "file_type": "target_alignment_contract",
+        "source": "task_model_compat",
+        "environment_name": task_model.get("environment_name"),
+        "primary_objective": task_model.get("primary_objective"),
+        "objective_decomposition": task_model.get("intended_behavior_phases"),
+        "behavior_trajectory_alignment": task_model.get("intended_behavior_phases"),
+        "metric_priority": task_model.get("primary_selection_metric"),
+        "primary_selection_metric": task_model.get("primary_selection_metric", "fitness_score"),
+        "proxy_metrics": task_model.get("proxy_metrics"),
+        "diagnostic_metrics": task_model.get("diagnostic_metrics"),
+        "success_criteria": task_model.get("success_signals_available_to_reward"),
+        "failure_modes": task_model.get("dangerous_local_optima"),
+        "bad_local_optima": task_model.get("dangerous_local_optima"),
+        "reward_generator_constraints": task_model.get("reward_design_constraints"),
+    }
 
 
 def main() -> None:
