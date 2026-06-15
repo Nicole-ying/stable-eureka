@@ -11,6 +11,7 @@ import yaml
 
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.single_chain.agents import JsonAgent
+from eg_rsa.single_chain.expert_priors import get_expert_priors
 from eg_rsa.single_chain.json_tools import read_text, write_json, write_text
 from eg_rsa.single_chain.reward_guard import prepare_guarded_reward_env
 from eg_rsa.single_chain.trainer import SingleChainPPOTrainer
@@ -64,11 +65,16 @@ def run(config_path: str) -> Path:
     prompts_out.mkdir(parents=True, exist_ok=True)
     env_prompt = read_text(PROMPT_DIR / "environment_understanding_prompt.txt")
     target_prompt = read_text(PROMPT_DIR / "target_alignment_prompt.txt")
+    architect_prompt = read_text(PROMPT_DIR / "expert_reward_architect_prompt.txt")
     reward_prompt = read_text(PROMPT_DIR / "initial_reward_schema_code_prompt.txt")
     write_text(prompts_out / "environment_understanding_prompt.txt", env_prompt)
     write_text(prompts_out / "target_alignment_prompt.txt", target_prompt)
+    write_text(prompts_out / "expert_reward_architect_prompt.txt", architect_prompt)
     write_text(prompts_out / "initial_reward_schema_code_prompt.txt", reward_prompt)
     write_text(prompts_out / "reward_repair_prompt.txt", read_text(PROMPT_DIR / "reward_repair_prompt.txt"))
+
+    expert_priors = get_expert_priors()
+    write_json(run_dir / "expert_reward_design_priors.json", expert_priors)
 
     agents_dir = run_dir / "agents"
     raw_dir = agents_dir / "raw_llm_outputs"
@@ -88,9 +94,23 @@ def run(config_path: str) -> Path:
         raw_dir / "target_alignment_contract_raw.txt",
     )
 
+    expert_blueprint = JsonAgent("ExpertRewardArchitectAgent", llm_client, architect_prompt).run(
+        {
+            **sandbox_inputs,
+            "expert_reward_design_priors_json": as_json_text(expert_priors),
+            "environment_understanding_json": as_json_text(environment_understanding),
+            "target_alignment_contract_json": as_json_text(target_alignment_contract),
+        },
+        agents_dir / "expert_reward_design_blueprint.json",
+        raw_dir / "expert_reward_design_blueprint_raw.txt",
+    )
+    write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
+
     initial_reward = JsonAgent("InitialRewardSchemaAndCodeAgent", llm_client, reward_prompt).run(
         {
             **sandbox_inputs,
+            "expert_reward_design_priors_json": as_json_text(expert_priors),
+            "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
             "environment_understanding_json": as_json_text(environment_understanding),
             "target_alignment_contract_json": as_json_text(target_alignment_contract),
         },
