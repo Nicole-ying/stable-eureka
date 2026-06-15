@@ -1,0 +1,92 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy optimizes for immediate 'progress_bonus' derived from distance reduction (free-fall), which is maximized by Action 0. This dense positive signal outweighs the mild fuel cost and delayed crash penalty. The agent learns to fall fast rather than brake, as braking reduces distance-reduction rate (lowering progress bonus) while incurring fuel costs.",
+    "component_interaction_diagnosis": "'progress_bonus' (+0.5 * delta_dist) conflicts with 'velocity_penalty' (-0.2 * |vy|). Free-fall maximizes the former and minimizes the latter until impact. The terminal crash penalty (-50) is too sparse to correct this dense shaping bias during learning, leading to high-impact crashes.",
+    "failed_pattern_reuse_check": "Previous revision (iter_0 -> iter_1) introduced distance-reduction shaping which improved fitness but failed to increase success rate. Repeating weight tuning on this structure is unlikely to solve the safety conflict; structural change required.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "edit_scope": "medium",
+      "reason": "Remove misleading distance-reduction shaping and replace with proximity-based negative shaping combined with gated velocity penalty to align immediate rewards with safe approach behavior."
+    },
+    "hard_constraints_for_next_revision": [
+      "Do not reward raw distance reduction (encourages falling).",
+      "Velocity penalty must scale with proximity to ground.",
+      "Keep fuel cost mild to allow necessary braking maneuvers."
+    ],
+    "expected_metric_changes": {
+      "action_0_probability": "< 0.6",
+      "success_like_terminal_rate": "> 0.1",
+      "average_velocity_at_contact": "< 1.5"
+    },
+    "validation_metrics": [
+      "proximity_shaping_mean",
+      "velocity_penalty_mean",
+      "action_2_probability"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "iter_001",
+    "candidate_id": "iter_002",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "reason": "Replaced distance-reduction shaping with proximity-based negative shaping and gated quadratic velocity penalty to discourage free-fall near the pad.",
+      "preserved_design": [
+        "Sparse landing bonus (+100)",
+        "Crash/out-of-bounds penalties (-50/-20)",
+        "Fuel consumption cost (-0.05)"
+      ],
+      "changed_design": [
+        "Removed progress_bonus (distance reduction).",
+        "Added proximity_shaping (-0.1 * distance) to encourage approach without rewarding speed.",
+        "Modified velocity_penalty: Quadratic and gated by distance (< 1.5) to enforce braking near pad."
+      ],
+      "rejected_patterns_avoided": [
+        "Rewarding raw distance reduction",
+        "Uniform velocity penalty across all altitudes"
+      ],
+      "expected_metric_changes": {
+        "action_0_probability": "< 0.6",
+        "success_like_terminal_rate": "> 0.1",
+        "average_velocity_at_contact": "< 1.5"
+      },
+      "validation_metrics": [
+        "proximity_shaping_mean",
+        "velocity_penalty_mean",
+        "action_2_probability"
+      ]
+    },
+    "reward_schema": {
+      "inputs": [
+        "state: List[float] (8-dim)",
+        "m_power: float",
+        "s_power: float",
+        "terminated: bool"
+      ],
+      "outputs": [
+        "reward: float",
+        "individual_reward: Dict[str, Any]"
+      ],
+      "internal_state": []
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Unpack state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    ang_vel = state[5]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Diagnostics (Numeric) ---\n    distance_to_target = (x**2 + y**2)**0.5\n    vertical_velocity_mag = abs(vy)\n    fuel_consumption = m_power + s_power\n    angle_deviation = abs(angle)\n\n    individual_reward['distance_to_target'] = float(distance_to_target)\n    individual_reward['vertical_velocity'] = float(vertical_velocity_mag)\n    individual_reward['fuel_consumption'] = float(fuel_consumption)\n    individual_reward['angle_deviation'] = float(angle_deviation)\n\n    # --- Objective Feedback (Sparse) ---\n    landed = (leg_l >= 0.9 and leg_r >= 0.9)\n    on_pad = abs(x) < 0.5\n    soft_touchdown = vertical_velocity_mag < 2.0\n\n    if terminated:\n        if landed and on_pad and soft_touchdown:\n            reward += 100.0\n            individual_reward['landing_success'] = True\n        else:\n            crash_penalty = -50.0\n            out_of_bounds_penalty = -20.0\n            \n            if hasattr(self, 'game_over') and self.game_over:\n                reward += crash_penalty\n            elif abs(x) >= 1.0:\n                reward += out_of_bounds_penalty\n            else:\n                # Bad landing (e.g., high velocity impact)\n                reward -= 25.0\n            individual_reward['landing_success'] = False\n        \n        return float(reward), individual_reward\n\n    # --- Reachable Progress Feedback (Dense Shaping) ---\n    # Proximity shaping: Encourage getting closer without rewarding falling speed\n    proximity_shaping = -0.1 * distance_to_target\n    \n    # Velocity penalty: Quadratic and gated by proximity to enforce braking near pad\n    velocity_penalty = 0.0\n    if distance_to_target < 1.5:\n        velocity_penalty = -0.5 * (vertical_velocity_mag ** 2)\n    \n    reward += proximity_shaping + velocity_penalty\n    individual_reward['proximity_shaping'] = float(proximity_shaping)\n    individual_reward['velocity_penalty'] = float(velocity_penalty)\n\n    # --- Mild Regularizers ---\n    fuel_penalty = -0.05 * fuel_consumption\n    angle_stability = -0.02 * angle_deviation\n    \n    reward += fuel_penalty + angle_stability\n    individual_reward['fuel_penalty'] = float(fuel_penalty)\n    individual_reward['angle_stability'] = float(angle_stability)\n\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "phase_1_descent": "Agent moves towards pad to reduce proximity penalty.",
+      "phase_2_braking": "As distance < 1.5, velocity penalty activates, incentivizing Main Engine (Action 2) use.",
+      "phase_3_landing": "Agent maintains low velocity and alignment for +100 success bonus."
+    },
+    "known_risks": [
+      "Proximity penalty might encourage hovering at distance=1.5 if velocity penalty is too high.",
+      "Quadratic velocity penalty may be too harsh initially, causing oscillation."
+    ],
+    "self_check": {
+      "interface_compliance": true,
+      "no_helper_methods": true,
+      "state_tracking_removed": true,
+      "shaping_logic_updated": true
+    }
+  },
+  "agent_name": "ExpertRewardRevisionAgent"
+}

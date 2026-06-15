@@ -1,0 +1,91 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy avoids Main Engine (Action 2) due to immediate fuel cost outweighing delayed landing benefit. High velocity/distance penalties punish necessary descent dynamics, creating a 'do nothing' local optimum where the agent accepts high cumulative step penalties rather than paying fuel costs that do not guarantee immediate success.",
+    "component_interaction_diagnosis": "Velocity penalty (-1.0 * abs(vy)) and distance penalties (-0.5) dominate the reward signal (vel_mag=82, dist_y=66), masking the sparse terminal reward (+/- 100). The agent optimizes for minimizing immediate step costs by inaction (Action 0 dominant ~62%), leading to uncontrolled falls or early termination without landing.",
+    "failed_pattern_reuse_check": "Avoiding Iter 2->3 pattern: No state history/delta calculations used. Avoiding Iter 1->2 pattern: Not removing all shaping, but balancing with positive thrust incentive. Avoiding Iter 0->1 pattern: Removing explicit vertical velocity penalty to prevent gravity conflict.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "edit_scope": "medium",
+      "reason": "Introduce conditional positive shaping for Main Engine usage when upright to break the 'do nothing' local optimum, while reducing step-wise penalty weights to allow exploration time."
+    },
+    "hard_constraints_for_next_revision": [
+      "Do not use self state history (no delta calculations).",
+      "Keep terminal reward dominant (+/- 100).",
+      "Ensure thrust incentive does not exceed fuel cost + safety margin.",
+      "Maintain function interface signature."
+    ],
+    "expected_metric_changes": {
+      "action_2_probability": "+",
+      "success_like_terminal_rate": "+",
+      "avg_reward": "+"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate",
+      "mean_episode_return",
+      "main_engine_usage_rate"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "iter_001",
+    "candidate_id": "iter_002_revised",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "reason": "Added conditional thrust incentive to encourage Main Engine usage when upright. Reduced distance/angle penalty weights to prevent dominance over terminal signal.",
+      "preserved_design": [
+        "Terminal success/failure rewards (+/- 100)",
+        "Fuel consumption penalty (-0.1)",
+        "Diagnostic info return structure"
+      ],
+      "changed_design": [
+        "Reduced distance penalty weight from -0.5 to -0.2",
+        "Reduced angle penalty weight from -0.5 to -0.2",
+        "Removed vertical velocity penalty (-1.0 * abs(vy))",
+        "Added conditional thrust bonus (+0.5 if m_power > 0 and upright)"
+      ],
+      "rejected_patterns_avoided": [
+        "State-dependent delta shaping (Iter 2->3)",
+        "High-weight step-wise penalties masking terminal signal (Iter 0->1)",
+        "Removing all shaping leading to uncontrolled descent (Iter 1->2)"
+      ],
+      "expected_metric_changes": {
+        "success_rate": "+",
+        "avg_reward": "+"
+      },
+      "validation_metrics": [
+        "success_like_terminal_rate",
+        "mean_episode_return"
+      ]
+    },
+    "reward_schema": {
+      "inputs": {
+        "state": "8-dim vector [x, y, vx, vy, angle, ang_vel, leg0, leg1]",
+        "m_power": "float (main engine power used this step)",
+        "s_power": "float (side engine power used this step)",
+        "terminated": "boolean (episode ended)"
+      },
+      "outputs": {
+        "reward": "float (scalar reward for this step)",
+        "individual_reward": "dict (diagnostic metrics: fuel_step, dist_x, dist_y, vel_mag, angle_err, is_success, thrust_bonus)"
+      }
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    reward = 0.0\n    info = {}\n    \n    # Extract state components\n    x_pos = state[0]\n    y_pos = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg0 = state[6]\n    leg1 = state[7]\n    \n    # Diagnostics\n    info['fuel_step'] = float(m_power + s_power)\n    info['dist_x'] = abs(x_pos)\n    info['dist_y'] = abs(y_pos)\n    info['vel_mag'] = (vx**2 + vy**2)**0.5\n    info['angle_err'] = abs(angle)\n    \n    if terminated:\n        # Terminal Evaluation\n        is_safe_landing = False\n        if leg1 == 1.0 and leg0 == 1.0:\n            # Check velocity thresholds for safe landing (normalized approx)\n            if abs(vx) < 1.5 and abs(vy) < 1.5 and abs(x_pos) < 0.5:\n                is_safe_landing = True\n        \n        info['is_success'] = int(is_safe_landing)\n        \n        if is_safe_landing:\n            reward += 100.0\n        else:\n            reward -= 100.0\n    else:\n        # Step-wise Shaping & Regularization\n        # Reduced penalty for distance from target (x=0, y=0) to allow exploration\n        dist_penalty = -0.2 * (abs(x_pos) + abs(y_pos))\n        \n        # Mild penalty for orientation deviation\n        angle_penalty = -0.2 * abs(angle)\n        \n        # Fuel consumption penalty\n        fuel_penalty = -0.1 * (m_power + s_power)\n        \n        # NEW: Conditional Thrust Incentive\n        # Encourage Main Engine usage when upright to break 'do nothing' local optimum\n        thrust_bonus = 0.0\n        if m_power > 0 and abs(angle) < 0.5:\n            thrust_bonus = 0.5\n        \n        reward += dist_penalty + angle_penalty + fuel_penalty + thrust_bonus\n    \n    info['thrust_bonus'] = float(thrust_bonus)\n    return float(reward), info",
+    "expected_behavior": {
+      "action_2_usage": "Increased due to positive incentive when upright.",
+      "descent_control": "Improved as agent balances fuel cost with thrust bonus and reduced distance penalties.",
+      "terminal_success": "Higher probability of reaching +100 terminal reward."
+    },
+    "known_risks": [
+      "Thrust bonus might encourage hovering if not balanced by distance penalty.",
+      "Reduced distance penalty might allow drifting too far horizontally before correction."
+    ],
+    "self_check": {
+      "interface_compliance": true,
+      "no_helper_methods": true,
+      "stateless_logic": true
+    }
+  },
+  "agent_name": "ExpertRewardRevisionAgent"
+}

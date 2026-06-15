@@ -1,0 +1,94 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy is stuck in a 'passive falling' local optimum (Action 0 dominant at 93.5%). The current reward uses negative shaping (-distance, -velocity), creating a loss-minimization landscape where doing nothing incurs zero fuel cost and minimal immediate penalty compared to the risk of active control. Falling naturally reduces distance without fuel cost, making Action 0 competitive despite not achieving landing.",
+    "component_interaction_diagnosis": "The static distance penalty (-0.1 * dist) does not distinguish between passive falling (free progress) and active steering (costly progress). The agent optimizes for zero action cost rather than task completion because the cumulative negative shaping outweighs the sparse +100 landing bonus, and Action 0 minimizes immediate regret.",
+    "failed_pattern_reuse_check": "Avoid increasing fuel/action penalties as per hard constraints. Do not rely solely on static state penalties which encourage inaction. Must introduce positive progress signals that require active control to maximize safely.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "edit_scope": "medium",
+      "reason": "Requires changing shaping logic from static penalty to dynamic progress bonus and adding state tracking (prev_dist) to incentivize controlled descent over passive falling."
+    },
+    "hard_constraints_for_next_revision": [
+      "Do not increase fuel or action costs.",
+      "Must include positive dense reward for distance reduction.",
+      "Velocity penalty must balance progress bonus to prevent crashing for points.",
+      "Maintain sparse landing bonus (+100) as primary objective."
+    ],
+    "expected_metric_changes": {
+      "action_distribution_entropy": "Increase (reduce Action 0 dominance)",
+      "success_like_terminal_rate": "Increase from 0.0",
+      "average_episode_return": "Improve (less negative)"
+    },
+    "validation_metrics": [
+      "Action distribution variance",
+      "Mean distance reduction per step",
+      "Landing success rate"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "single_chain_iter0",
+    "candidate_id": "single_chain_iter1_progress_bonus",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "reason": "Replaced static distance penalty with dynamic progress bonus to incentivize active control. Added state tracking for previous distance/velocity.",
+      "preserved_design": [
+        "Sparse landing bonus (+100)",
+        "Crash/out-of-bounds penalties (-50/-20)",
+        "Fuel consumption cost (-0.05)"
+      ],
+      "changed_design": [
+        "Distance shaping: -0.1*dist -> +0.5*(prev_dist - dist)",
+        "Velocity shaping: -0.05*vel -> -0.2*vel (scaled to balance progress bonus)",
+        "Added state tracking for prev_dist/prev_vel"
+      ],
+      "rejected_patterns_avoided": [
+        "Increasing fuel/action costs",
+        "Static negative-only shaping"
+      ],
+      "expected_metric_changes": {
+        "action_0_probability": "< 0.8",
+        "success_rate": "> 0.1"
+      },
+      "validation_metrics": [
+        "progress_bonus_mean",
+        "velocity_penalty_mean"
+      ]
+    },
+    "reward_schema": {
+      "inputs": [
+        "state: List[float] (8-dim)",
+        "m_power: float",
+        "s_power: float",
+        "terminated: bool"
+      ],
+      "outputs": [
+        "reward: float",
+        "individual_reward: Dict[str, Any]"
+      ],
+      "internal_state": [
+        "self.prev_distance: float",
+        "self.prev_velocity: float"
+      ]
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Unpack state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    ang_vel = state[5]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Diagnostics (Numeric) ---\n    distance_to_target = (x**2 + y**2)**0.5\n    vertical_velocity_mag = abs(vy)\n    fuel_consumption = m_power + s_power\n    angle_deviation = abs(angle)\n\n    individual_reward['distance_to_target'] = float(distance_to_target)\n    individual_reward['vertical_velocity'] = float(vertical_velocity_mag)\n    individual_reward['fuel_consumption'] = float(fuel_consumption)\n    individual_reward['angle_deviation'] = float(angle_deviation)\n\n    # --- State Tracking for Progress Bonus ---\n    if not hasattr(self, 'prev_distance'):\n        self.prev_distance = distance_to_target\n        self.prev_velocity = vertical_velocity_mag\n\n    # --- Objective Feedback (Sparse) ---\n    landed = (leg_l >= 0.9 and leg_r >= 0.9)\n    on_pad = abs(x) < 0.5\n    soft_touchdown = vertical_velocity_mag < 2.0\n\n    if terminated:\n        if landed and on_pad and soft_touchdown:\n            reward += 100.0\n            individual_reward['landing_success'] = True\n        else:\n            crash_penalty = -50.0\n            out_of_bounds_penalty = -20.0\n            \n            if hasattr(self, 'game_over') and self.game_over:\n                reward += crash_penalty\n            elif abs(x) >= 1.0:\n                reward += out_of_bounds_penalty\n            else:\n                # Bad landing (e.g., high velocity impact)\n                reward -= 25.0\n            individual_reward['landing_success'] = False\n        \n        # Reset state tracking for next episode\n        self.prev_distance = distance_to_target\n        self.prev_velocity = vertical_velocity_mag\n        return float(reward), individual_reward\n\n    # --- Reachable Progress Feedback (Dense Shaping) ---\n    # Positive reward for reducing distance, penalize high velocity to prevent crashing\n    dist_reduction = max(0.0, self.prev_distance - distance_to_target)\n    progress_bonus = 0.5 * dist_reduction\n    \n    # Velocity penalty scaled up to balance progress bonus (prevents fast falling)\n    velocity_penalty = -0.2 * vertical_velocity_mag\n    \n    reward += progress_bonus + velocity_penalty\n    individual_reward['progress_bonus'] = float(progress_bonus)\n    individual_reward['velocity_penalty'] = float(velocity_penalty)\n\n    # --- Mild Regularizers ---\n    fuel_penalty = -0.05 * fuel_consumption\n    angle_stability = -0.02 * angle_deviation\n    \n    reward += fuel_penalty + angle_stability\n    individual_reward['fuel_penalty'] = float(fuel_penalty)\n    individual_reward['angle_stability'] = float(angle_stability)\n\n    # Update state tracking\n    self.prev_distance = distance_to_target\n    self.prev_velocity = vertical_velocity_mag\n\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "phase_1": "Agent learns that reducing distance yields positive reward, but high velocity incurs penalty.",
+      "phase_2": "Agent uses main engine (Action 2) to reduce velocity while descending, balancing progress_bonus vs velocity_penalty.",
+      "phase_3": "Agent aligns angle and lands safely to trigger +100 bonus."
+    },
+    "known_risks": [
+      "Progress bonus might encourage fast falling if velocity penalty is too low.",
+      "State tracking (self.prev_distance) assumes single environment instance per agent; may fail in parallel eval without reset logic."
+    ],
+    "self_check": {
+      "interface_compliance": true,
+      "no_custom_helpers": true,
+      "state_tracking_safe": true,
+      "constraints_respected": true
+    }
+  },
+  "agent_name": "ExpertRewardRevisionAgent"
+}

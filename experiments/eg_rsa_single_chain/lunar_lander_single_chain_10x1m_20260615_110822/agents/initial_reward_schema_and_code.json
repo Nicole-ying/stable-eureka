@@ -1,0 +1,56 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander",
+  "expert_blueprint": {
+    "design_philosophy": "Sparse terminal objective combined with mild dense shaping for progress and fuel efficiency.",
+    "objective_signal": "Terminal reward of +100.0 for safe landing, -100.0 for crash or out-of-bounds termination.",
+    "progress_feedback": "Mild negative shaping on distance to pad (x,y), orientation error (angle), and velocity magnitude to guide descent without creating local optima.",
+    "regularizers": "Linear fuel penalty (-0.1 per unit power) to discourage hovering and encourage efficiency.",
+    "diagnostics": "Step-level metrics for fuel, position, velocity, and angle stored in individual_reward for analysis.",
+    "scale_reasoning": {
+      "terminal_success": "+100.0 (Dominant signal ensures task completion is prioritized)",
+      "terminal_failure": "-100.0 (Strong deterrent against crashing or drifting out of bounds)",
+      "fuel_penalty": "-0.1 * power (Small enough to allow necessary thrust, large enough to penalize waste)",
+      "shaping_terms": "-0.5 * error (Subordinate to terminal reward, prevents agent from optimizing only for immediate proximity without landing)"
+    },
+    "constraints_adherence": [
+      "Single compute_reward function defined.",
+      "No external side effects or helper methods used.",
+      "Diagnostics included in return dict.",
+      "Avoids dense penalty dominance by keeping shaping weights low."
+    ]
+  },
+  "reward_schema": {
+    "inputs": {
+      "state": "8-dim vector [x, y, vx, vy, angle, ang_vel, leg0, leg1]",
+      "m_power": "float (main engine power used this step)",
+      "s_power": "float (side engine power used this step)",
+      "terminated": "boolean (episode ended)"
+    },
+    "outputs": {
+      "reward": "float (scalar reward for this step)",
+      "individual_reward": "dict (diagnostic metrics: fuel_step, dist_x, dist_y, vel_mag, angle_err, is_success)"
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    reward = 0.0\n    info = {}\n    \n    # Extract state components\n    x_pos = state[0]\n    y_pos = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg0 = state[6]\n    leg1 = state[7]\n    \n    # Diagnostics\n    info['fuel_step'] = float(m_power + s_power)\n    info['dist_x'] = abs(x_pos)\n    info['dist_y'] = abs(y_pos)\n    info['vel_mag'] = (vx**2 + vy**2)**0.5\n    info['angle_err'] = abs(angle)\n    \n    if terminated:\n        # Terminal Evaluation\n        is_safe_landing = False\n        if leg1 == 1.0 and leg0 == 1.0:\n            # Check velocity thresholds for safe landing (normalized approx)\n            if abs(vx) < 1.5 and abs(vy) < 1.5 and abs(x_pos) < 0.5:\n                is_safe_landing = True\n        \n        info['is_success'] = int(is_safe_landing)\n        \n        if is_safe_landing:\n            reward += 100.0\n        else:\n            reward -= 100.0\n    else:\n        # Step-wise Shaping & Regularization\n        # Mild penalty for distance from target (x=0, y=0)\n        dist_penalty = -0.5 * (abs(x_pos) + abs(y_pos))\n        \n        # Mild penalty for orientation deviation\n        angle_penalty = -0.5 * abs(angle)\n        \n        # Fuel consumption penalty\n        fuel_penalty = -0.1 * (m_power + s_power)\n        \n        reward += dist_penalty + angle_penalty + fuel_penalty\n    \n    return float(reward), info",
+  "expected_behavior": {
+    "initial_phase": "Agent learns to stabilize orientation and reduce horizontal drift due to distance penalties.",
+    "descent_phase": "Agent balances fuel usage against vertical descent speed, avoiding hovering.",
+    "landing_phase": "Agent prioritizes low velocity at touchdown to secure the +100 terminal reward over saving fuel.",
+    "long_term": "Policy converges to efficient trajectories that land safely within bounds."
+  },
+  "known_risks": [
+    "Hovering: Agent might hover near pad to minimize distance penalty without landing if fuel cost is too low relative to shaping.",
+    "Crashing: Aggressive horizontal correction might cause high velocity impact, resulting in -100 terminal reward.",
+    "Local Optima: Shaping terms could encourage circling the pad rather than committing to descent."
+  ],
+  "self_check": {
+    "valid_json_structure": true,
+    "single_function_defined": true,
+    "no_external_side_effects": true,
+    "diagnostics_included": true,
+    "scale_reasoning_present": true,
+    "expert_blueprint_included": true
+  },
+  "agent_name": "ExpertRewardDesignerAgent"
+}

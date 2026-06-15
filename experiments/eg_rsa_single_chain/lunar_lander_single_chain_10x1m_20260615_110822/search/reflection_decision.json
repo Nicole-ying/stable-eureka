@@ -1,0 +1,26 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The agent optimizes for 'Do Nothing' (Action 0) because it minimizes immediate costs: zero fuel penalty and decreasing distance-to-pad via gravity. The current dense shaping lacks a velocity penalty, allowing the agent to fall freely at high speed without step-wise feedback until a crash (-100) occurs. This creates a local optimum where coasting is preferred over braking.",
+  "component_interaction_diagnosis": "Distance penalty (-0.5 * dist) and fuel penalty (-0.1 * power) interact such that falling reduces distance cost (good) while avoiding fuel cost (good). The missing velocity term means high descent speed is not penalized until termination, making the crash inevitable but unrewarded during the trajectory.",
+  "failed_pattern_reuse_check": "No specific failed patterns in memory context. Adhering to design rule: 'include reachable progress feedback when final success is sparse'. Adding velocity penalty provides immediate feedback on safety-critical state (speed).",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "small",
+    "reason": "Adding a vertical velocity penalty directly addresses the 'free-fall' exploitation without restructuring the terminal objective. It provides dense feedback for braking behavior."
+  },
+  "hard_constraints_for_next_revision": [
+    "Maintain terminal reward magnitude (+/- 100) to preserve task priority.",
+    "Ensure shaping weights sum to less than terminal reward over max episode length.",
+    "Do not introduce positive dense rewards that could encourage hovering indefinitely."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "Increase from 0.0 as agent learns to brake.",
+    "episode_length": "May increase slightly as agent spends time braking instead of crashing immediately.",
+    "generated_reward": "Improve (less negative) due to fewer crashes."
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "avg_vertical_velocity_at_termination"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

@@ -1,0 +1,27 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy optimizes for immediate 'progress_bonus' derived from distance reduction (free-fall), which is maximized by Action 0. This dense positive signal outweighs the mild fuel cost and delayed crash penalty. The agent learns to fall fast rather than brake, as braking reduces distance-reduction rate (lowering progress bonus) while incurring fuel costs.",
+  "component_interaction_diagnosis": "'progress_bonus' (+0.5 * delta_dist) conflicts with 'velocity_penalty' (-0.2 * |vy|). Free-fall maximizes the former and minimizes the latter until impact. The terminal crash penalty (-50) is too sparse to correct this dense shaping bias during learning, leading to high-impact crashes.",
+  "failed_pattern_reuse_check": "Previous revision (iter_0 -> iter_1) introduced distance-reduction shaping which improved fitness but failed to increase success rate. Repeating weight tuning on this structure is unlikely to solve the safety conflict; structural change required.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "reason": "Remove misleading distance-reduction shaping and replace with proximity-based negative shaping combined with gated velocity penalty to align immediate rewards with safe approach behavior."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not reward raw distance reduction (encourages falling).",
+    "Velocity penalty must scale with proximity to ground.",
+    "Keep fuel cost mild to allow necessary braking maneuvers."
+  ],
+  "expected_metric_changes": {
+    "action_0_probability": "< 0.6",
+    "success_like_terminal_rate": "> 0.1",
+    "average_velocity_at_contact": "< 1.5"
+  },
+  "validation_metrics": [
+    "proximity_shaping_mean",
+    "velocity_penalty_mean",
+    "action_2_probability"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

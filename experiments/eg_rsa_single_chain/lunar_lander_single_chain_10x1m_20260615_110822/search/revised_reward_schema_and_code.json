@@ -1,0 +1,53 @@
+{
+  "file_type": "revised_reward_schema_and_code",
+  "parent_candidate_id": "single_chain_iter0",
+  "candidate_id": "single_chain_iter1_vel_penalty",
+  "edit_summary": {
+    "edit_scope": "small",
+    "reason": "Added vertical velocity penalty to discourage free-falling and incentivize braking.",
+    "preserved_design": [
+      "Terminal success/failure rewards (+/- 100)",
+      "Distance and angle shaping penalties",
+      "Fuel consumption penalty"
+    ],
+    "changed_design": [
+      "Added step-wise vertical velocity penalty (-1.0 * abs(vy))"
+    ],
+    "rejected_patterns_avoided": [],
+    "expected_metric_changes": {
+      "success_rate": "+",
+      "avg_reward": "+"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate",
+      "mean_vertical_velocity"
+    ]
+  },
+  "reward_schema": {
+    "inputs": {
+      "state": "8-dim vector [x, y, vx, vy, angle, ang_vel, leg0, leg1]",
+      "m_power": "float (main engine power used this step)",
+      "s_power": "float (side engine power used this step)",
+      "terminated": "boolean (episode ended)"
+    },
+    "outputs": {
+      "reward": "float (scalar reward for this step)",
+      "individual_reward": "dict (diagnostic metrics: fuel_step, dist_x, dist_y, vel_mag, angle_err, is_success)"
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    reward = 0.0\n    info = {}\n    \n    # Extract state components\n    x_pos = state[0]\n    y_pos = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    leg0 = state[6]\n    leg1 = state[7]\n    \n    # Diagnostics\n    info['fuel_step'] = float(m_power + s_power)\n    info['dist_x'] = abs(x_pos)\n    info['dist_y'] = abs(y_pos)\n    info['vel_mag'] = (vx**2 + vy**2)**0.5\n    info['angle_err'] = abs(angle)\n    \n    if terminated:\n        # Terminal Evaluation\n        is_safe_landing = False\n        if leg1 == 1.0 and leg0 == 1.0:\n            # Check velocity thresholds for safe landing (normalized approx)\n            if abs(vx) < 1.5 and abs(vy) < 1.5 and abs(x_pos) < 0.5:\n                is_safe_landing = True\n        \n        info['is_success'] = int(is_safe_landing)\n        \n        if is_safe_landing:\n            reward += 100.0\n        else:\n            reward -= 100.0\n    else:\n        # Step-wise Shaping & Regularization\n        # Mild penalty for distance from target (x=0, y=0)\n        dist_penalty = -0.5 * (abs(x_pos) + abs(y_pos))\n        \n        # Mild penalty for orientation deviation\n        angle_penalty = -0.5 * abs(angle)\n        \n        # Fuel consumption penalty\n        fuel_penalty = -0.1 * (m_power + s_power)\n        \n        # NEW: Penalty on vertical velocity to discourage free-falling without braking\n        vel_penalty = -1.0 * abs(vy)\n        \n        reward += dist_penalty + angle_penalty + fuel_penalty + vel_penalty\n    \n    return float(reward), info",
+  "expected_behavior": {
+    "phase_1_stabilization": "Agent will use engines to counteract gravity due to velocity penalty.",
+    "phase_2_descent": "Agent will balance distance reduction with velocity control.",
+    "phase_3_landing": "Agent will brake more aggressively near pad to minimize crash risk."
+  },
+  "known_risks": [
+    "Velocity penalty might be too strong, causing agent to hover excessively if fuel cost is low enough.",
+    "If weight is too high, it may dominate terminal reward signal over long episodes."
+  ],
+  "self_check": {
+    "interface_compliance": true,
+    "no_helper_methods": true,
+    "diagnostics_included": true
+  }
+}

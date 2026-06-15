@@ -1,0 +1,87 @@
+{
+  "file_type": "task_model",
+  "environment_name": "LunarLander",
+  "reward_function_interface": {
+    "inputs": [
+      "state: List[float] (8-dim)",
+      "m_power: float (main engine usage)",
+      "s_power: float (side engine usage)",
+      "terminated: bool"
+    ],
+    "outputs": [
+      "reward: float",
+      "info_dict: Dict[str, Any]"
+    ]
+  },
+  "primary_objective": "Land the rocket at coordinates (0,0) safely with minimal time and fuel consumption.",
+  "state_space_summary": {
+    "dimensions": 8,
+    "components": [
+      "x_normalized: float [-1, 1]",
+      "y_normalized: float",
+      "vx_normalized: float",
+      "vy_normalized: float",
+      "angle: float (radians)",
+      "angular_velocity: float (scaled)",
+      "leg_left_contact: float [0.0, 1.0]",
+      "leg_right_contact: float [0.0, 1.0]"
+    ]
+  },
+  "action_space_summary": {
+    "type": "Discrete",
+    "actions": [
+      "0: Do nothing",
+      "1: Fire left orientation engine",
+      "2: Fire main engine",
+      "3: Fire right orientation engine"
+    ],
+    "note": "Continuous mode supported but discrete is primary for bang-bang control."
+  },
+  "intended_behavior_phases": [
+    "Descent initiation: Orient lander towards pad and reduce altitude.",
+    "Alignment: Use side engines to correct angle to near zero.",
+    "Velocity damping: Reduce vertical velocity using main engine before touchdown.",
+    "Final touchdown: Ensure both legs contact ground simultaneously with low impact."
+  ],
+  "necessary_behaviors": [
+    "Counteracting gravity and wind disturbances",
+    "Maintaining stable orientation (angle ~0)",
+    "Precise throttle control for soft landing"
+  ],
+  "success_signals_available_to_reward": [
+    "Both legs grounded (state[6] == 1.0 AND state[7] == 1.0)",
+    "Position within pad bounds (abs(state[0]) < threshold, state[1] approx 0)",
+    "Low vertical velocity magnitude at contact",
+    "Stable angle near zero"
+  ],
+  "failure_or_stop_signals_available_to_reward": [
+    "Crash detected (game_over flag triggered by body contact)",
+    "Out of viewport (abs(state[0]) >= 1.0)",
+    "Lander asleep (not self.lander.awake)"
+  ],
+  "dangerous_local_optima": [
+    "Hovering indefinitely to avoid crash penalty without landing",
+    "Oscillating near pad without committing to final descent",
+    "Intentional crashing for quick episode reset if negative reward is insufficient"
+  ],
+  "primary_selection_metric": "Cumulative discounted return over episodes",
+  "proxy_metrics": [
+    "Distance to target (sqrt(x^2 + y^2))",
+    "Vertical velocity magnitude (abs(vy))",
+    "Fuel consumption rate (m_power + s_power)",
+    "Angle deviation from zero"
+  ],
+  "diagnostic_metrics": [
+    "Landing success rate per episode batch",
+    "Average episode length",
+    "Crash frequency by cause (velocity vs position)",
+    "Fitness score tracking (from compute_fitness_score)"
+  ],
+  "reward_design_constraints": [
+    "Separate sparse landing bonus from dense shaping for progress.",
+    "Use reachable progress feedback (distance/velocity) when success is hard to discover.",
+    "Keep fuel/time regularizers mild to avoid penalizing necessary correction maneuvers.",
+    "Track component scale interactions between velocity penalty and position reward."
+  ],
+  "agent_name": "TaskModelAgent"
+}

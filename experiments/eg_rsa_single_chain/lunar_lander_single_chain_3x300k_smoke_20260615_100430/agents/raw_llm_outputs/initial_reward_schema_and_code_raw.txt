@@ -1,0 +1,56 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander",
+  "expert_blueprint": {
+    "design_philosophy": "Sparse objective signal combined with mild dense shaping to guide policy without creating local optima.",
+    "component_scale_reasoning": [
+      "Landing Bonus (+100.0): High magnitude ensures successful landing outweighs cumulative step penalties, making it the primary optimization target.",
+      "Crash Penalty (-50.0): Significant negative signal discourages crashing but is lower than total potential step penalty to prevent early termination as a strategy if steps are too costly.",
+      "Step Shaping (-0.1 * dist - 0.05 * vel): Mild negative feedback encourages progress towards target and velocity reduction without dominating the landing bonus.",
+      "Fuel/Action Cost (-0.05 * power): Very mild penalty to encourage efficiency without discouraging necessary correction maneuvers."
+    ],
+    "interaction_checks": [
+      "Ensure step penalties do not sum to exceed crash penalty over typical episode length (approx 300 steps -> -30 total).",
+      "Verify landing bonus is reachable within budget of accumulated shaping rewards.",
+      "Monitor if angle penalty conflicts with necessary rotation maneuvers during descent."
+    ],
+    "diagnostic_strategy": "Track distance, velocity, fuel, and angle in info_dict to enable future reward revision based on policy behavior analysis."
+  },
+  "reward_schema": {
+    "inputs": [
+      "state: List[float] (8-dim)",
+      "m_power: float",
+      "s_power: float",
+      "terminated: bool"
+    ],
+    "outputs": [
+      "reward: float",
+      "individual_reward: Dict[str, Any]"
+    ]
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Unpack state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    ang_vel = state[5]\n    leg_l = state[6]\n    leg_r = state[7]\n\n    reward = 0.0\n    individual_reward = {}\n\n    # --- Diagnostics (Numeric) ---\n    distance_to_target = (x**2 + y**2)**0.5\n    vertical_velocity_mag = abs(vy)\n    fuel_consumption = m_power + s_power\n    angle_deviation = abs(angle)\n\n    individual_reward['distance_to_target'] = float(distance_to_target)\n    individual_reward['vertical_velocity'] = float(vertical_velocity_mag)\n    individual_reward['fuel_consumption'] = float(fuel_consumption)\n    individual_reward['angle_deviation'] = float(angle_deviation)\n\n    # --- Objective Feedback (Sparse) ---\n    # Success: Both legs grounded, near pad center, low vertical velocity\n    landed = (leg_l >= 0.9 and leg_r >= 0.9)\n    on_pad = abs(x) < 0.5\n    soft_touchdown = vertical_velocity_mag < 2.0\n\n    if terminated:\n        if landed and on_pad and soft_touchdown:\n            reward += 100.0\n            individual_reward['landing_success'] = True\n        else:\n            # Failure: Crash or Out of Bounds\n            crash_penalty = -50.0\n            out_of_bounds_penalty = -20.0\n            \n            if hasattr(self, 'game_over') and self.game_over:\n                reward += crash_penalty\n            elif abs(x) >= 1.0:\n                reward += out_of_bounds_penalty\n            else:\n                # Bad landing (e.g., high velocity impact)\n                reward -= 25.0\n            individual_reward['landing_success'] = False\n    \n    # --- Reachable Progress Feedback (Dense Shaping) ---\n    # Only apply shaping if not terminated to avoid double counting at end step\n    if not terminated:\n        progress_signal = -0.1 * distance_to_target - 0.05 * vertical_velocity_mag\n        reward += progress_signal\n\n    # --- Mild Regularizers ---\n    fuel_penalty = -0.05 * fuel_consumption\n    angle_stability = -0.02 * angle_deviation\n    \n    reward += fuel_penalty + angle_stability\n\n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "primary_goal": "Agent prioritizes reaching the pad (x~0, y~0) with legs down and low velocity.",
+    "secondary_goals": [
+      "Minimize fuel usage during descent.",
+      "Maintain upright orientation to ensure stable landing."
+    ],
+    "avoidance_behaviors": [
+      "Crashing into the ground (high penalty).",
+      "Flying out of viewport (moderate penalty).",
+      "Hovering indefinitely (accumulated step penalties)."
+    ]
+  },
+  "known_risks": [
+    "Agent may learn to crash early if step penalties accumulate faster than landing bonus over long episodes.",
+    "Angle stability penalty might conflict with necessary rotation during initial descent phase.",
+    "Distance shaping might encourage high-speed approach if velocity penalty is too low."
+  ],
+  "self_check": {
+    "valid_json_structure": true,
+    "function_signature_match": true,
+    "no_external_side_effects": true,
+    "diagnostics_included": true,
+    "scale_reasoning_documented": true
+  }
+}

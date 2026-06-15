@@ -1,0 +1,62 @@
+{
+  "file_type": "task_model",
+  "environment_name": "LunarLander",
+  "reward_function_interface": {
+    "inputs": [
+      "state (8-dim vector)",
+      "action (discrete or continuous)",
+      "terminated (boolean)"
+    ],
+    "outputs": [
+      "reward (float)",
+      "info_dict (optional diagnostics)"
+    ]
+  },
+  "primary_objective": "Land the spacecraft at coordinates (0,0) safely with minimal fuel consumption and time.",
+  "state_space_summary": "8-dimensional vector: normalized x/y position relative to pad, normalized linear velocities, angle, angular velocity, and two boolean leg contact indicators.",
+  "action_space_summary": "Discrete actions: 0=Do Nothing, 1=Fire Left Orientation Engine, 2=Fire Main Engine, 3=Fire Right Orientation Engine. (Code supports continuous variant).",
+  "intended_behavior_phases": [
+    "Initial Stabilization: Counteract initial random force and wind.",
+    "Descent & Alignment: Orient lander upright while reducing altitude.",
+    "Final Approach: Dampen vertical velocity near pad.",
+    "Touchdown: Ensure both legs contact ground within bounds."
+  ],
+  "necessary_behaviors": [
+    "Maintain upright orientation (angle ~0).",
+    "Reduce vertical descent velocity before impact.",
+    "Correct horizontal drift towards x=0.",
+    "Conserve fuel by avoiding unnecessary thrust."
+  ],
+  "success_signals_available_to_reward": [
+    "Both leg contact booleans are true.",
+    "Lander position is within landing pad bounds (x near 0).",
+    "Vertical velocity is below safe threshold at touchdown."
+  ],
+  "failure_or_stop_signals_available_to_reward": [
+    "Body collision with terrain (game_over flag).",
+    "Horizontal position exceeds viewport limits (|x| >= 1.0).",
+    "Lander physics body goes to sleep (not awake)."
+  ],
+  "dangerous_local_optima": [
+    "Hovering indefinitely to minimize fuel penalty without landing.",
+    "Crashing into side walls due to aggressive horizontal correction.",
+    "Oscillating near the pad without committing to final descent."
+  ],
+  "primary_selection_metric": "Average cumulative reward per episode (Success Rate weighted).",
+  "proxy_metrics": [
+    "Euclidean distance to landing pad center.",
+    "Magnitude of vertical velocity.",
+    "Absolute value of lander angle deviation from upright."
+  ],
+  "diagnostic_metrics": [
+    "Total fuel consumed per episode.",
+    "Time steps taken to terminate.",
+    "Termination cause distribution (Crash vs Out-of-Bounds vs Success)."
+  ],
+  "reward_design_constraints": [
+    "Use sparse terminal reward for success/failure combined with dense shaping for progress.",
+    "Apply linear fuel penalty proportional to engine power usage.",
+    "Ensure velocity and position penalties do not exceed the value of a successful landing.",
+    "Keep orientation regularizers mild to allow necessary maneuvering."
+  ]
+}

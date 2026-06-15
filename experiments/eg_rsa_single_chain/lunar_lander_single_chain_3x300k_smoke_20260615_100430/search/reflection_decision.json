@@ -1,0 +1,28 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy is stuck in a 'passive falling' local optimum (Action 0 dominant at 93.5%). The current reward uses negative shaping (-distance, -velocity), creating a loss-minimization landscape where doing nothing incurs zero fuel cost and minimal immediate penalty compared to the risk of active control. Falling naturally reduces distance without fuel cost, making Action 0 competitive despite not achieving landing.",
+  "component_interaction_diagnosis": "The static distance penalty (-0.1 * dist) does not distinguish between passive falling (free progress) and active steering (costly progress). The agent optimizes for zero action cost rather than task completion because the cumulative negative shaping outweighs the sparse +100 landing bonus, and Action 0 minimizes immediate regret.",
+  "failed_pattern_reuse_check": "Avoid increasing fuel/action penalties as per hard constraints. Do not rely solely on static state penalties which encourage inaction. Must introduce positive progress signals that require active control to maximize safely.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "edit_scope": "medium",
+    "reason": "Requires changing shaping logic from static penalty to dynamic progress bonus and adding state tracking (prev_dist) to incentivize controlled descent over passive falling."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not increase fuel or action costs.",
+    "Must include positive dense reward for distance reduction.",
+    "Velocity penalty must balance progress bonus to prevent crashing for points.",
+    "Maintain sparse landing bonus (+100) as primary objective."
+  ],
+  "expected_metric_changes": {
+    "action_distribution_entropy": "Increase (reduce Action 0 dominance)",
+    "success_like_terminal_rate": "Increase from 0.0",
+    "average_episode_return": "Improve (less negative)"
+  },
+  "validation_metrics": [
+    "Action distribution variance",
+    "Mean distance reduction per step",
+    "Landing success rate"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}
