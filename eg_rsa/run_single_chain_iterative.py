@@ -65,8 +65,8 @@ def run_iterative(
     expert_blueprint = _load_expert_blueprint(run_dir)
     write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
 
-    env_understanding = read_json(run_dir / "agents" / "environment_understanding.json")
-    target_contract = read_json(run_dir / "agents" / "target_alignment_contract.json")
+    env_understanding = _read_json_with_fallback(run_dir / "agents" / "environment_understanding.json", run_dir / "agents" / "task_model.json")
+    target_contract = _read_json_with_fallback(run_dir / "agents" / "target_alignment_contract.json", run_dir / "agents" / "task_model.json")
     env_summary = _environment_summary(env_understanding)
     target_summary = _target_summary(target_contract)
     write_json(run_dir / "environment_understanding_summary.json", env_summary)
@@ -124,8 +124,8 @@ def run_iterative(
         current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
         current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
 
-        reflection_prompt = read_text(PROMPT_DIR / "reflection_prompt.txt")
-        reflection = JsonAgent("ReflectionAgent", llm_client, reflection_prompt).run(
+        expert_revision_prompt = read_text(PROMPT_DIR / "expert_reward_revision_prompt.txt")
+        revision_bundle = JsonAgent("ExpertRewardRevisionAgent", llm_client, expert_revision_prompt).run(
             {
                 "expert_reward_design_priors_json": as_json_text(expert_priors),
                 "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
@@ -138,60 +138,23 @@ def run_iterative(
                 "best_iteration_evidence_json": as_json_text(best_evidence),
                 "retrieved_memory_json": as_json_text({"items": retrieved}),
             },
-            search_dir / "reflection_decision.json",
-            search_dir / "reflection_raw.txt",
+            search_dir / "expert_reward_revision_bundle.json",
+            search_dir / "expert_reward_revision_raw.txt",
         )
+        reflection = revision_bundle.get("reflection_decision") or {
+            "file_type": "reflection_decision",
+            "agent_name": "ExpertRewardRevisionAgent",
+            "source": "expert_reward_revision_bundle",
+            "search_decision": revision_bundle.get("search_decision", {}),
+            "causal_diagnosis": revision_bundle.get("causal_diagnosis", {}),
+        }
+        revision = revision_bundle.get("revised_reward_schema_and_code") or revision_bundle
+        write_json(search_dir / "reflection_decision.json", reflection)
+        write_json(search_dir / "revised_reward_schema_and_code.json", revision)
 
         if reflection.get("search_decision", {}).get("recommended_next_action") == "stop_success":
             write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped at iteration {next_iteration - 1}: stop_success\n")
             break
-
-        if reflection.get("search_decision", {}).get("recommended_next_action") == "rollback_to_best" and best_dir != parent_dir:
-            write_json(search_dir / "controller_pre_revision_decision.json", {
-                "action": "rollback_to_best_before_revision",
-                "from_parent_dir": str(parent_dir),
-                "to_best_dir": str(best_dir),
-            })
-            parent_dir = best_dir
-            parent_evidence = best_evidence
-            current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
-            current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
-            search_dir = parent_dir / "search"
-            search_dir.mkdir(parents=True, exist_ok=True)
-            retrieved = memory.retrieve(parent_evidence)
-            expert_memory_context = build_expert_memory_context(
-                current_evidence=parent_evidence,
-                best_evidence=best_evidence,
-                retrieved_memory=retrieved,
-                output_path=search_dir / "expert_memory_context.json",
-            )
-
-        retrieved_after_reflection = memory.retrieve(parent_evidence, reflection)
-        write_json(search_dir / "retrieved_memory_after_reflection.json", {"items": retrieved_after_reflection})
-        expert_memory_context = build_expert_memory_context(
-            current_evidence=parent_evidence,
-            best_evidence=best_evidence,
-            retrieved_memory=retrieved_after_reflection,
-            output_path=search_dir / "expert_memory_context_after_reflection.json",
-        )
-
-        revision_prompt = read_text(PROMPT_DIR / "reward_revision_prompt.txt")
-        revision = JsonAgent("RewardRevisionAgent", llm_client, revision_prompt).run(
-            {
-                "expert_reward_design_priors_json": as_json_text(expert_priors),
-                "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
-                "expert_memory_context_json": as_json_text(expert_memory_context),
-                "environment_understanding_summary_json": as_json_text(env_summary),
-                "target_alignment_contract_summary_json": as_json_text(target_summary),
-                "current_reward_schema_json": as_json_text(current_reward_schema),
-                "current_reward_code": current_reward_code,
-                "iteration_evidence_json": as_json_text(parent_evidence),
-                "reflection_decision_json": as_json_text(reflection),
-                "retrieved_memory_json": as_json_text({"items": retrieved_after_reflection}),
-            },
-            search_dir / "revised_reward_schema_and_code.json",
-            search_dir / "reward_revision_raw.txt",
-        )
 
         candidate_dir = run_dir / "iterations" / f"iter_{next_iteration:03d}"
         if candidate_dir.exists():
@@ -248,29 +211,32 @@ def run_iterative(
     return run_dir
 
 
+def _read_json_with_fallback(primary: Path, fallback: Path) -> Dict[str, Any]:
+    if primary.exists():
+        return read_json(primary)
+    return read_json(fallback)
+
+
 def _load_expert_blueprint(run_dir: Path) -> Dict[str, Any]:
     for path in [
         run_dir / "expert_reward_design_blueprint.json",
         run_dir / "agents" / "expert_reward_design_blueprint.json",
+        run_dir / "agents" / "initial_reward_schema_and_code.json",
     ]:
         if path.exists():
             try:
-                return read_json(path)
+                data = read_json(path)
+                if "expert_blueprint" in data:
+                    return data.get("expert_blueprint") or {}
+                return data
             except Exception:
                 pass
     return {
         "file_type": "expert_reward_design_blueprint",
         "fallback": True,
-        "initial_reward_architecture": {
-            "active_objective_terms": [],
-            "active_progress_terms": [],
-            "mild_regularizers": [],
-            "diagnostic_only_terms": [],
-        },
         "initial_reward_hard_constraints": [
             "Separate objective, progress, regularizers, and diagnostics.",
-            "Do not rely mainly on dense penalties.",
-            "Use expert_memory_context to avoid repeating rejected edit patterns."
+            "Use expert_memory_context to avoid repeating rejected edit patterns.",
         ],
     }
 
@@ -346,16 +312,15 @@ def _environment_summary(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "file_type": "environment_understanding_summary",
         "environment_name": data.get("environment_name"),
-        "task_goal": data.get("task_goal"),
+        "task_goal": data.get("task_goal") or data.get("primary_objective"),
         "reward_function_interface": data.get("reward_function_interface"),
-        "state_space": data.get("state_space"),
-        "action_space": data.get("action_space"),
-        "termination_modes": data.get("termination_modes"),
-        "success_like_ending": data.get("success_like_ending"),
-        "failure_like_endings": data.get("failure_like_endings"),
-        "behavior_trajectory_prior": data.get("behavior_trajectory_prior"),
-        "reward_design_risks": data.get("reward_design_risks"),
-        "reward_hacking_risks": data.get("reward_hacking_risks"),
+        "state_space": data.get("state_space") or data.get("state_space_summary"),
+        "action_space": data.get("action_space") or data.get("action_space_summary"),
+        "termination_modes": data.get("termination_modes") or data.get("failure_or_stop_signals_available_to_reward"),
+        "success_like_ending": data.get("success_like_ending") or data.get("success_signals_available_to_reward"),
+        "failure_like_endings": data.get("failure_like_endings") or data.get("failure_or_stop_signals_available_to_reward"),
+        "behavior_trajectory_prior": data.get("behavior_trajectory_prior") or data.get("intended_behavior_phases"),
+        "reward_design_risks": data.get("reward_design_risks") or data.get("dangerous_local_optima"),
     }
 
 
@@ -364,17 +329,17 @@ def _target_summary(data: Dict[str, Any]) -> Dict[str, Any]:
         "file_type": "target_alignment_contract_summary",
         "environment_name": data.get("environment_name"),
         "primary_objective": data.get("primary_objective"),
-        "objective_decomposition": data.get("objective_decomposition"),
-        "behavior_trajectory_alignment": data.get("behavior_trajectory_alignment"),
-        "metric_priority": data.get("metric_priority"),
-        "primary_selection_metric": data.get("primary_selection_metric"),
+        "objective_decomposition": data.get("objective_decomposition") or data.get("intended_behavior_phases"),
+        "behavior_trajectory_alignment": data.get("behavior_trajectory_alignment") or data.get("intended_behavior_phases"),
+        "metric_priority": data.get("metric_priority") or data.get("primary_selection_metric"),
+        "primary_selection_metric": data.get("primary_selection_metric", "fitness_score"),
         "proxy_metrics": data.get("proxy_metrics"),
         "diagnostic_metrics": data.get("diagnostic_metrics"),
-        "success_criteria": data.get("success_criteria"),
-        "failure_modes": data.get("failure_modes"),
-        "bad_local_optima": data.get("bad_local_optima"),
+        "success_criteria": data.get("success_criteria") or data.get("success_signals_available_to_reward"),
+        "failure_modes": data.get("failure_modes") or data.get("dangerous_local_optima"),
+        "bad_local_optima": data.get("bad_local_optima") or data.get("dangerous_local_optima"),
         "reward_hacking_definitions": data.get("reward_hacking_definitions"),
-        "reward_generator_constraints": data.get("reward_generator_constraints"),
+        "reward_generator_constraints": data.get("reward_generator_constraints") or data.get("reward_design_constraints"),
     }
 
 
