@@ -24,13 +24,7 @@ class _SelfMethodCallVisitor(ast.NodeVisitor):
 
 
 def validate_reward_runtime_safety(reward_code: str) -> Dict[str, Any]:
-    """Static guard for runtime-fragile generated reward code.
-
-    Generated reward is appended as exactly one class method. Therefore it must
-    not call extra helper methods on self unless the framework explicitly created
-    them. Internal state is still allowed via direct self attributes, e.g.
-    if not hasattr(self, '_x'): self._x = 0.
-    """
+    """Static guard for runtime-fragile generated reward code."""
     errors: List[str] = []
     warnings: List[str] = []
     try:
@@ -58,13 +52,14 @@ def smoke_test_reward_env(
     output_path: str | Path,
     n_steps: int = 8,
 ) -> Dict[str, Any]:
-    """Run a short reset/step check before expensive PPO training."""
+    """Run reset/step plus direct branch checks before expensive PPO training."""
     output_path = Path(output_path)
     report: Dict[str, Any] = {
         "valid": False,
         "stage": "not_started",
         "n_steps_requested": int(n_steps),
         "steps_completed": 0,
+        "direct_compute_reward_checks": [],
         "errors": [],
         "warnings": [],
     }
@@ -75,6 +70,10 @@ def smoke_test_reward_env(
         report["stage"] = "reset"
         obs, info = env.reset(seed=seed)
         report["initial_observation_shape"] = list(np.asarray(obs).shape)
+
+        report["stage"] = "direct_compute_reward_branch_checks"
+        _run_direct_compute_reward_checks(env, np.asarray(obs, dtype=float).tolist(), report)
+
         report["stage"] = "step"
         for step_id in range(int(n_steps)):
             action = env.action_space.sample()
@@ -101,3 +100,34 @@ def smoke_test_reward_env(
             pass
         write_json(output_path, report)
     return report
+
+
+def _run_direct_compute_reward_checks(env: gym.Env, state: Any, report: Dict[str, Any]) -> None:
+    base = env.unwrapped
+    compute_reward = getattr(base, "compute_reward", None)
+    if compute_reward is None:
+        report["warnings"].append("env.unwrapped has no compute_reward for direct branch checks")
+        return
+    cases = []
+    for terminated in [False, True]:
+        for m_power in [0.0, 1.0]:
+            for s_power in [0.0, 1.0]:
+                cases.append((terminated, m_power, s_power))
+    for terminated, m_power, s_power in cases:
+        result = compute_reward(state, m_power, s_power, terminated)
+        if not isinstance(result, tuple) or len(result) != 2:
+            raise TypeError("compute_reward must return a 2-tuple: (reward, individual_reward)")
+        reward, individual_reward = result
+        float(reward)
+        if not isinstance(individual_reward, dict):
+            raise TypeError(f"individual_reward must be dict, got {type(individual_reward)}")
+        for key, value in individual_reward.items():
+            if not isinstance(value, (int, float, np.integer, np.floating, bool)):
+                raise TypeError(f"individual_reward[{key!r}] must be numeric, got {type(value)}")
+        report["direct_compute_reward_checks"].append({
+            "terminated": bool(terminated),
+            "m_power": float(m_power),
+            "s_power": float(s_power),
+            "reward": float(reward),
+            "num_info_keys": len(individual_reward),
+        })
