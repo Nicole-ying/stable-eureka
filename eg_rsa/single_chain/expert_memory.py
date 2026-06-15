@@ -16,6 +16,7 @@ def build_expert_memory_context(
     metrics = current_evidence.get("primary_metrics", {}) or {}
     comp = current_evidence.get("component_summary", {}) or {}
     action = behavior.get("dominant_action", {}) or {}
+    action_space_report = behavior.get("action_space_report", {}) or {}
     action_id = str(action.get("action"))
     action_prob = _num(action.get("probability"))
     success_rate = _num(behavior.get("success_like_terminal_rate", metrics.get("success_like_terminal_rate")))
@@ -38,6 +39,23 @@ def build_expert_memory_context(
             "Add or strengthen a reachable positive progress signal tied to the task objective.",
             "If task achievement is detectable, keep it active rather than diagnostic-only.",
             "Explain why the next reward should change the action distribution away from the current dominant action."
+        ])
+
+    unused_actions = action_space_report.get("unused_action_keys") or []
+    if unused_actions:
+        failed_patterns.append({
+            "pattern_id": "unused_discrete_actions",
+            "evidence": {
+                "unused_action_keys": unused_actions,
+                "action_space_report": action_space_report,
+                "success_rate": success_rate,
+            },
+            "interpretation": "Some available actions were never selected during evaluation; a necessary control mode may be unattractive under the reward.",
+        })
+        hard_constraints.extend([
+            "Explicitly analyze every unused discrete action and whether any is necessary for task success.",
+            "Do not only reduce penalties; make the reward create a reason to try currently unused necessary actions.",
+            "The next expected_behavior must predict which unused action usage should increase and why."
         ])
 
     if episode_len > 0 and episode_len < 150 and success_rate <= 0.01 and mostly_negative:
@@ -70,6 +88,7 @@ def build_expert_memory_context(
         "What behavior required for the task is being avoided?",
         "Which component makes the avoided behavior costly?",
         "Which positive signal is missing, too sparse, or too weak?",
+        "Are any available actions unused, and could an unused action be required for success?",
         "Which previous edit pattern must not be repeated?"
     ])
 
@@ -87,6 +106,7 @@ def build_expert_memory_context(
         "failed_patterns": failed_patterns,
         "hard_constraints_for_next_revision": _dedupe(hard_constraints),
         "component_balance_report": _component_balance_report(components, dominant),
+        "action_space_report": action_space_report,
         "best_reference": _best_reference(best_evidence),
     }
     if output_path is not None:
