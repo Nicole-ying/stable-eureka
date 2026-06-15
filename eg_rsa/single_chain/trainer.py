@@ -45,6 +45,7 @@ class SingleChainEvalCallback(BaseCallback):
             self.history[key].append(value)
         self.history["component_means"].append(metrics.get("component_means", {}))
         self.history["action_distribution"].append(metrics.get("action_distribution", {}))
+        self.history["action_space_report"].append(metrics.get("action_space_report", {}))
         write_json(self.trainer.output_dir / "evals.json", dict(self.history))
         write_json(self.trainer.output_dir / "trajectory_summary_last_eval.json", {"episodes": trajectories})
         return True
@@ -230,6 +231,7 @@ class SingleChainPPOTrainer:
 
         total_actions = sum(action_counter.values()) or 1
         action_distribution = {key: float(value / total_actions) for key, value in action_counter.items()}
+        action_space_report = _action_space_report(eval_env.action_space, action_distribution)
 
         success_rate = float(np.mean([t["terminal_classification"] == "success_like_terminal" for t in trajectories]))
         unsafe_rate = float(np.mean([t["terminal_classification"] == "unsafe_terminal" for t in trajectories]))
@@ -243,6 +245,7 @@ class SingleChainPPOTrainer:
             "episode_length_std": float(np.std(lengths)),
             "component_means": component_means,
             "action_distribution": action_distribution,
+            "action_space_report": action_space_report,
             "success_like_terminal_rate": success_rate,
             "unsafe_terminal_rate": unsafe_rate,
             "out_of_bounds_rate": out_of_bounds_rate,
@@ -284,6 +287,7 @@ class SingleChainPPOTrainer:
                 "unsafe_terminal_rate": metrics.get("unsafe_terminal_rate", 0.0),
                 "out_of_bounds_rate": metrics.get("out_of_bounds_rate", 0.0),
                 "action_distribution": metrics.get("action_distribution", {}),
+                "action_space_report": metrics.get("action_space_report", {}),
             },
             "component_returns": component_means,
             "alignment_flags": {
@@ -309,6 +313,24 @@ def _action_to_key(action: Any) -> Any:
     if arr.size == 1:
         return arr.reshape(-1)[0].item()
     return arr.astype(float).tolist()
+
+
+def _action_space_report(action_space: gym.Space, action_distribution: Dict[str, float]) -> Dict[str, Any]:
+    report: Dict[str, Any] = {
+        "space_type": type(action_space).__name__,
+        "used_action_keys": sorted(action_distribution.keys()),
+    }
+    if isinstance(action_space, gym.spaces.Discrete):
+        start = int(getattr(action_space, "start", 0))
+        expected = [json.dumps(start + i, sort_keys=True) for i in range(int(action_space.n))]
+        report.update({
+            "n": int(action_space.n),
+            "start": start,
+            "expected_action_keys": expected,
+            "unused_action_keys": [key for key in expected if key not in action_distribution],
+            "coverage_ratio": float(len([key for key in expected if key in action_distribution]) / max(1, len(expected))),
+        })
+    return report
 
 
 def _classify_terminal(info_sums: Dict[str, float], final_info: Dict[str, Any]) -> str:
