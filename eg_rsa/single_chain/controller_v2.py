@@ -8,7 +8,11 @@ from .expert_action_planner import build_expert_action_plan
 
 
 class SearchController(BaseSearchController):
-    """Search controller with final-behavior and uncertainty-aware checks."""
+    """Search controller with final-behavior and uncertainty-aware checks.
+
+    During cold start, accepted_as_elite may mean provisional search anchor, not
+    fully verified reward quality. The gate exposes elite_status explicitly.
+    """
 
     def decide(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         decision = super().decide(*args, **kwargs)
@@ -31,6 +35,7 @@ class SearchController(BaseSearchController):
 
         gate = _acceptance_gate(candidate_evidence, best_evidence)
         decision["expert_acceptance_gate"] = gate
+        decision["elite_status"] = gate.get("elite_status", "unknown")
         if not gate.get("reward_elite_allowed", True) and decision.get("accepted_as_elite"):
             decision["accepted_as_elite"] = False
             decision.setdefault("elite_reasons", []).extend(gate.get("reasons", []))
@@ -74,6 +79,7 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
     fitness = _num(primary.get("fitness_score"))
     fitness_std = _num(primary.get("fitness_score_std"))
     generated = _num(primary.get("generated_reward"))
+    best_id = str(best.get("candidate_id") or "")
     best_fitness = _num((best.get("primary_metrics", {}) or {}).get("fitness_score"))
     best_target = best.get("target_behavior_report", {}) or {}
     best_criteria = best_target.get("primary_behavior_criteria", {}) or {}
@@ -98,6 +104,7 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
     scale_risks = set((audit.get("reward_scale_audit", {}) or {}).get("risks", []) or [])
 
     reasons: List[str] = []
+    advisory_reasons: List[str] = []
     proxy_mismatch = bool(
         objective_bonus > 120.0
         or success_flag > 1.2
@@ -119,12 +126,33 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
     if (candidate.get("model_selection", {}) or {}).get("used_best_checkpoint"):
         reasons.append("model selection used a peak checkpoint instead of final behavior")
 
-    reward_elite_allowed = not reasons and bool(plan.get("reward_elite_allowed", True))
+    elite_is_bootstrap = best_id in {"single_chain_iter0", "iter_000", ""}
+    elite_is_weak = bool(best_fitness < 0.0 and best_success_rate <= 0.0)
+    clear_cold_start_improvement = bool(
+        elite_is_bootstrap
+        and elite_is_weak
+        and fitness > best_fitness + max(50.0, 0.25 * abs(best_fitness))
+        and (success_rate > best_success_rate or timeout_rate < 0.8)
+        and not proxy_mismatch
+        and not (candidate.get("model_selection", {}) or {}).get("used_best_checkpoint")
+    )
+    if clear_cold_start_improvement:
+        advisory_reasons.extend(reasons)
+        reasons = []
+        advisory_reasons.append("cold-start override: bootstrap elite is weak, so this candidate becomes the provisional search anchor despite unresolved quality risks")
+
+    reward_elite_allowed = bool((not reasons and plan.get("reward_elite_allowed", True)) or clear_cold_start_improvement)
+    elite_status = "verified_elite"
+    if clear_cold_start_improvement:
+        elite_status = "provisional_search_anchor"
+    elif not reward_elite_allowed:
+        elite_status = "not_elite"
+
     policy_reference_allowed = bool(plan.get("policy_reference_allowed") or (success_rate > 0.0 and fitness > max(0.0, best_fitness - 50.0)))
     parent_allowed = True
-    if timeout_rate >= 0.8 and success_rate <= 0.01 and fitness < best_fitness:
+    if timeout_rate >= 0.8 and success_rate <= 0.01 and not clear_cold_start_improvement:
         parent_allowed = False
-        reasons.append("final behavior is timeout-dominated and does not improve auxiliary fitness")
+        reasons.append("final behavior is timeout-dominated and should not be used as the next edit parent")
     if proxy_mismatch and fitness < best_fitness - 50.0:
         parent_allowed = False
         reasons.append("candidate regressed far below elite auxiliary fitness")
@@ -132,13 +160,19 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
     return {
         "file_type": "expert_acceptance_gate",
         "reward_elite_allowed": reward_elite_allowed,
+        "elite_status": elite_status,
         "parent_allowed": parent_allowed,
         "policy_reference_allowed": policy_reference_allowed,
         "reasons": _dedupe(reasons),
+        "advisory_reasons": _dedupe(advisory_reasons),
         "risk_metrics": {
             "fitness_score_auxiliary": fitness,
             "fitness_score_std": fitness_std,
             "best_fitness_score_auxiliary": best_fitness,
+            "best_candidate_id": best_id,
+            "elite_is_bootstrap": elite_is_bootstrap,
+            "elite_is_weak": elite_is_weak,
+            "clear_cold_start_improvement": clear_cold_start_improvement,
             "score_gain": score_gain,
             "high_fitness_uncertainty": high_fitness_uncertainty,
             "noisy_small_gain": noisy_small_gain,
