@@ -8,7 +8,7 @@ from .expert_action_planner import build_expert_action_plan
 
 
 class SearchController(BaseSearchController):
-    """Search controller with final-behavior acceptance checks."""
+    """Search controller with final-behavior and uncertainty-aware checks."""
 
     def decide(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         decision = super().decide(*args, **kwargs)
@@ -72,8 +72,13 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
     plan = build_expert_action_plan(candidate, audit)
 
     fitness = _num(primary.get("fitness_score"))
+    fitness_std = _num(primary.get("fitness_score_std"))
     generated = _num(primary.get("generated_reward"))
     best_fitness = _num((best.get("primary_metrics", {}) or {}).get("fitness_score"))
+    best_target = best.get("target_behavior_report", {}) or {}
+    best_criteria = best_target.get("primary_behavior_criteria", {}) or {}
+    best_success_rate = _num(best_criteria.get("success_like_terminal_rate", (best.get("primary_metrics", {}) or {}).get("success_like_terminal_rate")))
+    best_timeout_rate = _num(best_criteria.get("timeout_rate"))
     objective_bonus = _num(comp.get("objective_bonus"))
     success_flag = _num(comp.get("success_flag"))
     gap = generated - fitness
@@ -82,6 +87,11 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
     timeout_rate = _num(criteria.get("timeout_rate"))
     target_success = bool(target_report.get("target_success", success_rate >= 0.5 and timeout_rate <= 0.4))
     transient_peak = bool(stability.get("transient_peak_risk"))
+    uncertainty = target_report.get("auxiliary_score_stability", {}) or {}
+    high_fitness_uncertainty = bool(uncertainty.get("high_fitness_uncertainty") or stability.get("final_uncertainty_risk") or stability.get("unstable_last_k_risk"))
+    behavior_improves = bool(success_rate > best_success_rate + 0.1 or (best_timeout_rate > 0 and timeout_rate < best_timeout_rate - 0.1))
+    score_gain = fitness - best_fitness
+    noisy_small_gain = bool(high_fitness_uncertainty and score_gain > 0 and score_gain <= max(10.0, fitness_std))
 
     alignment_risks = set((audit.get("objective_signal_alignment_audit", {}) or {}).get("risks", []) or [])
     payment_risks = set((audit.get("reward_payment_audit", {}) or {}).get("risks", []) or [])
@@ -100,6 +110,8 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
         reasons.append("final target behavior contract is not satisfied")
     if transient_peak:
         reasons.append("training has a transient peak that is not stable final behavior")
+    if noisy_small_gain and not behavior_improves:
+        reasons.append("auxiliary fitness gain is smaller than evaluator noise and behavior did not clearly improve")
     if "single_component_dominance" in scale_risks and objective_bonus > 120.0:
         reasons.append("objective bonus dominates beyond one terminal-event scale")
     if "repeatable_positive_without_success" in payment_risks and objective_bonus > 120.0:
@@ -125,13 +137,20 @@ def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[st
         "reasons": _dedupe(reasons),
         "risk_metrics": {
             "fitness_score_auxiliary": fitness,
+            "fitness_score_std": fitness_std,
             "best_fitness_score_auxiliary": best_fitness,
+            "score_gain": score_gain,
+            "high_fitness_uncertainty": high_fitness_uncertainty,
+            "noisy_small_gain": noisy_small_gain,
+            "behavior_improves": behavior_improves,
             "generated_reward_diagnostic": generated,
             "generated_minus_fitness_gap_diagnostic": gap,
             "objective_bonus_mean": objective_bonus,
             "success_flag_mean": success_flag,
             "final_success_like_terminal_rate": success_rate,
+            "best_success_like_terminal_rate": best_success_rate,
             "timeout_rate": timeout_rate,
+            "best_timeout_rate": best_timeout_rate,
             "target_success": target_success,
             "transient_peak_risk": transient_peak,
             "alignment_risks": sorted(alignment_risks),
