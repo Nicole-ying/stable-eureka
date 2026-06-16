@@ -1,0 +1,32 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy optimizes a reward dominated by dense negative penalties (distance -41.95, vertical speed -20.36, angle -3.70) and a large terminal crash penalty (-100). The objective success bonus (100) is never reached because the policy never achieves the strict success conditions (both legs, near pad, low speed, upright). The dense penalties strongly discourage any movement toward the pad, causing the policy to prefer using orientation engines (actions 1 and 3) to drift sideways, leading to crashes. Action 0 (do nothing) is unused because the reward provides no incentive to coast or reduce fuel usage; the policy always fires engines. The horizontal_correction_bonus (mean 32.4) rewards using action 3 when vx*x>0, but this condition is often satisfied when drifting away from pad, so the policy farms this bonus without making progress toward the pad. The policy never achieves stable touchdown because it never reduces vertical speed near the pad (vy at terminal is often high, e.g., -0.67).",
+  "component_interaction_diagnosis": "The distance penalty (-0.5 per unit) dominates the dense negative budget (-41.95 mean). Combined with the vertical speed penalty (-0.3 per unit) and angle penalty (-0.2 per radian), the total dense negative is -201.89, which is 201.89x the positive objective budget (0.0, since success is never achieved). The crash penalty (-100) further reinforces early termination. The interaction causes the policy to avoid moving toward the pad (which increases distance penalty) and to avoid using the main engine (action 2) to reduce vertical speed (which would increase vertical speed penalty if it causes high vy). The horizontal_correction_bonus (mean 32.4) is farmed by using action 3 when drifting away from pad, but this does not lead to centering because the policy does not use action 1 (left engine) to correct in the opposite direction. The policy therefore oscillates or drifts without making progress.",
+  "action_coverage_diagnosis": "Action 0 (do nothing) is unused. This action is necessary for Phase 1 (descent and horizontal alignment) to allow the lander to coast without wasting fuel, and for Phase 3 (landing) to avoid overshooting the pad. Without it, the policy always fires engines, wasting fuel and causing instability. The current reward provides no incentive to use action 0; the fuel penalties (-0.03 for main, -0.01 for orientation) are too small to discourage constant engine use. The policy therefore never learns to coast or to stop firing when aligned.",
+  "expert_audit_diagnosis": "Reward scale audit: dense negative budget -201.89 is 201.89x the positive objective budget (0.0). This indicates that the policy is strongly penalized for any movement, and the objective bonus is never reached. Hard constraint: reduce absolute dense penalties or convert them into progress-delta feedback. Reward payment audit: repeatable positive terms (crash_terminal, unsafe_terminal) exist while success-like rate remains near zero. The horizontal_correction_bonus is event-gated but can be farmed repeatedly without progress (since vx*x>0 can persist). Trajectory phase report: action_coverage_ratio is 0.75 (action 0 unused), near_pad_rate is 0.2, both_leg_contact_rate is 0.2, stable_touchdown_rate is 0.0. The failure phase is action_coverage_incomplete. Objective signal alignment audit: success_like_terminal_rate is 0.0, no positive objective terms are active.",
+  "expert_action_plan_diagnosis": "Required edits: preserve behavior that improved the primary metric (the previous edit improved fitness_score by 45.043 by adding horizontal_correction_bonus and reducing distance penalty). Make one targeted reward edit with an explicit expected metric change. Forbidden edits: avoid the remembered failed pattern (a medium reward revision that improved fitness_score by 45.043 but did not change the dominant behavior). Required focus: create reachable incentives for unused necessary actions without causing no-action collapse. Validation tests: compare generated_reward and fitness_score after training, check dominant reward components for single-component dominance.",
+  "failed_pattern_reuse_check": "No rejected edit patterns are repeated. The previous pattern 'unused_discrete_actions' is addressed by adding a reward for using action 0. The pattern 'reward_scale_audit_risk' is addressed by reducing the distance penalty magnitude and converting it to a progress-delta form. The pattern 'reward_payment_audit_risk' is addressed by ensuring the new action bonus is event-gated (only when action 0 is selected and the lander is near the pad with low speed) and not repeatable without progress.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "action_coverage_repair",
+    "edit_scope": "medium",
+    "reason": "Action 0 is unused and necessary for success. We add a targeted bonus for using action 0 when the lander is near the pad with low speed and upright angle (to encourage coasting to a stable landing), and convert the distance penalty to a progress-delta form to reduce dense penalty dominance. This is a medium-scope edit because it modifies two components (adds a new term, adjusts an existing term) without restructuring the entire reward."
+  },
+  "hard_constraints_for_next_revision": [
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Check whether repeatable positive rewards can be farmed without completing the task.",
+    "Follow next_search_mode=action_coverage_repair: Some discrete actions are unused, so the next revision must first decide whether they are necessary.",
+    "Create reachable incentives for unused necessary actions without causing no-action collapse."
+  ],
+  "expected_metric_changes": {
+    "action_0_usage_rate": "increase from 0.0 to >0.05",
+    "success_like_terminal_rate": "increase from 0.0 to >0.0 (target 0.1)",
+    "dense_negative_budget": "decrease from -201.89 to around -150",
+    "fitness_score": "improve from -73.75 to > -50"
+  },
+  "validation_metrics": [
+    "Compare generated_reward and fitness_score after training.",
+    "Check dominant reward components for single-component dominance."
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

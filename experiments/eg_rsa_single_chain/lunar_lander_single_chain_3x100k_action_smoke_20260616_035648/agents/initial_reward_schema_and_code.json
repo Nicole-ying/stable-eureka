@@ -1,0 +1,92 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander-v2",
+  "expert_blueprint": {
+    "intended_behavior_phases": [
+      "Phase 1: Descent and horizontal alignment - use main engine (action 2) to control descent rate and orientation engines (actions 1,3) to center over pad.",
+      "Phase 2: Final approach - reduce vertical speed, maintain upright angle, both legs contact pad simultaneously.",
+      "Phase 3: Landing - zero velocity, upright angle, both legs grounded, terminate with success."
+    ],
+    "component_scale_reasoning": {
+      "objective_signal": {
+        "description": "Large positive reward for successful landing (both legs contact, upright, low velocity near pad).",
+        "scale": 100.0,
+        "reason": "Sparse success must dominate shaping to avoid local optima like hovering."
+      },
+      "progress_signal": {
+        "description": "Shaped reward for reducing distance to pad, reducing vertical speed, and improving angle.",
+        "scale": "distance: -1.0 per unit, vertical speed: -0.3 per unit, angle: -0.2 per radian",
+        "reason": "Provides dense feedback to guide learning toward pad with proper posture."
+      },
+      "regularizers": {
+        "description": "Mild penalties for fuel use (main engine) and orientation engine use to encourage efficiency.",
+        "scale": "main engine: -0.03 per unit, orientation engine: -0.01 per unit",
+        "reason": "Penalize excessive fuel consumption without discouraging necessary engine use."
+      },
+      "diagnostics": {
+        "description": "Track distance, speeds, angle, fuel usage, leg contact, and crash/out-of-bounds for analysis.",
+        "scale": "Not part of reward; for monitoring only."
+      }
+    },
+    "interaction_notes": "Progress terms are additive and scaled to be smaller than objective signal to avoid overriding it. Regularizers are mild to avoid hindering exploration."
+  },
+  "reward_schema": {
+    "objective_signal": {
+      "condition": "Both legs contact ground (state[6]==1 and state[7]==1) and not terminated (i.e., not crashed/out-of-bounds) and |state[0]| < 0.1 and |state[1]| < 0.1 and |state[3]| < 0.1 and |state[4]| < 0.1",
+      "reward": 100.0,
+      "description": "Large reward for successful landing on pad with low velocity and upright angle."
+    },
+    "progress_signal": {
+      "distance_to_pad": {
+        "formula": "-1.0 * sqrt(state[0]^2 + state[1]^2)",
+        "description": "Penalize horizontal and vertical distance from pad."
+      },
+      "vertical_speed": {
+        "formula": "-0.3 * abs(state[3])",
+        "description": "Penalize high vertical speed to encourage soft landing."
+      },
+      "angle": {
+        "formula": "-0.2 * abs(state[4])",
+        "description": "Penalize tilt angle to encourage upright posture."
+      }
+    },
+    "regularizers": {
+      "main_engine_fuel": {
+        "formula": "-0.03 * m_power",
+        "description": "Penalize main engine usage to minimize fuel consumption."
+      },
+      "orientation_engine_fuel": {
+        "formula": "-0.01 * s_power",
+        "description": "Mild penalty for orientation engine use."
+      }
+    },
+    "terminal_penalties": {
+      "crash_or_out_of_bounds": {
+        "condition": "terminated and not (both legs contact and success conditions)",
+        "reward": -100.0,
+        "description": "Strong negative reward for crashing or going out of bounds."
+      }
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Initialize diagnostics\n    distance = 0.0\n    vertical_speed = 0.0\n    angle = 0.0\n    main_fuel = 0.0\n    orientation_fuel = 0.0\n    success = 0.0\n    crash_penalty = 0.0\n\n    # Extract state components\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle_val = state[4]\n    angular_vel = state[5]\n    leg1 = state[6]\n    leg2 = state[7]\n\n    # Progress signals\n    distance = -1.0 * (x**2 + y**2)**0.5\n    vertical_speed = -0.3 * abs(vy)\n    angle = -0.2 * abs(angle_val)\n\n    # Regularizers\n    main_fuel = -0.03 * m_power\n    orientation_fuel = -0.01 * s_power\n\n    # Objective signal: successful landing\n    both_legs = (leg1 > 0.5) and (leg2 > 0.5)\n    near_pad = (abs(x) < 0.1) and (abs(y) < 0.1)\n    low_speed = abs(vy) < 0.1\n    upright = abs(angle_val) < 0.1\n    if both_legs and near_pad and low_speed and upright and not terminated:\n        success = 100.0\n\n    # Terminal penalty for crash or out-of-bounds\n    if terminated and not (both_legs and near_pad and low_speed and upright):\n        crash_penalty = -100.0\n\n    # Total reward\n    reward = distance + vertical_speed + angle + main_fuel + orientation_fuel + success + crash_penalty\n\n    # Diagnostics\n    individual_reward = {\n        'distance': distance,\n        'vertical_speed': vertical_speed,\n        'angle': angle,\n        'main_fuel': main_fuel,\n        'orientation_fuel': orientation_fuel,\n        'success': success,\n        'crash_penalty': crash_penalty,\n        'total': reward\n    }\n\n    return float(reward), individual_reward",
+  "expected_behavior": "The agent should learn to descend toward the pad, maintain upright angle, reduce vertical speed, and land softly with both legs contacting the pad. It should use the main engine primarily for braking and orientation engines for fine adjustments, minimizing fuel usage. The large success reward will drive the policy to achieve landing, while progress signals provide dense feedback during learning.",
+  "known_risks": [
+    "Agent may hover at high altitude to avoid crash penalty while collecting distance progress, but the distance penalty will eventually push it down.",
+    "Agent may land outside pad if distance penalty is too weak relative to success reward; success condition requires near pad, so this is mitigated.",
+    "Agent may use orientation engines excessively if angle penalty is too strong; mild penalty should prevent this.",
+    "Agent may crash if progress signals are too weak to guide safe descent; vertical speed penalty helps."
+  ],
+  "self_check": {
+    "objective_signal_present": true,
+    "reachable_progress_feedback": true,
+    "mild_regularizers": true,
+    "diagnostics_included": true,
+    "no_dense_penalty_dominated": true,
+    "task_achievement_detected": true,
+    "component_scale_reasoning_included": true,
+    "no_custom_helper_methods": true,
+    "diagnostics_initialized_before_branches": true,
+    "no_external_side_effects": true
+  },
+  "agent_name": "ExpertRewardDesignerAgent"
+}

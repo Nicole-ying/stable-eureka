@@ -1,0 +1,43 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "action_coverage_repair",
+  "action_type": "balanced_reward_revision",
+  "reason": "Add a reachable incentive for unused action 0 (do nothing) by rewarding coasting when the lander is near the pad with low speed and upright angle. Convert distance penalty to progress-delta form to reduce dense penalty dominance and make progress feedback more effective.",
+  "preserved_design": [
+    "Objective signal (100.0 for successful landing) unchanged.",
+    "Vertical speed penalty (-0.3 per unit) unchanged.",
+    "Angle penalty (-0.2 per radian) unchanged.",
+    "Main engine fuel penalty (-0.03 per unit) unchanged.",
+    "Orientation engine fuel penalty (-0.01 per unit) unchanged.",
+    "Terminal crash penalty (-100.0) unchanged.",
+    "Horizontal_correction_bonus (0.5 for action 3 when vx*x>0) unchanged."
+  ],
+  "changed_design": [
+    "Distance penalty changed from -0.5 * sqrt(x^2+y^2) to -0.5 * (sqrt(x^2+y^2) - previous_distance) where previous_distance is stored in self._prev_distance. This converts it to a progress-delta form: the penalty is only applied when distance increases, not when it decreases. This reduces dense penalty dominance and encourages moving toward the pad.",
+    "Added new term: coast_bonus = +0.5 * (1 if action == 0 and near_pad and low_speed and upright else 0) to reward using action 0 when the lander is near the pad with low speed and upright angle. This encourages coasting to a stable landing."
+  ],
+  "required_edits_implemented": [
+    "Preserve behavior that improved the primary metric.",
+    "Make one targeted reward edit with an explicit expected metric change."
+  ],
+  "forbidden_edits_avoided": [
+    "Avoid remembered failed pattern: A medium reward revision from behavior 'early_failure_or_uncontrolled_terminal' to 'early_failure_or_uncontrolled_terminal' improved fitness_score by 45.043. Changed design summary: ['Distance penalty reduced from -1.0 to -0.5 per unit to r"
+  ],
+  "rejected_patterns_avoided": [
+    "No repeatable positive rewards without progress: the coast_bonus is event-gated (only when action 0 is selected and the lander is near the pad with low speed and upright angle) and not repeatable without progress.",
+    "No dense penalty dominance: distance penalty converted to progress-delta form so it only penalizes moving away from the pad."
+  ],
+  "action_coverage_plan": "Add a bonus for using action 0 when the lander is near the pad with low speed and upright angle. This creates a reachable incentive to use the do-nothing action for coasting to a stable landing. The bonus is small (0.5) to avoid no-action collapse and is only active when the lander is in a good state for landing.",
+  "phase_guidance_plan": "The coast_bonus guides Phase 3 (landing) by rewarding the use of action 0 when the lander is near the pad with low speed and upright angle. The progress-delta distance penalty guides Phase 1 and 2 by rewarding movement toward the pad.",
+  "payment_mode_plan": "The coast_bonus is event-gated (one-shot per step when condition holds) and not repeatable without progress. The objective bonus remains terminal-aligned (one-shot on success). The progress-delta distance penalty is a shaping reward that is only paid when distance decreases.",
+  "expected_metric_changes": {
+    "action_0_usage_rate": "increase from 0.0 to >0.05",
+    "success_like_terminal_rate": "increase from 0.0 to >0.0 (target 0.1)",
+    "dense_negative_budget": "decrease from -201.89 to around -150",
+    "fitness_score": "improve from -73.75 to > -50"
+  },
+  "validation_metrics": [
+    "Compare generated_reward and fitness_score after training.",
+    "Check dominant reward components for single-component dominance."
+  ]
+}

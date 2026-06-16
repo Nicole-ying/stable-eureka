@@ -1,0 +1,32 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy optimizes a reward dominated by dense negative penalties (distance, vertical speed, angle) and a large terminal crash penalty (-100). The objective success bonus (100) is never reached because the policy never achieves the strict success conditions (both legs, near pad, low speed, upright). The dense penalties strongly discourage any movement toward the pad, causing the policy to prefer doing nothing (action 0, 56%) or firing main engine (action 2, 40%) to hover or drift, leading to crashes or out-of-bounds. Action 3 (right orientation engine) is unused because the reward provides no incentive to correct horizontal drift or align the lander; the angle penalty is symmetric and does not differentiate between left/right tilt, so the policy never learns to use the right engine.",
+  "component_interaction_diagnosis": "The distance penalty (-1.0 per unit) dominates the dense negative budget (-82.78 mean). Combined with the vertical speed penalty (-0.3 per unit) and angle penalty (-0.2 per radian), the total dense negative is -315.46, which is 315x the positive objective budget (0.0, since success is never achieved). The crash penalty (-100) further reinforces early termination. The interaction causes the policy to avoid moving toward the pad (which increases distance penalty) and to avoid using orientation engines (which would increase angle penalty if they cause tilt). The main engine is used moderately (40%) because it helps control descent, but the right orientation engine (action 3) is never used because the reward does not reward centering or correcting horizontal velocity.",
+  "action_coverage_diagnosis": "Action 3 (right orientation engine) is unused. This action is necessary for Phase 1 (horizontal alignment) and Phase 2 (final approach) to correct horizontal drift and maintain upright angle. Without it, the policy cannot center over the pad or achieve stable touchdown. The current reward provides no differential incentive for using the right engine vs. left engine; both are penalized equally via orientation_fuel (-0.01 per unit) and the angle penalty is symmetric. The policy therefore defaults to the left engine (action 1, 3.8%) when it needs to correct tilt, but never uses the right engine.",
+  "expert_audit_diagnosis": "Reward scale audit: dense negative budget (-315.46) is 315x the positive objective budget (0.0). This violates the hard constraint to reduce absolute dense penalties or convert them into progress-delta feedback. Reward payment audit: repeatable positive terms (crash_terminal, out_of_bounds, unsafe_terminal) exist while success-like rate is 0.0, but these are diagnostic flags, not actual positive rewards; the risk is low. Trajectory phase report: failure_phase is 'action_coverage_incomplete' because action 3 is unused. Objective signal alignment audit: success_like_terminal_rate is 0.0, indicating the objective signal is not aligned with the evaluator's success criteria.",
+  "expert_action_plan_diagnosis": "The expert_action_plan requires: preserve behavior that improved primary metric (none, since success rate is 0), make one targeted reward edit with explicit expected metric change. The required_edits are implemented: we add a reachable incentive for action 3 (right orientation engine) by rewarding horizontal velocity correction toward the pad. The forbidden_edits list is empty. The validation_tests are listed.",
+  "failed_pattern_reuse_check": "No rejected edit patterns are repeated. The previous pattern 'unused_discrete_actions' is addressed by adding a reward for using action 3. The pattern 'reward_scale_audit_risk' is addressed by reducing the distance penalty magnitude and converting it to a progress-delta form. The pattern 'reward_payment_audit_risk' is addressed by ensuring the new action bonus is event-gated (only when horizontal velocity is away from pad) and not repeatable without progress.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "action_coverage_repair",
+    "edit_scope": "medium",
+    "reason": "Action 3 is unused and necessary for success. We add a targeted bonus for using action 3 when horizontal velocity is away from the pad, and reduce the distance penalty magnitude to avoid dense penalty dominance. This is a medium-scope edit because it modifies two components (adds a new term, adjusts an existing term) without restructuring the entire reward."
+  },
+  "hard_constraints_for_next_revision": [
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Check whether repeatable positive rewards can be farmed without completing the task.",
+    "Follow next_search_mode=action_coverage_repair: Some discrete actions are unused, so the next revision must first decide whether they are necessary.",
+    "Create reachable incentives for unused necessary actions without causing no-action collapse."
+  ],
+  "expected_metric_changes": {
+    "action_3_usage_rate": "increase from 0.0 to >0.05",
+    "success_like_terminal_rate": "increase from 0.0 to >0.0 (target 0.1)",
+    "dense_negative_budget": "decrease from -315.46 to around -200",
+    "fitness_score": "improve from -118.8 to > -100"
+  },
+  "validation_metrics": [
+    "Compare generated_reward and fitness_score after training.",
+    "Check dominant reward components for single-component dominance."
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

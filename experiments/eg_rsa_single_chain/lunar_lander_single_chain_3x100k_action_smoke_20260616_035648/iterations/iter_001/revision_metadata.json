@@ -1,0 +1,40 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "action_coverage_repair",
+  "action_type": "balanced_reward_revision",
+  "reason": "Add a reachable incentive for unused action 3 (right orientation engine) by rewarding horizontal velocity correction toward the pad. Reduce distance penalty magnitude from -1.0 to -0.5 per unit to reduce dense penalty dominance and make progress-delta feedback more effective.",
+  "preserved_design": [
+    "Objective signal (100.0 for successful landing) unchanged.",
+    "Vertical speed penalty (-0.3 per unit) unchanged.",
+    "Angle penalty (-0.2 per radian) unchanged.",
+    "Main engine fuel penalty (-0.03 per unit) unchanged.",
+    "Orientation engine fuel penalty (-0.01 per unit) unchanged.",
+    "Terminal crash penalty (-100.0) unchanged."
+  ],
+  "changed_design": [
+    "Distance penalty reduced from -1.0 to -0.5 per unit to reduce dense penalty dominance.",
+    "Added new term: horizontal_correction_bonus = +0.5 * (1 if action == 3 and vx * x > 0 else 0) to reward using right orientation engine when horizontal velocity is away from pad."
+  ],
+  "required_edits_implemented": [
+    "Preserve behavior that improved the primary metric.",
+    "Make one targeted reward edit with an explicit expected metric change."
+  ],
+  "forbidden_edits_avoided": [],
+  "rejected_patterns_avoided": [
+    "No repeatable positive rewards without progress: the horizontal_correction_bonus is event-gated (only when vx * x > 0) and not repeatable without progress.",
+    "No dense penalty dominance: distance penalty reduced to -0.5."
+  ],
+  "action_coverage_plan": "Add a bonus for using action 3 when horizontal velocity is away from the pad (vx * x > 0). This creates a reachable incentive to use the right orientation engine for horizontal alignment. The bonus is small (0.5) to avoid no-action collapse and is only active when correction is needed.",
+  "phase_guidance_plan": "The horizontal_correction_bonus guides Phase 1 (descent and horizontal alignment) by rewarding the use of the right engine to center over the pad. The distance penalty (reduced) still provides general progress feedback.",
+  "payment_mode_plan": "The horizontal_correction_bonus is event-gated (one-shot per step when condition holds) and not repeatable without progress. The objective bonus remains terminal-aligned (one-shot on success).",
+  "expected_metric_changes": {
+    "action_3_usage_rate": "increase from 0.0 to >0.05",
+    "success_like_terminal_rate": "increase from 0.0 to >0.0 (target 0.1)",
+    "dense_negative_budget": "decrease from -315.46 to around -200",
+    "fitness_score": "improve from -118.8 to > -100"
+  },
+  "validation_metrics": [
+    "Compare generated_reward and fitness_score after training.",
+    "Check dominant reward components for single-component dominance."
+  ]
+}
