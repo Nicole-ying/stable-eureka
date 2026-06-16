@@ -10,6 +10,10 @@ Rules:
 - Use direct hasattr/self attributes if internal state is needed.
 - Initialize every diagnostic variable before any if/else branch that may conditionally assign it.
 - Use expert_memory_context as hard guidance.
+- The framework goal is reward-function quality: the reward must stably guide the RL agent to the target behavior. Do not optimize generated_reward as the framework objective.
+- Treat fitness_score as auxiliary evaluator evidence, not the objective itself. Target behavior, terminal outcomes, trajectory evidence, and stability are primary.
+- If iteration_evidence.target_behavior_report exists, diagnose target_behavior_gaps and implement required_reward_fixes.
+- If iteration_evidence.checkpoint_stability_report shows transient_peak_risk, do not preserve a design merely because peak fitness was high.
 - If expert_memory_context.expert_action_plan exists, implement its required_edits, respect its forbidden_edits, and list its validation_tests in edit_summary.validation_metrics.
 - If expert_memory_context.search_mode_recommendation exists, treat next_search_mode as the required search mode unless you explicitly justify a safer override.
 - If expert_memory_context.expert_audit_pack exists, address reward_scale_audit, reward_payment_audit, trajectory_phase_report, and objective_signal_alignment_audit in the diagnosis.
@@ -31,6 +35,8 @@ Required JSON shape:
     "component_interaction_diagnosis": "...",
     "action_coverage_diagnosis": "...",
     "expert_audit_diagnosis": "...",
+    "target_behavior_diagnosis": "...",
+    "checkpoint_stability_diagnosis": "...",
     "expert_action_plan_diagnosis": "...",
     "failed_pattern_reuse_check": "...",
     "search_decision": {
@@ -57,6 +63,7 @@ Required JSON shape:
       "required_edits_implemented": [],
       "forbidden_edits_avoided": [],
       "rejected_patterns_avoided": [],
+      "target_behavior_plan": "...",
       "action_coverage_plan": "...",
       "phase_guidance_plan": "...",
       "payment_mode_plan": "...",
@@ -67,14 +74,16 @@ Required JSON shape:
     "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    ...",
     "expected_behavior": {
       "expected_action_distribution_change": "...",
-      "expected_phase_change": "..."
+      "expected_phase_change": "...",
+      "expected_target_behavior_change": "..."
     },
     "known_risks": [],
     "self_check": {
       "all_diagnostic_variables_initialized_before_branches": true,
       "does_not_call_custom_self_methods": true,
       "large_completion_bonus_is_not_repeatable_per_step": true,
-      "expert_action_plan_required_edits_implemented": true
+      "expert_action_plan_required_edits_implemented": true,
+      "does_not_treat_peak_fitness_as_reward_quality": true
     }
   }
 }
