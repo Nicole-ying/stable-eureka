@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -17,13 +16,18 @@ class EvidenceBuilder:
         training_dir = base / "training" if (base / "training").exists() else base
         reward_dir = base / "reward" if (base / "reward").exists() else base.parent / "reward"
 
-        final_eval = _read_json_if_exists(training_dir / "final_eval.json")
+        selected_eval = _read_json_if_exists(training_dir / "selected_eval.json")
+        final_eval_raw = _read_json_if_exists(training_dir / "final_eval.json")
+        final_eval = selected_eval or final_eval_raw
         reward_trace = _read_json_if_exists(training_dir / "reward_trace.json")
         if not reward_trace and (base / "reward_trace.json").exists():
             reward_trace = _read_json_if_exists(base / "reward_trace.json")
         component_metrics = _read_json_if_exists(training_dir / "component_metrics.json")
-        trajectory_summary = _read_json_if_exists(training_dir / "trajectory_summary.json")
+        selected_trajectory_summary = _read_json_if_exists(training_dir / "selected_trajectory_summary.json")
+        trajectory_summary_raw = _read_json_if_exists(training_dir / "trajectory_summary.json")
+        trajectory_summary = selected_trajectory_summary or trajectory_summary_raw
         evals = _read_json_if_exists(training_dir / "evals.json")
+        model_selection = _read_json_if_exists(training_dir / "model_selection.json")
         reward_schema = _read_json_if_exists(reward_dir / "reward_schema.json")
         reward_code = _read_text_if_exists(reward_dir / "reward_code.py")
         task_model = _read_json_if_exists(base / "agents" / "task_model.json") or _read_json_if_exists(base / "environment_understanding_summary.json")
@@ -55,6 +59,8 @@ class EvidenceBuilder:
             "source_dir": str(base),
             "candidate_id": reward_trace.get("candidate_id", base.name),
             "primary_metrics": primary_metrics,
+            "model_selection": model_selection or reward_trace.get("model_selection", {}),
+            "raw_final_eval_summary": _raw_final_summary(final_eval_raw),
             "behavior_summary": {
                 "action_distribution": action_distribution,
                 "action_space_report": action_space_report,
@@ -240,6 +246,19 @@ def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any],
     if any((ep.get("length") or 0) < 120 for ep in episodes) and metrics.get("success_like_terminal_rate", 0.0) <= 0.01:
         hints.append("Episodes terminate early without success-like behavior; consider exploration-friendly progress signals before adding stronger penalties.")
     return hints
+
+
+def _raw_final_summary(final_eval: Dict[str, Any]) -> Dict[str, Any]:
+    if not final_eval:
+        return {}
+    return {
+        "fitness_score": _num(final_eval.get("fitness_score")),
+        "generated_reward": _num(final_eval.get("reward")),
+        "episode_length": _num(final_eval.get("episode_length")),
+        "success_like_terminal_rate": _num(final_eval.get("success_like_terminal_rate")),
+        "unsafe_terminal_rate": _num(final_eval.get("unsafe_terminal_rate")),
+        "out_of_bounds_rate": _num(final_eval.get("out_of_bounds_rate")),
+    }
 
 
 def _dedupe(items: List[str]) -> List[str]:
