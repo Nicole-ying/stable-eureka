@@ -18,6 +18,7 @@ def build_expert_action_plan(
     The planner is behavior-contract driven: fitness_score is useful auxiliary
     evidence, but reward quality is judged by whether final policy behavior truly
     reaches the task objective without proxy farming or transient checkpoint peaks.
+    Fitness uncertainty is treated as a reliability signal, not as a new objective.
     """
     audit_pack = audit_pack or current_evidence.get("expert_audit_pack", {}) or {}
     retrieved_memory = retrieved_memory or []
@@ -34,9 +35,13 @@ def build_expert_action_plan(
     search_mode = audit_pack.get("search_mode_recommendation", {}) or {}
 
     fitness = _num(primary.get("fitness_score"))
+    fitness_std = _num(primary.get("fitness_score_std"))
     generated = _num(primary.get("generated_reward"))
     success_rate = _num(primary.get("success_like_terminal_rate"))
     timeout_rate = _num((target_report.get("primary_behavior_criteria", {}) or {}).get("timeout_rate"))
+    uncertainty = target_report.get("auxiliary_score_stability", {}) or {}
+    high_fitness_uncertainty = bool(uncertainty.get("high_fitness_uncertainty") or stability_report.get("final_uncertainty_risk") or stability_report.get("unstable_last_k_risk"))
+    evidence_confidence = str(target_report.get("evidence_confidence", "medium"))
     episode_length = _num(primary.get("episode_length"))
     objective_bonus = _num(components.get("objective_bonus"))
     success_flag = _num(components.get("success_flag"))
@@ -55,6 +60,8 @@ def build_expert_action_plan(
         risks.extend(["alignment:" + str(x) for x in alignment.get("risks", [])])
     if transient_peak_risk:
         risks.append("checkpoint:transient_peak_risk")
+    if high_fitness_uncertainty:
+        risks.append("evidence:high_fitness_uncertainty")
     if not target_success:
         risks.append("behavior:target_behavior_gap")
 
@@ -69,6 +76,7 @@ def build_expert_action_plan(
         or transient_peak_risk
         or (timeout_rate > 0.4 and success_rate < 0.5)
     )
+    evidence_uncertainty_risk = bool(high_fitness_uncertainty or evidence_confidence == "low")
     instrumentation_gap_risk = bool(
         success_rate <= 0.01
         and stable_touchdown_rate >= 0.5
@@ -107,6 +115,12 @@ def build_expert_action_plan(
         ])
         validation_tests.append("Target behavior report must show final target_success=true or an explicitly improved behavior gap.")
         rationale.append("Final behavior contract is not satisfied; reward design quality is not established by auxiliary fitness alone.")
+
+    if evidence_uncertainty_risk:
+        required_edits.append("Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.")
+        validation_tests.append("Report fitness_score_std, fitness_score_sem, last-k fitness std, and whether the behavior improvement exceeds evaluator noise.")
+        acceptance_gates.append({"metric": "fitness_score_std", "operator": "contextual", "threshold": "score_gain_should_exceed_noise_or_behavior_should_improve", "reason": "experts do not treat noisy small score gains as reliable reward-quality improvement"})
+        rationale.append("Auxiliary fitness evidence is noisy or low-confidence; decision should rely on target behavior improvement and robustness.")
 
     if reward_payment_risk:
         action_type = "repair_reward_payment" if not behavior_contract_risk else action_type
@@ -181,11 +195,14 @@ def build_expert_action_plan(
         "risk_summary": {
             "reward_payment_risk": reward_payment_risk,
             "behavior_contract_risk": behavior_contract_risk,
+            "evidence_uncertainty_risk": evidence_uncertainty_risk,
             "instrumentation_gap_risk": instrumentation_gap_risk,
             "transient_peak_risk": transient_peak_risk,
             "consecutive_failure_risk": consecutive_failure_risk,
             "audit_risks": risks,
             "fitness_score_auxiliary": fitness,
+            "fitness_score_std": fitness_std,
+            "evidence_confidence": evidence_confidence,
             "generated_reward_diagnostic": generated,
             "generated_minus_fitness_gap_diagnostic": gap,
             "objective_bonus_mean": objective_bonus,
