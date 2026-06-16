@@ -27,7 +27,16 @@ DEFAULT_PROBES = [
     ProbeCase([-0.15, 0.2, 0.05, -0.1, -0.2, 0.03, 1.0, 0.0], 0.2, 0.7, False, 760),
 ]
 
-ALLOWED_CALL_ROOTS = {"abs", "float", "int", "min", "max", "bool", "hasattr"}
+SAFE_BUILTINS = {
+    "abs": abs,
+    "float": float,
+    "int": int,
+    "min": min,
+    "max": max,
+    "bool": bool,
+    "hasattr": hasattr,
+}
+ALLOWED_CALL_ROOTS = set(SAFE_BUILTINS.keys())
 ALLOWED_MODULE_CALLS = {"math", "np", "numpy"}
 DISALLOWED_NODES = (ast.Import, ast.ImportFrom, ast.With, ast.Try, ast.Raise, ast.Lambda, ast.Global, ast.Nonlocal)
 
@@ -39,13 +48,6 @@ def detect_semantic_noop_edit(
     reward_abs_tol: float = 1e-6,
     component_abs_tol: float = 1e-6,
 ) -> Dict[str, Any]:
-    """Detect whether a revised reward is effectively the same as its parent.
-
-    This is a training-cost guard. It does not prove two programs are equivalent;
-    it catches common cosmetic edits such as variable reordering, comments, or
-    algebraically identical reward sums by comparing normalized code and reward
-    outputs on expert-designed probe states.
-    """
     old_code = old_code or ""
     new_code = new_code or ""
     if not old_code.strip() or not new_code.strip():
@@ -68,7 +70,11 @@ def detect_semantic_noop_edit(
     probe_report = _probe_equivalence(old_code, new_code, probes or DEFAULT_PROBES, reward_abs_tol, component_abs_tol)
     outputs_equivalent = bool(probe_report.get("outputs_equivalent"))
 
-    semantic_noop = bool(ast_equal or (source_similarity >= 0.985 and outputs_equivalent) or (source_similarity >= 0.94 and outputs_equivalent and probe_report.get("component_keys_equivalent")))
+    semantic_noop = bool(
+        ast_equal
+        or (source_similarity >= 0.985 and outputs_equivalent)
+        or (source_similarity >= 0.94 and outputs_equivalent and probe_report.get("component_keys_equivalent"))
+    )
     reason = "semantic_change_detected"
     if semantic_noop:
         reason = "candidate reward is semantically equivalent to parent on AST/source/probe checks"
@@ -208,7 +214,7 @@ def _probe_equivalence(
 
 
 def _load_reward_fn(code: str) -> Callable[..., Tuple[float, Dict[str, Any]]]:
-    namespace: Dict[str, Any] = {"math": math, "np": np, "numpy": np, "__builtins__": {}}
+    namespace: Dict[str, Any] = {"math": math, "np": np, "numpy": np, "__builtins__": SAFE_BUILTINS}
     exec(compile(code, "<reward_code>", "exec"), namespace)
     fn = namespace.get("compute_reward")
     if not callable(fn):
