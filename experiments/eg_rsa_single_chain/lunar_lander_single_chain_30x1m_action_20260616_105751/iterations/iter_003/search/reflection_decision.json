@@ -1,0 +1,54 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy has learned to hover at a safe altitude (y ~1.0-1.5) by firing the main engine (action 2) ~57.6% of the time and doing nothing (action 0) ~38.4% of the time. This behavior collects a large positive diagnostic signal from fuel_usage (mean 615.8) because the progress-delta shaping terms (distance_progress, vertical_speed_progress) are small in magnitude (mean -0.093 and 0.151 respectively) compared to the diagnostic terms. The policy avoids descending to the pad because descending would increase vertical speed magnitude, causing negative vertical_speed_progress, and approaching the pad would reduce the distance_to_pad diagnostic term (which is always positive). The success_bonus (300) is never reached because the policy can collect ~1 per step by hovering, and the crash_penalty (-100) is only applied on termination. The policy optimizes for long episodes with high fuel usage, which yields high cumulative reward. The progress_bonus and action_0_bonus are one-shot event-gated bonuses that are never triggered because the policy never achieves a stable near-pad state.",
+  "component_interaction_diagnosis": "The progress-delta shaping terms (distance_progress, vertical_speed_progress) are designed to guide toward the pad, but they are small in magnitude (mean -0.093 and 0.151) compared to the dominant diagnostic terms (fuel_usage 615.8, distance_to_pad 186.6, angle_deviation 73.5). The angle_penalty (-1.47) and fuel_penalties (-17.28, -0.40) are mild regularizers that do not offset the benefit of staying alive. The crash_penalty (0.0) is never applied because the policy never terminates. The interaction is that the progress-delta terms are too weak to overcome the per-step positive diagnostic terms that reward staying alive and collecting fuel usage. The one-shot bonuses (progress_bonus, action_0_bonus) are never triggered because the policy never reaches the required state.",
+  "action_coverage_diagnosis": "All discrete actions (0,1,2,3) are used. Action 0 (do nothing) has a probability of 0.384, which is high. The policy uses action 0 frequently because it allows the lander to coast without firing engines, which reduces fuel penalties and maintains the hovering state. Action 2 (main engine) is used 57.6% of the time to counteract gravity and maintain altitude. Actions 1 and 3 (side engines) are used rarely (2% each) for minor orientation corrections. Action coverage is complete, but the reward structure does not incentivize the policy to descend to the pad or achieve terminal success.",
+  "expert_audit_diagnosis": "Reward scale audit: dominant component fuel_usage has abs return 615.800, dominance_ratio=3.30. Dense negative budget -19.242 is 19.24x the positive objective budget. This indicates that the auxiliary diagnostic terms dominate the episode-scale signal, and the dense penalties are much larger than the objective signal. Reward payment audit: repeatable positive terms exist while success-like rate remains near zero. The progress-delta shaping terms are paid every step and can be farmed without completing the task. Trajectory phase audit: action coverage is mostly solved but success is absent; failure phase is controlled_descent_not_reaching_pad. The policy hovers at altitude and never descends to the pad. Objective signal alignment audit: success_like_terminal_rate is 0.0, indicating no alignment between reward-defined success and evaluator success.",
+  "target_behavior_diagnosis": "Target behavior report shows target_success=false, quality_label=target_behavior_gap. Primary behavior criteria: success_like_terminal_rate=0.0, timeout_rate=1.0. Target behavior gaps: 'Final policy does not reliably terminate with task success.' and 'Final policy often reaches the time limit instead of completing the task.' Required reward fixes: 'Increase the distinction between true terminal success and proxy progress states.' and 'Penalize or stop paying proxy rewards for timeout-like behavior, especially near the target state.' The policy has learned to hover indefinitely, collecting per-step rewards without ever attempting to land.",
+  "checkpoint_stability_diagnosis": "Checkpoint stability report shows best_fitness=-107.12, final_fitness=-107.12, best_success_like_terminal_rate=0.0, final_success_like_terminal_rate=0.0. Transient_peak_risk=false. Unstable_last_k_risk=true (last 3 evals have fitness_std=108.97). The fitness is stable but low, and the success rate is zero throughout training. There is no transient peak to be misled by.",
+  "expert_action_plan_diagnosis": "Expert action plan requires: (1) Increase the distinction between true terminal success and proxy progress states. (2) Penalize or stop paying proxy rewards for timeout-like behavior, especially near the target state. (3) Focus on controlled descent, near-ground stability, and terminal touchdown rather than action coverage. (4) Condition control incentives on reducing distance/velocity/angle in the correct phase. Required focus: 'Condition engine/control rewards on controlled descent and near-pad progress.' and 'Add near-ground stability or touchdown-phase guidance.' Forbidden edits: 'do not simply increase raw main-engine/action bonuses', 'do not only reduce distance shaping'. The plan requires a shift from action-coverage repair to trajectory-phase guidance.",
+  "failed_pattern_reuse_check": "The current design uses progress-delta shaping terms that are too weak to overcome the diagnostic terms. This pattern should not be repeated. The previous edit (from iter2 to iter3) converted the action_0_bonus from a repeatable raw per-step bonus to a one-shot event-gated bonus, which improved fitness_score by 38.779 but did not solve the hovering behavior. The new design must avoid: (1) relying on weak progress-delta shaping that is dominated by diagnostic terms, (2) having no incentive to descend to the pad, (3) having no penalty for hovering indefinitely, (4) using repeatable positive terms that can be farmed without task completion.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "phase_guidance_after_action_coverage",
+    "edit_scope": "medium",
+    "reason": "Action coverage is mostly solved but success is absent; the bottleneck moved to trajectory phase completion. The policy hovers at altitude and never descends to the pad. The reward must add phase-specific guidance for controlled descent, near-ground stability, or touchdown. The edit scope is medium because the changes are focused on adding descent and touchdown incentives without restructuring the entire reward."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not let one auxiliary component dominate the episode-scale objective signal.",
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Check whether repeatable positive rewards can be farmed without completing the task.",
+    "Do not keep optimizing only action coverage; add phase-specific guidance for controlled descent, near-ground stability, or touchdown.",
+    "Follow next_search_mode=phase_guidance_after_action_coverage: Action coverage is mostly solved but success is absent; the bottleneck moved to trajectory phase completion.",
+    "Condition engine/control rewards on controlled descent and near-pad progress.",
+    "Add near-ground stability or touchdown-phase guidance.",
+    "Forbidden next edit: do not simply increase raw main-engine/action bonuses",
+    "Forbidden next edit: do not only reduce distance shaping",
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Penalize or stop paying proxy rewards for timeout-like behavior, especially near the target state.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.",
+    "Focus on controlled descent, near-ground stability, and terminal touchdown rather than action coverage.",
+    "Condition control incentives on reducing distance/velocity/angle in the correct phase."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >=0.5",
+    "timeout_rate": "decrease from 1.0 to <=0.4",
+    "episode_length": "decrease from 1000.0 to <800",
+    "fitness_score": "improve from -106.78 to >-50",
+    "fitness_score_std": "decrease from 24.40 to <20.0",
+    "near_pad_rate": "increase from 0.0 to >0.0",
+    "any_leg_contact_rate": "increase from 0.0 to >0.0"
+  },
+  "validation_metrics": [
+    "final_success_like_terminal_rate >= 0.5",
+    "timeout_rate <= 0.4",
+    "episode_length < 800",
+    "fitness_score > -50",
+    "fitness_score_std < 20.0",
+    "near_pad_rate > 0.0",
+    "any_leg_contact_rate > 0.0"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

@@ -1,0 +1,188 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The current reward has a dominant positive diagnostic component from fuel_usage (mean 642.8) because the policy learns to fire the main engine (action 2) every step to collect the large positive distance_to_pad and vertical_speed shaping terms, which are computed as absolute values and thus always positive. The shaping terms are not progress-delta but absolute state penalties that become positive when negated, creating a per-step positive reward for simply staying alive and moving away from the pad. The success bonus (100) is never reached because the policy can collect ~1 per step by firing the main engine and drifting sideways until out-of-bounds. The crash penalty (-100) is only applied at termination, so the policy optimizes for long episodes with high fuel usage and large distance from pad, which yields high cumulative reward. Action 0 (do nothing) is unused because it would reduce fuel usage and thus reduce the dominant positive term.",
+    "component_interaction_diagnosis": "The distance_penalty = -0.1 * abs(x) and vertical_speed_penalty = -0.1 * abs(vy) are intended as penalties, but because they are subtracted from zero, they become negative. However, the diagnostic variables distance_to_pad and vertical_speed are recorded as positive values and dominate the absolute return. The actual reward contribution is negative, but the policy learns to maximize episode length to accumulate many small negative steps rather than terminate. The fuel penalties are small (-0.03 per main engine, -0.01 per side) and do not offset the benefit of staying alive. The crash penalty (-100) is large but only applied once, so the policy prefers long episodes with many small negative steps over early termination. The interaction is that the shaping terms do not guide toward the pad; they are agnostic to direction and reward staying away from zero because abs(x) grows as the lander drifts.",
+    "action_coverage_diagnosis": "Action 0 (do nothing) is unused. In LunarLander-v2, action 0 fires no engine. The policy currently uses actions 1,2,3 to keep the lander moving and collecting fuel usage. Action 0 is necessary for success because a successful landing requires reducing velocity and not firing engines when already stable. The policy avoids action 0 because it would reduce fuel usage (the dominant positive diagnostic) and potentially lead to a crash (large negative penalty). The reward must create a reason to use action 0 during the final approach phase.",
+    "expert_audit_diagnosis": "Reward scale audit: dense negative budget -42.841 is 42.84x the positive objective budget. This indicates that the dense penalties dominate the objective signal, making longer useful attempts worse than early failure. Reward payment audit: repeatable positive terms exist while success-like rate remains near zero, indicating that the policy can farm positive rewards without completing the task. Trajectory phase report: failure phase is 'action_coverage_incomplete' with 0.0 near_pad_rate and 0.0 success_like_terminal_rate. Objective signal alignment audit: success_like_terminal_rate is 0.0 and positive_objective_terms is empty, indicating no alignment between reward and task success.",
+    "target_behavior_diagnosis": "Target behavior report shows target_success=false with quality_label 'target_behavior_gap'. Primary behavior criteria: success_like_terminal_rate=0.0, timeout_rate=0.0, unsafe_terminal_rate=0.2, out_of_bounds_rate=0.8. Target behavior gaps: final policy does not reliably terminate with task success; unsafe or out-of-bounds terminations remain too frequent; auxiliary fitness has high episode-level variance. Required reward fixes: increase distinction between true terminal success and proxy progress states; add clearer negative feedback for unsafe terminal behavior; prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+    "checkpoint_stability_diagnosis": "Checkpoint stability report shows best_fitness=-134.67 at timestep 800000, final_fitness=-163.83 at timestep 1000000, with best_final_fitness_gap=29.16. Transient_peak_risk is false. Last_k_eval (k=3) shows fitness_mean=-147.17, fitness_std=12.26, success_like_terminal_rate_mean=0.0. The final checkpoint is worse than the best checkpoint, but the best checkpoint did not achieve any success. The reward design should not be preserved merely because a transient checkpoint reached higher fitness.",
+    "expert_action_plan_diagnosis": "Expert action plan requires: increase distinction between true terminal success and proxy progress states; add clearer negative feedback for unsafe terminal behavior; prefer reward edits that improve success/timeout behavior; treat fitness_score as auxiliary evidence; use final checkpoint behavior and target_behavior_report as main diagnosis; do not chase small auxiliary fitness gains. Required focus: create reachable incentives for unused necessary actions without causing no-action collapse. Forbidden edits: do not preserve reward design merely because transient checkpoint reached high fitness; do not optimize generated_reward as framework objective; avoid remembered failed patterns.",
+    "failed_pattern_reuse_check": "The current design uses absolute-value shaping terms that are always negative and do not guide toward the pad. This pattern should not be repeated. The previous edit (initial design) did not address action coverage or progress feedback. The new design must avoid: (1) using absolute state values as penalties that reward staying away from zero, (2) having no progress-delta shaping, (3) having no incentive to use action 0. Additionally, the failed pattern from memory shows that converting action_0_bonus from repeatable to one-shot event-gated did not improve fitness_score by -194.852, so we must avoid simply converting action_0_bonus without addressing the underlying shaping issue.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "next_search_mode": "action_coverage_repair",
+      "edit_scope": "medium",
+      "reason": "Action 0 is unused and necessary for success. The reward must create a reachable incentive to use action 0 during the final approach phase without causing the policy to collapse to doing nothing. The shaping terms must be converted to progress-delta feedback that guides the lander toward the pad. The success bonus must be made more distinguishable from proxy states. The failed pattern from memory shows that simply converting action_0_bonus to one-shot event-gated did not improve fitness_score by -194.852, so we must also address the underlying shaping issue by converting absolute-value penalties to progress-delta feedback."
+    },
+    "hard_constraints_for_next_revision": [
+      "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+      "Check whether repeatable positive rewards can be farmed without completing the task.",
+      "Follow next_search_mode=action_coverage_repair: Some discrete actions are unused, so the next revision must first decide whether they are necessary.",
+      "Create reachable incentives for unused necessary actions without causing no-action collapse.",
+      "Increase the distinction between true terminal success and proxy progress states.",
+      "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+      "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+      "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+      "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+      "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.",
+      "Forbidden edit: Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+      "Forbidden edit: Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+      "Avoid remembered failed pattern: A medium reward revision from behavior 'unclear_policy' to 'unclear_policy' improved fitness_score by 225.370. Changed design summary: ['distance_penalty: changed from -0.1*abs(x) to progress-delta: -0.5 * (abs(x) - previous_abs_x) when mov",
+      "Avoid remembered failed pattern: A medium reward revision from behavior 'unclear_policy' to 'hovering_or_timeout_policy' improved fitness_score by 38.779. Changed design summary: ['action_0_bonus: changed from repeatable raw per-step bonus (+0.5 every step when condition m"
+    ],
+    "expected_metric_changes": {
+      "action_coverage_ratio": "increase from 0.75 to 1.0",
+      "success_like_terminal_rate": "increase from 0.0 to >0.0",
+      "out_of_bounds_rate": "decrease from 0.8 to <0.5",
+      "unsafe_terminal_rate": "decrease from 0.2 to <0.1",
+      "episode_length": "decrease from 642.8 to <500",
+      "fitness_score": "improve from -145.55 to >-100"
+    },
+    "validation_metrics": [
+      "action_coverage_ratio == 1.0",
+      "success_like_terminal_rate > 0.0",
+      "out_of_bounds_rate < 0.5",
+      "unsafe_terminal_rate < 0.1",
+      "fitness_score_std < 30.0"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "single_chain_iter0",
+    "candidate_id": "single_chain_iter1",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "next_search_mode": "action_coverage_repair",
+      "action_type": "target_behavior_repair",
+      "reason": "Convert shaping terms to progress-delta feedback toward the pad, add a progress bonus for reducing distance and velocity, add a small bonus for using action 0 when near the pad and stable, and increase the success bonus to 200 to make it clearly distinguishable from proxy rewards. Remove the absolute-value penalties that rewarded staying away from the pad. The failed pattern from memory shows that simply converting action_0_bonus to one-shot event-gated did not improve fitness_score by -194.852, so we must also address the underlying shaping issue by converting absolute-value penalties to progress-delta feedback.",
+      "preserved_design": [
+        "success_bonus as a large terminal reward",
+        "crash_penalty as a large terminal penalty",
+        "fuel penalties as mild regularizers"
+      ],
+      "changed_design": [
+        "distance_penalty: changed from -0.1*abs(x) to progress-delta: -0.5 * (abs(x) - previous_abs_x) when moving away, +0.5 when moving closer",
+        "vertical_speed_penalty: changed from -0.1*abs(vy) to progress-delta: -0.5 * (abs(vy) - previous_abs_vy) when speeding up, +0.5 when slowing down",
+        "angle_penalty: changed from -0.02*abs(angle) to -0.05*abs(angle) to discourage large angles more",
+        "added action_0_bonus: +0.5 when action 0 is selected and the lander is near the pad (abs(x)<0.3) and has low speed (abs(vx)<0.3, abs(vy)<0.3) and is upright (abs(angle)<0.3)",
+        "added progress_bonus: +1.0 when both legs contact and the lander is near the pad (abs(x)<0.1) and has low speed (abs(vx)<0.1, abs(vy)<0.1) and is upright (abs(angle)<0.1) - this is a one-shot bonus that triggers before the terminal success bonus",
+        "increased success_bonus from 100 to 200"
+      ],
+      "required_edits_implemented": [
+        "Increase the distinction between true terminal success and proxy progress states.",
+        "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+        "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+        "Create reachable incentives for unused necessary actions without causing no-action collapse."
+      ],
+      "forbidden_edits_avoided": [
+        "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+        "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect."
+      ],
+      "rejected_patterns_avoided": [
+        "Avoid using absolute state values as penalties that reward staying away from zero.",
+        "Avoid having no progress-delta shaping.",
+        "Avoid having no incentive to use action 0."
+      ],
+      "target_behavior_plan": "The revised reward guides the lander toward the pad by providing positive feedback when distance and velocity decrease, and negative feedback when they increase. The progress bonus provides a one-shot reward for achieving a stable near-pad state with both legs contacting, which is a clear proxy for success. The success bonus (200) is much larger than any per-step reward, making it the dominant objective. The action_0_bonus encourages the policy to stop firing engines when already near the pad and stable, which is necessary for a soft landing.",
+      "action_coverage_plan": "Action 0 (do nothing) is incentivized by the action_0_bonus when the lander is near the pad and stable. This creates a reachable reason to use action 0 during the final approach phase. The bonus is small (0.5) and conditioned on being near the pad, so it does not cause the policy to collapse to doing nothing from the start. The policy must first learn to approach the pad using actions 1,2,3, then switch to action 0 for the final descent.",
+      "phase_guidance_plan": "Phase 1 (descent): The progress-delta shaping encourages the lander to move toward the pad and reduce vertical speed. Phase 2 (final approach): The action_0_bonus and progress bonus encourage the lander to stop firing engines and achieve a stable near-pad state. Phase 3 (landing): The success bonus (200) provides a strong terminal signal for completing the task.",
+      "payment_mode_plan": "The progress-delta shaping is paid every step based on the change in distance and velocity. The action_0_bonus is paid every step that the condition is met. The progress bonus is a one-shot event-gated reward that is paid only once when the lander first achieves the near-pad stable state. The success bonus is a terminal reward paid only on successful termination. The crash penalty is a terminal penalty paid on failure termination.",
+      "expected_metric_changes": {
+        "action_coverage_ratio": "increase from 0.75 to 1.0",
+        "success_like_terminal_rate": "increase from 0.0 to >0.0",
+        "out_of_bounds_rate": "decrease from 0.8 to <0.5",
+        "unsafe_terminal_rate": "decrease from 0.2 to <0.1",
+        "episode_length": "decrease from 642.8 to <500",
+        "fitness_score": "improve from -145.55 to >-100"
+      },
+      "validation_metrics": [
+        "action_coverage_ratio == 1.0",
+        "success_like_terminal_rate > 0.0",
+        "out_of_bounds_rate < 0.5",
+        "unsafe_terminal_rate < 0.1",
+        "fitness_score_std < 30.0"
+      ]
+    },
+    "reward_schema": {
+      "components": [
+        {
+          "name": "success_bonus",
+          "description": "Large positive reward for a successful landing: both legs contact, |x| < 0.1, |vx| < 0.1, |vy| < 0.1, |angle| < 0.1 radians.",
+          "type": "sparse_terminal",
+          "scale": 200.0
+        },
+        {
+          "name": "distance_progress",
+          "description": "Progress-delta reward based on change in horizontal distance from pad. Positive when moving closer, negative when moving away.",
+          "type": "shaping",
+          "scale": 0.5
+        },
+        {
+          "name": "vertical_speed_progress",
+          "description": "Progress-delta reward based on change in absolute vertical speed. Positive when slowing down, negative when speeding up.",
+          "type": "shaping",
+          "scale": 0.5
+        },
+        {
+          "name": "angle_penalty",
+          "description": "Small negative reward proportional to absolute angle to encourage upright orientation.",
+          "type": "regularizer",
+          "scale": -0.05
+        },
+        {
+          "name": "fuel_penalty_main",
+          "description": "Small negative reward for using main engine to encourage fuel efficiency.",
+          "type": "regularizer",
+          "scale": -0.03
+        },
+        {
+          "name": "fuel_penalty_side",
+          "description": "Small negative reward for using side engines to encourage fuel efficiency.",
+          "type": "regularizer",
+          "scale": -0.01
+        },
+        {
+          "name": "action_0_bonus",
+          "description": "Small positive reward for selecting action 0 (do nothing) when near the pad and stable. Encourages the policy to stop firing engines during final approach.",
+          "type": "shaping",
+          "scale": 0.5
+        },
+        {
+          "name": "progress_bonus",
+          "description": "One-shot positive reward for achieving a stable near-pad state with both legs contacting. Provides a clear proxy for success.",
+          "type": "sparse_terminal",
+          "scale": 1.0
+        },
+        {
+          "name": "crash_penalty",
+          "description": "Large negative reward for crashing (terminated without success).",
+          "type": "sparse_terminal",
+          "scale": -100.0
+        }
+      ],
+      "total_reward_formula": "success_bonus + distance_progress + vertical_speed_progress + angle_penalty + fuel_penalty_main + fuel_penalty_side + action_0_bonus + progress_bonus + crash_penalty"
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state variables\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    angular_velocity = state[5]\n    leg1_contact = state[6]\n    leg2_contact = state[7]\n\n    # Initialize diagnostic variables\n    distance_to_pad = 0.0\n    vertical_speed = 0.0\n    angle_deviation = 0.0\n    fuel_usage = 0.0\n    success_flag = 0.0\n    crash_flag = 0.0\n    action_0_bonus_flag = 0.0\n    progress_bonus_flag = 0.0\n    distance_progress = 0.0\n    vertical_speed_progress = 0.0\n\n    # Compute distance to pad (horizontal distance)\n    distance_to_pad = abs(x)\n\n    # Compute vertical speed magnitude\n    vertical_speed = abs(vy)\n\n    # Compute angle deviation from upright\n    angle_deviation = abs(angle)\n\n    # Compute fuel usage\n    fuel_usage = m_power + s_power\n\n    # Initialize reward components\n    success_bonus = 0.0\n    angle_penalty = 0.0\n    fuel_penalty_main = 0.0\n    fuel_penalty_side = 0.0\n    action_0_bonus = 0.0\n    progress_bonus = 0.0\n    crash_penalty = 0.0\n\n    # Check for success: both legs contact, near pad, low velocities, upright\n    both_legs_contact = (leg1_contact == 1.0 and leg2_contact == 1.0)\n    near_pad = (abs(x) < 0.1)\n    low_vx = (abs(vx) < 0.1)\n    low_vy = (abs(vy) < 0.1)\n    upright = (abs(angle) < 0.1)\n\n    if both_legs_contact and near_pad and low_vx and low_vy and upright:\n        success_bonus = 200.0\n        success_flag = 1.0\n\n    # Progress-delta shaping for distance\n    # Use hasattr to access previous distance from internal state\n    if hasattr(self, 'prev_abs_x'):\n        prev_abs_x = self.prev_abs_x\n    else:\n        prev_abs_x = distance_to_pad\n    self.prev_abs_x = distance_to_pad\n\n    delta_abs_x = distance_to_pad - prev_abs_x\n    if delta_abs_x < 0:\n        distance_progress = 0.5 * (-delta_abs_x)  # moving closer, positive reward\n    else:\n        distance_progress = -0.5 * delta_abs_x  # moving away, negative reward\n\n    # Progress-delta shaping for vertical speed\n    if hasattr(self, 'prev_abs_vy'):\n        prev_abs_vy = self.prev_abs_vy\n    else:\n        prev_abs_vy = vertical_speed\n    self.prev_abs_vy = vertical_speed\n\n    delta_abs_vy = vertical_speed - prev_abs_vy\n    if delta_abs_vy < 0:\n        vertical_speed_progress = 0.5 * (-delta_abs_vy)  # slowing down, positive reward\n    else:\n        vertical_speed_progress = -0.5 * delta_abs_vy  # speeding up, negative reward\n\n    # Angle penalty (regularizer)\n    angle_penalty = -0.05 * angle_deviation\n\n    # Fuel penalties (regularizers)\n    fuel_penalty_main = -0.03 * m_power\n    fuel_penalty_side = -0.01 * s_power\n\n    # Action 0 bonus: encourage using action 0 when near pad and stable\n    # Check if action 0 was selected (m_power == 0 and s_power == 0)\n    if m_power == 0.0 and s_power == 0.0:\n        near_pad_for_action0 = (abs(x) < 0.3)\n        low_vx_for_action0 = (abs(vx) < 0.3)\n        low_vy_for_action0 = (abs(vy) < 0.3)\n        upright_for_action0 = (abs(angle) < 0.3)\n        if near_pad_for_action0 and low_vx_for_action0 and low_vy_for_action0 and upright_for_action0:\n            action_0_bonus = 0.5\n            action_0_bonus_flag = 1.0\n\n    # Progress bonus: one-shot reward for achieving stable near-pad state with both legs contacting\n    if both_legs_contact and near_pad and low_vx and low_vy and upright:\n        if hasattr(self, 'progress_bonus_paid'):\n            if not self.progress_bonus_paid:\n                progress_bonus = 1.0\n                progress_bonus_flag = 1.0\n                self.progress_bonus_paid = True\n        else:\n            progress_bonus = 1.0\n            progress_bonus_flag = 1.0\n            self.progress_bonus_paid = True\n\n    # Crash penalty (if terminated and not success)\n    if terminated and success_flag == 0.0:\n        crash_penalty = -100.0\n        crash_flag = 1.0\n\n    # Total reward\n    reward = success_bonus + distance_progress + vertical_speed_progress + angle_penalty + fuel_penalty_main + fuel_penalty_side + action_0_bonus + progress_bonus + crash_penalty\n\n    # Individual reward diagnostics\n    individual_reward = {\n        'success_bonus': success_bonus,\n        'distance_progress': distance_progress,\n        'vertical_speed_progress': vertical_speed_progress,\n        'angle_penalty': angle_penalty,\n        'fuel_penalty_main': fuel_penalty_main,\n        'fuel_penalty_side': fuel_penalty_side,\n        'action_0_bonus': action_0_bonus,\n        'progress_bonus': progress_bonus,\n        'crash_penalty': crash_penalty,\n        'distance_to_pad': distance_to_pad,\n        'vertical_speed': vertical_speed,\n        'angle_deviation': angle_deviation,\n        'fuel_usage': fuel_usage,\n        'success_flag': success_flag,\n        'crash_flag': crash_flag,\n        'action_0_bonus_flag': action_0_bonus_flag,\n        'progress_bonus_flag': progress_bonus_flag\n    }\n\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "expected_action_distribution_change": "Action 0 (do nothing) should increase from 0.0 to approximately 0.1-0.2, as the policy learns to use it during the final approach phase when near the pad and stable. Action 2 (main engine) should decrease from 0.57 to approximately 0.4-0.5, as the policy learns to reduce engine usage when near the pad. Actions 1 and 3 (orientation engines) should remain similar or slightly decrease.",
+      "expected_phase_change": "Phase 1 (descent): The progress-delta shaping should guide the lander toward the pad, reducing the out_of_bounds_rate from 0.8 to <0.5. Phase 2 (final approach): The action_0_bonus and progress_bonus should encourage the lander to achieve a stable near-pad state, increasing the near_pad_rate from 0.0 to >0.0. Phase 3 (landing): The success_bonus (200) should provide a strong terminal signal, increasing the success_like_terminal_rate from 0.0 to >0.0.",
+      "expected_target_behavior_change": "The policy should learn to approach the pad, reduce velocity, and achieve a successful landing. The success_like_terminal_rate should increase from 0.0 to at least 0.2. The out_of_bounds_rate should decrease from 0.8 to <0.5. The unsafe_terminal_rate should decrease from 0.2 to <0.1."
+    },
+    "known_risks": [
+      "The progress-delta shaping may cause the policy to oscillate around the pad if the delta terms are too large relative to the success bonus.",
+      "The action_0_bonus may cause the policy to collapse to doing nothing from the start if the condition is too easy to satisfy (e.g., if the lander starts near the pad).",
+      "The progress_bonus may be paid multiple times if the lander leaves and re-enters the stable near-pad state, but the code uses a flag to prevent this.",
+      "The internal state variables (prev_abs_x, prev_abs_vy, progress_bonus_paid) must be initialized in the __init__ method of the reward class."
+    ],
+    "self_check": {
+      "all_diagnostic_variables_initialized_before_branches": true,
+      "does_not_call_custom_self_methods": true,
+      "large_completion_bonus_is_not_repeatable_per_step": true,
+      "expert_action_plan_required_edits_implemented": true,
+      "does_not_treat_peak_fitness_as_reward_quality": true
+    }
+  },
+  "agent_name": "ExpertRewardRevisionAgent"
+}

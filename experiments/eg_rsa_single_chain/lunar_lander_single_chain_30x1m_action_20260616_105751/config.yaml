@@ -1,0 +1,83 @@
+experiment:
+  parent: experiments/eg_rsa_single_chain
+  name: lunar_lander_single_chain_30x1m_action
+  use_datetime: true
+
+# Action-planner long-run config: 30 trained candidates total, each with 1M PPO timesteps.
+eg_rsa:
+  edit_agent:
+    backend: deepseek
+    model: deepseek-chat
+    credential_env: DEEPSEEK_API_KEY
+    temperature: 0.1
+    timeout: 600
+
+environment:
+  name: lunar_lander
+  family: box2d_lander
+  class_name: LunarLander
+  task_description_path: envs/lunar_lander/task_description.txt
+  step_path: envs/lunar_lander/step.py
+  env_code_dir: envs/lunar_lander/env_code
+  max_episode_steps: 1000
+  kwargs:
+    continuous: false
+    gravity: -10.0
+    enable_wind: false
+
+search:
+  # Total trained candidates including bootstrap iter_000.
+  # iterations: 30 means iter_000 + iter_001 ... iter_029.
+  iterations: 30
+  primary_metric: fitness_score
+  allow_large_edits: true
+  require_edit_scope_reason_risk_validation: true
+
+controller:
+  primary_metric: fitness_score
+  accept_if_primary_improves: true
+  use_elite_as_parent_after_rejection: true
+  allow_non_improving_parent: false
+  reject_behavior_regression: true
+  stop_after_consecutive_rejections: 0
+
+reward_repair:
+  max_attempts: 2
+  smoke_steps: 8
+
+memory:
+  enabled: true
+  path: memory/reward_memory.jsonl
+  retrieve_top_k: 3
+
+rl:
+  algo: ppo
+  algo_params:
+    policy: MlpPolicy
+    learning_rate: 0.0003
+    n_steps: 1024
+    batch_size: 64
+    n_epochs: 10
+    gamma: 0.999
+    gae_lambda: 0.98
+    clip_range: 0.2
+    ent_coef: 0.01
+    vf_coef: 0.5
+    max_grad_norm: 0.5
+  architecture:
+    net_arch:
+      pi: [64, 64]
+      vf: [64, 64]
+    activation_fn: Tanh
+    share_features_extractor: false
+  training:
+    total_timesteps: 1000000
+    num_envs: 8
+    seed: 0
+    device: cpu
+    verbose: 1
+  eval:
+    seed: 1000
+    n_eval_episodes: 5
+    num_evals: 5
+    deterministic: true

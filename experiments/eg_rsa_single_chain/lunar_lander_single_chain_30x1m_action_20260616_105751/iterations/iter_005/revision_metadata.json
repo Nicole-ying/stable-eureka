@@ -1,0 +1,53 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "action_coverage_repair",
+  "action_type": "target_behavior_repair",
+  "reason": "Convert shaping terms to progress-delta feedback toward the pad, add a progress bonus for reducing distance and velocity, add a small bonus for using action 0 when near the pad and stable, and increase the success bonus to 200 to make it clearly distinguishable from proxy rewards. Remove the absolute-value penalties that rewarded staying away from the pad. The failed pattern from memory shows that simply converting action_0_bonus to one-shot event-gated did not improve fitness_score by -194.852, so we must also address the underlying shaping issue by converting absolute-value penalties to progress-delta feedback.",
+  "preserved_design": [
+    "success_bonus as a large terminal reward",
+    "crash_penalty as a large terminal penalty",
+    "fuel penalties as mild regularizers"
+  ],
+  "changed_design": [
+    "distance_penalty: changed from -0.1*abs(x) to progress-delta: -0.5 * (abs(x) - previous_abs_x) when moving away, +0.5 when moving closer",
+    "vertical_speed_penalty: changed from -0.1*abs(vy) to progress-delta: -0.5 * (abs(vy) - previous_abs_vy) when speeding up, +0.5 when slowing down",
+    "angle_penalty: changed from -0.02*abs(angle) to -0.05*abs(angle) to discourage large angles more",
+    "added action_0_bonus: +0.5 when action 0 is selected and the lander is near the pad (abs(x)<0.3) and has low speed (abs(vx)<0.3, abs(vy)<0.3) and is upright (abs(angle)<0.3)",
+    "added progress_bonus: +1.0 when both legs contact and the lander is near the pad (abs(x)<0.1) and has low speed (abs(vx)<0.1, abs(vy)<0.1) and is upright (abs(angle)<0.1) - this is a one-shot bonus that triggers before the terminal success bonus",
+    "increased success_bonus from 100 to 200"
+  ],
+  "required_edits_implemented": [
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+    "Create reachable incentives for unused necessary actions without causing no-action collapse."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect."
+  ],
+  "rejected_patterns_avoided": [
+    "Avoid using absolute state values as penalties that reward staying away from zero.",
+    "Avoid having no progress-delta shaping.",
+    "Avoid having no incentive to use action 0."
+  ],
+  "target_behavior_plan": "The revised reward guides the lander toward the pad by providing positive feedback when distance and velocity decrease, and negative feedback when they increase. The progress bonus provides a one-shot reward for achieving a stable near-pad state with both legs contacting, which is a clear proxy for success. The success bonus (200) is much larger than any per-step reward, making it the dominant objective. The action_0_bonus encourages the policy to stop firing engines when already near the pad and stable, which is necessary for a soft landing.",
+  "action_coverage_plan": "Action 0 (do nothing) is incentivized by the action_0_bonus when the lander is near the pad and stable. This creates a reachable reason to use action 0 during the final approach phase. The bonus is small (0.5) and conditioned on being near the pad, so it does not cause the policy to collapse to doing nothing from the start. The policy must first learn to approach the pad using actions 1,2,3, then switch to action 0 for the final descent.",
+  "phase_guidance_plan": "Phase 1 (descent): The progress-delta shaping encourages the lander to move toward the pad and reduce vertical speed. Phase 2 (final approach): The action_0_bonus and progress bonus encourage the lander to stop firing engines and achieve a stable near-pad state. Phase 3 (landing): The success bonus (200) provides a strong terminal signal for completing the task.",
+  "payment_mode_plan": "The progress-delta shaping is paid every step based on the change in distance and velocity. The action_0_bonus is paid every step that the condition is met. The progress bonus is a one-shot event-gated reward that is paid only once when the lander first achieves the near-pad stable state. The success bonus is a terminal reward paid only on successful termination. The crash penalty is a terminal penalty paid on failure termination.",
+  "expected_metric_changes": {
+    "action_coverage_ratio": "increase from 0.75 to 1.0",
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "out_of_bounds_rate": "decrease from 0.8 to <0.5",
+    "unsafe_terminal_rate": "decrease from 0.2 to <0.1",
+    "episode_length": "decrease from 642.8 to <500",
+    "fitness_score": "improve from -145.55 to >-100"
+  },
+  "validation_metrics": [
+    "action_coverage_ratio == 1.0",
+    "success_like_terminal_rate > 0.0",
+    "out_of_bounds_rate < 0.5",
+    "unsafe_terminal_rate < 0.1",
+    "fitness_score_std < 30.0"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The current reward has a dominant positive component from fuel_usage (mean 439.6) because the policy learns to fire the main engine (action 2) every step to collect the large positive distance_to_pad and vertical_speed shaping terms, which are computed as absolute values and thus always positive. The shaping terms are not progress-delta but absolute state penalties that become positive when negated, creating a per-step positive reward for simply staying alive and moving away from the pad. The success bonus (200) is never reached because the policy can collect ~1 per step by firing the main engine and drifting sideways until timeout. The crash penalty (-100) is only applied at termination, so the policy optimizes for long episodes with high fuel usage and large distance from pad, which yields high cumulative reward. Action 0 (do nothing) is used but the action_0_bonus is a repeatable raw per-step bonus that can be farmed without task completion, as identified by the reward payment audit.",
+  "component_interaction_diagnosis": "The distance_progress and vertical_speed_progress are progress-delta terms that should guide toward the pad, but they are small in magnitude (mean -0.177 and 0.084 respectively) compared to the dominant diagnostic terms (fuel_usage 439.6, distance_to_pad 187.4, action_0_bonus_flag 86.4). The angle_penalty (-3.33) and fuel_penalties (-9.85, -1.11) are mild regularizers that do not offset the benefit of staying alive. The crash_penalty (-60.0) is large but only applied once, so the policy prefers long episodes with many small negative steps over early termination. The interaction is that the progress-delta terms are too weak to overcome the per-step positive diagnostic terms that reward staying alive and collecting fuel usage.",
+  "action_coverage_diagnosis": "All discrete actions (0,1,2,3) are used. Action 0 (do nothing) has a probability of 0.371, which is high. The action_0_bonus is a repeatable raw per-step bonus that can be farmed without task completion. The policy uses action 0 frequently because it provides a per-step positive reward when near the pad and stable, but this does not lead to task completion because the success bonus is not reliably triggered. The action coverage is complete, but the reward structure allows farming of action_0_bonus without completing the task.",
+  "expert_audit_diagnosis": "Reward scale audit: dense negative budget -14.467 is 14.47x the positive objective budget (0.8). This means the dense penalties dominate the objective signal. Reward payment audit: repeatable raw action/control bonuses detected: action_0_bonus, action_0_bonus_flag. These can be farmed without task completion. Trajectory phase report: success_like_terminal_rate is 0.4, but stable_touchdown_rate is 0.0, indicating that the policy achieves both-leg contact but not with stable velocities and angle. Objective signal alignment audit: success_like_terminal_rate is 0.4, positive_objective_terms include safe_landing_terminal and success_like_terminal, but the policy does not reliably terminate with success.",
+  "target_behavior_diagnosis": "Target behavior report: target_success=false, quality_label=target_behavior_gap. Primary behavior criteria: success_like_terminal_rate=0.4, timeout_rate=0.4, unsafe_terminal_rate=0.2. The final policy does not reliably terminate with task success. Auxiliary fitness has high episode-level variance (fitness_score_std=92.57). Required reward fixes: increase the distinction between true terminal success and proxy progress states, prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+  "checkpoint_stability_diagnosis": "Checkpoint stability report: transient_peak_risk=true. Best checkpoint at 400k steps had success_like_terminal_rate=0.4, but final checkpoint at 1M steps has success_like_terminal_rate=0.0. The best fitness (69.15) is much higher than final fitness (-5.58). Last-k evaluation (k=3) shows fitness_mean=-17.75, success_like_terminal_rate_mean=0.0. The reward design should not be preserved based on a transient peak.",
+  "expert_action_plan_diagnosis": "Expert action plan: action_type=target_behavior_repair, search_mode=payment_mode_rewrite, edit_scope=medium. Required edits: increase the distinction between true terminal success and proxy progress states, prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains, treat fitness_score as auxiliary evidence, use final checkpoint behavior and target_behavior_report as the main diagnosis, do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high. Forbidden edits: do not preserve a reward design merely because a transient checkpoint reached high fitness, do not optimize generated_reward as a framework objective, avoid remembered failed pattern, do not increase repeatable per-step bonuses without event/progress gating. Required focus: convert raw per-step bonuses into progress-conditioned, event-gated, one-shot, or diminishing signals.",
+  "failed_pattern_reuse_check": "The current design uses a repeatable raw per-step action_0_bonus that can be farmed without task completion. This pattern should not be repeated. The previous edit (from iter0 to iter1) added action_0_bonus as a raw per-step bonus, which improved fitness_score by 225.370 but introduced the payment audit risk. The new design must avoid: (1) repeatable raw per-step action bonuses without event/progress gating, (2) dense penalties that dominate the objective signal, (3) relying on transient peak fitness as evidence of reward quality.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "payment_mode_rewrite",
+    "edit_scope": "medium",
+    "reason": "The reward contains repeatable raw action/control bonuses (action_0_bonus) that can be farmed without task completion. The search_mode_recommendation from expert_memory_context is payment_mode_rewrite. The required focus is to convert raw per-step bonuses into progress-conditioned, event-gated, one-shot, or diminishing signals. The edit scope is medium because the changes are focused on payment mode and do not require a full restructuring."
+  },
+  "hard_constraints_for_next_revision": [
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Do not simply increase raw per-step action bonuses; condition them on progress, phase, stability, or event milestones.",
+    "Follow next_search_mode=payment_mode_rewrite: Reward contains repeatable raw action/control bonuses that may be farmed without task completion.",
+    "Convert raw per-step bonuses into progress-conditioned, event-gated, one-shot, or diminishing signals.",
+    "Forbidden next edit: do not increase repeatable per-step bonuses without event/progress gating",
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.",
+    "Forbidden edit: Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Forbidden edit: Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Forbidden edit: Avoid remembered failed pattern: A medium reward revision from behavior 'unclear_policy' to 'unclear_policy' improved fitness_score by 225.370. Changed design summary: ['distance_penalty: changed from -0.1*abs(x) to progress-delta: -0.5 * (abs(x) - previous_abs_x) when mov",
+    "Forbidden edit: do not increase repeatable per-step bonuses without event/progress gating"
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.4 to >=0.5",
+    "timeout_rate": "decrease from 0.4 to <=0.3",
+    "unsafe_terminal_rate": "decrease from 0.2 to <=0.1",
+    "fitness_score_std": "decrease from 92.57 to <50.0",
+    "episode_length": "decrease from 698.8 to <600",
+    "action_0_bonus_flag_mean": "decrease from 86.4 to <50.0 (indicating less farming)"
+  },
+  "validation_metrics": [
+    "final_success_like_terminal_rate >= 0.5",
+    "timeout_rate <= 0.3",
+    "unsafe_terminal_rate <= 0.1",
+    "fitness_score_std < 50.0",
+    "action_0_bonus_flag_mean < 50.0"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

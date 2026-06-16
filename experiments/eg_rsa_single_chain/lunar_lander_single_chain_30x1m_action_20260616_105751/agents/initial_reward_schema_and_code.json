@@ -1,0 +1,87 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander-v2",
+  "expert_blueprint": {
+    "intended_behavior_phases": [
+      "Phase 1: Descent and stabilization - reduce vertical speed, center horizontally over pad, maintain upright orientation.",
+      "Phase 2: Final approach - fine-tune position and velocity to land softly on pad with both legs contacting simultaneously.",
+      "Phase 3: Landing - zero velocity, upright, both legs on ground, terminate with success."
+    ],
+    "component_scale_reasoning": {
+      "objective_success_bonus": "Large positive reward (+100) for achieving a successful landing (both legs contact, near-zero velocity, upright, near pad). This provides a clear goal signal.",
+      "progress_shaping": "Moderate negative reward for distance to pad (-0.1 per unit distance) and vertical speed (-0.1 per unit speed) to guide the lander toward the pad and slow descent. These are reachable intermediate goals.",
+      "mild_regularizers": "Small penalties for fuel usage (main engine: -0.03 per unit power, side engines: -0.01 per unit power) to encourage efficiency without discouraging necessary engine use. Small penalty for angle deviation (-0.02 per radian) to encourage upright posture.",
+      "crash_penalty": "Strong negative reward (-100) for crashing (terminated without success) to discourage failure.",
+      "diagnostics": "Track individual components for monitoring: distance_to_pad, vertical_speed, angle, fuel_usage, success_flag, crash_flag."
+    },
+    "component_interaction_check": "The shaping terms (distance, vertical speed) guide the lander toward the pad and slow descent, while the success bonus provides a strong terminal signal. The mild regularizers (fuel, angle) do not conflict with the shaping; they encourage efficient and stable flight. The crash penalty is separate and only activates on failure."
+  },
+  "reward_schema": {
+    "components": [
+      {
+        "name": "success_bonus",
+        "description": "Large positive reward for a successful landing: both legs contact, |x| < 0.1, |vx| < 0.1, |vy| < 0.1, |angle| < 0.1 radians.",
+        "type": "sparse_terminal",
+        "scale": 100.0
+      },
+      {
+        "name": "distance_penalty",
+        "description": "Negative reward proportional to horizontal distance from pad (x coordinate).",
+        "type": "shaping",
+        "scale": -0.1
+      },
+      {
+        "name": "vertical_speed_penalty",
+        "description": "Negative reward proportional to absolute vertical speed (vy) to encourage soft landing.",
+        "type": "shaping",
+        "scale": -0.1
+      },
+      {
+        "name": "angle_penalty",
+        "description": "Small negative reward proportional to absolute angle to encourage upright orientation.",
+        "type": "regularizer",
+        "scale": -0.02
+      },
+      {
+        "name": "fuel_penalty_main",
+        "description": "Small negative reward for using main engine to encourage fuel efficiency.",
+        "type": "regularizer",
+        "scale": -0.03
+      },
+      {
+        "name": "fuel_penalty_side",
+        "description": "Small negative reward for using side engines to encourage fuel efficiency.",
+        "type": "regularizer",
+        "scale": -0.01
+      },
+      {
+        "name": "crash_penalty",
+        "description": "Large negative reward for crashing (terminated without success).",
+        "type": "sparse_terminal",
+        "scale": -100.0
+      }
+    ],
+    "total_reward_formula": "success_bonus + distance_penalty + vertical_speed_penalty + angle_penalty + fuel_penalty_main + fuel_penalty_side + crash_penalty"
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Extract state variables\n    x = state[0]\n    y = state[1]\n    vx = state[2]\n    vy = state[3]\n    angle = state[4]\n    angular_velocity = state[5]\n    leg1_contact = state[6]\n    leg2_contact = state[7]\n\n    # Initialize diagnostic variables\n    distance_to_pad = 0.0\n    vertical_speed = 0.0\n    angle_deviation = 0.0\n    fuel_usage = 0.0\n    success_flag = 0.0\n    crash_flag = 0.0\n\n    # Compute distance to pad (horizontal distance)\n    distance_to_pad = abs(x)\n\n    # Compute vertical speed magnitude\n    vertical_speed = abs(vy)\n\n    # Compute angle deviation from upright\n    angle_deviation = abs(angle)\n\n    # Compute fuel usage\n    fuel_usage = m_power + s_power\n\n    # Initialize reward components\n    success_bonus = 0.0\n    distance_penalty = 0.0\n    vertical_speed_penalty = 0.0\n    angle_penalty = 0.0\n    fuel_penalty_main = 0.0\n    fuel_penalty_side = 0.0\n    crash_penalty = 0.0\n\n    # Check for success: both legs contact, near pad, low velocities, upright\n    both_legs_contact = (leg1_contact == 1.0 and leg2_contact == 1.0)\n    near_pad = (abs(x) < 0.1)\n    low_vx = (abs(vx) < 0.1)\n    low_vy = (abs(vy) < 0.1)\n    upright = (abs(angle) < 0.1)\n\n    if both_legs_contact and near_pad and low_vx and low_vy and upright:\n        success_bonus = 100.0\n        success_flag = 1.0\n\n    # Distance penalty (shaping)\n    distance_penalty = -0.1 * distance_to_pad\n\n    # Vertical speed penalty (shaping)\n    vertical_speed_penalty = -0.1 * vertical_speed\n\n    # Angle penalty (regularizer)\n    angle_penalty = -0.02 * angle_deviation\n\n    # Fuel penalties (regularizers)\n    fuel_penalty_main = -0.03 * m_power\n    fuel_penalty_side = -0.01 * s_power\n\n    # Crash penalty (if terminated and not success)\n    if terminated and success_flag == 0.0:\n        crash_penalty = -100.0\n        crash_flag = 1.0\n\n    # Total reward\n    reward = success_bonus + distance_penalty + vertical_speed_penalty + angle_penalty + fuel_penalty_main + fuel_penalty_side + crash_penalty\n\n    # Individual reward diagnostics\n    individual_reward = {\n        'success_bonus': success_bonus,\n        'distance_penalty': distance_penalty,\n        'vertical_speed_penalty': vertical_speed_penalty,\n        'angle_penalty': angle_penalty,\n        'fuel_penalty_main': fuel_penalty_main,\n        'fuel_penalty_side': fuel_penalty_side,\n        'crash_penalty': crash_penalty,\n        'distance_to_pad': distance_to_pad,\n        'vertical_speed': vertical_speed,\n        'angle_deviation': angle_deviation,\n        'fuel_usage': fuel_usage,\n        'success_flag': success_flag,\n        'crash_flag': crash_flag\n    }\n\n    return float(reward), individual_reward",
+  "expected_behavior": "The agent should learn to descend toward the landing pad, reduce vertical speed, maintain upright orientation, and land softly on the pad with both legs contacting. The shaping terms (distance and vertical speed penalties) provide continuous feedback to guide the agent, while the success bonus rewards the final goal. The mild fuel penalties encourage efficiency without preventing necessary engine use. The crash penalty strongly discourages failures.",
+  "known_risks": [
+    "The agent might hover at a safe altitude to avoid crash penalty and distance penalty, but the vertical speed penalty and success bonus should encourage descent.",
+    "The agent might land outside the pad with low speed to avoid crash penalty, but the distance penalty and success condition (near_pad) should prevent this.",
+    "The agent might use excessive orientation engines causing oscillation, but the side engine fuel penalty is mild and may not fully prevent this.",
+    "The success condition might be too strict (requires both legs contact, near pad, low velocities, upright), leading to sparse success signals. However, the shaping terms provide dense feedback."
+  ],
+  "self_check": {
+    "objective_signal_present": true,
+    "reachable_progress_signal_present": true,
+    "mild_regularizers_present": true,
+    "diagnostics_present": true,
+    "no_dense_penalties_only": true,
+    "task_achievement_detected": true,
+    "component_scale_reasoning_included": true,
+    "all_variables_initialized_before_branches": true,
+    "no_external_side_effects": true,
+    "returns_float_and_dict": true
+  },
+  "agent_name": "ExpertRewardDesignerAgent"
+}
