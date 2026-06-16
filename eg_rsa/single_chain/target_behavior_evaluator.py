@@ -3,12 +3,15 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List
 
+from .target_behavior_contracts import assess_contract_specific_behavior, build_target_behavior_contract
+
 
 def build_target_behavior_report(
     metrics: Dict[str, Any],
     trajectories: List[Dict[str, Any]],
     max_episode_steps: int | None = None,
     fitness_score_auxiliary: float | None = None,
+    target_alignment_contract: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Evaluate whether a reward function induces the intended task behavior.
 
@@ -18,6 +21,9 @@ def build_target_behavior_report(
     exploiting dense proxy payments or timeout behavior. Fitness uncertainty is
     recorded so the expert controller can avoid over-trusting noisy candidates.
     """
+    contract = build_target_behavior_contract(target_alignment_contract or {})
+    contract_assessment = assess_contract_specific_behavior(contract, trajectories, metrics, max_episode_steps)
+
     success_rate = _num(metrics.get("success_like_terminal_rate"))
     unsafe_rate = _num(metrics.get("unsafe_terminal_rate"))
     out_of_bounds_rate = _num(metrics.get("out_of_bounds_rate"))
@@ -30,13 +36,8 @@ def build_target_behavior_report(
     num_eval_episodes = len(trajectories)
     timeout_rate = _terminal_rate(trajectories, "timeout_or_truncated")
 
-    near_pad_timeout_rate = 0.0
-    both_legs_timeout_rate = 0.0
-    stable_contact_timeout_rate = 0.0
-    if trajectories:
-        near_pad_timeout_rate = sum(1.0 for t in trajectories if _is_timeout(t) and _near_pad(t.get("final_state"))) / len(trajectories)
-        both_legs_timeout_rate = sum(1.0 for t in trajectories if _is_timeout(t) and _both_legs(t.get("final_state"))) / len(trajectories)
-        stable_contact_timeout_rate = sum(1.0 for t in trajectories if _is_timeout(t) and _stable_contact(t.get("final_state"))) / len(trajectories)
+    contract_metrics = contract_assessment.get("contract_specific_metrics", {}) or {}
+    contract_risks = contract_assessment.get("contract_risks", {}) or {}
 
     fitness_sem = fitness_score_std / math.sqrt(max(1, num_eval_episodes))
     fitness_relative_std = fitness_score_std / max(abs(fitness_score), 1.0)
@@ -51,7 +52,6 @@ def build_target_behavior_report(
     max_steps = float(max_episode_steps or 0)
     final_reaches_time_limit = bool(max_steps and episode_length >= 0.9 * max_steps)
     dense_proxy_timeout_risk = bool(timeout_rate >= 0.5 and success_rate <= 0.2 and generated_reward > 0.0)
-    near_pad_timeout_risk = bool(near_pad_timeout_rate >= 0.4 or stable_contact_timeout_rate >= 0.4)
 
     target_success = bool(success_rate >= 0.5 and timeout_rate <= 0.4 and unsafe_rate <= 0.2 and out_of_bounds_rate <= 0.2)
     quality_label = "target_success_stable_enough" if target_success else "target_behavior_gap"
@@ -64,9 +64,8 @@ def build_target_behavior_report(
     if timeout_rate > 0.4:
         behavior_gaps.append("Final policy often reaches the time limit instead of completing the task.")
         required_reward_fixes.append("Penalize or stop paying proxy rewards for timeout-like behavior, especially near the target state.")
-    if near_pad_timeout_risk:
-        behavior_gaps.append("Policy reaches a near-target or stable-contact state but does not complete the task terminally.")
-        required_reward_fixes.append("Make near-target/contact rewards diminishing, capped, or conditional on terminal completion.")
+    behavior_gaps.extend(contract_assessment.get("contract_behavior_gaps", []) or [])
+    required_reward_fixes.extend(contract_assessment.get("contract_required_fixes", []) or [])
     if dense_proxy_timeout_risk:
         behavior_gaps.append("Generated reward remains attractive during non-success timeout behavior.")
         required_reward_fixes.append("Reduce farmable dense rewards and align payments with task completion phases.")
@@ -79,8 +78,16 @@ def build_target_behavior_report(
     if not behavior_gaps:
         behavior_gaps.append("No obvious target behavior gap from final evaluation; use fitness and robustness as auxiliary evidence.")
 
+    behavior_diagnostics = {
+        "final_reaches_time_limit": final_reaches_time_limit,
+        "dense_proxy_timeout_risk": dense_proxy_timeout_risk,
+        **contract_metrics,
+        **contract_risks,
+    }
+
     return {
         "file_type": "target_behavior_report",
+        "target_behavior_contract": contract,
         "target_success": target_success,
         "quality_label": quality_label,
         "evidence_confidence": evidence_confidence,
@@ -107,14 +114,7 @@ def build_target_behavior_report(
             "high_fitness_uncertainty": high_fitness_uncertainty,
             "low_sample_warning": low_sample_warning,
         },
-        "behavior_diagnostics": {
-            "final_reaches_time_limit": final_reaches_time_limit,
-            "near_pad_timeout_rate": near_pad_timeout_rate,
-            "both_legs_contact_timeout_rate": both_legs_timeout_rate,
-            "stable_contact_timeout_rate": stable_contact_timeout_rate,
-            "dense_proxy_timeout_risk": dense_proxy_timeout_risk,
-            "near_pad_timeout_risk": near_pad_timeout_risk,
-        },
+        "behavior_diagnostics": behavior_diagnostics,
         "target_behavior_gaps": _dedupe(behavior_gaps),
         "required_reward_fixes": _dedupe(required_reward_fixes),
         "interpretation": (
@@ -202,36 +202,6 @@ def _terminal_rate(trajectories: List[Dict[str, Any]], label: str) -> float:
     if not trajectories:
         return 0.0
     return sum(1.0 for t in trajectories if t.get("terminal_classification") == label) / len(trajectories)
-
-
-def _is_timeout(traj: Dict[str, Any]) -> bool:
-    return traj.get("terminal_classification") == "timeout_or_truncated"
-
-
-def _near_pad(final_state: Any) -> bool:
-    try:
-        state = list(final_state or [])
-        return len(state) >= 2 and abs(float(state[0])) < 0.1 and abs(float(state[1])) < 0.05
-    except Exception:
-        return False
-
-
-def _both_legs(final_state: Any) -> bool:
-    try:
-        state = list(final_state or [])
-        return len(state) >= 8 and float(state[6]) > 0.5 and float(state[7]) > 0.5
-    except Exception:
-        return False
-
-
-def _stable_contact(final_state: Any) -> bool:
-    try:
-        state = list(final_state or [])
-        if len(state) < 8:
-            return False
-        return _near_pad(state) and _both_legs(state) and abs(float(state[2])) < 0.05 and abs(float(state[3])) < 0.05 and abs(float(state[4])) < 0.2
-    except Exception:
-        return False
 
 
 def _num(value: Any, default: float = 0.0) -> float:
