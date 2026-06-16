@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .expert_action_planner import build_expert_action_plan
 from .json_tools import write_json
 
 
@@ -96,6 +97,14 @@ def build_expert_memory_context(
         if acc.get("accepted_as_elite") is False and item.get("lesson"):
             hard_constraints.append("Avoid prior rejected pattern: " + str(item.get("lesson"))[:400])
 
+    action_plan = build_expert_action_plan(
+        current_evidence=current_evidence,
+        audit_pack=audit_pack,
+        retrieved_memory=retrieved_memory,
+    )
+    hard_constraints.extend(action_plan.get("required_edits", []) or [])
+    hard_constraints.extend("Forbidden edit: " + item for item in action_plan.get("forbidden_edits", []) or [])
+
     context = {
         "file_type": "expert_memory_context",
         "diagnosis_questions": [
@@ -107,12 +116,14 @@ def build_expert_memory_context(
             "If all controls are used, which trajectory phase remains unsolved?",
             "Do reward-defined success signals align with evaluator success?",
             "Which previous edit pattern should be avoided?",
+            "Which concrete expert_action_plan requirements must be implemented next?",
         ],
         "failed_patterns": failed_patterns,
         "hard_constraints_for_next_revision": _dedupe(hard_constraints),
         "component_balance_report": _component_balance_report(components, dominant),
         "action_space_report": action_space_report,
         "expert_audit_pack": audit_pack,
+        "expert_action_plan": action_plan,
         "search_mode_recommendation": audit_pack.get("search_mode_recommendation", {}) if audit_pack else {},
         "best_reference": _best_reference(best_evidence),
     }
