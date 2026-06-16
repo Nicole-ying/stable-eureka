@@ -8,6 +8,7 @@ from eg_rsa.single_chain.agents import JsonAgent
 from eg_rsa.single_chain.env_builder import load_env_class, prepare_env_code
 from eg_rsa.single_chain.json_tools import read_text, write_json, write_text
 from eg_rsa.single_chain.reward_runtime import smoke_test_reward_env, validate_reward_runtime_safety
+from eg_rsa.single_chain.reward_static_validator import validate_reward_static
 from eg_rsa.single_chain.reward_validation import write_reward_code_files
 
 
@@ -53,7 +54,12 @@ def prepare_guarded_reward_env(
         write_json(reward_dir / "reward_schema.json", current_schema)
         validation = write_reward_code_files(current_code, reward_dir)
         runtime_safety = validate_reward_runtime_safety(current_code)
+        static_validation = validate_reward_static(current_code, current_schema)
+        runtime_safety["reward_static_validation"] = static_validation
+        runtime_and_static_valid = bool(runtime_safety.get("valid") and static_validation.get("valid"))
+        runtime_safety["valid"] = runtime_and_static_valid
         write_json(reward_dir / "runtime_safety_report.json", runtime_safety)
+        write_json(reward_dir / "reward_static_validation.json", static_validation)
 
         env_cls = None
         smoke_report: Dict[str, Any] = {"valid": False, "stage": "skipped"}
@@ -76,9 +82,11 @@ def prepare_guarded_reward_env(
             "attempt": attempt,
             "validation_valid": bool(validation.get("valid")),
             "runtime_safety_valid": bool(runtime_safety.get("valid")),
+            "static_validation_valid": bool(static_validation.get("valid")),
             "smoke_test_valid": bool(smoke_report.get("valid")),
             "validation": validation,
             "runtime_safety": runtime_safety,
+            "reward_static_validation": static_validation,
             "smoke_test": smoke_report,
         }
         attempts.append(attempt_report)
