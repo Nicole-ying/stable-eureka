@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List
 
 
@@ -14,14 +15,19 @@ def build_target_behavior_report(
     This report is not another reward score. It is a behavior contract diagnostic:
     fitness_score can help rank candidates, but the primary question is whether
     the trained policy actually terminates in a task-successful way rather than
-    exploiting dense proxy payments or timeout behavior.
+    exploiting dense proxy payments or timeout behavior. Fitness uncertainty is
+    recorded so the expert controller can avoid over-trusting noisy candidates.
     """
     success_rate = _num(metrics.get("success_like_terminal_rate"))
     unsafe_rate = _num(metrics.get("unsafe_terminal_rate"))
     out_of_bounds_rate = _num(metrics.get("out_of_bounds_rate"))
     episode_length = _num(metrics.get("episode_length"))
+    episode_length_std = _num(metrics.get("episode_length_std"))
     generated_reward = _num(metrics.get("reward"))
+    generated_reward_std = _num(metrics.get("reward_std"))
     fitness_score = _num(metrics.get("fitness_score", fitness_score_auxiliary))
+    fitness_score_std = _num(metrics.get("fitness_score_std"))
+    num_eval_episodes = len(trajectories)
     timeout_rate = _terminal_rate(trajectories, "timeout_or_truncated")
 
     near_pad_timeout_rate = 0.0
@@ -31,6 +37,16 @@ def build_target_behavior_report(
         near_pad_timeout_rate = sum(1.0 for t in trajectories if _is_timeout(t) and _near_pad(t.get("final_state"))) / len(trajectories)
         both_legs_timeout_rate = sum(1.0 for t in trajectories if _is_timeout(t) and _both_legs(t.get("final_state"))) / len(trajectories)
         stable_contact_timeout_rate = sum(1.0 for t in trajectories if _is_timeout(t) and _stable_contact(t.get("final_state"))) / len(trajectories)
+
+    fitness_sem = fitness_score_std / math.sqrt(max(1, num_eval_episodes))
+    fitness_relative_std = fitness_score_std / max(abs(fitness_score), 1.0)
+    high_fitness_uncertainty = bool(fitness_score_std > 50.0 or fitness_relative_std > 0.35)
+    low_sample_warning = bool(num_eval_episodes < 10)
+    evidence_confidence = "medium"
+    if high_fitness_uncertainty or low_sample_warning:
+        evidence_confidence = "low"
+    if num_eval_episodes >= 20 and not high_fitness_uncertainty:
+        evidence_confidence = "high"
 
     max_steps = float(max_episode_steps or 0)
     final_reaches_time_limit = bool(max_steps and episode_length >= 0.9 * max_steps)
@@ -57,6 +73,9 @@ def build_target_behavior_report(
     if unsafe_rate > 0.2 or out_of_bounds_rate > 0.2:
         behavior_gaps.append("Unsafe or out-of-bounds terminations remain too frequent.")
         required_reward_fixes.append("Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.")
+    if high_fitness_uncertainty:
+        behavior_gaps.append("Auxiliary fitness has high episode-level variance; do not over-trust small score differences.")
+        required_reward_fixes.append("Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.")
     if not behavior_gaps:
         behavior_gaps.append("No obvious target behavior gap from final evaluation; use fitness and robustness as auxiliary evidence.")
 
@@ -64,6 +83,7 @@ def build_target_behavior_report(
         "file_type": "target_behavior_report",
         "target_success": target_success,
         "quality_label": quality_label,
+        "evidence_confidence": evidence_confidence,
         "primary_behavior_criteria": {
             "success_like_terminal_rate": success_rate,
             "timeout_rate": timeout_rate,
@@ -72,8 +92,20 @@ def build_target_behavior_report(
         },
         "auxiliary_scores": {
             "fitness_score": fitness_score,
+            "fitness_score_std": fitness_score_std,
+            "fitness_score_sem": fitness_sem,
             "generated_reward": generated_reward,
+            "generated_reward_std": generated_reward_std,
             "episode_length": episode_length,
+            "episode_length_std": episode_length_std,
+            "num_eval_episodes": num_eval_episodes,
+        },
+        "auxiliary_score_stability": {
+            "fitness_score_std": fitness_score_std,
+            "fitness_score_sem": fitness_sem,
+            "fitness_relative_std": fitness_relative_std,
+            "high_fitness_uncertainty": high_fitness_uncertainty,
+            "low_sample_warning": low_sample_warning,
         },
         "behavior_diagnostics": {
             "final_reaches_time_limit": final_reaches_time_limit,
@@ -86,7 +118,7 @@ def build_target_behavior_report(
         "target_behavior_gaps": _dedupe(behavior_gaps),
         "required_reward_fixes": _dedupe(required_reward_fixes),
         "interpretation": (
-            "Use this report as the main reward-quality evidence. Fitness is an auxiliary evaluator; "
+            "Use this report as the main reward-quality evidence. Fitness is an auxiliary evaluator with uncertainty; "
             "generated reward is only a diagnostic of what the policy learned to collect."
         ),
     }
@@ -95,6 +127,7 @@ def build_target_behavior_report(
 def build_checkpoint_stability_report(evals: Dict[str, Any]) -> Dict[str, Any]:
     """Summarize whether training behavior is stable without selecting a peak checkpoint."""
     fitness_values = _num_list(evals.get("fitness_score"))
+    fitness_std_values = _num_list(evals.get("fitness_score_std"))
     success_values = _num_list(evals.get("success_like_terminal_rate"))
     reward_values = _num_list(evals.get("reward"))
     timesteps = _num_list(evals.get("timesteps"))
@@ -114,9 +147,27 @@ def build_checkpoint_stability_report(evals: Dict[str, Any]) -> Dict[str, Any]:
     final_timestep = timesteps[last_idx] if last_idx < len(timesteps) else None
     gap = best_fitness - final_fitness
     success_drop = best_success - final_success
+    last_k = min(3, len(fitness_values))
+    last_k_fitness = fitness_values[-last_k:]
+    last_k_success = success_values[-last_k:] if len(success_values) >= last_k else []
+    last_k_mean = _mean(last_k_fitness)
+    last_k_std = _std(last_k_fitness)
+    last_k_success_mean = _mean(last_k_success)
+    final_fitness_std = fitness_std_values[last_idx] if last_idx < len(fitness_std_values) else 0.0
 
     transient_peak_risk = bool(gap > 50.0 or success_drop >= 0.4)
     reward_behavior_divergence = bool(final_reward > best_reward and final_fitness < best_fitness - 30.0)
+    final_uncertainty_risk = bool(final_fitness_std > 50.0 or final_fitness_std / max(abs(final_fitness), 1.0) > 0.35)
+    unstable_last_k_risk = bool(last_k >= 3 and last_k_std > 50.0)
+
+    hard_constraints = []
+    if transient_peak_risk:
+        hard_constraints.extend([
+            "Do not accept a reward as elite based on a transient peak checkpoint.",
+            "Reward quality should be judged by final behavior, last-eval stability, and target behavior success; fitness is auxiliary evidence.",
+        ])
+    if final_uncertainty_risk or unstable_last_k_risk:
+        hard_constraints.append("Do not over-trust small fitness differences when fitness variance is high; require behavior improvement or more robust evaluation.")
 
     return {
         "file_type": "checkpoint_stability_report",
@@ -124,6 +175,7 @@ def build_checkpoint_stability_report(evals: Dict[str, Any]) -> Dict[str, Any]:
         "best_checkpoint_is_diagnostic_only": True,
         "best_fitness": best_fitness,
         "final_fitness": final_fitness,
+        "final_fitness_std": final_fitness_std,
         "best_final_fitness_gap": gap,
         "best_success_like_terminal_rate": best_success,
         "final_success_like_terminal_rate": final_success,
@@ -132,12 +184,17 @@ def build_checkpoint_stability_report(evals: Dict[str, Any]) -> Dict[str, Any]:
         "final_generated_reward": final_reward,
         "best_timestep": best_timestep,
         "final_timestep": final_timestep,
+        "last_k_eval": {
+            "k": last_k,
+            "fitness_mean": last_k_mean,
+            "fitness_std": last_k_std,
+            "success_like_terminal_rate_mean": last_k_success_mean,
+        },
         "transient_peak_risk": transient_peak_risk,
         "reward_behavior_divergence": reward_behavior_divergence,
-        "hard_constraints": [
-            "Do not accept a reward as elite based on a transient peak checkpoint.",
-            "Reward quality should be judged by final behavior, last-eval stability, and target behavior success; fitness is auxiliary evidence.",
-        ] if transient_peak_risk else [],
+        "final_uncertainty_risk": final_uncertainty_risk,
+        "unstable_last_k_risk": unstable_last_k_risk,
+        "hard_constraints": hard_constraints,
     }
 
 
@@ -196,6 +253,19 @@ def _num_list(value: Any) -> List[float]:
         except Exception:
             pass
     return out
+
+
+def _mean(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    return float(sum(values) / len(values))
+
+
+def _std(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    mu = _mean(values)
+    return float(math.sqrt(sum((v - mu) ** 2 for v in values) / len(values)))
 
 
 def _dedupe(items: List[str]) -> List[str]:
