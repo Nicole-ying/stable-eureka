@@ -10,13 +10,15 @@ Rules:
 - Use direct hasattr/self attributes if internal state is needed.
 - Initialize every diagnostic variable before any if/else branch that may conditionally assign it.
 - Use expert_memory_context as hard guidance.
+- If expert_memory_context.expert_action_plan exists, implement its required_edits, respect its forbidden_edits, and list its validation_tests in edit_summary.validation_metrics.
 - If expert_memory_context.search_mode_recommendation exists, treat next_search_mode as the required search mode unless you explicitly justify a safer override.
 - If expert_memory_context.expert_audit_pack exists, address reward_scale_audit, reward_payment_audit, trajectory_phase_report, and objective_signal_alignment_audit in the diagnosis.
 - Do not repeat rejected edit patterns unless the context changed and you explain why.
 - Include component scale reasoning and expected behavior change.
 - Analyze action_space_report if present. If some discrete actions were unused, decide whether any unused action is necessary for success and explain how the revised reward changes action coverage.
 - If all discrete actions are already used but success_like_terminal_rate remains near zero, shift from action-coverage repair to trajectory-phase guidance.
-- Completion-like rewards should be event gated, one-shot, or progress based.
+- Completion-like rewards should be event gated, one-shot, terminal-aligned, or progress based.
+- Large objective/completion bonuses must not pay every step for a non-terminal state predicate.
 - Repeatable positive action/control bonuses must be phase-conditioned, progress-conditioned, diminishing, or explicitly justified.
 - search_decision must be a JSON object, not a string.
 
@@ -29,6 +31,7 @@ Required JSON shape:
     "component_interaction_diagnosis": "...",
     "action_coverage_diagnosis": "...",
     "expert_audit_diagnosis": "...",
+    "expert_action_plan_diagnosis": "...",
     "failed_pattern_reuse_check": "...",
     "search_decision": {
       "recommended_next_action": "revise_reward",
@@ -47,9 +50,12 @@ Required JSON shape:
     "edit_summary": {
       "edit_scope": "small | medium | large | restructuring",
       "next_search_mode": "...",
+      "action_type": "from expert_action_plan.action_type when present",
       "reason": "...",
       "preserved_design": [],
       "changed_design": [],
+      "required_edits_implemented": [],
+      "forbidden_edits_avoided": [],
       "rejected_patterns_avoided": [],
       "action_coverage_plan": "...",
       "phase_guidance_plan": "...",
@@ -66,7 +72,9 @@ Required JSON shape:
     "known_risks": [],
     "self_check": {
       "all_diagnostic_variables_initialized_before_branches": true,
-      "does_not_call_custom_self_methods": true
+      "does_not_call_custom_self_methods": true,
+      "large_completion_bonus_is_not_repeatable_per_step": true,
+      "expert_action_plan_required_edits_implemented": true
     }
   }
 }
