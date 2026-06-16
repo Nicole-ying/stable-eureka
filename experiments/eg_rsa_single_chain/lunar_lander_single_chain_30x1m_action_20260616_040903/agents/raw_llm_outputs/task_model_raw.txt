@@ -1,0 +1,81 @@
+{
+  "file_type": "task_model",
+  "environment_name": "LunarLander-v2",
+  "reward_function_interface": "def compute_reward(state, m_power, s_power, terminated) -> (reward, individual_reward_dict)",
+  "primary_objective": "Land the lander on the landing pad at (0,0) as fast as possible with minimal fuel consumption.",
+  "state_space_summary": "8-dimensional vector: [x, y, vx, vy, angle, angular_velocity, leg1_contact, leg2_contact]",
+  "action_space_summary": "Discrete: 0 (do nothing), 1 (fire left orientation engine), 2 (fire main engine), 3 (fire right orientation engine)",
+  "action_semantics": {
+    "0": "No engine thrust; coast or freefall.",
+    "1": "Fire left orientation engine; applies torque to rotate lander clockwise and a small lateral force.",
+    "2": "Fire main engine; applies upward thrust (opposite to lander's tip direction) to slow descent or ascend.",
+    "3": "Fire right orientation engine; applies torque to rotate lander counter-clockwise and a small lateral force."
+  },
+  "state_semantics": {
+    "0": "x-coordinate of lander center, normalized to [-1,1] relative to viewport width.",
+    "1": "y-coordinate of lander center, normalized relative to viewport height; pad at ~0.",
+    "2": "x-velocity, scaled.",
+    "3": "y-velocity, scaled.",
+    "4": "Angle of lander (radians).",
+    "5": "Angular velocity, scaled.",
+    "6": "Boolean: left leg ground contact (1 if contact).",
+    "7": "Boolean: right leg ground contact (1 if contact)."
+  },
+  "intended_behavior_phases": [
+    "Phase 1: Stabilize and approach the landing pad from above.",
+    "Phase 2: Controlled descent with main engine braking to reduce vertical speed.",
+    "Phase 3: Final alignment and soft touchdown with both legs contacting the pad."
+  ],
+  "required_action_by_phase": {
+    "Phase 1": "Use orientation engines (actions 1 and 3) to correct horizontal drift and maintain upright orientation; occasional main engine (action 2) to control altitude.",
+    "Phase 2": "Main engine (action 2) primarily for braking; orientation engines as needed to keep lander upright and centered.",
+    "Phase 3": "Main engine (action 2) for soft landing; orientation engines for fine alignment; avoid unnecessary thrust to prevent overshoot."
+  },
+  "necessary_behaviors": [
+    "Maintain upright orientation (angle near 0) to ensure main engine thrust is vertical.",
+    "Use main engine to decelerate vertical velocity before touchdown.",
+    "Use orientation engines to correct horizontal velocity and position over the pad.",
+    "Achieve both legs in contact with ground simultaneously for stable landing."
+  ],
+  "success_signals_available_to_reward": [
+    "Both legs ground contact (state[6]==1 and state[7]==1) while lander is near pad (x near 0, y near 0).",
+    "Low vertical and horizontal velocities at touchdown.",
+    "Low fuel consumption (m_power integrated over episode).",
+    "Short episode duration."
+  ],
+  "failure_or_stop_signals_available_to_reward": [
+    "Crash: lander body contacts ground (game_over flag).",
+    "Out of bounds: |state[0]| >= 1.0.",
+    "Lander not awake (terminated).",
+    "High impact velocity or large angle at ground contact."
+  ],
+  "dangerous_local_optima": [
+    "Hovering indefinitely at high altitude without landing (avoids crash but never succeeds).",
+    "Landing far from pad (outside pad area) but with low velocity – satisfies soft landing but misses primary objective.",
+    "Using only orientation engines to drift sideways without main engine braking – may lead to crash or out-of-bounds.",
+    "Overusing main engine causing ascent away from pad – wastes fuel and time."
+  ],
+  "primary_selection_metric": "Success rate (landing on pad with both legs contact and low velocity) within a fixed episode length.",
+  "proxy_metrics": [
+    "Distance to pad (x, y) at each step.",
+    "Vertical speed magnitude.",
+    "Angle deviation from upright.",
+    "Fuel usage (cumulative m_power).",
+    "Episode length."
+  ],
+  "diagnostic_metrics": [
+    "Number of orientation engine firings.",
+    "Number of main engine firings.",
+    "Time spent with both legs in contact.",
+    "Maximum absolute angle during descent.",
+    "Horizontal velocity at touchdown."
+  ],
+  "reward_design_constraints": [
+    "Reward must be differentiable or decomposable into interpretable components.",
+    "Avoid large negative rewards for exploration; use mild penalties for fuel and large angle.",
+    "Provide positive reward for progress toward pad (e.g., decreasing distance) to guide sparse success.",
+    "Penalize crashes and out-of-bounds strongly to discourage unsafe behavior.",
+    "Do not penalize orientation engine usage excessively as it is necessary for stability.",
+    "Ensure reward scale is balanced so that main engine thrust reward does not dominate orientation rewards."
+  ]
+}

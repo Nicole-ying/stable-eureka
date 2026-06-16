@@ -1,0 +1,42 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The current reward has a dominant success_bonus (mean return 18720) that is paid repeatedly per step when both legs contact the pad with low velocities. This is a non-terminal state predicate that fires every step the condition holds, leading to massive reward accumulation (e.g., 46000 in one episode). The policy exploits this by landing early and then staying on the pad to collect the bonus repeatedly, rather than terminating the episode. This explains the high generated reward (19065) but only 60% success-like terminal rate, because the policy sometimes times out while collecting the bonus.",
+  "component_interaction_diagnosis": "The success_bonus dominates all other components (dominance_ratio 41.79). Dense progress signals (distance_reward, vertical_speed_reward) are small relative to the objective bonus (dense_to_objective_ratio 0.0011). The engine penalties are mild and do not counteract the farming behavior. The crash_penalty is only applied at termination, so it does not prevent the policy from staying on the pad indefinitely.",
+  "action_coverage_diagnosis": "All four discrete actions are used (coverage_ratio 1.0). The dominant action is 2 (main engine) at 40.7%, followed by 3 (right orientation) at 35.1%, 1 (left orientation) at 23.7%, and 0 (do nothing) at 0.5%. Since all actions are already used, the issue is not action coverage but trajectory-phase guidance: the policy learns to reach the pad and then stay there, rather than completing the episode.",
+  "expert_audit_diagnosis": "Reward scale audit: success_bonus dominates with abs_return 18720, dominance_ratio 41.79, indicating single_component_dominance risk. Reward payment audit: raw_action_bonus_terms detected (main_engine_firings, orientation_engine_firings) are repeatable per-step bonuses that can be farmed. Trajectory phase report: success_like_terminal_rate is 0.6, but both_leg_contact_rate is 1.0, meaning the policy often lands but does not terminate. Objective signal alignment audit: success_bonus is paid repeatedly, not aligned with terminal success.",
+  "expert_action_plan_diagnosis": "Expert action plan requires: (1) Make completion/objective bonuses one-shot or terminal-aligned so they cannot fire every step. (2) Remove repeatable proxy-success payment modes that can be farmed without episode completion. (3) Keep dense progress signals bounded and smaller than episode-scale objective signals. (4) Add diagnostics for success_flag/objective_bonus. Forbidden edits: do not increase raw per-step action/engine bonuses, do not let objective_bonus exceed roughly one terminal event per episode, do not define success only as a non-terminal state predicate.",
+  "failed_pattern_reuse_check": "The current reward already has a single_component_dominance pattern (success_bonus dominates). The previous edit pattern of using a large per-step success bonus is rejected. This revision will not repeat that pattern; instead, it will convert the success bonus to a one-shot terminal event and condition engine bonuses on progress/phase.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "payment_mode_rewrite",
+    "edit_scope": "medium",
+    "reason": "Following expert_action_plan and search_mode_recommendation: payment_mode_rewrite is required to convert repeatable per-step bonuses into event-gated, one-shot, or progress-conditioned signals. The edit scope is medium because we are restructuring the payment modes of the success bonus and engine bonuses, but keeping the overall reward structure similar."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not let one auxiliary component dominate the episode-scale objective signal.",
+    "Do not simply increase raw per-step action bonuses; condition them on progress, phase, stability, or event milestones.",
+    "Follow next_search_mode=payment_mode_rewrite: Reward contains repeatable raw action/control bonuses that may be farmed without task completion.",
+    "Convert raw per-step bonuses into progress-conditioned, event-gated, one-shot, or diminishing signals.",
+    "Forbidden next edit: do not increase repeatable per-step bonuses without event/progress gating",
+    "Make completion/objective bonuses one-shot or terminal-aligned so they cannot fire every step.",
+    "Remove repeatable proxy-success payment modes that can be farmed without episode completion.",
+    "Keep dense progress signals bounded and smaller than episode-scale objective signals.",
+    "Add diagnostics for success_flag/objective_bonus so post-training audits can verify payment count.",
+    "Do not increase raw per-step action or engine bonuses.",
+    "Do not let objective_bonus exceed roughly one terminal event per episode.",
+    "Do not define success only as a non-terminal state predicate if it pays a large reward repeatedly."
+  ],
+  "expected_metric_changes": {
+    "success_bonus_mean": "decrease from 18720 to ~60 (one-shot per episode, 60% success rate * 100)",
+    "generated_reward": "decrease from 19065 to ~200-500 (closer to fitness score)",
+    "success_like_terminal_rate": "increase from 0.6 to >0.8 (policy incentivized to terminate after success)",
+    "dominance_ratio": "decrease from 41.79 to <5 (more balanced components)"
+  },
+  "validation_metrics": [
+    "Static reward validator must not detect repeatable objective_bonus or non-terminal proxy-success farming.",
+    "success_flag_mean <= 1.2 (large success payments should not repeat many times per episode)",
+    "objective_bonus_mean <= 120.0 (one +100 objective event per episode is the expected scale)",
+    "generated_minus_fitness_gap <= 500.0 (generated reward should stay comparable to evaluator fitness)"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

@@ -1,0 +1,49 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "payment_mode_rewrite",
+  "action_type": "repair_reward_hacking",
+  "reason": "Convert success_bonus from repeatable per-step payment to one-shot terminal-aligned event. Condition engine bonuses on progress/phase to prevent farming. Keep dense progress signals bounded. Add success_flag diagnostic.",
+  "preserved_design": [
+    "distance_progress reward (0.5 * (1 - tanh(3*distance)))",
+    "vertical_speed_progress reward (0.3 * (1 - tanh(2*abs(vy))))",
+    "upright_angle_bonus (0.1 * (1 - tanh(5*abs(angle))))",
+    "crash_penalty (-100 at termination for non-success)",
+    "time_penalty (-0.01 per step)"
+  ],
+  "changed_design": [
+    "success_bonus: changed from per-step payment (100 per step when condition holds) to one-shot terminal bonus (100 only at termination if success condition met). Added success_flag to track if bonus was paid.",
+    "main_engine_penalty: changed from -0.03 * m_power to -0.03 * m_power * (1 - both_legs_contact) to reduce penalty when already landed (discourage hovering on pad).",
+    "orientation_engine_penalty: changed from -0.01 * s_power to -0.01 * s_power * (1 - both_legs_contact) to reduce penalty when already landed."
+  ],
+  "required_edits_implemented": [
+    "Make completion/objective bonuses one-shot or terminal-aligned so they cannot fire every step.",
+    "Remove repeatable proxy-success payment modes that can be farmed without episode completion.",
+    "Keep dense progress signals bounded and smaller than episode-scale objective signals.",
+    "Add diagnostics for success_flag/objective_bonus so post-training audits can verify payment count."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not increase raw per-step action or engine bonuses.",
+    "Do not let objective_bonus exceed roughly one terminal event per episode.",
+    "Do not define success only as a non-terminal state predicate if it pays a large reward repeatedly.",
+    "do not increase repeatable per-step bonuses without event/progress gating"
+  ],
+  "rejected_patterns_avoided": [
+    "single_component_dominance: success_bonus is now one-shot, not repeatable.",
+    "raw_repeatable_action_bonus: engine bonuses are now conditioned on not being landed (progress gating)."
+  ],
+  "action_coverage_plan": "All four discrete actions remain available. The revised reward does not change action space. The policy should still use all actions for stabilization and descent. The main change is that staying on the pad with both legs contact no longer yields per-step success bonus, so the policy will be incentivized to terminate after landing.",
+  "phase_guidance_plan": "Phase 1 (approach): distance_reward and vertical_speed_reward guide descent. Phase 2 (descent): engine penalties are mild but conditioned on not being landed. Phase 3 (touchdown): success_bonus is one-shot at termination, encouraging the policy to complete the episode after landing.",
+  "payment_mode_plan": "success_bonus: one-shot terminal event (paid only at termination if success condition met). main_engine_penalty: progress-conditioned (reduced when both legs contact). orientation_engine_penalty: progress-conditioned (reduced when both legs contact). All other terms remain per-step but are bounded and small.",
+  "expected_metric_changes": {
+    "success_bonus_mean": "decrease from 18720 to ~60 (one-shot per episode, 60% success rate * 100)",
+    "generated_reward": "decrease from 19065 to ~200-500 (closer to fitness score)",
+    "success_like_terminal_rate": "increase from 0.6 to >0.8 (policy incentivized to terminate after success)",
+    "dominance_ratio": "decrease from 41.79 to <5 (more balanced components)"
+  },
+  "validation_metrics": [
+    "Static reward validator must not detect repeatable objective_bonus or non-terminal proxy-success farming.",
+    "success_flag_mean <= 1.2 (large success payments should not repeat many times per episode)",
+    "objective_bonus_mean <= 120.0 (one +100 objective event per episode is the expected scale)",
+    "generated_minus_fitness_gap <= 500.0 (generated reward should stay comparable to evaluator fitness)"
+  ]
+}

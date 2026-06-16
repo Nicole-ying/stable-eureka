@@ -1,0 +1,51 @@
+{
+  "edit_scope": "small",
+  "next_search_mode": "payment_mode_rewrite",
+  "action_type": "balanced_reward_revision",
+  "reason": "Add a one-shot early-termination bonus (time_bonus_medium: 25 for episode length < 750) to further increase the objective budget and reduce the dense_to_objective_ratio. This follows the successful pattern from iter_004->iter_005 (adding time_bonus) and iter_005->iter_006 (adding time_bonus_very_early) which improved fitness_score by +11.06 and +35.83 respectively. The bonus is event-gated (paid only at termination) and one-shot (paid once per episode). This makes termination relatively more attractive compared to collecting dense rewards, encouraging the policy to land quickly and terminate. The bonus is scaled to be smaller than the success_bonus (100) and time_bonus_very_early (100) but still meaningful.",
+  "preserved_design": [
+    "one-shot terminal success_bonus (100 at termination if success condition met)",
+    "time_bonus (50 for episode length < 500, 25 for episode length < 750)",
+    "time_bonus_very_early (100 for episode length < 300)",
+    "progress-conditioned engine penalties (main_penalty and orientation_penalty conditioned on both_legs_contact)",
+    "crash_penalty (-100 at termination for non-success)",
+    "time_penalty (-0.01 per step)",
+    "diagnostic variables (distance_to_pad, vertical_speed, angle_deviation, main_engine_firings, orientation_engine_firings, both_legs_contact, crash_occurred, success_flag)",
+    "distance_reward scale (0.5)",
+    "vertical_speed_reward scale (0.3)",
+    "angle_reward scale (0.1)"
+  ],
+  "changed_design": [
+    "Added time_bonus_medium: one-shot terminal bonus for medium termination (25 if episode length < 750, 0 otherwise). This is event-gated and one-shot, paid only at termination if success condition met."
+  ],
+  "required_edits_implemented": [
+    "Preserve behavior that improved the primary metric.",
+    "Make one targeted reward edit with an explicit expected metric change."
+  ],
+  "forbidden_edits_avoided": [
+    "Avoid remembered failed pattern: reducing dense rewards (distance_reward, vertical_speed_reward, angle_reward) which previously caused regression to hovering.",
+    "Avoid remembered failed pattern: increasing success_bonus alone which previously caused regression to hovering.",
+    "do not increase repeatable per-step bonuses without event/progress gating"
+  ],
+  "rejected_patterns_avoided": [
+    "single_component_dominance: success_bonus remains one-shot, not repeatable.",
+    "raw_repeatable_action_bonus: engine bonuses remain progress-conditioned.",
+    "large_dense_budget: dense rewards are preserved at their current scales; only a one-shot early-termination bonus is added to improve the dense_to_objective_ratio."
+  ],
+  "action_coverage_plan": "All four discrete actions remain available. The revised reward does not change action space. The policy should still use all actions for stabilization and descent. The main change is that the policy is now incentivized to terminate quickly after landing, which may reduce the use of action 0 (do nothing) while hovering on the pad.",
+  "phase_guidance_plan": "Phase 1 (approach): distance_reward (max 0.5) and vertical_speed_reward (max 0.3) still guide descent. Phase 2 (descent): engine penalties remain mild and conditioned on not being landed. Phase 3 (touchdown): success_bonus (100), time_bonus (up to 50), time_bonus_very_early (100), and time_bonus_medium (25) are now all available at termination, encouraging the policy to complete the episode quickly after landing.",
+  "payment_mode_plan": "success_bonus: one-shot terminal event (paid only at termination if success condition met). time_bonus: one-shot terminal event (paid only at termination if success condition met and episode length < threshold). time_bonus_very_early: one-shot terminal event (paid only at termination if success condition met and episode length < 300). time_bonus_medium: one-shot terminal event (paid only at termination if success condition met and episode length < 750). main_engine_penalty: progress-conditioned (reduced when both legs contact). orientation_engine_penalty: progress-conditioned (reduced when both legs contact). distance_reward, vertical_speed_reward, angle_reward: per-step but bounded and small relative to objective.",
+  "expected_metric_changes": {
+    "objective_positive_budget": "increase from 82.4 to ~107.4 (time_bonus_medium adds up to 25 per episode, with 80% success rate and some episodes ending early)",
+    "dense_to_objective_ratio": "decrease from 0.13 to ~0.11 (objective becomes relatively more attractive)",
+    "success_like_terminal_rate": "increase from 0.8 to >0.9 (policy more incentivized to terminate quickly)",
+    "episode_length": "decrease from 464.6 to ~400-450 (policy terminates sooner to collect early-termination bonus)",
+    "generated_reward": "increase from 457.84 to ~480-500 (early-termination bonus adds to total reward)"
+  },
+  "validation_metrics": [
+    "Static reward validator must not detect repeatable objective_bonus or non-terminal proxy-success farming.",
+    "success_flag_mean <= 1.2 (large success payments should not repeat many times per episode)",
+    "objective_bonus_mean <= 200.0 (one +100 objective event + up to +100 time_bonus + up to +25 time_bonus_medium per episode is the expected scale)",
+    "generated_minus_fitness_gap <= 500.0 (generated reward should stay comparable to evaluator fitness)"
+  ]
+}
