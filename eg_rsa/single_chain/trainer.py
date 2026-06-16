@@ -49,8 +49,6 @@ class SingleChainEvalCallback(BaseCallback):
         self.history["action_space_report"].append(metrics.get("action_space_report", {}))
         write_json(self.trainer.output_dir / "evals.json", dict(self.history))
         write_json(self.trainer.output_dir / "trajectory_summary_last_eval.json", {"episodes": trajectories})
-        # Do not save or select a peak checkpoint here. The curve is retained only
-        # for stability diagnostics; reward quality is judged from final behavior.
         write_json(self.trainer.output_dir / "checkpoint_stability_report.json", build_checkpoint_stability_report(dict(self.history)))
         return True
 
@@ -161,12 +159,13 @@ class SingleChainPPOTrainer:
             trajectories=final_trajectories,
             max_episode_steps=self.env_cfg.get("max_episode_steps"),
             fitness_score_auxiliary=final_metrics.get("fitness_score"),
+            target_alignment_contract=self.target_alignment_contract or self.environment_understanding,
         )
         model_selection = self._final_model_selection(final_metrics, checkpoint_stability)
         write_json(self.output_dir / "checkpoint_stability_report.json", checkpoint_stability)
         write_json(self.output_dir / "target_behavior_report.json", target_behavior_report)
         write_json(self.output_dir / "model_selection.json", model_selection)
-        # Compatibility files are final-only. They must not contain peak checkpoint metrics.
+
         final_metrics_for_selected = dict(final_metrics)
         final_metrics_for_selected["selected_model_source"] = "final_checkpoint"
         final_metrics_for_selected["model_selection_metric"] = self.primary_metric
