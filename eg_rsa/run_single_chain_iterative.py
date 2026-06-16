@@ -16,6 +16,7 @@ from eg_rsa.single_chain.controller import SearchController, write_controller_de
 from eg_rsa.single_chain.evidence import EvidenceBuilder
 from eg_rsa.single_chain.expert_memory import build_expert_memory_context
 from eg_rsa.single_chain.expert_priors import get_expert_priors
+from eg_rsa.single_chain.expert_search_strategy import run_expert_search_strategy
 from eg_rsa.single_chain.json_tools import read_json, read_text, write_json, write_text
 from eg_rsa.single_chain.memory_manager import MemoryManager
 from eg_rsa.single_chain.reward_guard import prepare_guarded_reward_env
@@ -108,8 +109,29 @@ def run_iterative(
     consecutive_rejections = 0
 
     for next_iteration in range(next_iteration_start, total_iterations):
+        pre_strategy_parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
+        pre_strategy_memory = memory.retrieve(pre_strategy_parent_evidence)
+        selected_parent_dir, selected_anchor_dir, strategy_decision = run_expert_search_strategy(
+            llm_client=llm_client,
+            prompt_path=PROMPT_DIR / "expert_search_strategy_prompt.txt",
+            run_dir=run_dir,
+            parent_dir=parent_dir,
+            best_dir=best_dir,
+            next_iteration=next_iteration,
+            retrieved_memory=pre_strategy_memory,
+            environment_summary=env_summary,
+            target_summary=target_summary,
+        )
+        parent_dir = selected_parent_dir
+        best_dir = selected_anchor_dir
+        best_evidence = EvidenceBuilder.build(best_dir, output_path=best_dir / "iteration_evidence.json")
+        write_json(run_dir / "best_iteration_evidence.json", best_evidence)
+        write_text(run_dir / "BEST_PARENT.txt", str(best_dir) + "\n")
+        write_text(run_dir / "CURRENT_PARENT.txt", str(parent_dir) + "\n")
+
         search_dir = parent_dir / "search"
         search_dir.mkdir(parents=True, exist_ok=True)
+        write_json(search_dir / f"expert_search_strategy_decision_iter_{next_iteration:03d}.json", strategy_decision)
 
         parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
         retrieved = memory.retrieve(parent_evidence)
@@ -120,6 +142,8 @@ def run_iterative(
             retrieved_memory=retrieved,
             output_path=search_dir / "expert_memory_context.json",
         )
+        expert_memory_context["expert_search_strategy_decision"] = strategy_decision
+        write_json(search_dir / "expert_memory_context.with_strategy.json", expert_memory_context)
 
         current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
         current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
@@ -174,6 +198,7 @@ def run_iterative(
             best_dir=best_dir,
             consecutive_rejections=consecutive_rejections,
         )
+        decision["expert_search_strategy_decision_before_revision"] = strategy_decision
         write_controller_decision(candidate_dir / "controller_decision.json", decision)
         write_controller_decision(run_dir / "last_controller_decision.json", decision)
 
