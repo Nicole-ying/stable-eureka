@@ -153,7 +153,16 @@ def run_iterative(
         if candidate_dir.exists():
             raise FileExistsError(f"Refusing to overwrite existing candidate directory: {candidate_dir}")
         candidate_dir.mkdir(parents=True, exist_ok=True)
-        _materialize_revision(config, candidate_dir, revision, env_summary, target_summary, llm_client, next_iteration)
+        _materialize_revision(
+            config,
+            candidate_dir,
+            revision,
+            env_summary,
+            target_summary,
+            llm_client,
+            next_iteration,
+            parent_reward_code=current_reward_code,
+        )
 
         candidate_evidence = EvidenceBuilder.build(candidate_dir, output_path=candidate_dir / "iteration_evidence.json")
         decision = controller.decide(
@@ -285,6 +294,7 @@ def _materialize_revision(
     target_summary: Dict[str, Any],
     llm_client: Any,
     iteration: int,
+    parent_reward_code: str | None = None,
 ) -> None:
     reward_schema = revision.get("reward_schema") or {}
     reward_code = revision.get("reward_code") or ""
@@ -297,6 +307,7 @@ def _materialize_revision(
         target_alignment_contract=target_summary,
         llm_client=llm_client,
         repair_dir=next_dir / "search" / "reward_repairs",
+        reference_reward_code=parent_reward_code,
     )
 
     write_json(next_dir / "environment_understanding_summary.json", env_summary)
@@ -380,11 +391,11 @@ def _target_summary(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run iterative EG-RSA single-chain reward search")
-    parser.add_argument("--config", required=True, help="Path to EG-RSA single-chain YAML config")
-    parser.add_argument("--bootstrap-run-dir", default=None, help="Optional existing single-chain run dir to continue from")
-    parser.add_argument("--start-parent-dir", default=None, help="Optional candidate directory to edit next")
-    parser.add_argument("--start-best-dir", default=None, help="Optional elite candidate directory")
+    parser = argparse.ArgumentParser(description="Run EG-RSA single-chain iterative search")
+    parser.add_argument("--config", required=True, help="Path to iterative EG-RSA single-chain YAML config")
+    parser.add_argument("--bootstrap-run-dir", default=None, help="Existing bootstrap run directory to continue from")
+    parser.add_argument("--start-parent-dir", default=None, help="Optional parent candidate directory to resume from")
+    parser.add_argument("--start-best-dir", default=None, help="Optional best/elite candidate directory to resume from")
     args = parser.parse_args()
     run_dir = run_iterative(
         args.config,
@@ -392,7 +403,7 @@ def main() -> None:
         start_parent_dir=args.start_parent_dir,
         start_best_dir=args.start_best_dir,
     )
-    print(f"EG-RSA iterative single-chain search finished: {run_dir}")
+    print(f"EG-RSA iterative single-chain run finished: {run_dir}")
 
 
 if __name__ == "__main__":
