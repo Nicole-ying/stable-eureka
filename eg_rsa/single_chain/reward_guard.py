@@ -10,6 +10,7 @@ from eg_rsa.single_chain.json_tools import read_text, write_json, write_text
 from eg_rsa.single_chain.reward_runtime import smoke_test_reward_env, validate_reward_runtime_safety
 from eg_rsa.single_chain.reward_static_validator import validate_reward_static
 from eg_rsa.single_chain.reward_validation import write_reward_code_files
+from eg_rsa.single_chain.semantic_noop_detector import detect_semantic_noop_edit
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,10 +31,12 @@ def prepare_guarded_reward_env(
     llm_client: Any | None,
     repair_dir: str | Path,
     max_repair_attempts: int | None = None,
+    reference_reward_code: str | None = None,
 ) -> Tuple[Any, Dict[str, Any], str, Dict[str, Any]]:
     """Write, validate, smoke-test, and optionally repair reward code.
 
-    Returns (env_cls, reward_schema, reward_code, guard_summary).
+    Returns (env_cls, reward_schema, reward_code, guard_summary). If a reference
+    reward is provided, semantic no-op edits are blocked before PPO training.
     """
     output_dir = Path(output_dir)
     repair_dir = Path(repair_dir)
@@ -53,13 +56,20 @@ def prepare_guarded_reward_env(
         reward_dir = output_dir / "reward"
         write_json(reward_dir / "reward_schema.json", current_schema)
         validation = write_reward_code_files(current_code, reward_dir)
-        runtime_safety = validate_reward_runtime_safety(current_code)
+        semantic_report = detect_semantic_noop_edit(reference_reward_code, current_code)
         static_validation = validate_reward_static(current_code, current_schema)
+        runtime_safety = validate_reward_runtime_safety(current_code)
         runtime_safety["reward_static_validation"] = static_validation
-        runtime_and_static_valid = bool(runtime_safety.get("valid") and static_validation.get("valid"))
+        runtime_safety["semantic_noop_report"] = semantic_report
+        runtime_and_static_valid = bool(
+            runtime_safety.get("valid")
+            and static_validation.get("valid")
+            and semantic_report.get("valid", True)
+        )
         runtime_safety["valid"] = runtime_and_static_valid
         write_json(reward_dir / "runtime_safety_report.json", runtime_safety)
         write_json(reward_dir / "reward_static_validation.json", static_validation)
+        write_json(reward_dir / "semantic_noop_report.json", semantic_report)
 
         env_cls = None
         smoke_report: Dict[str, Any] = {"valid": False, "stage": "skipped"}
@@ -83,10 +93,13 @@ def prepare_guarded_reward_env(
             "validation_valid": bool(validation.get("valid")),
             "runtime_safety_valid": bool(runtime_safety.get("valid")),
             "static_validation_valid": bool(static_validation.get("valid")),
+            "semantic_noop_valid": bool(semantic_report.get("valid", True)),
+            "semantic_noop_edit": bool(semantic_report.get("semantic_noop_edit", False)),
             "smoke_test_valid": bool(smoke_report.get("valid")),
             "validation": validation,
             "runtime_safety": runtime_safety,
             "reward_static_validation": static_validation,
+            "semantic_noop_report": semantic_report,
             "smoke_test": smoke_report,
         }
         attempts.append(attempt_report)
