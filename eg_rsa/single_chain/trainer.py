@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Type
@@ -14,7 +13,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from .env_builder import make_single_env
-from .json_tools import read_json, write_json
+from .json_tools import write_json
+from .target_behavior_evaluator import build_checkpoint_stability_report, build_target_behavior_report
 
 
 INTERNAL_INFO_KEYS = {
@@ -34,8 +34,6 @@ class SingleChainEvalCallback(BaseCallback):
         self.trainer = trainer
         self.eval_freq = max(1, int(eval_freq))
         self.history: Dict[str, List[Any]] = defaultdict(list)
-        self.best_score = float("-inf")
-        self.best_timestep = 0
 
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq != 0:
@@ -51,18 +49,9 @@ class SingleChainEvalCallback(BaseCallback):
         self.history["action_space_report"].append(metrics.get("action_space_report", {}))
         write_json(self.trainer.output_dir / "evals.json", dict(self.history))
         write_json(self.trainer.output_dir / "trajectory_summary_last_eval.json", {"episodes": trajectories})
-
-        score = float(metrics.get(self.trainer.primary_metric, metrics.get("fitness_score", 0.0)))
-        if score > self.best_score:
-            self.best_score = score
-            self.best_timestep = int(self.num_timesteps)
-            self.model.save(self.trainer.output_dir / "best_model")
-            best_metrics = dict(metrics)
-            best_metrics["model_selection_score"] = score
-            best_metrics["model_selection_metric"] = self.trainer.primary_metric
-            best_metrics["selected_at_timesteps"] = self.best_timestep
-            write_json(self.trainer.output_dir / "best_eval.json", best_metrics)
-            write_json(self.trainer.output_dir / "best_trajectory_summary.json", {"episodes": trajectories})
+        # Do not save or select a peak checkpoint here. The curve is retained only
+        # for stability diagnostics; reward quality is judged from final behavior.
+        write_json(self.trainer.output_dir / "checkpoint_stability_report.json", build_checkpoint_stability_report(dict(self.history)))
         return True
 
 
@@ -159,70 +148,59 @@ class SingleChainPPOTrainer:
         callback = SingleChainEvalCallback(self, eval_freq=eval_freq)
         model.learn(total_timesteps=total_timesteps, tb_log_name="single_chain", callback=callback)
         model.save(self.output_dir / "final_model")
+        model.save(self.output_dir / "model")
 
         final_metrics, final_trajectories = self.evaluate(model)
         write_json(self.output_dir / "final_eval.json", final_metrics)
         write_json(self.output_dir / "trajectory_summary.json", {"episodes": final_trajectories})
 
-        selected_metrics, selected_trajectories, selection = self._select_model_metrics(final_metrics, final_trajectories)
-        write_json(self.output_dir / "selected_eval.json", selected_metrics)
-        write_json(self.output_dir / "selected_trajectory_summary.json", {"episodes": selected_trajectories})
-        write_json(self.output_dir / "model_selection.json", selection)
-        self._materialize_selected_model(model, selection)
+        eval_history = dict(callback.history)
+        checkpoint_stability = build_checkpoint_stability_report(eval_history)
+        target_behavior_report = build_target_behavior_report(
+            metrics=final_metrics,
+            trajectories=final_trajectories,
+            max_episode_steps=self.env_cfg.get("max_episode_steps"),
+            fitness_score_auxiliary=final_metrics.get("fitness_score"),
+        )
+        model_selection = self._final_model_selection(final_metrics, checkpoint_stability)
+        write_json(self.output_dir / "checkpoint_stability_report.json", checkpoint_stability)
+        write_json(self.output_dir / "target_behavior_report.json", target_behavior_report)
+        write_json(self.output_dir / "model_selection.json", model_selection)
+        # Compatibility files are final-only. They must not contain peak checkpoint metrics.
+        final_metrics_for_selected = dict(final_metrics)
+        final_metrics_for_selected["selected_model_source"] = "final_checkpoint"
+        final_metrics_for_selected["model_selection_metric"] = self.primary_metric
+        final_metrics_for_selected["model_selection_score"] = float(final_metrics.get(self.primary_metric, final_metrics.get("fitness_score", 0.0)))
+        write_json(self.output_dir / "selected_eval.json", final_metrics_for_selected)
+        write_json(self.output_dir / "selected_trajectory_summary.json", {"episodes": final_trajectories})
 
         component_metrics = {
-            "component_means": selected_metrics.get("component_means", {}),
-            "component_keys": sorted(selected_metrics.get("component_means", {}).keys()),
-            "note": "Component means are averaged episode-level sums from info returned by compute_reward. Metrics are selected by model_selection.json.",
+            "component_means": final_metrics.get("component_means", {}),
+            "component_keys": sorted(final_metrics.get("component_means", {}).keys()),
+            "note": "Component means are final-checkpoint episode-level sums from info returned by compute_reward. Peak checkpoints are diagnostics only.",
         }
         write_json(self.output_dir / "component_metrics.json", component_metrics)
 
-        reward_trace = self.build_reward_trace(selected_metrics, selected_trajectories)
-        reward_trace["model_selection"] = selection
+        reward_trace = self.build_reward_trace(final_metrics, final_trajectories)
+        reward_trace["model_selection"] = model_selection
+        reward_trace["target_behavior_report"] = target_behavior_report
+        reward_trace["checkpoint_stability_report"] = checkpoint_stability
         write_json(self.output_dir / "reward_trace.json", reward_trace)
         train_env.close()
         return reward_trace
 
-    def _select_model_metrics(self, final_metrics: Dict[str, Any], final_trajectories: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Dict[str, Any]]:
+    def _final_model_selection(self, final_metrics: Dict[str, Any], checkpoint_stability: Dict[str, Any]) -> Dict[str, Any]:
         final_score = float(final_metrics.get(self.primary_metric, final_metrics.get("fitness_score", 0.0)))
-        best_eval_path = self.output_dir / "best_eval.json"
-        best_traj_path = self.output_dir / "best_trajectory_summary.json"
-        best_metrics = read_json(best_eval_path) if best_eval_path.exists() else {}
-        best_score = float(best_metrics.get(self.primary_metric, best_metrics.get("fitness_score", float("-inf")))) if best_metrics else float("-inf")
-        use_best = bool(best_metrics and best_score >= final_score)
-        if use_best:
-            best_traj = read_json(best_traj_path).get("episodes", []) if best_traj_path.exists() else []
-            selected_metrics = dict(best_metrics)
-            selected_trajectories = best_traj or final_trajectories
-            selected_source = "best_eval_checkpoint"
-            selected_score = best_score
-        else:
-            selected_metrics = dict(final_metrics)
-            selected_trajectories = final_trajectories
-            selected_source = "final_checkpoint"
-            selected_score = final_score
-
-        selected_metrics["selected_model_source"] = selected_source
-        selected_metrics["model_selection_metric"] = self.primary_metric
-        selected_metrics["model_selection_score"] = selected_score
-        selection = {
+        return {
             "file_type": "model_selection",
             "primary_metric": self.primary_metric,
-            "selected_model_source": selected_source,
-            "selected_score": selected_score,
+            "selected_model_source": "final_checkpoint",
+            "selected_score": final_score,
             "final_score": final_score,
-            "best_score": best_score if best_metrics else None,
-            "used_best_checkpoint": use_best,
+            "used_best_checkpoint": False,
+            "peak_checkpoint_is_diagnostic_only": True,
+            "checkpoint_stability_report": checkpoint_stability,
         }
-        return selected_metrics, selected_trajectories, selection
-
-    def _materialize_selected_model(self, final_model: PPO, selection: Dict[str, Any]) -> None:
-        model_zip = self.output_dir / "model.zip"
-        best_zip = self.output_dir / "best_model.zip"
-        if selection.get("used_best_checkpoint") and best_zip.exists():
-            shutil.copyfile(best_zip, model_zip)
-        else:
-            final_model.save(self.output_dir / "model")
 
     def evaluate(self, model: PPO) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         n_eval_episodes = int(self.eval_cfg.get("n_eval_episodes", 5))
@@ -231,6 +209,7 @@ class SingleChainPPOTrainer:
         eval_env = self._make_vec_env(n_envs=1, seed=seed)
 
         rewards: List[float] = []
+        fitness_scores: List[float] = []
         lengths: List[int] = []
         info_sums_per_episode: List[Dict[str, float]] = []
         trajectories: List[Dict[str, Any]] = []
@@ -274,7 +253,9 @@ class SingleChainPPOTrainer:
                     else:
                         final_state = np.asarray(obs[0], dtype=float).tolist()
 
+            fitness_score = float(info_sums.get("fitness_score", 0.0))
             rewards.append(float(episode_reward))
+            fitness_scores.append(fitness_score)
             lengths.append(int(episode_length))
             info_sums_per_episode.append(dict(info_sums))
             terminal_classification = _classify_terminal(info_sums, final_info)
@@ -283,7 +264,7 @@ class SingleChainPPOTrainer:
                     "episode_id": ep,
                     "length": int(episode_length),
                     "return_generated": float(episode_reward),
-                    "return_fitness": float(info_sums.get("fitness_score", 0.0)),
+                    "return_fitness": fitness_score,
                     "final_state": final_state,
                     "terminal_classification": terminal_classification,
                     "component_returns": dict(sorted(info_sums.items())),
@@ -307,7 +288,8 @@ class SingleChainPPOTrainer:
         metrics = {
             "reward": float(np.mean(rewards)),
             "reward_std": float(np.std(rewards)),
-            "fitness_score": float(component_means.get("fitness_score", 0.0)),
+            "fitness_score": float(np.mean(fitness_scores)) if fitness_scores else 0.0,
+            "fitness_score_std": float(np.std(fitness_scores)) if fitness_scores else 0.0,
             "episode_length": float(np.mean(lengths)),
             "episode_length_std": float(np.std(lengths)),
             "component_means": component_means,
@@ -329,7 +311,7 @@ class SingleChainPPOTrainer:
         max_steps = float(self.env_cfg.get("max_episode_steps") or 0)
 
         hovering_risk = bool(max_steps and episode_length >= 0.9 * max_steps and metrics.get("success_like_terminal_rate", 0.0) < 0.2)
-        proxy_hacking_risk = bool(generated > 0 and fitness < 0 and gap > abs(fitness))
+        proxy_hacking_risk = bool(generated > 0 and metrics.get("success_like_terminal_rate", 0.0) <= 0.0 and hovering_risk)
         terminal_hacking_risk = bool(
             component_means.get("terminal_reward", 0.0) > 0
             and metrics.get("success_like_terminal_rate", 0.0) < 0.2
@@ -342,7 +324,7 @@ class SingleChainPPOTrainer:
             "creation_type": self.creation_type,
             "primary_metrics": {
                 "fitness_score": fitness,
-                "selection_metric": "fitness_score",
+                "selection_metric": "fitness_score_auxiliary",
             },
             "proxy_metrics": {
                 "generated_reward": generated,
@@ -359,7 +341,7 @@ class SingleChainPPOTrainer:
             "component_returns": component_means,
             "alignment_flags": {
                 "hovering_risk": hovering_risk,
-                "proxy_reward_hacking_risk": proxy_hacking_risk,
+                "proxy_reward_behavior_misalignment_risk": proxy_hacking_risk,
                 "terminal_hacking_risk": terminal_hacking_risk,
             },
             "environment_understanding_summary": self.environment_understanding.get("task_goal", {}),
