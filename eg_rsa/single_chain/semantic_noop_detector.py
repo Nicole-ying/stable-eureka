@@ -27,6 +27,10 @@ DEFAULT_PROBES = [
     ProbeCase([-0.15, 0.2, 0.05, -0.1, -0.2, 0.03, 1.0, 0.0], 0.2, 0.7, False, 760),
 ]
 
+ALLOWED_CALL_ROOTS = {"abs", "float", "int", "min", "max", "bool", "hasattr"}
+ALLOWED_MODULE_CALLS = {"math", "np", "numpy"}
+DISALLOWED_NODES = (ast.Import, ast.ImportFrom, ast.With, ast.Try, ast.Raise, ast.Lambda, ast.Global, ast.Nonlocal)
+
 
 def detect_semantic_noop_edit(
     old_code: str | None,
@@ -45,12 +49,15 @@ def detect_semantic_noop_edit(
     old_code = old_code or ""
     new_code = new_code or ""
     if not old_code.strip() or not new_code.strip():
+        return _skip_report("missing_reference_or_candidate_code")
+
+    old_probe_safe = _probe_safe(old_code)
+    new_probe_safe = _probe_safe(new_code)
+    if not old_probe_safe.get("safe") or not new_probe_safe.get("safe"):
         return {
-            "file_type": "semantic_noop_report",
-            "valid": True,
-            "semantic_noop_edit": False,
-            "should_train": True,
-            "reason": "missing_reference_or_candidate_code",
+            **_skip_report("reward code is outside conservative probe-safe subset"),
+            "old_probe_safety": old_probe_safe,
+            "new_probe_safety": new_probe_safe,
         }
 
     normalized_old = _normalize_ast(old_code)
@@ -82,6 +89,41 @@ def detect_semantic_noop_edit(
             "If blocked, regenerate a structurally meaningful reward change that alters expected target behavior.",
         ] if semantic_noop else [],
     }
+
+
+def _skip_report(reason: str) -> Dict[str, Any]:
+    return {
+        "file_type": "semantic_noop_report",
+        "valid": True,
+        "semantic_noop_edit": False,
+        "should_train": True,
+        "stage": "skipped",
+        "reason": reason,
+    }
+
+
+def _probe_safe(code: str) -> Dict[str, Any]:
+    try:
+        tree = ast.parse(code)
+    except Exception as exc:
+        return {"safe": False, "reason": f"parse_error: {exc}"}
+    for node in ast.walk(tree):
+        if isinstance(node, DISALLOWED_NODES):
+            return {"safe": False, "reason": f"disallowed_ast_node:{type(node).__name__}"}
+        if isinstance(node, ast.Call) and not _allowed_call(node):
+            return {"safe": False, "reason": "disallowed_call"}
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id.startswith("__"):
+            return {"safe": False, "reason": "dunder_attribute"}
+    return {"safe": True, "reason": "probe_safe_subset"}
+
+
+def _allowed_call(node: ast.Call) -> bool:
+    fn = node.func
+    if isinstance(fn, ast.Name):
+        return fn.id in ALLOWED_CALL_ROOTS
+    if isinstance(fn, ast.Attribute) and isinstance(fn.value, ast.Name):
+        return fn.value.id in ALLOWED_MODULE_CALLS
+    return False
 
 
 def _normalize_ast(code: str) -> str:
@@ -166,7 +208,7 @@ def _probe_equivalence(
 
 
 def _load_reward_fn(code: str) -> Callable[..., Tuple[float, Dict[str, Any]]]:
-    namespace: Dict[str, Any] = {"math": math, "np": np, "numpy": np}
+    namespace: Dict[str, Any] = {"math": math, "np": np, "numpy": np, "__builtins__": {}}
     exec(compile(code, "<reward_code>", "exec"), namespace)
     fn = namespace.get("compute_reward")
     if not callable(fn):
