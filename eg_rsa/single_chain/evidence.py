@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 
 from .expert_audits import build_expert_audit_pack
 from .json_tools import read_json, write_json, read_text
+from .target_behavior_evaluator import build_checkpoint_stability_report, build_target_behavior_report
 
 
 class EvidenceBuilder:
@@ -16,21 +17,30 @@ class EvidenceBuilder:
         training_dir = base / "training" if (base / "training").exists() else base
         reward_dir = base / "reward" if (base / "reward").exists() else base.parent / "reward"
 
-        selected_eval = _read_json_if_exists(training_dir / "selected_eval.json")
-        final_eval_raw = _read_json_if_exists(training_dir / "final_eval.json")
-        final_eval = selected_eval or final_eval_raw
+        final_eval = _read_json_if_exists(training_dir / "final_eval.json")
         reward_trace = _read_json_if_exists(training_dir / "reward_trace.json")
         if not reward_trace and (base / "reward_trace.json").exists():
             reward_trace = _read_json_if_exists(base / "reward_trace.json")
         component_metrics = _read_json_if_exists(training_dir / "component_metrics.json")
-        selected_trajectory_summary = _read_json_if_exists(training_dir / "selected_trajectory_summary.json")
-        trajectory_summary_raw = _read_json_if_exists(training_dir / "trajectory_summary.json")
-        trajectory_summary = selected_trajectory_summary or trajectory_summary_raw
+        trajectory_summary = _read_json_if_exists(training_dir / "trajectory_summary.json")
         evals = _read_json_if_exists(training_dir / "evals.json")
         model_selection = _read_json_if_exists(training_dir / "model_selection.json")
+        checkpoint_stability = _read_json_if_exists(training_dir / "checkpoint_stability_report.json")
+        if not checkpoint_stability and evals:
+            checkpoint_stability = build_checkpoint_stability_report(evals)
+        target_behavior_report = _read_json_if_exists(training_dir / "target_behavior_report.json")
         reward_schema = _read_json_if_exists(reward_dir / "reward_schema.json")
         reward_code = _read_text_if_exists(reward_dir / "reward_code.py")
         task_model = _read_json_if_exists(base / "agents" / "task_model.json") or _read_json_if_exists(base / "environment_understanding_summary.json")
+
+        episodes = trajectory_summary.get("episodes") or reward_trace.get("trajectory_examples") or []
+        if not target_behavior_report and final_eval:
+            target_behavior_report = build_target_behavior_report(
+                metrics=final_eval,
+                trajectories=episodes,
+                max_episode_steps=None,
+                fitness_score_auxiliary=final_eval.get("fitness_score"),
+            )
 
         component_means = (
             final_eval.get("component_means")
@@ -43,24 +53,29 @@ class EvidenceBuilder:
         action_space_report = final_eval.get("action_space_report") or reward_trace.get("behavior_metrics", {}).get("action_space_report", {})
         primary_metrics = {
             "fitness_score": _num(final_eval.get("fitness_score", reward_trace.get("primary_metrics", {}).get("fitness_score"))),
+            "fitness_score_std": _num(final_eval.get("fitness_score_std")),
             "generated_reward": _num(final_eval.get("reward", reward_trace.get("proxy_metrics", {}).get("generated_reward"))),
+            "generated_reward_std": _num(final_eval.get("reward_std")),
             "episode_length": _num(final_eval.get("episode_length", reward_trace.get("behavior_metrics", {}).get("episode_length"))),
+            "episode_length_std": _num(final_eval.get("episode_length_std")),
             "success_like_terminal_rate": _num(final_eval.get("success_like_terminal_rate", reward_trace.get("behavior_metrics", {}).get("success_like_terminal_rate"))),
             "unsafe_terminal_rate": _num(final_eval.get("unsafe_terminal_rate", reward_trace.get("behavior_metrics", {}).get("unsafe_terminal_rate"))),
             "out_of_bounds_rate": _num(final_eval.get("out_of_bounds_rate", reward_trace.get("behavior_metrics", {}).get("out_of_bounds_rate"))),
         }
 
-        episodes = trajectory_summary.get("episodes") or reward_trace.get("trajectory_examples") or []
         episode_summaries = [_episode_digest(ep) for ep in episodes[:max_episodes]]
-        automatic_hints = _automatic_hints(primary_metrics, component_means, action_distribution, action_space_report, episode_summaries)
+        automatic_hints = _automatic_hints(primary_metrics, component_means, action_distribution, action_space_report, episode_summaries, target_behavior_report, checkpoint_stability)
 
         evidence = {
             "file_type": "iteration_evidence",
             "source_dir": str(base),
             "candidate_id": reward_trace.get("candidate_id", base.name),
             "primary_metrics": primary_metrics,
+            "reward_design_metrics": primary_metrics,
+            "policy_peak_metrics": _policy_peak_metrics(checkpoint_stability),
+            "target_behavior_report": target_behavior_report,
+            "checkpoint_stability_report": checkpoint_stability,
             "model_selection": model_selection or reward_trace.get("model_selection", {}),
-            "raw_final_eval_summary": _raw_final_summary(final_eval_raw),
             "behavior_summary": {
                 "action_distribution": action_distribution,
                 "action_space_report": action_space_report,
@@ -174,7 +189,7 @@ def _episode_digest(ep: Dict[str, Any]) -> Dict[str, Any]:
 
 def _summarize_evals(evals: Dict[str, Any]) -> Dict[str, Any]:
     summary: Dict[str, Any] = {}
-    for key in ["timesteps", "reward", "fitness_score", "episode_length", "success_like_terminal_rate", "unsafe_terminal_rate", "out_of_bounds_rate"]:
+    for key in ["timesteps", "reward", "reward_std", "fitness_score", "fitness_score_std", "episode_length", "episode_length_std", "success_like_terminal_rate", "unsafe_terminal_rate", "out_of_bounds_rate"]:
         values = evals.get(key)
         if isinstance(values, list) and values:
             summary[key] = {
@@ -226,7 +241,15 @@ def _extract_individual_reward_keys(code: str) -> List[str]:
     return keys
 
 
-def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any], action_distribution: Dict[str, Any], action_space_report: Dict[str, Any], episodes: List[Dict[str, Any]]) -> List[str]:
+def _automatic_hints(
+    metrics: Dict[str, float],
+    component_means: Dict[str, Any],
+    action_distribution: Dict[str, Any],
+    action_space_report: Dict[str, Any],
+    episodes: List[Dict[str, Any]],
+    target_behavior_report: Dict[str, Any],
+    checkpoint_stability: Dict[str, Any],
+) -> List[str]:
     hints: List[str] = []
     dom = _dominant_action(action_distribution)
     if dom["probability"] >= 0.95:
@@ -237,7 +260,7 @@ def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any],
     if unused:
         hints.append("Unused discrete actions detected during evaluation: " + ", ".join(map(str, unused)) + ". Check whether the reward makes necessary actions unattractive.")
     if metrics.get("success_like_terminal_rate", 0.0) <= 0.01:
-        hints.append("Success-like terminal behavior was not discovered during evaluation.")
+        hints.append("Final policy did not discover success-like terminal behavior. Treat fitness as auxiliary, not proof of reward quality.")
     if _num(component_means.get("fuel_cost")) == 0.0 and str(dom["action"]) in {"0", "0.0"}:
         hints.append("Fuel cost is zero because the policy never uses engines/actions that consume fuel.")
     dominant = _dominant_components(component_means, top_k=3)
@@ -245,19 +268,25 @@ def _automatic_hints(metrics: Dict[str, float], component_means: Dict[str, Any],
         hints.append("Dominant reward components by absolute return: " + ", ".join(f"{d['name']}={d['mean_return']:.3f}" for d in dominant))
     if any((ep.get("length") or 0) < 120 for ep in episodes) and metrics.get("success_like_terminal_rate", 0.0) <= 0.01:
         hints.append("Episodes terminate early without success-like behavior; consider exploration-friendly progress signals before adding stronger penalties.")
+    if target_behavior_report and not target_behavior_report.get("target_success", False):
+        gaps = target_behavior_report.get("target_behavior_gaps", []) or []
+        hints.append("Target behavior gap: " + "; ".join(map(str, gaps[:3])))
+    if checkpoint_stability.get("transient_peak_risk"):
+        hints.append("Checkpoint stability risk: training showed a transient peak but final behavior regressed; do not use peak fitness as reward-quality evidence.")
     return hints
 
 
-def _raw_final_summary(final_eval: Dict[str, Any]) -> Dict[str, Any]:
-    if not final_eval:
+def _policy_peak_metrics(checkpoint_stability: Dict[str, Any]) -> Dict[str, Any]:
+    if not checkpoint_stability or not checkpoint_stability.get("available"):
         return {}
     return {
-        "fitness_score": _num(final_eval.get("fitness_score")),
-        "generated_reward": _num(final_eval.get("reward")),
-        "episode_length": _num(final_eval.get("episode_length")),
-        "success_like_terminal_rate": _num(final_eval.get("success_like_terminal_rate")),
-        "unsafe_terminal_rate": _num(final_eval.get("unsafe_terminal_rate")),
-        "out_of_bounds_rate": _num(final_eval.get("out_of_bounds_rate")),
+        "diagnostic_only": True,
+        "best_fitness": checkpoint_stability.get("best_fitness"),
+        "best_success_like_terminal_rate": checkpoint_stability.get("best_success_like_terminal_rate"),
+        "best_timestep": checkpoint_stability.get("best_timestep"),
+        "best_final_fitness_gap": checkpoint_stability.get("best_final_fitness_gap"),
+        "success_rate_drop": checkpoint_stability.get("success_rate_drop"),
+        "transient_peak_risk": checkpoint_stability.get("transient_peak_risk"),
     }
 
 
