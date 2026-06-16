@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Type
@@ -13,7 +14,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from .env_builder import make_single_env
-from .json_tools import write_json
+from .json_tools import read_json, write_json
 
 
 INTERNAL_INFO_KEYS = {
@@ -33,6 +34,8 @@ class SingleChainEvalCallback(BaseCallback):
         self.trainer = trainer
         self.eval_freq = max(1, int(eval_freq))
         self.history: Dict[str, List[Any]] = defaultdict(list)
+        self.best_score = float("-inf")
+        self.best_timestep = 0
 
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq != 0:
@@ -48,6 +51,18 @@ class SingleChainEvalCallback(BaseCallback):
         self.history["action_space_report"].append(metrics.get("action_space_report", {}))
         write_json(self.trainer.output_dir / "evals.json", dict(self.history))
         write_json(self.trainer.output_dir / "trajectory_summary_last_eval.json", {"episodes": trajectories})
+
+        score = float(metrics.get(self.trainer.primary_metric, metrics.get("fitness_score", 0.0)))
+        if score > self.best_score:
+            self.best_score = score
+            self.best_timestep = int(self.num_timesteps)
+            self.model.save(self.trainer.output_dir / "best_model")
+            best_metrics = dict(metrics)
+            best_metrics["model_selection_score"] = score
+            best_metrics["model_selection_metric"] = self.trainer.primary_metric
+            best_metrics["selected_at_timesteps"] = self.best_timestep
+            write_json(self.trainer.output_dir / "best_eval.json", best_metrics)
+            write_json(self.trainer.output_dir / "best_trajectory_summary.json", {"episodes": trajectories})
         return True
 
 
@@ -81,6 +96,9 @@ class SingleChainPPOTrainer:
         self.rl_cfg = config.get("rl", {})
         self.train_cfg = self.rl_cfg.get("training", {})
         self.eval_cfg = self.rl_cfg.get("eval", {})
+        controller_cfg = config.get("controller", {}) or {}
+        search_cfg = config.get("search", {}) or {}
+        self.primary_metric = controller_cfg.get("primary_metric") or search_cfg.get("primary_metric") or "fitness_score"
 
     def _make_vec_env(self, n_envs: int, seed: int | None) -> DummyVecEnv:
         env_kwargs = self.env_cfg.get("kwargs") or {}
@@ -140,22 +158,71 @@ class SingleChainPPOTrainer:
 
         callback = SingleChainEvalCallback(self, eval_freq=eval_freq)
         model.learn(total_timesteps=total_timesteps, tb_log_name="single_chain", callback=callback)
-        model.save(self.output_dir / "model")
+        model.save(self.output_dir / "final_model")
 
         final_metrics, final_trajectories = self.evaluate(model)
         write_json(self.output_dir / "final_eval.json", final_metrics)
         write_json(self.output_dir / "trajectory_summary.json", {"episodes": final_trajectories})
 
+        selected_metrics, selected_trajectories, selection = self._select_model_metrics(final_metrics, final_trajectories)
+        write_json(self.output_dir / "selected_eval.json", selected_metrics)
+        write_json(self.output_dir / "selected_trajectory_summary.json", {"episodes": selected_trajectories})
+        write_json(self.output_dir / "model_selection.json", selection)
+        self._materialize_selected_model(model, selection)
+
         component_metrics = {
-            "component_means": final_metrics.get("component_means", {}),
-            "component_keys": sorted(final_metrics.get("component_means", {}).keys()),
-            "note": "Component means are averaged episode-level sums from info returned by compute_reward.",
+            "component_means": selected_metrics.get("component_means", {}),
+            "component_keys": sorted(selected_metrics.get("component_means", {}).keys()),
+            "note": "Component means are averaged episode-level sums from info returned by compute_reward. Metrics are selected by model_selection.json.",
         }
         write_json(self.output_dir / "component_metrics.json", component_metrics)
 
-        reward_trace = self.build_reward_trace(final_metrics, final_trajectories)
+        reward_trace = self.build_reward_trace(selected_metrics, selected_trajectories)
+        reward_trace["model_selection"] = selection
         write_json(self.output_dir / "reward_trace.json", reward_trace)
+        train_env.close()
         return reward_trace
+
+    def _select_model_metrics(self, final_metrics: Dict[str, Any], final_trajectories: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Dict[str, Any]]:
+        final_score = float(final_metrics.get(self.primary_metric, final_metrics.get("fitness_score", 0.0)))
+        best_eval_path = self.output_dir / "best_eval.json"
+        best_traj_path = self.output_dir / "best_trajectory_summary.json"
+        best_metrics = read_json(best_eval_path) if best_eval_path.exists() else {}
+        best_score = float(best_metrics.get(self.primary_metric, best_metrics.get("fitness_score", float("-inf")))) if best_metrics else float("-inf")
+        use_best = bool(best_metrics and best_score >= final_score)
+        if use_best:
+            best_traj = read_json(best_traj_path).get("episodes", []) if best_traj_path.exists() else []
+            selected_metrics = dict(best_metrics)
+            selected_trajectories = best_traj or final_trajectories
+            selected_source = "best_eval_checkpoint"
+            selected_score = best_score
+        else:
+            selected_metrics = dict(final_metrics)
+            selected_trajectories = final_trajectories
+            selected_source = "final_checkpoint"
+            selected_score = final_score
+
+        selected_metrics["selected_model_source"] = selected_source
+        selected_metrics["model_selection_metric"] = self.primary_metric
+        selected_metrics["model_selection_score"] = selected_score
+        selection = {
+            "file_type": "model_selection",
+            "primary_metric": self.primary_metric,
+            "selected_model_source": selected_source,
+            "selected_score": selected_score,
+            "final_score": final_score,
+            "best_score": best_score if best_metrics else None,
+            "used_best_checkpoint": use_best,
+        }
+        return selected_metrics, selected_trajectories, selection
+
+    def _materialize_selected_model(self, final_model: PPO, selection: Dict[str, Any]) -> None:
+        model_zip = self.output_dir / "model.zip"
+        best_zip = self.output_dir / "best_model.zip"
+        if selection.get("used_best_checkpoint") and best_zip.exists():
+            shutil.copyfile(best_zip, model_zip)
+        else:
+            final_model.save(self.output_dir / "model")
 
     def evaluate(self, model: PPO) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         n_eval_episodes = int(self.eval_cfg.get("n_eval_episodes", 5))
@@ -334,12 +401,12 @@ def _action_space_report(action_space: gym.Space, action_distribution: Dict[str,
 
 
 def _classify_terminal(info_sums: Dict[str, float], final_info: Dict[str, Any]) -> str:
-    if info_sums.get("success_like_terminal", 0.0) > 0:
+    if info_sums.get("success_like_terminal", 0.0) > 0 or info_sums.get("safe_landing_terminal", 0.0) > 0:
         return "success_like_terminal"
-    if info_sums.get("out_of_bounds", 0.0) > 0:
+    if info_sums.get("out_of_bounds", 0.0) > 0 or info_sums.get("out_of_bounds_terminal", 0.0) > 0:
         return "out_of_bounds"
-    if info_sums.get("unsafe_terminal", 0.0) > 0:
+    if info_sums.get("unsafe_terminal", 0.0) > 0 or info_sums.get("crash_terminal", 0.0) > 0:
         return "unsafe_terminal"
-    if final_info.get("TimeLimit.truncated", False):
+    if final_info.get("TimeLimit.truncated", False) or info_sums.get("timeout_terminal", 0.0) > 0:
         return "timeout_or_truncated"
     return "unknown_terminal"
