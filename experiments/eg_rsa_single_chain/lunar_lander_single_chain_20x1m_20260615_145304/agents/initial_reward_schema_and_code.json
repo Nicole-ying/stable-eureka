@@ -1,0 +1,71 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander-v2",
+  "expert_blueprint": {
+    "intended_behavior_phases": [
+      "Phase 1: Stabilize and approach the pad from above (control angle and lateral drift).",
+      "Phase 2: Descend toward pad with controlled vertical speed, maintaining upright orientation.",
+      "Phase 3: Soft touchdown with both legs contacting the pad, minimal residual velocity."
+    ],
+    "component_scale_reasoning": {
+      "objective_success_bonus": "Sparse +100 reward for successful landing (both legs contact, near pad, low velocities). This provides a clear goal signal.",
+      "progress_shaping": "Continuous reward for being close to pad (x^2 + y^2) and upright (angle^2) to guide the agent through all phases. Scale: -0.1 * (x^2 + y^2) - 0.05 * angle^2. This is moderate to avoid dominating but gives clear gradient.",
+      "velocity_penalty": "Penalize high vertical and lateral velocity, especially near ground. Scale: -0.05 * vy^2 - 0.02 * vx^2. Mild to avoid discouraging necessary movement.",
+      "fuel_efficiency": "Small penalty for main engine use: -0.01 * m_power. Very mild so safety is prioritized.",
+      "crash_penalty": "Strong negative reward for termination without success: -100. This clearly discourages crashes and out-of-bounds.",
+      "hovering_deterrent": "No explicit positive reward for staying alive; the progress shaping naturally encourages descent. No extra penalty needed."
+    },
+    "diagnostic_metrics": [
+      "distance_to_pad",
+      "angle_deviation",
+      "vertical_speed",
+      "lateral_speed",
+      "main_engine_usage",
+      "legs_contact",
+      "success_flag",
+      "crash_flag"
+    ]
+  },
+  "reward_schema": {
+    "objective_success_bonus": {
+      "condition": "Both legs contact (state[6]==1 and state[7]==1) and |x|<0.1 and |y|<0.1 and |vy|<0.1 and |vx|<0.1",
+      "value": 100.0
+    },
+    "crash_penalty": {
+      "condition": "terminated and not success",
+      "value": -100.0
+    },
+    "progress_shaping": {
+      "distance_penalty": "-0.1 * (x^2 + y^2)",
+      "angle_penalty": "-0.05 * angle^2"
+    },
+    "velocity_penalty": {
+      "vertical": "-0.05 * vy^2",
+      "lateral": "-0.02 * vx^2"
+    },
+    "fuel_penalty": {
+      "main_engine": "-0.01 * m_power"
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    x, y, vx, vy, angle, angular_velocity, leg1, leg2 = state\n    # Initialize diagnostics\n    distance_to_pad = x*x + y*y\n    angle_deviation = angle*angle\n    vertical_speed = vy*vy\n    lateral_speed = vx*vx\n    main_engine_usage = m_power\n    legs_contact = leg1 + leg2\n    success_flag = 0.0\n    crash_flag = 0.0\n\n    # Check success condition\n    success = (leg1 == 1.0 and leg2 == 1.0 and abs(x) < 0.1 and abs(y) < 0.1 and abs(vy) < 0.1 and abs(vx) < 0.1)\n    if success:\n        success_flag = 1.0\n\n    # Check crash (terminated without success)\n    if terminated and not success:\n        crash_flag = 1.0\n\n    # Compute reward components\n    objective_bonus = 100.0 if success else 0.0\n    crash_penalty = -100.0 if crash_flag else 0.0\n    progress_shaping = -0.1 * distance_to_pad - 0.05 * angle_deviation\n    velocity_penalty = -0.05 * vertical_speed - 0.02 * lateral_speed\n    fuel_penalty = -0.01 * main_engine_usage\n\n    reward = objective_bonus + crash_penalty + progress_shaping + velocity_penalty + fuel_penalty\n\n    individual_reward = {\n        'distance_to_pad': distance_to_pad,\n        'angle_deviation': angle_deviation,\n        'vertical_speed': vertical_speed,\n        'lateral_speed': lateral_speed,\n        'main_engine_usage': main_engine_usage,\n        'legs_contact': legs_contact,\n        'success_flag': success_flag,\n        'crash_flag': crash_flag,\n        'objective_bonus': objective_bonus,\n        'crash_penalty': crash_penalty,\n        'progress_shaping': progress_shaping,\n        'velocity_penalty': velocity_penalty,\n        'fuel_penalty': fuel_penalty\n    }\n\n    return float(reward), individual_reward",
+  "expected_behavior": "The agent should learn to descend toward the pad, maintain upright orientation, reduce velocities near touchdown, and achieve soft landing with both legs contacting. It will avoid crashes and out-of-bounds due to strong penalty. Fuel usage will be minimized as a secondary objective.",
+  "known_risks": [
+    "The success condition may be too strict (requires both legs contact and low velocities and near pad), leading to sparse success signal. However, progress shaping provides continuous gradient.",
+    "The crash penalty is symmetric with success bonus, which may cause the agent to prefer crashing if success is too hard. But shaping should guide it.",
+    "The agent might hover at high altitude to avoid crash penalty while collecting small progress shaping? Progress shaping penalizes distance, so hovering far from pad gives negative reward, encouraging descent.",
+    "The agent might land outside pad with legs contact but not get success bonus; it will still get crash penalty? No, crash only if terminated without success. Landing outside pad may not terminate? Actually, if legs contact but not success, the episode may continue? In LunarLander, legs contact does not terminate; only crash/out-of-bounds/not awake. So the agent could land outside pad and stay there, collecting no success bonus but also no crash penalty. The progress shaping will penalize distance, so it will try to move to pad. This is acceptable."
+  ],
+  "self_check": {
+    "objective_feedback_present": true,
+    "reachable_progress_feedback_present": true,
+    "mild_regularizers_present": true,
+    "diagnostics_present": true,
+    "no_dense_penalty_dominated": true,
+    "task_achievement_detected": true,
+    "component_scale_reasoning_included": true,
+    "all_variables_initialized_before_branches": true,
+    "no_external_side_effects": true,
+    "returns_float_and_dict": true
+  },
+  "agent_name": "ExpertRewardDesignerAgent"
+}

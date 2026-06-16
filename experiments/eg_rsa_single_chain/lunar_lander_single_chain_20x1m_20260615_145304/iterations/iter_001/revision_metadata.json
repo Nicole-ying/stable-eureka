@@ -1,0 +1,40 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "Add phase-specific guidance: a controlled descent bonus that rewards using main engine when near pad and upright, and a touchdown stability bonus that rewards low velocity when both legs contact. Tighten success condition to match evaluator: both legs contact, near pad (|x|<0.15, |y|<0.15), low vertical speed (|vy|<0.5). Remove raw main_engine_usage penalty and replace with conditioned bonus. Keep distance and angle shaping but reduce their scale slightly to avoid dominance.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) but with relaxed condition",
+    "crash_penalty (-100) for termination without success",
+    "progress_shaping (distance and angle penalties) but reduced scale",
+    "velocity_penalty (vertical and lateral) but reduced scale",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent"
+  ],
+  "changed_design": [
+    "Relax success condition: both legs contact, |x|<0.15, |y|<0.15, |vy|<0.5 (no vx constraint, no angle constraint) to align with evaluator success-like behavior.",
+    "Add controlled_descent_bonus: +0.5 per step when main engine is used (m_power>0) AND lander is near pad (x^2+y^2<0.5) AND angle is small (|angle|<0.2). This conditions engine use on progress and stability, not raw action.",
+    "Add touchdown_stability_bonus: +10 when both legs contact AND |vy|<0.5 AND |vx|<0.5 AND |angle|<0.2. This is a one-shot event-gated bonus for stable touchdown.",
+    "Reduce distance_penalty scale from -0.1 to -0.05 to reduce dominance.",
+    "Reduce angle_penalty scale from -0.05 to -0.02.",
+    "Reduce vertical_speed penalty from -0.05 to -0.02.",
+    "Reduce lateral_speed penalty from -0.02 to -0.01."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not simply increase raw main-engine/action bonuses: instead, condition main engine bonus on progress and stability.",
+    "Do not only reduce distance shaping: we also add phase-specific bonuses and align success condition."
+  ],
+  "action_coverage_plan": "All actions already used. The controlled_descent_bonus will encourage more main engine use (action 2) during descent, increasing its usage from 15% to >20%.",
+  "phase_guidance_plan": "Phase 1 (approach): distance and angle shaping guide the lander toward pad and upright. Phase 2 (descent): controlled_descent_bonus rewards using main engine when near pad and stable. Phase 3 (touchdown): touchdown_stability_bonus rewards low velocity at contact. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "controlled_descent_bonus is a per-step conditioned bonus (not raw action), diminishing when not near pad or unstable. touchdown_stability_bonus is one-shot event-gated. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.2",
+    "stable_touchdown_rate": "increase from 0.4 to >0.6",
+    "main_engine_usage": "increase from 0.154 to >0.2",
+    "fitness_score": "improve from -113 to >-80"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "stable_touchdown_rate",
+    "main_engine_usage",
+    "fitness_score"
+  ]
+}

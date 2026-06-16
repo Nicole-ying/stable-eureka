@@ -1,0 +1,81 @@
+{
+  "file_type": "task_model",
+  "environment_name": "LunarLander-v2",
+  "reward_function_interface": "def compute_reward(state, m_power, s_power, terminated) -> (float, dict)",
+  "primary_objective": "Land the lander on the landing pad at (0,0) as fast as possible with minimal fuel consumption.",
+  "state_space_summary": "8-dimensional vector: [x, y, vx, vy, angle, angular_velocity, leg1_contact, leg2_contact]",
+  "action_space_summary": "Discrete: 0 (do nothing), 1 (fire left orientation engine), 2 (fire main engine), 3 (fire right orientation engine)",
+  "action_semantics": {
+    "0": "No engine thrust; coast or free-fall.",
+    "1": "Fire left orientation engine; applies torque to rotate lander clockwise and a small lateral force.",
+    "2": "Fire main engine; applies upward thrust to slow descent or ascend.",
+    "3": "Fire right orientation engine; applies torque to rotate lander counter-clockwise and a small lateral force."
+  },
+  "state_semantics": {
+    "0": "x-coordinate of lander center, normalized to [-1,1] (0 is pad center).",
+    "1": "y-coordinate of lander center, normalized (0 is pad height).",
+    "2": "Linear velocity in x-direction, normalized.",
+    "3": "Linear velocity in y-direction, normalized.",
+    "4": "Angle of lander (radians).",
+    "5": "Angular velocity, scaled.",
+    "6": "Boolean: left leg ground contact (1 if contact).",
+    "7": "Boolean: right leg ground contact (1 if contact)."
+  },
+  "intended_behavior_phases": [
+    "Phase 1: Stabilize and approach the pad from above (control angle and lateral drift).",
+    "Phase 2: Descend toward pad with controlled vertical speed, maintaining upright orientation.",
+    "Phase 3: Soft touchdown with both legs contacting the pad, minimal residual velocity."
+  ],
+  "required_action_by_phase": {
+    "Phase 1": "Use left/right orientation engines (actions 1,3) to correct angle and drift; occasional main engine (action 2) to manage altitude.",
+    "Phase 2": "Main engine (action 2) to control descent rate; orientation engines to keep upright and centered.",
+    "Phase 3": "Main engine (action 2) for final braking; orientation engines for fine alignment; possibly do nothing (action 0) if already stable."
+  },
+  "necessary_behaviors": [
+    "Maintain upright orientation (angle near 0) to avoid crash.",
+    "Center horizontally over pad (x near 0) before touchdown.",
+    "Reduce vertical velocity to near zero at contact.",
+    "Minimize lateral velocity at touchdown.",
+    "Use main engine efficiently to conserve fuel (minimize cumulative m_power)."
+  ],
+  "success_signals_available_to_reward": [
+    "Both legs ground contact (state[6]==1 and state[7]==1).",
+    "Lander position near (0,0) with low velocities.",
+    "Episode termination without crash or out-of-bounds."
+  ],
+  "failure_or_stop_signals_available_to_reward": [
+    "Crash (game_over flag).",
+    "Out of viewport (abs(state[0]) >= 1.0).",
+    "Lander not awake (terminated)."
+  ],
+  "dangerous_local_optima": [
+    "Hovering indefinitely at high altitude (avoids crash but never lands).",
+    "Landing outside pad but with legs down (no crash but not on pad).",
+    "Excessive use of orientation engines causing fuel waste without progress.",
+    "Landing with high vertical velocity but legs contact (crash-like but not detected as crash)."
+  ],
+  "primary_selection_metric": "Episodic return (total reward) averaged over many episodes.",
+  "proxy_metrics": [
+    "Distance to pad (x^2 + y^2).",
+    "Vertical speed magnitude.",
+    "Angle deviation from upright.",
+    "Cumulative main engine fuel (sum of m_power).",
+    "Number of steps to landing."
+  ],
+  "diagnostic_metrics": [
+    "Success rate (landing on pad with legs contact).",
+    "Crash rate.",
+    "Out-of-bounds rate.",
+    "Average fuel consumption per successful landing.",
+    "Average landing velocity components."
+  ],
+  "reward_design_constraints": [
+    "Reward must be a scalar float returned by compute_reward.",
+    "Must encourage landing on pad, not just ground contact anywhere.",
+    "Must penalize crashes and out-of-bounds strongly.",
+    "Fuel efficiency should be encouraged but not dominate safety.",
+    "Sparse success signal (landing) may require shaping for learnability.",
+    "Avoid positive reward for hovering indefinitely."
+  ],
+  "agent_name": "TaskModelAgent"
+}

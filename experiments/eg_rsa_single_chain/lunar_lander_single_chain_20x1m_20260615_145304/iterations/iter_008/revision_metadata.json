@@ -1,0 +1,39 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms repeatable bonuses (controlled_descent_bonus, touchdown_stability_bonus) off-pad. This revision makes those bonuses one-shot event-gated to prevent farming, and adds a strong distance improvement bonus to provide continuous incentive to approach the pad. The distance penalty is kept at -0.05 to avoid early failure (failed pattern from iter_004). The controlled_descent_bonus is triggered once when the lander first enters the near-pad region with main engine on and upright. The touchdown_stability_bonus is triggered once when both legs contact with low velocities near the pad. The distance improvement bonus provides +0.5 per unit distance decrease, capped at +1.0 per step, to strongly encourage moving toward the pad.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+    "progress_shaping distance penalty scale (-0.05) kept to avoid early failure"
+  ],
+  "changed_design": [
+    "Make controlled_descent_bonus one-shot event-gated: +0.5 once when the lander first enters the near-pad region (distance<0.5) with main engine on (m_power>0) and upright (|angle|<0.2). Use self._controlled_descent_given flag to ensure it is given only once per episode.",
+    "Make touchdown_stability_bonus one-shot event-gated: +10 once when both legs contact with low velocities (|vy|<0.5, |vx|<0.5) and small angle (|angle|<0.2) near the pad (distance<0.15). Use self._touchdown_stability_given flag to ensure it is given only once per episode.",
+    "Add distance_improvement_bonus: +0.5 * (prev_distance - current_distance) when distance decreases, capped at +1.0 per step. Use self._prev_distance to track previous distance, reset at episode start via hasattr check. This provides a strong, continuous incentive to move toward the pad.",
+    "Remove the repeatable controlled_descent_bonus and touchdown_stability_bonus from the per-step reward; they are now one-shot."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not simply increase raw main-engine/action bonuses: we make bonuses one-shot and add distance improvement bonus instead.",
+    "Do not only reduce distance shaping: we keep distance penalty at -0.05 and add distance improvement bonus.",
+    "Do not tighten bonus distance conditions too aggressively: we keep the original distance thresholds (0.5 for controlled_descent, 0.15 for touchdown_stability) but make them one-shot.",
+    "Do not increase distance penalty above -0.05: we keep it at -0.05 to avoid early failure (failed pattern from iter_004)."
+  ],
+  "action_coverage_plan": "All actions already used. The distance improvement bonus will encourage the policy to use orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~15% to ~20%. The one-shot bonuses will not change action distribution significantly but will prevent farming.",
+  "phase_guidance_plan": "Phase 1 (approach): distance_improvement_bonus (+0.5 per unit distance decrease, capped at +1.0) provides a strong gradient to move toward the pad. Distance penalty (-0.05 * distance) also encourages approach. Phase 2 (descent): controlled_descent_bonus (one-shot +0.5) rewards first use of main engine near pad and upright. Phase 3 (touchdown): touchdown_stability_bonus (one-shot +10) rewards stable touchdown near pad. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "distance_improvement_bonus is per-step but based on improvement (delta), so it naturally diminishes as the lander approaches the pad and cannot be farmed indefinitely. controlled_descent_bonus is one-shot event-gated (given once per episode). touchdown_stability_bonus is one-shot event-gated (given once per episode). objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "near_pad_rate": "increase from 0.0 to >0.3",
+    "stable_touchdown_rate": "increase from 0.0 to >0.2",
+    "fitness_score": "improve from 85.5 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ]
+}

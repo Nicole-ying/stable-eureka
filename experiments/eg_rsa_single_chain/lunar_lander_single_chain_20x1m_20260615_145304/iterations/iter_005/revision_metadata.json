@@ -1,0 +1,36 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms repeatable bonuses (touchdown_stability_bonus, controlled_descent_bonus) off-pad because the distance penalty is too weak. This revision increases the distance penalty scale from -0.05 to -0.2 to provide a strong gradient toward the pad, and tightens the controlled_descent_bonus distance condition from <0.5 to <0.2 so that the bonus is only collectable when the lander is near the pad. The touchdown_stability_bonus is kept as is (repeatable) but will only be collectable when the policy approaches the pad (since both legs contact and low velocities are easier to achieve on the pad). This avoids the failed pattern of making bonuses one-shot (iter_002) and avoids adding lateral drift penalty (iter_004).",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+    "touchdown_stability_bonus (repeatable, +10 per step when both legs contact, low velocities, small angle) kept as is",
+    "controlled_descent_bonus (repeatable, +0.5 per step when m_power>0, distance<0.5, |angle|<0.2) kept as repeatable but with tighter distance condition"
+  ],
+  "changed_design": [
+    "Increase progress_shaping distance penalty scale from -0.05 to -0.2 to provide a strong gradient toward the pad. At x=-0.3, y=0.02, distance_to_pad=0.0904, penalty=-0.018 per step (was -0.0045). This makes staying off-pad significantly more costly.",
+    "Tighten controlled_descent_bonus distance condition from <0.5 to <0.2 so that the bonus is only collectable when the lander is near the pad. This incentivizes the policy to move closer to the pad to collect the bonus."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not make bonuses one-shot (failed pattern from iter_002): we keep both bonuses repeatable.",
+    "Do not add lateral drift penalty (failed pattern from iter_004): we do not add any new penalty.",
+    "Do not simply increase raw main-engine/action bonuses: we increase distance penalty and tighten bonus condition.",
+    "Do not only reduce distance shaping: we also tighten the bonus condition to require being near the pad."
+  ],
+  "action_coverage_plan": "All actions already used. The increased distance penalty will encourage more use of main engine (action 2) to descend faster toward the pad, potentially increasing its usage from 46% to >50%. The tighter controlled_descent_bonus condition will encourage more precise use of orientation engines (actions 1 and 3) to maintain upright angle while near the pad.",
+  "phase_guidance_plan": "Phase 1 (approach): increased distance penalty provides a strong gradient to move toward the pad. Phase 2 (descent): controlled_descent_bonus (repeatable, distance<0.2) rewards using main engine when near pad and upright. Phase 3 (touchdown): touchdown_stability_bonus (repeatable) rewards low velocity at contact. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "controlled_descent_bonus is per-step conditioned on being within tight distance (0.2) and upright, so it incentivizes approaching the pad. touchdown_stability_bonus is per-step conditioned on both legs contact, low velocities, small angle, which is naturally easier to achieve on the pad. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "near_pad_rate": "increase from 0.0 to >0.3",
+    "fitness_score": "improve from 85.5 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "fitness_score"
+  ]
+}

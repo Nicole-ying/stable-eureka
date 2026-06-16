@@ -1,0 +1,148 @@
+{
+  "memory_type": "reward_transition",
+  "iteration_from": 8,
+  "iteration_to": 9,
+  "parent_candidate_id": "iter_001",
+  "candidate_id": "iter_009",
+  "before_metrics": {
+    "fitness_score": 85.46576543977429,
+    "generated_reward": 245.7035885409452,
+    "episode_length": 437.4,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "after_metrics": {
+    "fitness_score": -37.86448417223517,
+    "generated_reward": -29.042707380652427,
+    "episode_length": 1000.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "metric_delta": {
+    "episode_length": 562.6,
+    "fitness_score": -123.33024961200945,
+    "generated_reward": -274.7462959215976,
+    "out_of_bounds_rate": 0.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0
+  },
+  "before_behavior": {
+    "action_distribution": {
+      "1": 0.16918152720621857,
+      "0": 0.227251943301326,
+      "3": 0.14311842706904435,
+      "2": 0.46044810242341105
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [],
+      "coverage_ratio": 1.0
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.46044810242341105
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "unclear_policy"
+  },
+  "after_behavior": {
+    "action_distribution": {
+      "1": 0.2116,
+      "3": 0.2072,
+      "2": 0.5812
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "1",
+        "2",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [
+        "0"
+      ],
+      "coverage_ratio": 0.75
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.5812
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "hovering_or_timeout_policy"
+  },
+  "reflection_diagnosis": {},
+  "edit_summary": {
+    "edit_scope": "medium",
+    "next_search_mode": "phase_guidance_after_action_coverage",
+    "reason": "The policy farms repeatable bonuses (touchdown_stability_bonus, controlled_descent_bonus) off-pad. This revision converts these bonuses to one-shot event-gated rewards that trigger only once when the condition is first met. This prevents farming while still providing guidance. The distance penalty is increased slightly from -0.05 to -0.06 to provide a stronger gradient toward the pad without being too aggressive (failed pattern from iter_004 used -0.1, iter_005->006 used -0.08, iter_006->007 used -0.07). The controlled_descent_bonus becomes a one-shot bonus that triggers when the lander first enters the near-pad zone (distance<0.3) with controlled descent (m_power>0, |angle|<0.2). The touchdown_stability_bonus becomes a one-shot bonus that triggers when both legs contact near the pad (distance<0.3) with low velocity (|vy|<0.5, |vx|<0.5, |angle|<0.2). A new one-shot 'reached_near_pad_bonus' (+20) is added to reward the lander for first entering the near-pad zone (distance<0.3), providing a clear milestone. The success condition is kept the same (both legs contact, |x|<0.15, |y|<0.15, |vy|<0.5).",
+    "preserved_design": [
+      "objective_success_bonus (sparse +100) with same condition",
+      "crash_penalty (-100) for termination without success",
+      "velocity_penalty (vertical and lateral) with same scales",
+      "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+      "progress_shaping (distance and angle penalties) but with slightly increased distance scale"
+    ],
+    "changed_design": [
+      "Convert controlled_descent_bonus from repeatable (+0.5 per step) to one-shot (+5.0) that triggers only once when the lander first enters the near-pad zone (distance<0.3) with controlled descent (m_power>0, |angle|<0.2). Use self._controlled_descent_given flag to ensure one-shot.",
+      "Convert touchdown_stability_bonus from repeatable (+10 per step) to one-shot (+20) that triggers only once when both legs contact near the pad (distance<0.3) with low velocity (|vy|<0.5, |vx|<0.5, |angle|<0.2). Use self._touchdown_stability_given flag to ensure one-shot.",
+      "Add reached_near_pad_bonus: +20 one-shot bonus when the lander first enters the near-pad zone (distance<0.3). Use self._reached_near_pad flag to ensure one-shot. This provides a clear milestone reward for approaching the pad.",
+      "Increase progress_shaping distance penalty scale from -0.05 to -0.06 to provide a slightly stronger gradient toward the pad without being too aggressive (failed patterns used -0.07, -0.08, -0.1)."
+    ],
+    "rejected_patterns_avoided": [
+      "Do not make bonuses repeatable (failed pattern from iter_001): bonuses are now one-shot event-gated.",
+      "Do not increase distance penalty too aggressively (failed pattern from iter_004, iter_005->006, iter_006->007): increase from -0.05 to -0.06 only.",
+      "Do not add distance_improvement_bonus with self._prev_distance (failed pattern from iter_006->007): not added.",
+      "Do not tighten distance conditions to <0.1 (failed pattern from iter_005->006): use <0.3 for near-pad zone.",
+      "Do not simply increase raw main-engine/action bonuses: bonuses are conditioned on progress and one-shot."
+    ],
+    "action_coverage_plan": "All actions already used. The one-shot bonuses will encourage the policy to use orientation engines (actions 1 and 3) to steer toward the pad to trigger the reached_near_pad_bonus. The increased distance penalty will encourage more main engine use (action 2) to descend faster toward the pad. The one-shot nature prevents farming.",
+    "phase_guidance_plan": "Phase 1 (approach): increased distance penalty (-0.06 * distance) provides a stronger gradient to move toward the pad. The reached_near_pad_bonus (+20) provides a clear milestone when the lander first enters the near-pad zone (distance<0.3). Phase 2 (descent): controlled_descent_bonus (+5 one-shot) rewards the first controlled descent near the pad. Phase 3 (touchdown): touchdown_stability_bonus (+20 one-shot) rewards the first stable touchdown near the pad. Success bonus (+100) provides final sparse signal.",
+    "payment_mode_plan": "All positive bonuses are one-shot event-gated: reached_near_pad_bonus (first time distance<0.3), controlled_descent_bonus (first time distance<0.3 with m_power>0 and |angle|<0.2), touchdown_stability_bonus (first time both legs contact near pad with low velocity), objective_success_bonus (success condition). All penalties are per-step: progress_shaping, velocity_penalty, fuel_penalty, crash_penalty (terminal). This prevents farming and ensures the policy must progress through phases to collect rewards.",
+    "expected_metric_changes": {
+      "success_like_terminal_rate": "increase from 0.0 to >0.1",
+      "near_pad_rate": "increase from 0.0 to >0.3",
+      "stable_touchdown_rate": "increase from 0.0 to >0.2",
+      "fitness_score": "improve from 85.5 to >100"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate",
+      "near_pad_rate",
+      "stable_touchdown_rate",
+      "fitness_score"
+    ]
+  },
+  "acceptance": {
+    "accepted_as_elite": false,
+    "reason": "fitness_score did not improve"
+  },
+  "reuse_policy": "negative_constraint",
+  "lesson": "A medium reward revision from behavior 'unclear_policy' to 'hovering_or_timeout_policy' did not improve fitness_score by -123.330. Changed design summary: ['Convert controlled_descent_bonus from repeatable (+0.5 per step) to one-shot (+5.0) that triggers only once when the lander first enters the near-pad zone (distance<0.3) with controlled descent (m_power>0, |angle|<0.2). Use self._controlled_descent_given flag to ensure one-shot.', 'Convert touchdown_stability_bonus from repeatable (+10 per step) to one-shot (+20) that triggers only once when both legs contact near the pad (distance<0.3) with low velocity (|vy|<0.5, |vx|<0.5, |angle|<0.2). Use self._touchdown_stability_given flag to ensure one-shot.', 'Add reached_near_pad_bonus: +20 one-shot bonus when the lander first enters the near-pad zone (distance<0.3). Use self._reached_near_pad flag to ensure one-shot. This provides a clear milestone reward for approaching the pad.', 'Increase progress_shaping distance penalty scale from -0.05 to -0.06 to provide a slightly stronger gradient toward the pad without being too aggressive (failed patterns used -0.07, -0.08, -0.1).']. Original diagnosis: unknown."
+}

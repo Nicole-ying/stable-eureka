@@ -1,0 +1,39 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy is stuck in a local optimum where it stays near the ground off-pad and collects the repeatable controlled_descent_bonus (+0.5 per step when near ground and upright). The policy never approaches the pad (near_pad_rate=0.0). Previous attempts to add distance improvement bonuses failed because the policy could not learn to decrease distance reliably. This revision: (1) Removes the repeatable controlled_descent_bonus to eliminate the farming opportunity. (2) Adds a strong, unconditional near_pad_bonus: +2.0 per step when distance < 0.5, regardless of main engine use or angle. This provides a clear, direct incentive to be near the pad. (3) Increases the distance penalty from -0.08 to -0.15 to provide a stronger gradient toward the pad. (4) Keeps the one-shot touchdown_stability_bonus (+10) as is. (5) Keeps the success bonus (+100) and crash penalty (-100) as is. The near_pad_bonus is per-step but conditioned on being near the pad, so it naturally guides the policy toward the pad and cannot be farmed indefinitely because the policy must stay near the pad to collect it. The increased distance penalty provides additional incentive to move toward the pad.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+    "touchdown_stability_bonus (one-shot +10) kept as is"
+  ],
+  "changed_design": [
+    "Remove the repeatable controlled_descent_bonus (was +0.5 per step when near ground and upright) to prevent farming.",
+    "Add near_pad_bonus: +2.0 per step when distance_to_pad < 0.5 (i.e., x^2 + y^2 < 0.25). This provides a strong, unconditional incentive to be near the pad. The bonus is not conditioned on main engine use or angle, so the policy can collect it by simply being near the pad.",
+    "Increase progress_shaping distance penalty scale from -0.08 to -0.15 to provide a stronger gradient toward the pad."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not add distance improvement bonuses (capped or uncapped) as they have failed repeatedly (iter_009->010, iter_010->011, iter_011->012, iter_013->014).",
+    "Do not increase the distance penalty above -0.15 to avoid making the policy reluctant to move.",
+    "Do not make the controlled_descent_bonus one-shot with a large bonus as it caused collapse to inaction (iter_013->014).",
+    "Do not keep repeatable positive bonuses that can be farmed: removed controlled_descent_bonus.",
+    "Do not call custom self helper methods: use hasattr for internal state."
+  ],
+  "action_coverage_plan": "Action 0 is not necessary for success. The near_pad_bonus will encourage the policy to use orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~25% each to ~30% each. The increased distance penalty will encourage more main engine use (action 2) to descend faster toward the pad. Action 0 may remain unused, which is acceptable.",
+  "phase_guidance_plan": "Phase 1 (approach): near_pad_bonus (+2.0 per step when distance<0.5) provides a strong incentive to move toward the pad. Increased distance penalty (-0.15 * distance) also encourages approach. Phase 2 (descent): near_pad_bonus continues to provide incentive to stay near the pad. Touchdown_stability_bonus (+10) fires when both legs contact near the pad with low velocities. Phase 3 (touchdown): success bonus (+100) provides final sparse signal.",
+  "payment_mode_plan": "near_pad_bonus is per-step but conditioned on being near the pad (distance<0.5). It cannot be farmed indefinitely because the policy must stay near the pad to collect it, and staying near the pad requires the policy to land successfully or crash. The bonus naturally diminishes as the policy approaches the pad (distance decreases), but it provides a strong incentive to get close. touchdown_stability_bonus is one-shot event-gated (fires once). objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.05",
+    "near_pad_rate": "increase from 0.0 to >0.2",
+    "stable_touchdown_rate": "increase from 0.0 to >0.1",
+    "fitness_score": "improve from 158.3 to >200"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ]
+}

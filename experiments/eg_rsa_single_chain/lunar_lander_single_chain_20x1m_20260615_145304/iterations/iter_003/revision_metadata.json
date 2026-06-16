@@ -1,0 +1,38 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms controlled_descent_bonus and touchdown_stability_bonus without approaching the pad. This revision makes the controlled_descent_bonus conditional on being very close to the pad (x^2+y^2 < 0.1) to prevent farming at a distance, and adds a strong progress bonus for reducing distance to the pad to incentivize approach. The progress bonus is a per-step improvement bonus that rewards getting closer to the pad, with a scale of 0.5 * (previous_distance - current_distance) to provide a clear gradient. The touchdown_stability_bonus is kept as repeatable but its condition is tightened to require being on the pad (x^2+y^2 < 0.1) to prevent farming on sloped terrain.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "progress_shaping (distance and angle penalties) with same scales",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent"
+  ],
+  "changed_design": [
+    "Tighten controlled_descent_bonus condition: require x^2+y^2 < 0.1 (instead of < 0.5) to prevent farming at a distance from the pad.",
+    "Tighten touchdown_stability_bonus condition: require x^2+y^2 < 0.1 (instead of no position constraint) to ensure the lander is on the pad, not just on sloped terrain.",
+    "Add progress_bonus: +0.5 * (previous_distance - current_distance) if distance decreased, else 0. This provides a strong per-step incentive to move closer to the pad. Use self._prev_distance to track previous distance, reset at episode start via hasattr check.",
+    "Increase progress_shaping distance penalty scale from -0.05 to -0.1 to provide a stronger gradient for approaching the pad."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not simply increase raw main-engine/action bonuses: instead, we condition the existing bonus on being very close to the pad.",
+    "Do not only reduce distance shaping: we add a progress bonus and increase the distance penalty scale.",
+    "Do not make bonuses one-shot (failed pattern from iter_002): instead, we keep them repeatable but tighten the conditions to prevent farming."
+  ],
+  "action_coverage_plan": "All actions already used. The progress bonus will encourage more use of orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~15% to ~20%. The tightened controlled_descent_bonus condition will reduce farming of main engine (action 2) when far from the pad.",
+  "phase_guidance_plan": "Phase 1 (approach): progress_bonus provides a strong gradient to move toward the pad, and increased distance penalty provides additional incentive. Phase 2 (descent): controlled_descent_bonus (now requires being very close to pad) rewards using main engine when near pad and upright. Phase 3 (touchdown): touchdown_stability_bonus (now requires being on pad) rewards low velocity at contact. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "controlled_descent_bonus is per-step conditioned on being very close to the pad (x^2+y^2 < 0.1) and upright, so it cannot be farmed at a distance. touchdown_stability_bonus is per-step conditioned on being on the pad (x^2+y^2 < 0.1) with low velocities, so it cannot be farmed on sloped terrain. progress_bonus is per-step but based on improvement (delta), so it diminishes as the lander approaches the pad. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "near_pad_rate": "increase from 0.0 to >0.3",
+    "stable_touchdown_rate": "increase from 0.0 to >0.2",
+    "fitness_score": "improve from 85.5 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ]
+}

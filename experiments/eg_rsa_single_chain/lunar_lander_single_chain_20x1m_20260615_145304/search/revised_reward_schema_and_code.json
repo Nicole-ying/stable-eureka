@@ -1,0 +1,88 @@
+{
+  "file_type": "revised_reward_schema_and_code",
+  "parent_candidate_id": "single_chain_iter0",
+  "candidate_id": "single_chain_iter1",
+  "edit_summary": {
+    "edit_scope": "medium",
+    "next_search_mode": "phase_guidance_after_action_coverage",
+    "reason": "Add phase-specific guidance: a controlled descent bonus that rewards using main engine when near pad and upright, and a touchdown stability bonus that rewards low velocity when both legs contact. Tighten success condition to match evaluator: both legs contact, near pad (|x|<0.15, |y|<0.15), low vertical speed (|vy|<0.5). Remove raw main_engine_usage penalty and replace with conditioned bonus. Keep distance and angle shaping but reduce their scale slightly to avoid dominance.",
+    "preserved_design": [
+      "objective_success_bonus (sparse +100) but with relaxed condition",
+      "crash_penalty (-100) for termination without success",
+      "progress_shaping (distance and angle penalties) but reduced scale",
+      "velocity_penalty (vertical and lateral) but reduced scale",
+      "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent"
+    ],
+    "changed_design": [
+      "Relax success condition: both legs contact, |x|<0.15, |y|<0.15, |vy|<0.5 (no vx constraint, no angle constraint) to align with evaluator success-like behavior.",
+      "Add controlled_descent_bonus: +0.5 per step when main engine is used (m_power>0) AND lander is near pad (x^2+y^2<0.5) AND angle is small (|angle|<0.2). This conditions engine use on progress and stability, not raw action.",
+      "Add touchdown_stability_bonus: +10 when both legs contact AND |vy|<0.5 AND |vx|<0.5 AND |angle|<0.2. This is a one-shot event-gated bonus for stable touchdown.",
+      "Reduce distance_penalty scale from -0.1 to -0.05 to reduce dominance.",
+      "Reduce angle_penalty scale from -0.05 to -0.02.",
+      "Reduce vertical_speed penalty from -0.05 to -0.02.",
+      "Reduce lateral_speed penalty from -0.02 to -0.01."
+    ],
+    "rejected_patterns_avoided": [
+      "Do not simply increase raw main-engine/action bonuses: instead, condition main engine bonus on progress and stability.",
+      "Do not only reduce distance shaping: we also add phase-specific bonuses and align success condition."
+    ],
+    "action_coverage_plan": "All actions already used. The controlled_descent_bonus will encourage more main engine use (action 2) during descent, increasing its usage from 15% to >20%.",
+    "phase_guidance_plan": "Phase 1 (approach): distance and angle shaping guide the lander toward pad and upright. Phase 2 (descent): controlled_descent_bonus rewards using main engine when near pad and stable. Phase 3 (touchdown): touchdown_stability_bonus rewards low velocity at contact. Success bonus provides final sparse signal.",
+    "payment_mode_plan": "controlled_descent_bonus is a per-step conditioned bonus (not raw action), diminishing when not near pad or unstable. touchdown_stability_bonus is one-shot event-gated. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+    "expected_metric_changes": {
+      "success_like_terminal_rate": "increase from 0.0 to >0.2",
+      "stable_touchdown_rate": "increase from 0.4 to >0.6",
+      "main_engine_usage": "increase from 0.154 to >0.2",
+      "fitness_score": "improve from -113 to >-80"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate",
+      "stable_touchdown_rate",
+      "main_engine_usage",
+      "fitness_score"
+    ]
+  },
+  "reward_schema": {
+    "objective_success_bonus": {
+      "condition": "Both legs contact (state[6]==1 and state[7]==1) and |x|<0.15 and |y|<0.15 and |vy|<0.5",
+      "value": 100.0
+    },
+    "crash_penalty": {
+      "condition": "terminated and not success",
+      "value": -100.0
+    },
+    "progress_shaping": {
+      "distance_penalty": "-0.05 * (x^2 + y^2)",
+      "angle_penalty": "-0.02 * angle^2"
+    },
+    "velocity_penalty": {
+      "vertical": "-0.02 * vy^2",
+      "lateral": "-0.01 * vx^2"
+    },
+    "fuel_penalty": {
+      "main_engine": "-0.01 * m_power"
+    },
+    "controlled_descent_bonus": {
+      "condition": "m_power > 0 and (x^2 + y^2) < 0.5 and abs(angle) < 0.2",
+      "value": 0.5
+    },
+    "touchdown_stability_bonus": {
+      "condition": "leg1==1 and leg2==1 and abs(vy)<0.5 and abs(vx)<0.5 and abs(angle)<0.2",
+      "value": 10.0
+    }
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    x, y, vx, vy, angle, angular_velocity, leg1, leg2 = state\n    # Initialize diagnostics\n    distance_to_pad = x*x + y*y\n    angle_deviation = angle*angle\n    vertical_speed = vy*vy\n    lateral_speed = vx*vx\n    main_engine_usage = m_power\n    legs_contact = leg1 + leg2\n    success_flag = 0.0\n    crash_flag = 0.0\n    controlled_descent_flag = 0.0\n    touchdown_stability_flag = 0.0\n\n    # Check success condition (relaxed: both legs contact, near pad, low vertical speed)\n    success = (leg1 == 1.0 and leg2 == 1.0 and abs(x) < 0.15 and abs(y) < 0.15 and abs(vy) < 0.5)\n    if success:\n        success_flag = 1.0\n\n    # Check crash (terminated without success)\n    if terminated and not success:\n        crash_flag = 1.0\n\n    # Controlled descent bonus: main engine used when near pad and upright\n    if m_power > 0 and distance_to_pad < 0.5 and abs(angle) < 0.2:\n        controlled_descent_flag = 1.0\n\n    # Touchdown stability bonus: both legs contact with low velocities and small angle\n    if leg1 == 1.0 and leg2 == 1.0 and abs(vy) < 0.5 and abs(vx) < 0.5 and abs(angle) < 0.2:\n        touchdown_stability_flag = 1.0\n\n    # Compute reward components\n    objective_bonus = 100.0 if success else 0.0\n    crash_penalty = -100.0 if crash_flag else 0.0\n    progress_shaping = -0.05 * distance_to_pad - 0.02 * angle_deviation\n    velocity_penalty = -0.02 * vertical_speed - 0.01 * lateral_speed\n    fuel_penalty = -0.01 * main_engine_usage\n    controlled_descent_bonus = 0.5 if controlled_descent_flag else 0.0\n    touchdown_stability_bonus = 10.0 if touchdown_stability_flag else 0.0\n\n    reward = objective_bonus + crash_penalty + progress_shaping + velocity_penalty + fuel_penalty + controlled_descent_bonus + touchdown_stability_bonus\n\n    individual_reward = {\n        'distance_to_pad': distance_to_pad,\n        'angle_deviation': angle_deviation,\n        'vertical_speed': vertical_speed,\n        'lateral_speed': lateral_speed,\n        'main_engine_usage': main_engine_usage,\n        'legs_contact': legs_contact,\n        'success_flag': success_flag,\n        'crash_flag': crash_flag,\n        'controlled_descent_flag': controlled_descent_flag,\n        'touchdown_stability_flag': touchdown_stability_flag,\n        'objective_bonus': objective_bonus,\n        'crash_penalty': crash_penalty,\n        'progress_shaping': progress_shaping,\n        'velocity_penalty': velocity_penalty,\n        'fuel_penalty': fuel_penalty,\n        'controlled_descent_bonus': controlled_descent_bonus,\n        'touchdown_stability_bonus': touchdown_stability_bonus\n    }\n\n    return float(reward), individual_reward",
+  "expected_behavior": {
+    "expected_action_distribution_change": "Action 2 (main engine) usage should increase from ~15% to >20% as the controlled descent bonus encourages its use during approach. Action 0 (do nothing) may decrease slightly. Orientation engines (1 and 3) remain used for angle control.",
+    "expected_phase_change": "The policy should more consistently enter Phase 2 (controlled descent) and Phase 3 (stable touchdown). The success_like_terminal_rate should increase from 0% to >20% as the relaxed success condition and touchdown stability bonus provide clearer intermediate goals."
+  },
+  "known_risks": [
+    "The controlled_descent_bonus might encourage hovering near pad without landing if the policy finds it easier to collect the per-step bonus than to attempt landing. However, the bonus is only 0.5 per step, while success gives 100, so landing is still far more rewarding.",
+    "The relaxed success condition (|vy|<0.5) might classify some hard landings as success if vertical speed is just below threshold but horizontal speed is high. However, the evaluator success_like_terminal_rate uses similar criteria, so this alignment is intentional.",
+    "Reducing distance and angle penalties might reduce the incentive to approach the pad, but the controlled descent bonus and success bonus provide stronger guidance."
+  ],
+  "self_check": {
+    "all_diagnostic_variables_initialized_before_branches": true,
+    "does_not_call_custom_self_methods": true
+  }
+}

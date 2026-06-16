@@ -1,0 +1,39 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms repeatable bonuses (controlled_descent_bonus, touchdown_stability_bonus) while staying near the ground off-pad. This revision tightens the conditions for these bonuses to require being near the pad (distance < 0.1 for controlled_descent_bonus, distance < 0.15 for touchdown_stability_bonus) so they cannot be collected off-pad. The progress shaping distance penalty is increased from -0.05 to -0.08 to provide a stronger gradient toward the pad without causing early failure. The controlled_descent_bonus remains repeatable but only when the lander is actually near the pad, which should encourage the policy to approach the pad and then use the main engine for controlled descent.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+    "controlled_descent_bonus (repeatable, conditioned on distance and angle) but with tighter distance condition",
+    "touchdown_stability_bonus (repeatable, conditioned on low velocity and leg contact) but with pad proximity condition"
+  ],
+  "changed_design": [
+    "Tighten controlled_descent_bonus distance condition from <0.5 to <0.1 (near pad) so the bonus is only available when the lander is close to the pad. This prevents farming the bonus off-pad.",
+    "Tighten touchdown_stability_bonus to require being near the pad (distance < 0.15) in addition to low velocities and leg contact. This prevents collecting the bonus off-pad.",
+    "Increase progress_shaping distance penalty scale from -0.05 to -0.08 to provide a stronger gradient toward the pad without causing early failure (failed pattern from iter_004 used -0.1 which was too aggressive)."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not make bonuses one-shot (failed pattern from iter_002): bonuses remain repeatable but with tighter conditions.",
+    "Do not increase distance penalty too aggressively (failed pattern from iter_004): increase from -0.05 to -0.08, not -0.1.",
+    "Do not add lateral drift penalty (failed pattern from iter_004): no new penalty added.",
+    "Do not simply increase raw main-engine/action bonuses: we tighten conditions instead."
+  ],
+  "action_coverage_plan": "All actions already used. The tighter conditions will encourage the policy to use orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~15% to ~20%. The increased distance penalty will encourage more main engine use (action 2) to descend faster toward the pad.",
+  "phase_guidance_plan": "Phase 1 (approach): increased distance penalty (-0.08 * distance) provides a stronger gradient to move toward the pad. Phase 2 (descent): controlled_descent_bonus (repeatable, distance<0.1) rewards using main engine when near pad and upright. Phase 3 (touchdown): touchdown_stability_bonus (repeatable, distance<0.15) rewards low velocity at contact near the pad. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "controlled_descent_bonus is per-step conditioned on being near the pad (distance<0.1) and upright, so it encourages engine use during descent near the pad but cannot be farmed at a distance. touchdown_stability_bonus is per-step conditioned on being near the pad (distance<0.15) and low velocities, so it encourages stable touchdown on the pad. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "near_pad_rate": "increase from 0.0 to >0.3",
+    "stable_touchdown_rate": "increase from 0.0 to >0.2",
+    "fitness_score": "improve from 85.5 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ]
+}

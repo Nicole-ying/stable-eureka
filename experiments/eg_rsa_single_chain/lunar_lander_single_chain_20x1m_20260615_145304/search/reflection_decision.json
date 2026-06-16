@@ -1,0 +1,35 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy is optimizing to minimize distance_to_pad and vertical_speed penalties, which are large negative components. It avoids using the main engine (action 2) because that adds a raw repeatable penalty (fuel_penalty) and does not provide any positive guidance for controlled descent. The policy often terminates with both legs contacting but with high residual velocity or far from pad, leading to crash_penalty. The success condition is too strict (requires |x|<0.1, |y|<0.1, |vy|<0.1, |vx|<0.1) and is rarely met, so the objective_bonus is sparse and misaligned with evaluator success. The failure phase is near_ground_or_contact_unstable: the lander reaches the ground but with excessive speed or lateral offset, causing termination without success.",
+  "component_interaction_diagnosis": "The distance_to_pad penalty dominates (mean 157.8) and encourages the lander to stay near the pad, but the vertical_speed penalty (mean 84.0) penalizes any downward velocity, discouraging descent. The crash_penalty (-80.0) punishes termination without success, but since the policy often terminates with legs contact but high speed, it receives both the large distance penalty and crash penalty. The fuel_penalty is small (-0.16) but still discourages main engine use. The progress_shaping (-15.98) and velocity_penalty (-4.55) are moderate. The net effect is that the policy tries to stay near the pad but avoids using the main engine to descend, leading to unstable contact and termination.",
+  "action_coverage_diagnosis": "All four discrete actions (0,1,2,3) are used with coverage ratio 1.0. Action 0 (do nothing) is dominant (36.7%), action 2 (main engine) is least used (15.4%). The policy uses orientation engines (1 and 3) to adjust angle but avoids main engine due to its penalty. No unused actions remain; the bottleneck is not action coverage but trajectory phase completion.",
+  "expert_audit_diagnosis": "Reward scale audit: objective_positive_budget is 20.2 (20% success rate), terminal_failure_budget -80.0, dense_negative_budget -20.7, dense_positive_budget 283.6 (mostly from distance_to_pad which is actually a penalty but reported as positive due to sign convention). The dominant component distance_to_pad has dominance_ratio 1.88, indicating imbalance. Reward payment audit: main_engine_usage is a raw repeatable action bonus (penalty) that discourages engine use. Trajectory phase report: near_pad_rate 0.6, both_leg_contact_rate 0.8, stable_touchdown_rate 0.4, but success_like_terminal_rate 0.0. Failure phase is near_ground_or_contact_unstable. Objective signal alignment audit: reward success terms (objective_bonus mean 20.0) are positive but evaluator success_like_terminal_rate is 0.0, indicating misalignment.",
+  "failed_pattern_reuse_check": "No previous failed patterns exist in memory. The current edit is the first revision. We must avoid the forbidden patterns: do not simply increase raw main-engine/action bonuses, do not only reduce distance shaping.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "phase_guidance_after_action_coverage",
+    "edit_scope": "medium",
+    "reason": "Action coverage is solved but success is absent. The bottleneck is trajectory phase completion: the lander reaches the ground but with high speed or offset. We need to add phase-specific guidance for controlled descent and near-ground stability, and align the success bonus with evaluator criteria."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not simply increase raw per-step action bonuses; condition them on progress, phase, stability, or event milestones.",
+    "Do not keep optimizing only action coverage; add phase-specific guidance for controlled descent, near-ground stability, or touchdown.",
+    "Tighten success-like bonuses so they are event-gated and aligned with evaluator success, not merely proxy contact states.",
+    "Condition engine/control rewards on controlled descent and near-pad progress.",
+    "Add near-ground stability or touchdown-phase guidance.",
+    "Align reward-defined success/objective bonuses with evaluator success-like behavior."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.2",
+    "stable_touchdown_rate": "increase from 0.4 to >0.6",
+    "main_engine_usage": "increase from 0.154 to >0.2 (more controlled descent)",
+    "fitness_score": "improve from -113 to >-80"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "stable_touchdown_rate",
+    "main_engine_usage",
+    "fitness_score"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

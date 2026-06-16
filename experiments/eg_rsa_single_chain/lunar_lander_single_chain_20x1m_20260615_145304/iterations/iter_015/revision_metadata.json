@@ -1,0 +1,43 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms repeatable controlled_descent_bonus (+0.5 per step) while staying near the ground off-pad. Previous attempts to add distance_improvement_bonus or increase distance penalty failed. This revision: (1) Removes the repeatable controlled_descent_bonus entirely to stop farming. (2) Adds a one-shot progress bonus (+30) when first reaching distance<0.5 with any leg contact, providing a reachable milestone. (3) Adds a one-shot approach bonus (+50) when first reaching distance<0.15 with any leg contact, providing a clear near-pad milestone. (4) Adds a small per-step near-pad bonus (+0.2) when distance<0.5, providing continuous incentive without farming. (5) Keeps distance penalty at -0.08, velocity penalties, fuel penalty, crash penalty, touchdown_stability_bonus (one-shot +10), and objective_success_bonus (+100). This avoids all failed patterns.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+    "progress_shaping distance penalty scale (-0.08) kept moderate",
+    "touchdown_stability_bonus (one-shot +10) kept as is"
+  ],
+  "changed_design": [
+    "Remove the repeatable controlled_descent_bonus (was +0.5 per step) to prevent farming.",
+    "Add one-shot progress_bonus: +30.0 fires once when the lander first reaches distance<0.5 with any leg contact (leg1==1 or leg2==1). Track with self._progress_bonus_given flag.",
+    "Add one-shot approach_bonus: +50.0 fires once when the lander first reaches distance<0.15 with any leg contact (leg1==1 or leg2==1). Track with self._approach_bonus_given flag.",
+    "Add per-step near_pad_bonus: +0.2 per step when distance<0.5, providing a mild continuous incentive to stay near the pad without dominating.",
+    "Keep controlled_descent_flag diagnostic but remove its reward contribution."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not add distance_improvement_bonus (failed pattern from iter_009->010, iter_010->011, iter_011->012, iter_013->014).",
+    "Do not increase distance penalty (failed pattern from iter_009->010).",
+    "Do not make controlled_descent_bonus repeatable (failed pattern from current).",
+    "Do not use tight distance conditions (<0.3) for one-shot bonuses (failed pattern from iter_009->010, iter_010->011, iter_011->012).",
+    "Do not add uncapped improvement bonuses that can cause action collapse (failed pattern from iter_013->014).",
+    "Do not call custom self helper methods: use hasattr for internal state."
+  ],
+  "action_coverage_plan": "Action 0 is not necessary for success. The one-shot milestones (progress_bonus at distance<0.5, approach_bonus at distance<0.15) will encourage the policy to use orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~25% each to ~30% each. The per-step near_pad_bonus will encourage the policy to stay near the pad, which may increase main engine use (action 2) during descent.",
+  "phase_guidance_plan": "Phase 1 (approach): distance penalty (-0.08 * distance) provides mild incentive to move toward the pad. Phase 2 (descent): one-shot progress_bonus (+30) fires when first reaching distance<0.5 with leg contact, providing a clear milestone. Per-step near_pad_bonus (+0.2) provides continuous incentive to stay near the pad. Phase 3 (touchdown): one-shot approach_bonus (+50) fires when first reaching distance<0.15 with leg contact, providing a clear near-pad milestone. One-shot touchdown_stability_bonus (+10) fires when both legs contact near pad with low velocities. Success bonus (+100) provides final sparse signal.",
+  "payment_mode_plan": "progress_bonus is one-shot event-gated (fires once). approach_bonus is one-shot event-gated (fires once). touchdown_stability_bonus is one-shot event-gated (fires once). objective_success_bonus is one-shot event-gated. near_pad_bonus is per-step but small (+0.2) and conditioned on being near the pad, so it cannot be farmed indefinitely without approaching the pad. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.05",
+    "near_pad_rate": "increase from 0.0 to >0.2",
+    "stable_touchdown_rate": "increase from 0.0 to >0.1",
+    "fitness_score": "improve from 158.3 to >200"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "memory_type": "reward_transition",
+  "iteration_from": 10,
+  "iteration_to": 11,
+  "parent_candidate_id": "iter_001",
+  "candidate_id": "iter_011",
+  "before_metrics": {
+    "fitness_score": 85.46576543977429,
+    "generated_reward": 245.7035885409452,
+    "episode_length": 437.4,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "after_metrics": {
+    "fitness_score": -122.06795782841314,
+    "generated_reward": -109.10964136347175,
+    "episode_length": 72.2,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0
+  },
+  "metric_delta": {
+    "episode_length": -365.2,
+    "fitness_score": -207.53372326818743,
+    "generated_reward": -354.81322990441697,
+    "out_of_bounds_rate": 0.0,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0
+  },
+  "before_behavior": {
+    "action_distribution": {
+      "1": 0.16918152720621857,
+      "0": 0.227251943301326,
+      "3": 0.14311842706904435,
+      "2": 0.46044810242341105
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [],
+      "coverage_ratio": 1.0
+    },
+    "dominant_action": {
+      "action": "2",
+      "probability": 0.46044810242341105
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "unclear_policy"
+  },
+  "after_behavior": {
+    "action_distribution": {
+      "1": 0.04709141274238227,
+      "0": 0.9224376731301939,
+      "3": 0.030470914127423823
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "0",
+        "1",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [
+        "2"
+      ],
+      "coverage_ratio": 0.75
+    },
+    "dominant_action": {
+      "action": "0",
+      "probability": 0.9224376731301939
+    },
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 0.0,
+    "out_of_bounds_rate": 0.0,
+    "dominant_behavior": "early_failure_or_uncontrolled_terminal"
+  },
+  "reflection_diagnosis": {},
+  "edit_summary": {
+    "edit_scope": "restructuring",
+    "next_search_mode": "phase_guidance_after_action_coverage",
+    "reason": "The policy farms repeatable bonuses (controlled_descent_bonus, touchdown_stability_bonus) while staying near the ground off-pad. Previous attempts to tighten conditions or add improvement bonuses failed. This revision restructures the reward: (1) Makes controlled_descent_bonus one-shot event-gated (fires once when first entering near-pad region with main engine use). (2) Makes touchdown_stability_bonus one-shot event-gated (fires once when both legs contact near pad with low velocities). (3) Adds a strong distance improvement bonus (+0.5 per unit distance decrease) to provide a clear gradient toward the pad. (4) Increases distance penalty to -0.1 to provide a stronger gradient. (5) Removes repeatable positive bonuses to prevent farming. The one-shot bonuses provide a clear milestone signal, and the distance improvement bonus provides continuous guidance. Unlike the failed iter_009->010 revision, this revision uses a larger one-shot controlled_descent_bonus (+10 instead of +5) and a smaller distance improvement bonus cap (+0.5 instead of +1.0) to ensure the policy can reach the triggering conditions without the improvement bonus dominating.",
+    "preserved_design": [
+      "objective_success_bonus (sparse +100) with same condition",
+      "crash_penalty (-100) for termination without success",
+      "velocity_penalty (vertical and lateral) with same scales",
+      "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent"
+    ],
+    "changed_design": [
+      "Make controlled_descent_bonus one-shot event-gated: +10.0 bonus fires once when the lander first enters the near-pad region (distance<0.3) with main engine use (m_power>0) and upright (|angle|<0.2). Track with self._controlled_descent_given flag.",
+      "Make touchdown_stability_bonus one-shot event-gated: +20.0 bonus fires once when both legs contact near the pad (distance<0.3) with low velocities (|vy|<0.5, |vx|<0.5) and small angle (|angle|<0.2). Track with self._touchdown_stability_given flag.",
+      "Add distance_improvement_bonus: +0.5 * (prev_distance - current_distance) when distance decreases, capped at +0.5 per step. This provides a strong, continuous incentive to move closer to the pad. Use self._prev_distance to track previous distance, reset at episode start via hasattr check.",
+      "Increase progress_shaping distance penalty scale from -0.05 to -0.1 to provide a stronger gradient toward the pad.",
+      "Remove the repeatable controlled_descent_bonus (was +0.5 per step) and repeatable touchdown_stability_bonus (was +10 per step) to prevent farming."
+    ],
+    "rejected_patterns_avoided": [
+      "Do not make bonuses repeatable without phase conditioning: now one-shot event-gated.",
+      "Do not tighten distance conditions without providing a strong gradient: added distance_improvement_bonus.",
+      "Do not simply increase raw main-engine/action bonuses: bonuses are now one-shot and conditioned on progress.",
+      "Do not only reduce distance shaping: we increase it and add improvement bonus.",
+      "Do not make one-shot bonuses too small to motivate approach (failed pattern from iter_009->010 used +5 for controlled_descent): this revision uses +10.",
+      "Do not cap improvement bonus too high (failed pattern from iter_009->010 used +1.0 cap): this revision uses +0.5 cap to prevent the improvement bonus from dominating."
+    ],
+    "action_coverage_plan": "All actions already used. The distance improvement bonus will encourage the policy to use orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~15% to ~20%. The increased distance penalty will encourage more main engine use (action 2) to descend faster toward the pad.",
+    "phase_guidance_plan": "Phase 1 (approach): distance_improvement_bonus (+0.5 per unit distance decrease, capped at +0.5 per step) provides a strong gradient to move toward the pad. Increased distance penalty (-0.1 * distance) also encourages approach. Phase 2 (descent): one-shot controlled_descent_bonus (+10) fires when first entering near-pad region with main engine use, providing a milestone signal. Phase 3 (touchdown): one-shot touchdown_stability_bonus (+20) fires when both legs contact near the pad with low velocities, providing a milestone signal. Success bonus (+100) provides final sparse signal.",
+    "payment_mode_plan": "distance_improvement_bonus is per-step but based on improvement (delta), so it naturally diminishes as the lander approaches the pad and cannot be farmed indefinitely. controlled_descent_bonus is one-shot event-gated (fires once). touchdown_stability_bonus is one-shot event-gated (fires once). objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+    "expected_metric_changes": {
+      "success_like_terminal_rate": "increase from 0.0 to >0.1",
+      "near_pad_rate": "increase from 0.0 to >0.3",
+      "stable_touchdown_rate": "increase from 0.0 to >0.2",
+      "fitness_score": "improve from 85.5 to >100"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate",
+      "near_pad_rate",
+      "stable_touchdown_rate",
+      "fitness_score"
+    ]
+  },
+  "acceptance": {
+    "accepted_as_elite": false,
+    "reason": "fitness_score did not improve"
+  },
+  "reuse_policy": "negative_constraint",
+  "lesson": "A restructuring reward revision from behavior 'unclear_policy' to 'early_failure_or_uncontrolled_terminal' did not improve fitness_score by -207.534. Changed design summary: ['Make controlled_descent_bonus one-shot event-gated: +10.0 bonus fires once when the lander first enters the near-pad region (distance<0.3) with main engine use (m_power>0) and upright (|angle|<0.2). Track with self._controlled_descent_given flag.', 'Make touchdown_stability_bonus one-shot event-gated: +20.0 bonus fires once when both legs contact near the pad (distance<0.3) with low velocities (|vy|<0.5, |vx|<0.5) and small angle (|angle|<0.2). Track with self._touchdown_stability_given flag.', 'Add distance_improvement_bonus: +0.5 * (prev_distance - current_distance) when distance decreases, capped at +0.5 per step. This provides a strong, continuous incentive to move closer to the pad. Use self._prev_distance to track previous distance, reset at episode start via hasattr check.', 'Increase progress_shaping distance penalty scale from -0.05 to -0.1 to provide a stronger gradient toward the pad.', 'Remove the repeatable controlled_descent_bonus (was +0.5 per step) and repeatable touchdown_stability_bonus (was +10 per step) to prevent farming.']. Original diagnosis: unknown."
+}

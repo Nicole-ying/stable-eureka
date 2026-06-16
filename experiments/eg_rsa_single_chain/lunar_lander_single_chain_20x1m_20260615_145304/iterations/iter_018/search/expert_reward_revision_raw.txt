@@ -1,0 +1,127 @@
+{
+  "file_type": "expert_reward_revision_bundle",
+  "reflection_decision": {
+    "file_type": "reflection_decision",
+    "causal_diagnosis": "The policy is optimizing a combination of a huge sparse objective bonus (mean 12840) and repeatable per-step bonuses (action_0_bonus, controlled_descent_bonus, touchdown_stability_bonus) that can be farmed by staying near the ground with legs contacting, even off-pad. The objective bonus is triggered repeatedly (mean 12840 over ~645 steps implies ~20 successes per episode) because the success condition is too loose: it only requires both legs contact, |x|<0.15, |y|<0.15, |vy|<0.5, but the lander can achieve this while hovering just above the pad without actually landing (the episode does not terminate). The policy learns to hover in the success region, collecting the +100 bonus many times, while avoiding the crash penalty. The required behavior of actually landing (terminating with success) is avoided because landing would end the episode and stop the farming loop.",
+    "component_interaction_diagnosis": "The objective_bonus dominates (dominance_ratio 31.8) because it is not one-shot: it fires every step the lander is in the success region. The repeatable bonuses (action_0_bonus, controlled_descent_bonus, touchdown_stability_bonus) add up to ~400-500 per episode, but the objective_bonus at 12840 is the main driver. The distance_improvement_bonus is capped at 0.2 per step, so it provides only ~0.4 total, negligible. The crash_penalty is -100 but only fires 20% of episodes, so it does not deter hovering. The velocity_penalty and fuel_penalty are very small (-0.39 and -2.84 total). The net effect is that the policy can collect +100 per step indefinitely by staying in the success region, far outweighing any penalties.",
+    "action_coverage_diagnosis": "All four discrete actions are used (coverage_ratio=1.0). Action 2 (main engine) is dominant at 44%, action 0 (do nothing) at 37%, actions 1 and 3 (orientation) at 6% and 13%. The policy uses the main engine to hover and orientation engines to stay centered. Action 0 is used when the lander is already in the success region and stable. No unused actions need to be introduced; the issue is not action coverage but trajectory phase completion.",
+    "expert_audit_diagnosis": "Reward scale audit: objective_bonus dominates with dominance_ratio 31.8, violating the hard constraint against single-component dominance. Reward payment audit: objective_bonus is repeatable (not one-shot), and repeatable positive terms exist while success-like rate is zero. Trajectory phase audit: the failure phase is 'near_ground_or_contact_unstable' — the lander reaches the pad region and gets legs contact but does not terminate with success because the success condition in the evaluator is stricter (likely requires termination with low velocities). Objective signal alignment audit: the reward-defined success (both legs contact, near pad, low vy) is not aligned with the evaluator's success_like_terminal_rate (which requires episode termination). The policy exploits the misalignment by staying in the reward-success region without terminating.",
+    "failed_pattern_reuse_check": "Previous failed patterns include: (1) making bonuses one-shot with tight conditions (iter_010->011 failed), (2) increasing distance penalty too aggressively (iter_004 failed), (3) adding capped distance improvement bonuses (iter_009->010, iter_010->011, iter_011->012 failed). The current revision must avoid these. The key insight is that the objective_bonus must be made one-shot (event-gated) so it fires only once per episode upon actual landing, not every step the lander is in a proxy success region. This directly addresses the farming exploit.",
+    "search_decision": {
+      "recommended_next_action": "revise_reward",
+      "next_search_mode": "phase_guidance_after_action_coverage",
+      "edit_scope": "medium",
+      "reason": "The core issue is that the objective_bonus is repeatable, allowing the policy to farm +100 per step by hovering in a loose success region. The fix is to make the objective_bonus one-shot (event-gated) so it fires only once when the lander actually achieves a stable landing (both legs contact, near pad, low velocities) and then the episode terminates. This aligns the reward with the evaluator's success definition. Additionally, the repeatable action_0_bonus should be removed or made one-shot to prevent farming. The controlled_descent_bonus and touchdown_stability_bonus should remain one-shot as they are. The distance_improvement_bonus cap should be removed to provide a stronger gradient toward the pad. This follows the phase_guidance_after_action_coverage mode by adding phase-specific guidance for the approach and touchdown phases without repeating failed patterns."
+    },
+    "hard_constraints_for_next_revision": [
+      "Make objective_bonus one-shot event-gated: fire only once when the lander first achieves the success condition, and ensure the episode terminates after that (or the bonus is not repeatable).",
+      "Remove or make one-shot the action_0_bonus to prevent farming.",
+      "Remove the cap on distance_improvement_bonus to provide a stronger gradient toward the pad.",
+      "Do not increase distance penalty (failed pattern from iter_004).",
+      "Do not make controlled_descent_bonus or touchdown_stability_bonus repeatable (they are already one-shot).",
+      "Do not add new repeatable positive bonuses."
+    ],
+    "expected_metric_changes": {
+      "success_like_terminal_rate": "increase from 0.0 to >0.1",
+      "objective_bonus_mean_return": "decrease from 12840 to ~100 (one-shot)",
+      "fitness_score": "improve from 198.9 to >200"
+    },
+    "validation_metrics": [
+      "success_like_terminal_rate",
+      "objective_bonus_mean_return",
+      "fitness_score"
+    ]
+  },
+  "revised_reward_schema_and_code": {
+    "file_type": "revised_reward_schema_and_code",
+    "parent_candidate_id": "iter_018",
+    "candidate_id": "iter_019",
+    "edit_summary": {
+      "edit_scope": "medium",
+      "next_search_mode": "phase_guidance_after_action_coverage",
+      "reason": "The policy farms the objective_bonus (+100) repeatedly by hovering in a loose success region (both legs contact, near pad, low vy) without terminating. The fix is to make the objective_bonus one-shot event-gated: it fires only once when the lander first achieves the success condition, tracked via a self._success_given flag. This aligns the reward with the evaluator's success definition (which requires episode termination). Additionally, the action_0_bonus is removed to prevent farming a per-step bonus for doing nothing near the pad. The distance_improvement_bonus cap is removed to provide a stronger gradient toward the pad without increasing the distance penalty (which failed previously). The controlled_descent_bonus and touchdown_stability_bonus remain one-shot as they are. This follows the phase_guidance_after_action_coverage mode by adding phase-specific guidance for the approach and touchdown phases without repeating failed patterns.",
+      "preserved_design": [
+        "crash_penalty (-100) for termination without success",
+        "velocity_penalty (vertical and lateral) with same scales",
+        "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+        "angle_penalty (-0.02 * angle^2) kept as mild deterrent",
+        "controlled_descent_bonus (one-shot +10) kept as is",
+        "touchdown_stability_bonus (one-shot +20) kept as is"
+      ],
+      "changed_design": [
+        "Make objective_bonus one-shot event-gated: +100 fires only once when the lander first achieves success (both legs contact, |x|<0.15, |y|<0.15, |vy|<0.5). Track with self._success_given flag. This prevents farming the bonus by hovering in the success region.",
+        "Remove action_0_bonus (was +0.1 per step when near pad and upright) to prevent farming a per-step bonus for doing nothing near the pad.",
+        "Remove the cap on distance_improvement_bonus: now +0.2 * (prev_distance - current_distance) without the min(..., 0.2) cap. This provides a stronger gradient toward the pad without increasing the distance penalty (which failed previously)."
+      ],
+      "rejected_patterns_avoided": [
+        "Do not increase distance penalty (failed pattern from iter_004): we keep the distance penalty at -0.02 * distance (implicit in the code? Actually the current code has no explicit distance penalty; the distance_improvement_bonus is the only distance-related term. We keep it as is but remove the cap.)",
+        "Do not make controlled_descent_bonus or touchdown_stability_bonus repeatable (failed pattern from iter_010->011): they remain one-shot.",
+        "Do not add new repeatable positive bonuses: we remove action_0_bonus instead.",
+        "Do not simply increase raw main-engine/action bonuses: we remove a per-step bonus and make the objective bonus one-shot."
+      ],
+      "action_coverage_plan": "All actions already used. Removing action_0_bonus will reduce the incentive to use action 0 (do nothing) near the pad, potentially shifting some probability to orientation engines (actions 1 and 3) for fine-tuning position. The one-shot objective_bonus will encourage the policy to actually land (terminate) rather than hover.",
+      "phase_guidance_plan": "Phase 1 (approach): distance_improvement_bonus (uncapped) provides a gradient to move toward the pad. Phase 2 (descent): controlled_descent_bonus (one-shot +10) fires when first using main engine near pad and upright. Phase 3 (touchdown): touchdown_stability_bonus (one-shot +20) fires when both legs contact near pad with low velocities. Objective_bonus (one-shot +100) fires upon successful landing. Crash_penalty (-100) deters failure.",
+      "payment_mode_plan": "objective_bonus is one-shot event-gated (fires once). controlled_descent_bonus is one-shot event-gated (fires once). touchdown_stability_bonus is one-shot event-gated (fires once). distance_improvement_bonus is per-step but based on improvement (delta), so it naturally diminishes as the lander approaches the pad and cannot be farmed indefinitely. All other terms are per-step penalties.",
+      "expected_metric_changes": {
+        "success_like_terminal_rate": "increase from 0.0 to >0.1",
+        "objective_bonus_mean_return": "decrease from 12840 to ~100 (one-shot)",
+        "fitness_score": "improve from 198.9 to >200"
+      },
+      "validation_metrics": [
+        "success_like_terminal_rate",
+        "objective_bonus_mean_return",
+        "fitness_score"
+      ]
+    },
+    "reward_schema": {
+      "objective_success_bonus": {
+        "condition": "first time both legs contact (state[6]==1 and state[7]==1) and |x|<0.15 and |y|<0.15 and |vy|<0.5",
+        "value": 100.0,
+        "one_shot": true
+      },
+      "crash_penalty": {
+        "condition": "terminated and not success",
+        "value": -100.0
+      },
+      "distance_improvement_bonus": {
+        "condition": "distance decreases from previous step",
+        "value": "+0.2 * (prev_distance - current_distance), uncapped"
+      },
+      "angle_penalty": {
+        "condition": "always",
+        "value": "-0.02 * angle^2"
+      },
+      "velocity_penalty": {
+        "vertical": "-0.02 * vy^2",
+        "lateral": "-0.01 * vx^2"
+      },
+      "fuel_penalty": {
+        "main_engine": "-0.01 * m_power"
+      },
+      "controlled_descent_bonus": {
+        "condition": "first time distance<0.5 and m_power>0 and |angle|<0.2",
+        "value": 10.0,
+        "one_shot": true
+      },
+      "touchdown_stability_bonus": {
+        "condition": "first time leg1==1 and leg2==1 and distance<0.5 and |vy|<0.5 and |vx|<0.5 and |angle|<0.2",
+        "value": 20.0,
+        "one_shot": true
+      }
+    },
+    "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    x, y, vx, vy, angle, angular_velocity, leg1, leg2 = state\n    # Initialize diagnostics\n    distance_to_pad = x*x + y*y\n    angle_deviation = angle*angle\n    vertical_speed = vy*vy\n    lateral_speed = vx*vx\n    main_engine_usage = m_power\n    legs_contact = leg1 + leg2\n    success_flag = 0.0\n    crash_flag = 0.0\n    controlled_descent_flag = 0.0\n    touchdown_stability_flag = 0.0\n    distance_improvement = 0.0\n\n    # Check success condition\n    success = (leg1 == 1.0 and leg2 == 1.0 and abs(x) < 0.15 and abs(y) < 0.15 and abs(vy) < 0.5)\n\n    # Check crash (terminated without success)\n    if terminated and not success:\n        crash_flag = 1.0\n\n    # Distance improvement bonus: reward decreasing distance (uncapped)\n    if not hasattr(self, '_prev_distance'):\n        self._prev_distance = distance_to_pad\n    prev_dist = self._prev_distance\n    if distance_to_pad < prev_dist:\n        improvement = prev_dist - distance_to_pad\n        distance_improvement = 0.2 * improvement\n    self._prev_distance = distance_to_pad\n\n    # Controlled descent bonus: one-shot event-gated\n    if not hasattr(self, '_controlled_descent_given'):\n        self._controlled_descent_given = False\n    if not self._controlled_descent_given and m_power > 0 and distance_to_pad < 0.5 and abs(angle) < 0.2:\n        controlled_descent_flag = 1.0\n        self._controlled_descent_given = True\n\n    # Touchdown stability bonus: one-shot event-gated\n    if not hasattr(self, '_touchdown_stability_given'):\n        self._touchdown_stability_given = False\n    if not self._touchdown_stability_given and leg1 == 1.0 and leg2 == 1.0 and distance_to_pad < 0.5 and abs(vy) < 0.5 and abs(vx) < 0.5 and abs(angle) < 0.2:\n        touchdown_stability_flag = 1.0\n        self._touchdown_stability_given = True\n\n    # Objective success bonus: one-shot event-gated\n    if not hasattr(self, '_success_given'):\n        self._success_given = False\n    if success and not self._success_given:\n        success_flag = 1.0\n        self._success_given = True\n\n    # Compute reward components\n    objective_bonus = 100.0 if success_flag else 0.0\n    crash_penalty = -100.0 if crash_flag else 0.0\n    angle_penalty = -0.02 * angle_deviation\n    velocity_penalty = -0.02 * vertical_speed - 0.01 * lateral_speed\n    fuel_penalty = -0.01 * main_engine_usage\n    controlled_descent_bonus = 10.0 if controlled_descent_flag else 0.0\n    touchdown_stability_bonus = 20.0 if touchdown_stability_flag else 0.0\n\n    reward = objective_bonus + crash_penalty + distance_improvement + angle_penalty + velocity_penalty + fuel_penalty + controlled_descent_bonus + touchdown_stability_bonus\n\n    individual_reward = {\n        'distance_to_pad': distance_to_pad,\n        'angle_deviation': angle_deviation,\n        'vertical_speed': vertical_speed,\n        'lateral_speed': lateral_speed,\n        'main_engine_usage': main_engine_usage,\n        'legs_contact': legs_contact,\n        'success_flag': success_flag,\n        'crash_flag': crash_flag,\n        'controlled_descent_flag': controlled_descent_flag,\n        'touchdown_stability_flag': touchdown_stability_flag,\n        'distance_improvement': distance_improvement,\n        'objective_bonus': objective_bonus,\n        'crash_penalty': crash_penalty,\n        'angle_penalty': angle_penalty,\n        'velocity_penalty': velocity_penalty,\n        'fuel_penalty': fuel_penalty,\n        'controlled_descent_bonus': controlled_descent_bonus,\n        'touchdown_stability_bonus': touchdown_stability_bonus\n    }\n\n    return float(reward), individual_reward",
+    "expected_behavior": {
+      "expected_action_distribution_change": "Action 0 (do nothing) usage will decrease from ~37% to ~20% because the per-step action_0_bonus is removed. Action 2 (main engine) usage may increase slightly as the policy needs to descend and land. Orientation engine usage (actions 1 and 3) may increase to fine-tune position for the one-shot objective bonus.",
+      "expected_phase_change": "The policy will transition from hovering in the success region to actually landing (terminating with success). The one-shot objective bonus provides a clear terminal milestone. The uncapped distance improvement bonus provides a stronger gradient to approach the pad. The removal of action_0_bonus removes the incentive to do nothing near the pad."
+    },
+    "known_risks": [
+      "If the success condition is too strict, the one-shot objective bonus may never fire, leaving the policy with no positive terminal signal. However, the current condition (both legs contact, |x|<0.15, |y|<0.15, |vy|<0.5) is already achieved in 80% of episodes (both legs contact rate), so it should be reachable.",
+      "The uncapped distance improvement bonus could cause the policy to oscillate if the improvement is noisy, but the scale (0.2 * improvement) is mild.",
+      "Removing action_0_bonus may cause the policy to use orientation engines more aggressively, potentially increasing fuel consumption or causing instability."
+    ],
+    "self_check": {
+      "all_diagnostic_variables_initialized_before_branches": true,
+      "does_not_call_custom_self_methods": true
+    }
+  }
+}

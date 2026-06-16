@@ -1,0 +1,38 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms repeatable bonuses (controlled_descent_bonus, touchdown_stability_bonus) without approaching the pad. This revision makes both bonuses one-shot event-gated (can only be collected once per episode) and adds a progress bonus for reducing distance to pad to incentivize approach. The progress bonus is a per-step improvement bonus that rewards getting closer to the pad, which provides a clear gradient for the approach phase.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "progress_shaping (distance and angle penalties) with same scales",
+    "velocity_penalty (vertical and lateral) with same scales",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent"
+  ],
+  "changed_design": [
+    "Make controlled_descent_bonus one-shot: use a self attribute (self._controlled_descent_collected) to track if it has been collected this episode. Reset at the start of each episode via hasattr check.",
+    "Make touchdown_stability_bonus one-shot: use a self attribute (self._touchdown_stability_collected) to track if it has been collected this episode. Reset at the start of each episode via hasattr check.",
+    "Add progress_bonus: +0.1 * (previous_distance - current_distance) if distance decreased, else 0. This provides a per-step incentive to move closer to the pad. Use self._prev_distance to track previous distance, reset at episode start.",
+    "Remove the repeatable nature of controlled_descent_bonus and touchdown_stability_bonus to prevent farming."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not simply increase raw main-engine/action bonuses: instead, we make existing bonuses one-shot and add a progress bonus.",
+    "Do not only reduce distance shaping: we add a progress bonus that directly incentivizes approach.",
+    "Do not keep repeatable positive terms without success: we make them one-shot."
+  ],
+  "action_coverage_plan": "All actions already used. The progress bonus will encourage more use of orientation engines (actions 1 and 3) to steer toward the pad, potentially increasing their usage from ~15% to ~20%.",
+  "phase_guidance_plan": "Phase 1 (approach): progress_bonus provides a clear gradient to move toward the pad. Phase 2 (descent): controlled_descent_bonus (one-shot) rewards using main engine when near pad and upright. Phase 3 (touchdown): touchdown_stability_bonus (one-shot) rewards low velocity at contact. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "controlled_descent_bonus is one-shot event-gated (collect once per episode). touchdown_stability_bonus is one-shot event-gated (collect once per episode). progress_bonus is per-step but based on improvement (delta), not raw state, so it cannot be farmed indefinitely. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "stable_touchdown_rate": "increase from 0.0 to >0.2",
+    "near_pad_rate": "increase from 0.0 to >0.3",
+    "fitness_score": "improve from 85.5 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "stable_touchdown_rate",
+    "near_pad_rate",
+    "fitness_score"
+  ]
+}

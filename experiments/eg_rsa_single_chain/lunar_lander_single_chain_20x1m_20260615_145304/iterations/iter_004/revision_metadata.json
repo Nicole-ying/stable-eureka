@@ -1,0 +1,39 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "phase_guidance_after_action_coverage",
+  "reason": "The policy farms repeatable bonuses (controlled_descent_bonus, touchdown_stability_bonus) without approaching the pad. This revision adds a strong lateral drift penalty to encourage centering over the pad, increases the distance penalty scale to provide a stronger gradient, and makes the touchdown_stability_bonus one-shot to prevent farming off-pad. The controlled_descent_bonus is kept repeatable but with a moderate distance condition (0.3) to encourage engine use during descent. The progress shaping distance penalty is increased from -0.05 to -0.1 to provide a stronger gradient. A lateral drift penalty (-0.05 * vx^2) is added to discourage lateral movement near the ground, which should help the lander stay centered over the pad during descent.",
+  "preserved_design": [
+    "objective_success_bonus (sparse +100) with same condition",
+    "crash_penalty (-100) for termination without success",
+    "velocity_penalty (vertical) with same scale",
+    "fuel_penalty (small -0.01 per main engine use) kept as mild deterrent",
+    "controlled_descent_bonus (repeatable, conditioned on distance and angle) but with moderate distance condition"
+  ],
+  "changed_design": [
+    "Increase progress_shaping distance penalty scale from -0.05 to -0.1 to provide a stronger gradient toward the pad.",
+    "Add lateral_drift_penalty: -0.05 * vx^2 to discourage lateral movement, especially near the ground. This encourages the lander to center over the pad during descent.",
+    "Make touchdown_stability_bonus one-shot: use a self attribute (self._touchdown_stability_collected) to track if it has been collected this episode. Reset at the start of each episode via hasattr check. This prevents farming the bonus by maintaining leg contact off-pad.",
+    "Keep controlled_descent_bonus repeatable but with a moderate distance condition (distance_to_pad < 0.3) to encourage engine use during descent without being too tight."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not make all bonuses one-shot (failed pattern from iter_002): only the touchdown_stability_bonus is made one-shot because it was the main source of farming.",
+    "Do not tighten conditions too aggressively (failed pattern from iter_003): the controlled_descent_bonus condition is set to 0.3 (moderate), not 0.1.",
+    "Do not simply increase raw main-engine/action bonuses: we add a lateral drift penalty and increase distance penalty instead.",
+    "Do not only reduce distance shaping: we add a new lateral drift penalty."
+  ],
+  "action_coverage_plan": "All actions already used. The lateral drift penalty will encourage more use of orientation engines (actions 1 and 3) to correct lateral drift, potentially increasing their usage from ~15% to ~20%. The increased distance penalty will encourage more main engine use (action 2) to descend faster toward the pad.",
+  "phase_guidance_plan": "Phase 1 (approach): increased distance penalty provides a stronger gradient to move toward the pad. Phase 2 (descent): controlled_descent_bonus (repeatable, distance<0.3) rewards using main engine when near pad and upright. Lateral drift penalty discourages drifting away from the pad. Phase 3 (touchdown): touchdown_stability_bonus (one-shot) rewards low velocity at contact. Success bonus provides final sparse signal.",
+  "payment_mode_plan": "controlled_descent_bonus is per-step conditioned on being within moderate distance (0.3) and upright, so it encourages engine use during descent but cannot be farmed at a distance. touchdown_stability_bonus is one-shot event-gated (collect once per episode) to prevent farming off-pad. objective_success_bonus is one-shot event-gated. All other terms are per-step penalties.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.1",
+    "near_pad_rate": "increase from 0.0 to >0.3",
+    "stable_touchdown_rate": "increase from 0.0 to >0.2",
+    "fitness_score": "improve from 85.5 to >100"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ]
+}

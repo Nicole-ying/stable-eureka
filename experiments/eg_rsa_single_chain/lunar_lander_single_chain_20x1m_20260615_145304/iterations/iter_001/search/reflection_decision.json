@@ -1,0 +1,35 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy is optimizing a combination of repeatable positive bonuses (controlled_descent_bonus, touchdown_stability_bonus) and a large distance penalty. It has learned to stay near the ground off-pad (x ~ -0.2 to -0.3, y ~ 0.02-0.03) with both legs contacting, collecting the touchdown_stability_bonus (mean 292) and controlled_descent_bonus (mean 66.6) repeatedly while avoiding the crash penalty. The distance penalty (-0.05 * distance) is too weak to overcome the positive bonuses collected off-pad. The policy avoids approaching the pad (x=0, y=0) because that would require using orientation engines to steer, which reduces the main engine usage (action 2) that is correlated with the controlled_descent_bonus. The success condition (|x|<0.15, |y|<0.15, both legs contact, |vy|<0.5) is never reached because the policy never gets close enough to the pad.",
+  "component_interaction_diagnosis": "The dominant components by absolute return are: touchdown_stability_bonus (292), distance_to_pad (205.9), main_engine_usage (201.4), legs_contact (134.4), controlled_descent_flag (133.2). The touchdown_stability_bonus (+10 per step) is collected repeatedly when both legs contact with low velocities, which happens off-pad. The distance_to_pad term is a penalty (-0.05 * distance) but its absolute return is high because the policy stays at a moderate distance (~0.3) for many steps (episode length ~437). The main_engine_usage term is a diagnostic (not a reward component) but its high value indicates the policy uses the main engine frequently. The controlled_descent_flag is a diagnostic flag that is high because the policy often satisfies the condition (m_power>0, distance<0.5, |angle|<0.2) off-pad. The crash_penalty (-100) is incurred in some episodes but is not enough to deter the off-pad behavior because the positive bonuses outweigh it.",
+  "action_coverage_diagnosis": "All four discrete actions (0,1,2,3) are used with coverage ratio 1.0. Action 2 (main engine) is dominant at 46%. Actions 1 and 3 (orientation engines) are used ~15% each. Action 0 (do nothing) is used ~23%. The policy uses all actions but does not use orientation engines enough to steer toward the pad. The action distribution is stable across episodes, indicating the policy has converged to a local optimum that avoids the pad.",
+  "expert_audit_diagnosis": "Reward scale audit: dense negative budget (-12.9) is 12.9x the positive objective budget (0.0), but the dense positive budget (1099.2) from repeatable bonuses dominates. Reward payment audit: repeatable positive terms (controlled_descent_bonus, touchdown_stability_bonus) exist while success-like rate is 0.0. Trajectory phase report: failure phase is 'near_ground_or_contact_unstable' - the policy reaches the ground off-pad with both legs contacting but never achieves stable touchdown on the pad. Objective signal alignment audit: success-like terminal rate is 0.0, meaning the objective signal (+100 for success) is never triggered. The search mode recommendation is phase_guidance_after_action_coverage.",
+  "failed_pattern_reuse_check": "Previous failed patterns from retrieved_memory: (1) Tightening distance conditions to <0.1 (iter_005->006) caused early failure. (2) Adding distance improvement bonus with moderate cap (iter_006->007) did not improve. (3) Making bonuses one-shot with +10/+20 and distance improvement bonus (iter_010->011) caused action 2 to become unused and fitness dropped. These patterns are not repeated. The current revision avoids: (a) making bonuses one-shot (failed in iter_010->011), (b) tightening distance conditions too aggressively (failed in iter_005->006), (c) adding improvement bonuses that can be farmed (failed in iter_006->007). Instead, this revision focuses on providing a strong, continuous gradient toward the pad through a moderate distance penalty increase and a phase-conditioned repeatable bonus that requires being near the pad.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "phase_guidance_after_action_coverage",
+    "edit_scope": "medium",
+    "reason": "Action coverage is solved but success is absent. The policy farms repeatable bonuses off-pad. This revision increases the distance penalty from -0.05 to -0.08 to provide a stronger gradient toward the pad, and conditions the controlled_descent_bonus on being near the pad (distance<0.2) to prevent off-pad farming. The touchdown_stability_bonus is conditioned on being near the pad (distance<0.2) as well. These changes follow the phase_guidance_after_action_coverage mode by adding phase-specific guidance for the approach and touchdown phases without making bonuses one-shot (which failed previously) or tightening conditions too aggressively (which also failed)."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not make bonuses one-shot (failed pattern from iter_010->011).",
+    "Do not tighten distance conditions below 0.2 (failed pattern from iter_005->006 used <0.1).",
+    "Do not add improvement bonuses that require internal state tracking (failed pattern from iter_006->007 and iter_010->011).",
+    "Do not increase distance penalty above -0.08 (failed pattern from iter_004 used -0.1).",
+    "Do not simply increase raw main-engine/action bonuses.",
+    "Condition repeatable bonuses on being near the pad to prevent off-pad farming."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.05",
+    "near_pad_rate": "increase from 0.0 to >0.2",
+    "stable_touchdown_rate": "increase from 0.0 to >0.1",
+    "fitness_score": "improve from 85.5 to >90"
+  },
+  "validation_metrics": [
+    "success_like_terminal_rate",
+    "near_pad_rate",
+    "stable_touchdown_rate",
+    "fitness_score"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}
