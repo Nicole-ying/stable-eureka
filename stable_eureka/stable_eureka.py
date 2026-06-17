@@ -283,6 +283,7 @@ class StableEureka:
                 'final_eval_summary': summarize_final_eval(best_eval),
                 'reward_code_path': str(reward_code_path.relative_to(self._experiment_path)),
                 'code_hash': reward_code_hash(best_reward_code),
+                'reward_code': best_reward_code,
             }
             self._reward_history.append(history_record)
             save_to_json(self._reward_history_path / 'reward_history.json', {'records': self._reward_history})
