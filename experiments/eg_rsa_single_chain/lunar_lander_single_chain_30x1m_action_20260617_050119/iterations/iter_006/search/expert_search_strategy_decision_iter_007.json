@@ -1,0 +1,124 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_006",
+  "active_parent_candidate_id": "iter_006",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "bootstrap",
+      "reason": "Bootstrap candidate with 100% unsafe terminal rate and no success signal. Superseded by iter_001 family."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Provisional anchor parent with 20% success-like rate and 80% timeout. Fuel_penalty dominance identified. All children from this parent (iter_002-005) failed, but iter_006 (fuel_penalty halved) shows improvement."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed child: extreme success_bonus increase to 200 + near_pad_bonus + fuel_penalty reduction to -0.05 caused out_of_bounds behavior. Negative edge recorded."
+    },
+    {
+      "candidate_id": "iter_003",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed child: moderate success_bonus increase to 150 + conditional fuel_penalty + time_penalty -0.1/step caused complete regression to early failure. Negative edge recorded."
+    },
+    {
+      "candidate_id": "iter_004",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed child: relaxed angle condition + conditional fuel_penalty + timeout_penalty -0.05 + near_pad_bonus 5 caused regression to early failure. Negative edge recorded."
+    },
+    {
+      "candidate_id": "iter_005",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed child: gentle timeout_penalty -0.02 + relaxed angle condition + conditional fuel_penalty caused regression to early failure. Negative edge recorded."
+    },
+    {
+      "candidate_id": "iter_006",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Promising child: fuel_penalty halved from -0.1 to -0.05, all other components identical to iter_001. Success-like rate improved from 0.2 to 0.4, timeout eliminated (0.0), but unsafe terminal rate increased to 0.6. High fitness variance (std 126.58) and transient peak risk. Best checkpoint success rate 0.8, final 0.6. Needs further refinement to reduce crashes while maintaining success."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05)",
+      "reason": "Caused out_of_bounds behavior (0.2 rate) and regression to early failure."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_003",
+      "avoid_pattern": "moderate success_bonus increase (to 150) + conditional fuel_penalty (y>0.5) + time_penalty (-0.1/step)",
+      "reason": "Caused complete regression to early failure (100% unsafe terminal, 0% success, action 2 unused)."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_004",
+      "avoid_pattern": "relaxed angle condition (0.2) + conditional fuel_penalty (y>0.5) + timeout_penalty (-0.05) + near_pad_bonus (5)",
+      "reason": "Caused regression to early failure (100% unsafe terminal, 0% success)."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_005",
+      "avoid_pattern": "gentle timeout_penalty (-0.02) + relaxed angle condition (0.2) + conditional fuel_penalty (y>0.5)",
+      "reason": "Caused regression to early failure (80% unsafe, 20% out_of_bounds, 0% success)."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "single_chain_iter0",
+    "iter_002",
+    "iter_003",
+    "iter_004",
+    "iter_005"
+  ],
+  "promising_family_ids": [
+    "iter_001_family"
+  ],
+  "next_search_hypothesis": "The fuel_penalty halving (from -0.1 to -0.05) in iter_006 improved success-like rate from 0.2 to 0.4 and eliminated timeout, but increased unsafe terminal rate to 0.6. The dominant component is now crash_penalty (-50) with dominance_ratio 4.53. The policy learns to land (both legs contact in 60% of episodes) but often crashes due to high lateral velocity or angle at touchdown (final states show x far from pad, angle up to 0.57 rad). The next edit should reduce the crash_penalty magnitude from -50 to -25 to make landing attempts less costly when they fail, while keeping all other components identical to iter_006. This directly addresses the new scale imbalance (crash_penalty dominance) without introducing any of the previously failed patterns (no timeout penalty, no angle relaxation, no conditional fuel_penalty, no near_pad_bonus, no success_bonus increase). The expected outcome is that the policy will explore landing more aggressively, increasing success-like rate from 0.4 to >=0.6 and decreasing unsafe terminal rate from 0.6 to <=0.3.",
+  "required_context_for_reward_revision": [
+    "iter_006 reward_code",
+    "iter_006 reward_schema",
+    "iter_006 target_behavior_report",
+    "iter_006 checkpoint_stability_report",
+    "iter_006 reward_static_validation",
+    "iter_006 semantic_noop_report",
+    "iter_006 controller_decision",
+    "iter_006 revision_metadata",
+    "retrieved_memory.json (reward_transition from iter_005 to iter_006)",
+    "target_summary.json",
+    "environment_summary.json"
+  ],
+  "strategy_rationale": "iter_006 is the most promising candidate: it achieved 40% success-like rate (up from 20%), eliminated timeout (0.0 vs 0.8), and has the best final fitness (88.12) and best checkpoint fitness (121.48) among all candidates. However, it has high fitness variance (std 126.58), transient peak risk (best success rate 0.8, final 0.6), and 60% unsafe terminal rate. The dominant component is now crash_penalty (-50) with dominance_ratio 4.53. The next edit should reduce crash_penalty from -50 to -25 to make landing attempts less costly when they fail, while keeping all other components identical to iter_006. This is a minimal, targeted change that directly addresses the new scale imbalance without introducing any of the previously failed patterns. The edit scope is small (only one component scale changed). The active parent is iter_006 (provisional anchor) because it has the best behavior evidence and is the current parent accepted by the controller. No verified elite exists because no candidate satisfies the target behavior contract (success-like rate < 1.0, unsafe terminal rate > 0).",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true,
+    "checked_reward_static_validation_when_available": true
+  },
+  "candidate_ids_available": [
+    "iter_001",
+    "iter_002",
+    "iter_003",
+    "iter_004",
+    "iter_005",
+    "iter_006",
+    "single_chain_iter0"
+  ],
+  "resolved_active_parent_dir": "C:\\Users\\Administrator\\stable-eureka\\experiments\\eg_rsa_single_chain\\lunar_lander_single_chain_30x1m_action_20260617_050119\\iterations\\iter_006",
+  "resolved_anchor_dir": "C:\\Users\\Administrator\\stable-eureka\\experiments\\eg_rsa_single_chain\\lunar_lander_single_chain_30x1m_action_20260617_050119\\iterations\\iter_006",
+  "fallback_used": {
+    "active_parent": false,
+    "anchor": false
+  }
+}

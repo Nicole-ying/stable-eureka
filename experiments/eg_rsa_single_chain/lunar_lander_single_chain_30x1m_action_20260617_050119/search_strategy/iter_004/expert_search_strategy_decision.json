@@ -1,0 +1,85 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_001",
+  "active_parent_candidate_id": "iter_001",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "bootstrap",
+      "reason": "Bootstrap reward is weak (fitness -117.9, 100% unsafe terminal). It was a necessary starting point but is now superseded by iter_001 which shows partial success (20% success-like, 0% unsafe). No reason to revisit."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "progress_delta_family",
+      "reason": "Provisional anchor. Shows 20% success-like terminal rate, 0% unsafe, 80% timeout. The progress-delta shaping successfully eliminated early crashes and enabled some landings, but the policy settles into timeout. This is the best behavioral foundation so far."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "scale_rebalance_family",
+      "reason": "Failed edit: extreme success_bonus (200) + near_pad_bonus + fuel_penalty halving caused out_of_bounds behavior (20%) and regressed fitness. The edit pattern is a negative edge."
+    },
+    {
+      "candidate_id": "iter_003",
+      "status": "close",
+      "family_id": "scale_rebalance_family",
+      "reason": "Failed edit: moderate success_bonus (150) + conditional fuel_penalty + time_penalty caused complete regression to early failure (100% unsafe, 0% success, action coverage dropped to 75%). The edit pattern is a negative edge."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "Extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05)",
+      "reason": "Caused out_of_bounds behavior (20%) and fitness regression. The combination of very high success bonus and reduced fuel penalty may have encouraged risky high-speed descent that went out of bounds."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_003",
+      "avoid_pattern": "Moderate success_bonus increase (to 150) + conditional fuel_penalty (y>0.5) + time_penalty (-0.1/step)",
+      "reason": "Caused complete regression to early failure (100% unsafe, 0% success, action coverage dropped to 75%). The conditional fuel_penalty may have removed the incentive to use main engine at low altitude, and the time_penalty may have encouraged premature descent without control."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "single_chain_iter0",
+    "iter_002",
+    "iter_003"
+  ],
+  "promising_family_ids": [
+    "progress_delta_family"
+  ],
+  "next_search_hypothesis": "The progress-delta shaping family (iter_001) successfully eliminated early crashes and enabled some landings (20% success-like), but the policy settles into timeout (80%). The core issue is that the shaping reward provides weak positive feedback for progress but does not sufficiently penalize timeout or incentivize completing the landing. The failed edits (iter_002, iter_003) tried to increase success_bonus and reduce fuel_penalty, but these changes either caused out_of_bounds behavior or complete regression. The next hypothesis should focus on: (1) Adding a moderate timeout penalty that scales with episode length to discourage hovering/settling without landing, without being so strong that it causes early crashes. (2) Keeping the success_bonus at 100 (original scale) but making it more reachable by relaxing the angle condition from 0.1 to 0.2 radians (about 11.5 degrees) to account for the fact that the lander can be slightly tilted at touchdown. (3) Keeping the fuel_penalty at -0.1 but making it conditional on altitude (y > 0.5) to avoid penalizing necessary main engine use near ground, but only if the policy is actually using main engine near ground (which it currently does not). (4) Adding a small bonus for being near the pad (|x|<0.1, y<0.2) with both legs contacting, but only if the lander is not already in a timeout state. The key insight is that the policy needs a stronger incentive to actually complete the landing rather than just hovering near the pad until timeout.",
+  "required_context_for_reward_revision": [
+    "iter_001 reward_code",
+    "iter_001 reward_schema",
+    "iter_001 target_behavior_report",
+    "iter_001 checkpoint_stability_report",
+    "iter_001 reward_static_validation",
+    "iter_001 semantic_noop_report",
+    "iter_001 controller_decision",
+    "iter_001 revision_metadata",
+    "iter_001 reward_guard_summary",
+    "iter_001 primary_metrics",
+    "iter_001 behavior_summary",
+    "iter_002 target_behavior_report",
+    "iter_002 checkpoint_stability_report",
+    "iter_003 target_behavior_report",
+    "iter_003 checkpoint_stability_report",
+    "environment_summary.json",
+    "target_summary.json",
+    "retrieved_memory.json"
+  ],
+  "strategy_rationale": "The search has produced three failed children from iter_001 (iter_002 and iter_003 are both rejected). The bootstrap (single_chain_iter0) is weak and superseded. iter_001 remains the best candidate with 20% success-like terminal rate, 0% unsafe, and 80% timeout. The negative edges from iter_001 to iter_002 and iter_003 indicate that increasing success_bonus and modifying fuel_penalty in those specific ways caused regression. However, the core problem (80% timeout) remains unsolved. The next edit should return to the iter_001 reward code and make more targeted changes: (1) Add a moderate timeout penalty that scales with episode length to discourage hovering without landing. (2) Keep success_bonus at 100 but relax the angle condition to 0.2 radians to make it more reachable. (3) Keep fuel_penalty at -0.1 but make it conditional on altitude (y > 0.5) to avoid penalizing necessary main engine use near ground. (4) Add a small near-pad bonus (5) when both legs contact and near pad, but only if not already in timeout. These changes avoid the failed patterns from iter_002 (extreme success_bonus increase) and iter_003 (moderate success_bonus increase + time_penalty) while addressing the timeout issue directly.",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true,
+    "checked_reward_static_validation_when_available": true
+  },
+  "agent_name": "ExpertSearchStrategist"
+}

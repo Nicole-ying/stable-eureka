@@ -1,0 +1,859 @@
+{
+  "file_type": "expert_memory_context",
+  "diagnosis_questions": [
+    "What behavior is the policy optimizing under the current reward?",
+    "What required behavior is not yet expressed?",
+    "Which component is shaping that behavior most strongly?",
+    "Which positive signal is missing, sparse, or weak?",
+    "Are any available discrete controls unused?",
+    "If all controls are used, which trajectory phase remains unsolved?",
+    "Do reward-defined success signals align with evaluator success?",
+    "Which previous edit pattern should be avoided?",
+    "Which concrete expert_action_plan requirements must be implemented next?"
+  ],
+  "failed_patterns": [
+    {
+      "pattern_id": "single_component_dominance",
+      "evidence": {
+        "top_component": {
+          "name": "crash_penalty",
+          "mean_return": -50.0,
+          "abs_return": 50.0
+        }
+      },
+      "interpretation": "One component may dominate the episode-scale signal."
+    },
+    {
+      "pattern_id": "reward_scale_audit_risk",
+      "evidence": {
+        "objective_positive_budget": 0.8,
+        "terminal_failure_budget": -50.0,
+        "dense_negative_budget": -16.939161991306793,
+        "dense_positive_budget": 4.451514067209024,
+        "auxiliary_abs_budget": 72.19067605851583,
+        "dominant_component": {
+          "name": "crash_penalty",
+          "mean_return": -50.0,
+          "abs_return": 50.0
+        },
+        "dominance_ratio": 4.533091568449674,
+        "dense_to_objective_ratio": 16.939161991306793,
+        "risks": [
+          "single_component_dominance",
+          "dense_penalty_dominates_objective"
+        ],
+        "hints": [
+          "Reward scale audit: dominant component crash_penalty has abs return 50.000, dominance_ratio=4.53.",
+          "Reward scale audit: dense negative budget -16.939 is 16.94x the positive objective budget."
+        ],
+        "hard_constraints": [
+          "Do not let one auxiliary component dominate the episode-scale objective signal.",
+          "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure."
+        ]
+      },
+      "interpretation": "Deterministic audit found a risk that should guide the next edit."
+    }
+  ],
+  "hard_constraints_for_next_revision": [
+    "Estimate episode-scale budgets and reduce auxiliary dominance.",
+    "Do not let one auxiliary component dominate the episode-scale objective signal.",
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Follow next_search_mode=scale_rebalance: One component dominates the episode-scale reward budget.",
+    "Reduce auxiliary dominance while preserving reachable task progress signals.",
+    "Avoid prior rejected pattern: A small reward revision from behavior 'unclear_policy' to 'early_failure_or_uncontrolled_terminal' did not improve fitness_score by -153.977. Changed design summary: ['crash_penalty: scale reduced from -50 to -25 per termination']. Original diagnosis: The policy under iter_006 achieves 40% success-like terminal rate (up from 20% in iter_001) and 0% timeout (down from 80%), but 60% unsafe terminal ",
+    "Avoid prior rejected pattern: A small reward revision from behavior 'unclear_policy' to 'hovering_or_timeout_policy' did not improve fitness_score by -99.205. Changed design summary: ['added near_pad_bonus: small one-shot event-gated bonus (5) when both legs contact and near pad (|x|<0.1, y<0.2) with low lateral velocity (|vx|<0.1), to bridge the gap between near-success and true success']. Original diagnosis: The policy under",
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.",
+    "Forbidden edit: Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Forbidden edit: Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Forbidden edit: Avoid remembered failed pattern: A small reward revision from behavior 'unclear_policy' to 'unclear_policy' improved fitness_score by 24.117. Changed design summary: ['fuel_penalty: scale reduced from -0.1 to -0.05 per unit m_power']. Original diagnosis: The policy under i",
+    "Forbidden edit: Avoid remembered failed pattern: A small reward revision from behavior 'unclear_policy' to 'early_failure_or_uncontrolled_terminal' did not improve fitness_score by -153.977. Changed design summary: ['crash_penalty: scale reduced from -50 to -25 per termination']. Original",
+    "Forbidden edit: Avoid remembered failed pattern: A small reward revision from behavior 'unclear_policy' to 'hovering_or_timeout_policy' did not improve fitness_score by -99.205. Changed design summary: ['added near_pad_bonus: small one-shot event-gated bonus (5) when both legs contact and"
+  ],
+  "component_balance_report": {
+    "num_positive_components": 7,
+    "num_negative_components": 3,
+    "mostly_negative": false,
+    "dominant_components_by_abs_return": [
+      {
+        "name": "crash_penalty",
+        "mean_return": -50.0,
+        "abs_return": 50.0
+      },
+      {
+        "name": "fuel_penalty",
+        "mean_return": -11.03000000000002,
+        "abs_return": 11.03000000000002
+      },
+      {
+        "name": "orientation_penalty",
+        "mean_return": -5.909161991306772,
+        "abs_return": 5.909161991306772
+      },
+      {
+        "name": "leg_contact_bonus",
+        "mean_return": 2.0,
+        "abs_return": 2.0
+      },
+      {
+        "name": "shaping_reward",
+        "mean_return": 1.2515140672090235,
+        "abs_return": 1.2515140672090235
+      }
+    ]
+  },
+  "action_space_report": {
+    "space_type": "Discrete",
+    "used_action_keys": [
+      "0",
+      "1",
+      "2",
+      "3"
+    ],
+    "n": 4,
+    "start": 0,
+    "expected_action_keys": [
+      "0",
+      "1",
+      "2",
+      "3"
+    ],
+    "unused_action_keys": [],
+    "coverage_ratio": 1.0
+  },
+  "expert_audit_pack": {
+    "file_type": "expert_audit_pack",
+    "reward_scale_audit": {
+      "objective_positive_budget": 0.8,
+      "terminal_failure_budget": -50.0,
+      "dense_negative_budget": -16.939161991306793,
+      "dense_positive_budget": 4.451514067209024,
+      "auxiliary_abs_budget": 72.19067605851583,
+      "dominant_component": {
+        "name": "crash_penalty",
+        "mean_return": -50.0,
+        "abs_return": 50.0
+      },
+      "dominance_ratio": 4.533091568449674,
+      "dense_to_objective_ratio": 16.939161991306793,
+      "risks": [
+        "single_component_dominance",
+        "dense_penalty_dominates_objective"
+      ],
+      "hints": [
+        "Reward scale audit: dominant component crash_penalty has abs return 50.000, dominance_ratio=4.53.",
+        "Reward scale audit: dense negative budget -16.939 is 16.94x the positive objective budget."
+      ],
+      "hard_constraints": [
+        "Do not let one auxiliary component dominate the episode-scale objective signal.",
+        "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure."
+      ]
+    },
+    "reward_payment_audit": {
+      "repeatable_positive_terms": [
+        "crash_terminal",
+        "leg_contact_bonus",
+        "shaping_reward",
+        "unsafe_terminal"
+      ],
+      "raw_action_bonus_terms": [],
+      "event_gated_terms": [
+        "safe_landing_terminal",
+        "success_like_terminal"
+      ],
+      "declared_payment_modes": [],
+      "risks": [],
+      "hints": [],
+      "hard_constraints": []
+    },
+    "trajectory_phase_report": {
+      "num_episode_examples": 5,
+      "main_engine_usage": 0.4648124736620312,
+      "action_coverage_ratio": 1.0,
+      "near_pad_rate": 0.0,
+      "any_leg_contact_rate": 0.8,
+      "both_leg_contact_rate": 0.6,
+      "stable_touchdown_rate": 0.0,
+      "success_like_terminal_rate": 0.4,
+      "failure_phase": "success_discovered",
+      "final_state_digest": [
+        {
+          "episode_id": 0,
+          "near_pad": false,
+          "any_leg_contact": false,
+          "both_leg_contact": false,
+          "stable_touchdown": false,
+          "x": -0.4755266606807709,
+          "y": 0.06593836098909378,
+          "vx": 0.0,
+          "vy": 0.0,
+          "angle": -0.13320957124233246
+        },
+        {
+          "episode_id": 1,
+          "near_pad": false,
+          "any_leg_contact": true,
+          "both_leg_contact": false,
+          "stable_touchdown": false,
+          "x": -0.2573665678501129,
+          "y": 0.009450540877878666,
+          "vx": 0.0,
+          "vy": 0.0,
+          "angle": -0.0777365118265152
+        },
+        {
+          "episode_id": 2,
+          "near_pad": false,
+          "any_leg_contact": true,
+          "both_leg_contact": true,
+          "stable_touchdown": false,
+          "x": -0.45815783739089966,
+          "y": -0.08194966614246368,
+          "vx": -0.09886226803064346,
+          "vy": -0.10304633527994156,
+          "angle": 0.5208644270896912
+        },
+        {
+          "episode_id": 3,
+          "near_pad": false,
+          "any_leg_contact": true,
+          "both_leg_contact": true,
+          "stable_touchdown": false,
+          "x": -0.5751736164093018,
+          "y": -0.0933719053864479,
+          "vx": -0.08694148063659668,
+          "vy": -0.031094064936041832,
+          "angle": 0.37923431396484375
+        },
+        {
+          "episode_id": 4,
+          "near_pad": false,
+          "any_leg_contact": true,
+          "both_leg_contact": true,
+          "stable_touchdown": false,
+          "x": -0.38765621185302734,
+          "y": 0.1072383001446724,
+          "vx": -0.02311939373612404,
+          "vy": -0.0055922409519553185,
+          "angle": -0.5727294087409973
+        }
+      ],
+      "hints": [],
+      "hard_constraints": []
+    },
+    "objective_signal_alignment_audit": {
+      "success_like_terminal_rate": 0.4,
+      "positive_objective_terms": {
+        "safe_landing_terminal": 0.4,
+        "success_like_terminal": 0.4
+      },
+      "risks": [],
+      "hints": [],
+      "hard_constraints": []
+    },
+    "search_mode_recommendation": {
+      "next_search_mode": "scale_rebalance",
+      "reason": "One component dominates the episode-scale reward budget.",
+      "forbidden_edits": [],
+      "required_focus": [
+        "Reduce auxiliary dominance while preserving reachable task progress signals."
+      ],
+      "hints": [
+        "Search mode recommendation: scale_rebalance. One component dominates the episode-scale reward budget."
+      ],
+      "hard_constraints": [
+        "Follow next_search_mode=scale_rebalance: One component dominates the episode-scale reward budget.",
+        "Reduce auxiliary dominance while preserving reachable task progress signals."
+      ]
+    },
+    "hard_constraints": [
+      "Do not let one auxiliary component dominate the episode-scale objective signal.",
+      "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+      "Follow next_search_mode=scale_rebalance: One component dominates the episode-scale reward budget.",
+      "Reduce auxiliary dominance while preserving reachable task progress signals."
+    ],
+    "automatic_hints": [
+      "Reward scale audit: dominant component crash_penalty has abs return 50.000, dominance_ratio=4.53.",
+      "Reward scale audit: dense negative budget -16.939 is 16.94x the positive objective budget.",
+      "Search mode recommendation: scale_rebalance. One component dominates the episode-scale reward budget."
+    ]
+  },
+  "expert_action_plan": {
+    "file_type": "expert_action_plan",
+    "action_type": "target_behavior_repair",
+    "search_mode": "scale_rebalance",
+    "edit_scope": "medium",
+    "reward_elite_allowed": false,
+    "policy_reference_allowed": true,
+    "risk_summary": {
+      "reward_payment_risk": false,
+      "behavior_contract_risk": true,
+      "evidence_uncertainty_risk": true,
+      "instrumentation_gap_risk": false,
+      "transient_peak_risk": false,
+      "consecutive_failure_risk": false,
+      "audit_risks": [
+        "scale:single_component_dominance",
+        "scale:dense_penalty_dominates_objective",
+        "evidence:high_fitness_uncertainty",
+        "behavior:target_behavior_gap"
+      ],
+      "fitness_score_auxiliary": 40.213635164520916,
+      "fitness_score_std": 126.58282317814015,
+      "evidence_confidence": "low",
+      "generated_reward_diagnostic": -63.68764839343494,
+      "generated_minus_fitness_gap_diagnostic": -103.90128355795585,
+      "objective_bonus_mean": 0.0,
+      "success_flag_mean": 0.0,
+      "success_like_terminal_rate": 0.4,
+      "timeout_rate": 0.0,
+      "episode_length": 474.6,
+      "stable_touchdown_rate": 0.0
+    },
+    "target_behavior_report": {
+      "file_type": "target_behavior_report",
+      "target_behavior_contract": {
+        "file_type": "target_behavior_contract",
+        "contract_name": "LunarLanderTargetBehaviorContract",
+        "environment_name": "LunarLander-v2",
+        "success_terminal": [
+          "safe_landing_terminal or success_like_terminal is observed",
+          "episode terminates by task completion, not by time limit"
+        ],
+        "failure_terminal": [
+          "crash_terminal",
+          "unsafe_terminal",
+          "out_of_bounds_terminal",
+          "timeout_terminal"
+        ],
+        "proxy_success_risks": [
+          "near-pad state without terminal safe landing",
+          "both-leg contact or stable contact that continues until timeout",
+          "dense distance/velocity/contact reward farming without task completion"
+        ],
+        "forbidden_local_optima": [
+          "near_pad_timeout",
+          "stable_contact_timeout",
+          "hovering_or_settling_until_time_limit"
+        ],
+        "minimum_behavior_evidence": [
+          "success_like_terminal_rate",
+          "timeout_rate",
+          "unsafe_terminal_rate",
+          "final_state samples",
+          "trajectory terminal_classification"
+        ],
+        "state_assumptions": {
+          "state_format": "[x, y, vx, vy, angle, angular_velocity, leg1_contact, leg2_contact]",
+          "near_pad_threshold": {
+            "abs_x": 0.1,
+            "abs_y": 0.05
+          },
+          "stable_contact_threshold": {
+            "abs_vx": 0.05,
+            "abs_vy": 0.05,
+            "abs_angle": 0.2
+          }
+        }
+      },
+      "target_success": false,
+      "quality_label": "target_behavior_gap",
+      "evidence_confidence": "low",
+      "primary_behavior_criteria": {
+        "success_like_terminal_rate": 0.4,
+        "timeout_rate": 0.0,
+        "unsafe_terminal_rate": 0.6,
+        "out_of_bounds_rate": 0.0
+      },
+      "auxiliary_scores": {
+        "fitness_score": 40.213635164520916,
+        "fitness_score_std": 126.58282317814015,
+        "fitness_score_sem": 56.609559482031464,
+        "generated_reward": -63.68764839343494,
+        "generated_reward_std": 3.3672047742542355,
+        "episode_length": 474.6,
+        "episode_length_std": 88.10357540985495,
+        "num_eval_episodes": 5
+      },
+      "auxiliary_score_stability": {
+        "fitness_score_std": 126.58282317814015,
+        "fitness_score_sem": 56.609559482031464,
+        "fitness_relative_std": 3.1477587803308005,
+        "high_fitness_uncertainty": true,
+        "low_sample_warning": true
+      },
+      "behavior_diagnostics": {
+        "final_reaches_time_limit": false,
+        "dense_proxy_timeout_risk": false,
+        "near_pad_timeout_rate": 0.0,
+        "both_legs_contact_timeout_rate": 0.0,
+        "stable_contact_timeout_rate": 0.0,
+        "near_pad_timeout_risk": false
+      },
+      "target_behavior_gaps": [
+        "Final policy does not reliably terminate with task success.",
+        "Unsafe or out-of-bounds terminations remain too frequent.",
+        "Auxiliary fitness has high episode-level variance; do not over-trust small score differences."
+      ],
+      "required_reward_fixes": [
+        "Increase the distinction between true terminal success and proxy progress states.",
+        "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+        "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains."
+      ],
+      "interpretation": "Use this report as the main reward-quality evidence. Fitness is an auxiliary evaluator with uncertainty; generated reward is only a diagnostic of what the policy learned to collect."
+    },
+    "checkpoint_stability_report": {
+      "file_type": "checkpoint_stability_report",
+      "available": true,
+      "best_checkpoint_is_diagnostic_only": true,
+      "best_fitness": 121.4750208577533,
+      "final_fitness": 88.11592396297833,
+      "final_fitness_std": 102.20813095522695,
+      "best_final_fitness_gap": 33.359096894774964,
+      "best_success_like_terminal_rate": 0.8,
+      "final_success_like_terminal_rate": 0.6,
+      "success_rate_drop": 0.20000000000000007,
+      "best_generated_reward": -66.44843127138446,
+      "final_generated_reward": -69.06165678371326,
+      "best_timestep": 800000.0,
+      "final_timestep": 1000000.0,
+      "last_k_eval": {
+        "k": 3,
+        "fitness_mean": 68.53636080545941,
+        "fitness_std": 53.05579993139249,
+        "success_like_terminal_rate_mean": 0.5333333333333333
+      },
+      "transient_peak_risk": false,
+      "reward_behavior_divergence": false,
+      "final_uncertainty_risk": true,
+      "unstable_last_k_risk": true,
+      "hard_constraints": [
+        "Do not over-trust small fitness differences when fitness variance is high; require behavior improvement or more robust evaluation."
+      ]
+    },
+    "required_edits": [
+      "Increase the distinction between true terminal success and proxy progress states.",
+      "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+      "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+      "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+      "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+      "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements."
+    ],
+    "forbidden_edits": [
+      "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+      "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+      "Avoid remembered failed pattern: A small reward revision from behavior 'unclear_policy' to 'unclear_policy' improved fitness_score by 24.117. Changed design summary: ['fuel_penalty: scale reduced from -0.1 to -0.05 per unit m_power']. Original diagnosis: The policy under i",
+      "Avoid remembered failed pattern: A small reward revision from behavior 'unclear_policy' to 'early_failure_or_uncontrolled_terminal' did not improve fitness_score by -153.977. Changed design summary: ['crash_penalty: scale reduced from -50 to -25 per termination']. Original",
+      "Avoid remembered failed pattern: A small reward revision from behavior 'unclear_policy' to 'hovering_or_timeout_policy' did not improve fitness_score by -99.205. Changed design summary: ['added near_pad_bonus: small one-shot event-gated bonus (5) when both legs contact and"
+    ],
+    "required_focus": [
+      "Reduce auxiliary dominance while preserving reachable task progress signals."
+    ],
+    "acceptance_gates": [
+      {
+        "metric": "final_success_like_terminal_rate",
+        "operator": ">=",
+        "threshold": 0.5,
+        "reason": "reward quality requires stable final task success"
+      },
+      {
+        "metric": "timeout_rate",
+        "operator": "<=",
+        "threshold": 0.4,
+        "reason": "near-target timeout behavior is not task completion"
+      },
+      {
+        "metric": "transient_peak_risk",
+        "operator": "==",
+        "threshold": false,
+        "reason": "reward elite must not be based on peak-only behavior"
+      },
+      {
+        "metric": "fitness_score_std",
+        "operator": "contextual",
+        "threshold": "score_gain_should_exceed_noise_or_behavior_should_improve",
+        "reason": "experts do not treat noisy small score gains as reliable reward-quality improvement"
+      }
+    ],
+    "validation_tests": [
+      "Target behavior report must show final target_success=true or an explicitly improved behavior gap.",
+      "Report fitness_score_std, fitness_score_sem, last-k fitness std, and whether the behavior improvement exceeds evaluator noise."
+    ],
+    "next_if_fail": "If final behavior still misses the target contract, use a larger reward redesign focused on terminal task completion and anti-timeout proxy farming.",
+    "rationale": [
+      "Final behavior contract is not satisfied; reward design quality is not established by auxiliary fitness alone.",
+      "Auxiliary fitness evidence is noisy or low-confidence; decision should rely on target behavior improvement and robustness."
+    ]
+  },
+  "search_mode_recommendation": {
+    "next_search_mode": "scale_rebalance",
+    "reason": "One component dominates the episode-scale reward budget.",
+    "forbidden_edits": [],
+    "required_focus": [
+      "Reduce auxiliary dominance while preserving reachable task progress signals."
+    ],
+    "hints": [
+      "Search mode recommendation: scale_rebalance. One component dominates the episode-scale reward budget."
+    ],
+    "hard_constraints": [
+      "Follow next_search_mode=scale_rebalance: One component dominates the episode-scale reward budget.",
+      "Reduce auxiliary dominance while preserving reachable task progress signals."
+    ]
+  },
+  "best_reference": {
+    "candidate_id": "iter_006",
+    "primary_metrics": {
+      "fitness_score": 40.213635164520916,
+      "fitness_score_std": 126.58282317814015,
+      "generated_reward": -63.68764839343494,
+      "generated_reward_std": 3.3672047742542355,
+      "episode_length": 474.6,
+      "episode_length_std": 88.10357540985495,
+      "success_like_terminal_rate": 0.4,
+      "unsafe_terminal_rate": 0.6,
+      "out_of_bounds_rate": 0.0
+    },
+    "behavior_summary": {
+      "action_distribution": {
+        "1": 0.07206068268015171,
+        "3": 0.10872313527180784,
+        "0": 0.35440370838600926,
+        "2": 0.4648124736620312
+      },
+      "action_space_report": {
+        "space_type": "Discrete",
+        "used_action_keys": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "n": 4,
+        "start": 0,
+        "expected_action_keys": [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        "unused_action_keys": [],
+        "coverage_ratio": 1.0
+      },
+      "dominant_action": {
+        "action": "2",
+        "probability": 0.4648124736620312
+      },
+      "success_like_terminal_rate": 0.4,
+      "unsafe_terminal_rate": 0.6,
+      "out_of_bounds_rate": 0.0,
+      "dominant_behavior": "unclear_policy"
+    },
+    "expert_audit_pack": {
+      "file_type": "expert_audit_pack",
+      "reward_scale_audit": {
+        "objective_positive_budget": 0.8,
+        "terminal_failure_budget": -50.0,
+        "dense_negative_budget": -16.939161991306793,
+        "dense_positive_budget": 4.451514067209024,
+        "auxiliary_abs_budget": 72.19067605851583,
+        "dominant_component": {
+          "name": "crash_penalty",
+          "mean_return": -50.0,
+          "abs_return": 50.0
+        },
+        "dominance_ratio": 4.533091568449674,
+        "dense_to_objective_ratio": 16.939161991306793,
+        "risks": [
+          "single_component_dominance",
+          "dense_penalty_dominates_objective"
+        ],
+        "hints": [
+          "Reward scale audit: dominant component crash_penalty has abs return 50.000, dominance_ratio=4.53.",
+          "Reward scale audit: dense negative budget -16.939 is 16.94x the positive objective budget."
+        ],
+        "hard_constraints": [
+          "Do not let one auxiliary component dominate the episode-scale objective signal.",
+          "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure."
+        ]
+      },
+      "reward_payment_audit": {
+        "repeatable_positive_terms": [
+          "crash_terminal",
+          "leg_contact_bonus",
+          "shaping_reward",
+          "unsafe_terminal"
+        ],
+        "raw_action_bonus_terms": [],
+        "event_gated_terms": [
+          "safe_landing_terminal",
+          "success_like_terminal"
+        ],
+        "declared_payment_modes": [],
+        "risks": [],
+        "hints": [],
+        "hard_constraints": []
+      },
+      "trajectory_phase_report": {
+        "num_episode_examples": 5,
+        "main_engine_usage": 0.4648124736620312,
+        "action_coverage_ratio": 1.0,
+        "near_pad_rate": 0.0,
+        "any_leg_contact_rate": 0.8,
+        "both_leg_contact_rate": 0.6,
+        "stable_touchdown_rate": 0.0,
+        "success_like_terminal_rate": 0.4,
+        "failure_phase": "success_discovered",
+        "final_state_digest": [
+          {
+            "episode_id": 0,
+            "near_pad": false,
+            "any_leg_contact": false,
+            "both_leg_contact": false,
+            "stable_touchdown": false,
+            "x": -0.4755266606807709,
+            "y": 0.06593836098909378,
+            "vx": 0.0,
+            "vy": 0.0,
+            "angle": -0.13320957124233246
+          },
+          {
+            "episode_id": 1,
+            "near_pad": false,
+            "any_leg_contact": true,
+            "both_leg_contact": false,
+            "stable_touchdown": false,
+            "x": -0.2573665678501129,
+            "y": 0.009450540877878666,
+            "vx": 0.0,
+            "vy": 0.0,
+            "angle": -0.0777365118265152
+          },
+          {
+            "episode_id": 2,
+            "near_pad": false,
+            "any_leg_contact": true,
+            "both_leg_contact": true,
+            "stable_touchdown": false,
+            "x": -0.45815783739089966,
+            "y": -0.08194966614246368,
+            "vx": -0.09886226803064346,
+            "vy": -0.10304633527994156,
+            "angle": 0.5208644270896912
+          },
+          {
+            "episode_id": 3,
+            "near_pad": false,
+            "any_leg_contact": true,
+            "both_leg_contact": true,
+            "stable_touchdown": false,
+            "x": -0.5751736164093018,
+            "y": -0.0933719053864479,
+            "vx": -0.08694148063659668,
+            "vy": -0.031094064936041832,
+            "angle": 0.37923431396484375
+          },
+          {
+            "episode_id": 4,
+            "near_pad": false,
+            "any_leg_contact": true,
+            "both_leg_contact": true,
+            "stable_touchdown": false,
+            "x": -0.38765621185302734,
+            "y": 0.1072383001446724,
+            "vx": -0.02311939373612404,
+            "vy": -0.0055922409519553185,
+            "angle": -0.5727294087409973
+          }
+        ],
+        "hints": [],
+        "hard_constraints": []
+      },
+      "objective_signal_alignment_audit": {
+        "success_like_terminal_rate": 0.4,
+        "positive_objective_terms": {
+          "safe_landing_terminal": 0.4,
+          "success_like_terminal": 0.4
+        },
+        "risks": [],
+        "hints": [],
+        "hard_constraints": []
+      },
+      "search_mode_recommendation": {
+        "next_search_mode": "scale_rebalance",
+        "reason": "One component dominates the episode-scale reward budget.",
+        "forbidden_edits": [],
+        "required_focus": [
+          "Reduce auxiliary dominance while preserving reachable task progress signals."
+        ],
+        "hints": [
+          "Search mode recommendation: scale_rebalance. One component dominates the episode-scale reward budget."
+        ],
+        "hard_constraints": [
+          "Follow next_search_mode=scale_rebalance: One component dominates the episode-scale reward budget.",
+          "Reduce auxiliary dominance while preserving reachable task progress signals."
+        ]
+      },
+      "hard_constraints": [
+        "Do not let one auxiliary component dominate the episode-scale objective signal.",
+        "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+        "Follow next_search_mode=scale_rebalance: One component dominates the episode-scale reward budget.",
+        "Reduce auxiliary dominance while preserving reachable task progress signals."
+      ],
+      "automatic_hints": [
+        "Reward scale audit: dominant component crash_penalty has abs return 50.000, dominance_ratio=4.53.",
+        "Reward scale audit: dense negative budget -16.939 is 16.94x the positive objective budget.",
+        "Search mode recommendation: scale_rebalance. One component dominates the episode-scale reward budget."
+      ]
+    }
+  },
+  "expert_search_strategy_decision": {
+    "file_type": "expert_search_strategy_decision",
+    "verified_elite_candidate_id": null,
+    "provisional_anchor_candidate_id": "iter_006",
+    "active_parent_candidate_id": "iter_006",
+    "active_parent_role": "provisional_anchor",
+    "frontier_updates": [
+      {
+        "candidate_id": "iter_006",
+        "status": "keep",
+        "family_id": "iter_001_family",
+        "reason": "Best candidate so far: 40% success-like terminal rate, 0% timeout, 60% unsafe. The policy reaches the ground with both legs contacting (60%) but fails to stabilize on the pad (0% stable_touchdown). The crash_penalty (-50) is the dominant component but is necessary. The next edit should add phase-specific guidance for the final touchdown phase without reducing crash_penalty or adding timeout penalties."
+      },
+      {
+        "candidate_id": "iter_001",
+        "status": "keep",
+        "family_id": "iter_001_family",
+        "reason": "Original parent of the promising family. Achieved 20% success, 80% timeout. Fuel_penalty dominance was addressed by halving to -0.05 in iter_006. Keep as reference for the family."
+      },
+      {
+        "candidate_id": "iter_002",
+        "status": "close",
+        "family_id": "iter_001_family",
+        "reason": "Failed pattern: extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05) caused out_of_bounds behavior. Closed branch."
+      },
+      {
+        "candidate_id": "iter_003",
+        "status": "close",
+        "family_id": "iter_001_family",
+        "reason": "Failed pattern: moderate success_bonus increase (to 150) + conditional fuel_penalty + time_penalty (-0.1/step) caused complete regression to early failure. Closed branch."
+      },
+      {
+        "candidate_id": "iter_004",
+        "status": "close",
+        "family_id": "iter_001_family",
+        "reason": "Failed pattern: relaxed angle condition + conditional fuel_penalty + timeout_penalty (-0.05) + near_pad_bonus (5) caused regression to early failure. Closed branch."
+      },
+      {
+        "candidate_id": "iter_005",
+        "status": "close",
+        "family_id": "iter_001_family",
+        "reason": "Failed pattern: gentle timeout_penalty (-0.02) + relaxed angle condition + conditional fuel_penalty caused regression to early failure. Closed branch."
+      },
+      {
+        "candidate_id": "iter_007",
+        "status": "close",
+        "family_id": "iter_006_family",
+        "reason": "Failed pattern: crash_penalty halved from -50 to -25 caused complete regression to early failure (100% unsafe, 0% success). Negative edge: crash_penalty reduction is harmful."
+      },
+      {
+        "candidate_id": "iter_008",
+        "status": "close",
+        "family_id": "iter_006_family",
+        "reason": "Failed pattern: added near_pad_bonus (5) caused regression to timeout-dominated behavior (100% timeout, 0% success, 0% leg contact). The near_pad_bonus alone was insufficient and may have interacted with the shaping_reward to encourage hovering."
+      }
+    ],
+    "negative_edges": [
+      {
+        "from": "iter_001",
+        "to": "iter_002",
+        "avoid_pattern": "extreme_success_bonus_increase_plus_near_pad_bonus_plus_fuel_penalty_reduction",
+        "reason": "Increasing success_bonus to 200, adding near_pad_bonus (5), and reducing fuel_penalty to -0.05 caused out_of_bounds behavior. Do not combine large success_bonus increases with intermediate bonuses."
+      },
+      {
+        "from": "iter_001",
+        "to": "iter_003",
+        "avoid_pattern": "moderate_success_bonus_increase_plus_conditional_fuel_penalty_plus_time_penalty",
+        "reason": "Increasing success_bonus to 150, making fuel_penalty conditional on altitude, and adding time_penalty (-0.1/step) caused complete regression to early failure. Do not add per-step timeout penalties."
+      },
+      {
+        "from": "iter_001",
+        "to": "iter_004",
+        "avoid_pattern": "relaxed_angle_plus_conditional_fuel_penalty_plus_timeout_penalty_plus_near_pad_bonus",
+        "reason": "Relaxing angle condition to 0.2, making fuel_penalty conditional, adding timeout_penalty (-0.05/step), and adding near_pad_bonus (5) caused regression to early failure. Do not relax success conditions or add timeout penalties."
+      },
+      {
+        "from": "iter_001",
+        "to": "iter_005",
+        "avoid_pattern": "gentle_timeout_penalty_plus_relaxed_angle_plus_conditional_fuel_penalty",
+        "reason": "Adding gentle timeout_penalty (-0.02/step), relaxing angle condition to 0.2, and making fuel_penalty conditional caused regression to early failure. Even very small timeout penalties are harmful."
+      },
+      {
+        "from": "iter_006",
+        "to": "iter_007",
+        "avoid_pattern": "crash_penalty_halving",
+        "reason": "Reducing crash_penalty from -50 to -25 caused complete regression to early failure (100% unsafe, 0% success). The crash_penalty at -50 is necessary to discourage crashes and should not be reduced."
+      },
+      {
+        "from": "iter_006",
+        "to": "iter_008",
+        "avoid_pattern": "near_pad_bonus_alone",
+        "reason": "Adding near_pad_bonus (5) alone caused regression to timeout-dominated behavior (100% timeout, 0% success, 0% leg contact). The near_pad_bonus was insufficient and may have interacted with the shaping_reward to encourage hovering. Do not add intermediate bonuses without also addressing the Phase 3 bottleneck more directly."
+      }
+    ],
+    "closed_branch_candidate_ids": [
+      "iter_002",
+      "iter_003",
+      "iter_004",
+      "iter_005",
+      "iter_007",
+      "iter_008"
+    ],
+    "promising_family_ids": [
+      "iter_001_family"
+    ],
+    "next_search_hypothesis": "The policy under iter_006 achieves 40% success-like terminal rate, 0% timeout, but 60% unsafe terminal rate. The policy reaches the ground with both legs contacting (60% both_leg_contact_rate) but fails to stabilize on the pad (0% stable_touchdown_rate, 0% near_pad_rate). The final states show the lander is far from the pad (|x| > 0.25) with high angle (up to 0.57 rad) or high lateral velocity (up to -0.099). The crash_penalty (-50) is the dominant component (dominance_ratio 4.53) but is necessary to discourage crashes. The next edit should add phase-specific guidance for the final touchdown phase: a small bonus for being near the pad (|x|<0.1, y<0.2) with both legs contacting and low lateral velocity (|vx|<0.1), but NOT a timeout penalty, NOT a success_bonus scale increase, NOT an angle relaxation, and NOT a conditional fuel_penalty. The bonus should be event-gated (one-shot) to prevent farming. The scale should be small (e.g., 5-10) to bridge the gap between near-success and true success without causing the out_of_bounds behavior seen in iter_002. However, the negative edge from iter_006 to iter_008 shows that adding a near_pad_bonus (5) alone caused regression to timeout-dominated behavior. Therefore, the next hypothesis must be more targeted: instead of a generic near_pad_bonus, add a bonus that specifically rewards the transition from Phase 2 (controlled descent) to Phase 3 (touchdown) by conditioning on both low altitude (y < 0.2) AND low vertical speed (|vy| < 0.1) AND both legs contacting, which directly incentivizes the policy to complete the landing rather than hovering near the pad. The bonus should be event-gated (one-shot) and have a scale of 10 (matching the leg_contact_bonus) to provide a clear stepping stone to the success_bonus (100). All other components remain unchanged from iter_006.",
+    "required_context_for_reward_revision": [
+      "iter_006 reward_code",
+      "iter_006 reward_schema",
+      "iter_006 target_behavior_report",
+      "iter_006 checkpoint_stability_report",
+      "iter_006 reward_static_validation",
+      "iter_006 semantic_noop_report",
+      "iter_006 revision_metadata",
+      "iter_008 target_behavior_report (to understand why near_pad_bonus alone failed)",
+      "iter_008 checkpoint_stability_report",
+      "retrieved_memory (negative edges from iter_006 to iter_007 and iter_008)",
+      "environment_summary.json",
+      "target_summary.json"
+    ],
+    "strategy_rationale": "The search has converged on iter_006 as the best candidate (40% success, 0% timeout, 60% unsafe). All children of iter_001 (iter_002 through iter_005) and children of iter_006 (iter_007 and iter_008) have failed. The common failure pattern across all failed children is the addition of some form of per-step timeout penalty (ranging from -0.02 to -0.1) or the reduction of the crash_penalty. The only successful edit was the fuel_penalty halving from -0.1 to -0.05 (iter_005 to iter_006), which improved success rate from 20% to 40% and eliminated timeout. The current bottleneck is Phase 3 (touchdown): the policy reaches the ground with both legs contacting (60%) but fails to stabilize on the pad (0% stable_touchdown, 0% near_pad). The next edit must add phase-specific guidance for the final touchdown phase without adding any per-step timeout penalty, without reducing the crash_penalty, without relaxing the success_bonus conditions, and without making the fuel_penalty conditional. The hypothesis is that a touchdown-phase bonus (10) conditioned on low altitude (y < 0.2), low vertical speed (|vy| < 0.1), and both legs contacting will directly incentivize the policy to complete the landing rather than hovering near the pad. This is different from the failed near_pad_bonus in iter_008 because it adds a vertical speed condition (|vy| < 0.1) to ensure the policy is actually landing, not just hovering near the pad. The bonus is event-gated (one-shot) to prevent farming. The scale is 10 (matching the leg_contact_bonus) to provide a clear stepping stone to the success_bonus (100).",
+    "self_check": {
+      "selected_ids_exist_in_candidate_ids": true,
+      "did_not_treat_generated_reward_as_objective": true,
+      "did_not_treat_peak_checkpoint_as_verified_quality": true,
+      "used_complete_reward_code_when_available": true,
+      "checked_reward_static_validation_when_available": true
+    },
+    "candidate_ids_available": [
+      "iter_001",
+      "iter_002",
+      "iter_003",
+      "iter_004",
+      "iter_005",
+      "iter_006",
+      "iter_007",
+      "iter_008",
+      "single_chain_iter0"
+    ],
+    "resolved_active_parent_dir": "C:\\Users\\Administrator\\stable-eureka\\experiments\\eg_rsa_single_chain\\lunar_lander_single_chain_30x1m_action_20260617_050119\\iterations\\iter_006",
+    "resolved_anchor_dir": "C:\\Users\\Administrator\\stable-eureka\\experiments\\eg_rsa_single_chain\\lunar_lander_single_chain_30x1m_action_20260617_050119\\iterations\\iter_006",
+    "fallback_used": {
+      "active_parent": false,
+      "anchor": false
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_001",
+  "active_parent_candidate_id": "iter_001",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "bootstrap",
+      "reason": "Weak bootstrap candidate with 0% success and 100% unsafe terminal rate. Replaced by iter_001 as provisional anchor."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "provisional_anchor",
+      "reason": "Only candidate with any success-like terminal rate (20%) and clear behavioral improvement over bootstrap. Despite high timeout rate (80%) and transient peak risk, it remains the best search anchor."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "failed_scale_increase",
+      "reason": "Extreme success_bonus increase to 200 + near_pad_bonus + fuel_penalty reduction caused out-of-bounds behavior and fitness regression. Negative edge established."
+    },
+    {
+      "candidate_id": "iter_003",
+      "status": "close",
+      "family_id": "failed_time_penalty",
+      "reason": "Moderate success_bonus increase to 150 + conditional fuel_penalty + time_penalty -0.1/step caused complete regression to early failure (0% success, 100% unsafe). Negative edge established."
+    },
+    {
+      "candidate_id": "iter_004",
+      "status": "close",
+      "family_id": "failed_timeout_penalty",
+      "reason": "Relaxed angle + conditional fuel_penalty + timeout_penalty -0.05 + near_pad_bonus 5 caused regression to early failure (0% success, 100% unsafe). Negative edge established."
+    },
+    {
+      "candidate_id": "iter_005",
+      "status": "close",
+      "family_id": "failed_gentle_timeout",
+      "reason": "Gentle timeout_penalty -0.02 + relaxed angle + conditional fuel_penalty caused regression to early failure (0% success, 80% unsafe, 20% out-of-bounds). Negative edge established."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "Extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05)",
+      "reason": "Caused out-of-bounds behavior and fitness regression from 16.1 to -216.7."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_003",
+      "avoid_pattern": "Moderate success_bonus increase (to 150) + conditional fuel_penalty (y>0.5) + time_penalty (-0.1/step)",
+      "reason": "Caused complete regression to early failure (0% success, 100% unsafe terminal)."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_004",
+      "avoid_pattern": "Relaxed angle condition + conditional fuel_penalty + timeout_penalty (-0.05) + near_pad_bonus (5)",
+      "reason": "Caused regression to early failure (0% success, 100% unsafe terminal)."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_005",
+      "avoid_pattern": "Gentle timeout_penalty (-0.02) + relaxed angle condition + conditional fuel_penalty",
+      "reason": "Caused regression to early failure (0% success, 80% unsafe, 20% out-of-bounds)."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "single_chain_iter0",
+    "iter_002",
+    "iter_003",
+    "iter_004",
+    "iter_005"
+  ],
+  "promising_family_ids": [
+    "provisional_anchor"
+  ],
+  "next_search_hypothesis": "The policy under iter_001 achieves 20% success-like terminal rate but 80% timeout. The dominant component by absolute return is fuel_penalty (-52.66), which is 4.22x the next component and 65x the positive objective budget. The shaping_reward (progress-delta) provides weak positive signal (mean 1.22) and the success_bonus (100) is never triggered (mean 0.0). The policy learns to hover/descend slowly using main engine (55% action 2) without completing the landing. All four timeout-penalty variants (iter_002 through iter_005) caused regression to early failure. The next edit should NOT add any per-step timeout penalty. Instead, the hypothesis is: reduce the fuel_penalty scale from -0.1 to -0.05 (halving the dominant penalty) while keeping all other components identical to iter_001. This directly addresses the scale imbalance without introducing new failure modes. The reduced fuel_penalty should make longer episodes less costly, allowing the policy to explore landing more aggressively. The success_bonus (100) and shaping_reward (progress-delta) remain unchanged. The leg_contact_bonus remains one-shot. The crash_penalty remains -50. The vertical_speed_penalty remains. The orientation_penalty remains. The expected outcome is that the policy will use main engine more freely near ground, increasing the success_like_terminal_rate from 0.2 to >=0.5 and decreasing timeout_rate from 0.8 to <=0.4.",
+  "required_context_for_reward_revision": [
+    "iter_001 reward_code",
+    "iter_001 reward_schema",
+    "iter_001 target_behavior_report",
+    "iter_001 checkpoint_stability_report",
+    "iter_001 reward_static_validation",
+    "iter_001 semantic_noop_report",
+    "iter_001 controller_decision",
+    "iter_001 revision_metadata",
+    "retrieved_memory.json (all three transitions)",
+    "environment_summary.json",
+    "target_summary.json"
+  ],
+  "strategy_rationale": "The provisional anchor iter_001 is the only candidate with any success-like terminal rate (20%) and clear behavioral improvement over bootstrap. All four child candidates (iter_002 through iter_005) regressed to early failure, establishing four negative edges. The common failure pattern across all children was the addition of some form of per-step timeout penalty (ranging from -0.02 to -0.1) combined with other changes. The next hypothesis is to directly address the dominant fuel_penalty by halving its scale from -0.1 to -0.05, keeping all other components identical to iter_001. This is a minimal, targeted change that avoids all four negative edges. The fuel_penalty is the dominant component (52.66 abs return, 4.22 dominance ratio) and reducing it should make longer episodes less costly, encouraging the policy to explore landing rather than hovering. No timeout penalty, no success_bonus scale increase, no angle relaxation, no near_pad_bonus. This is a clean scale_rebalance edit.",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true,
+    "checked_reward_static_validation_when_available": true
+  }
+}

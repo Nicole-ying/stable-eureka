@@ -1,0 +1,123 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_006",
+  "active_parent_candidate_id": "iter_006",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "iter_006",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Best behavior so far: 40% success-like terminal rate, 0% timeout, 60% unsafe. The fuel_penalty halving from -0.1 to -0.05 improved timeout behavior dramatically (80%->0%) and doubled success rate (20%->40%). This is the most promising anchor for further refinement."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Original parent of the successful iter_006 branch. Preserved as policy reference and fallback parent."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Extreme success_bonus increase (200) + near_pad_bonus + fuel_penalty reduction caused out_of_bounds behavior. Negative edge confirmed."
+    },
+    {
+      "candidate_id": "iter_003",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Moderate success_bonus increase (150) + conditional fuel_penalty + time_penalty (-0.1) caused complete regression to early failure. Negative edge confirmed."
+    },
+    {
+      "candidate_id": "iter_004",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Relaxed angle + conditional fuel_penalty + timeout_penalty (-0.05) + near_pad_bonus caused regression to early failure. Negative edge confirmed."
+    },
+    {
+      "candidate_id": "iter_005",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Gentle timeout_penalty (-0.02) + relaxed angle + conditional fuel_penalty caused regression to early failure. Negative edge confirmed."
+    },
+    {
+      "candidate_id": "iter_007",
+      "status": "close",
+      "family_id": "iter_006_family",
+      "reason": "Crash_penalty halving from -50 to -25 caused complete regression to early failure (0% success, 100% unsafe). The crash_penalty at -50 is necessary to maintain landing exploration discipline. Negative edge confirmed."
+    },
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "bootstrap",
+      "reason": "Weak bootstrap candidate with 0% success and 100% unsafe. Replaced by iter_001 as search anchor."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05)",
+      "reason": "Caused out_of_bounds behavior (20% out_of_bounds_rate). The combination of extreme success_bonus and near_pad_bonus with reduced fuel penalty made the policy attempt risky maneuvers."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_003",
+      "avoid_pattern": "moderate success_bonus increase (to 150) + conditional fuel_penalty (y>0.5) + time_penalty (-0.1/step)",
+      "reason": "Caused complete regression to early failure (100% unsafe, 0% success, 0% timeout). The time_penalty (-0.1) was too strong and caused the policy to crash early."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_004",
+      "avoid_pattern": "relaxed angle condition (0.2) + conditional fuel_penalty (y>0.5) + timeout_penalty (-0.05) + near_pad_bonus (5)",
+      "reason": "Caused regression to early failure (100% unsafe, 0% success). The timeout_penalty (-0.05) combined with other changes was still too disruptive."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_005",
+      "avoid_pattern": "gentle timeout_penalty (-0.02) + relaxed angle condition (0.2) + conditional fuel_penalty (y>0.5)",
+      "reason": "Caused regression to early failure (80% unsafe, 20% out_of_bounds, 0% success). Even a gentle timeout_penalty combined with angle relaxation and conditional fuel_penalty was harmful."
+    },
+    {
+      "from": "iter_006",
+      "to": "iter_007",
+      "avoid_pattern": "crash_penalty halving from -50 to -25",
+      "reason": "Caused complete regression to early failure (100% unsafe, 0% success). The crash_penalty at -50 is necessary to maintain landing exploration discipline. Halving it made crashes too cheap, causing the policy to stop trying to land safely."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "iter_002",
+    "iter_003",
+    "iter_004",
+    "iter_005",
+    "iter_007",
+    "single_chain_iter0"
+  ],
+  "promising_family_ids": [
+    "iter_001_family"
+  ],
+  "next_search_hypothesis": "The policy under iter_006 achieves 40% success-like terminal rate, 0% timeout, but 60% unsafe terminal rate. The dominant component is crash_penalty (-50) with dominance_ratio 4.53. The policy reaches the ground with both legs contacting (60% both_leg_contact_rate) but fails to stabilize on the pad (0% stable_touchdown_rate, 0% near_pad_rate). The final states show the lander is far from the pad (|x| > 0.25) with high angle (up to 0.57 rad) or high lateral velocity (up to -0.099). The crash_penalty at -50 is necessary and should not be reduced (negative edge from iter_007). The next edit should add phase-specific guidance for the final touchdown phase: a small bonus for being near the pad (|x|<0.1, y<0.2) with both legs contacting and low lateral velocity (|vx|<0.1), but NOT a timeout penalty, NOT a success_bonus scale increase, NOT an angle relaxation, and NOT a conditional fuel_penalty. The bonus should be event-gated (one-shot) to prevent farming. The scale should be small (e.g., 5-10) to bridge the gap between near-success and true success without causing the out_of_bounds behavior seen in iter_002. The crash_penalty must remain at -50. The fuel_penalty must remain at -0.05 (unconditional). The success_bonus conditions must remain unchanged (|angle|<0.1, |x|<0.1, y<0.2, |vx|<0.1, |vy|<0.1).",
+  "required_context_for_reward_revision": [
+    "iter_006 reward_code",
+    "iter_006 reward_schema",
+    "iter_006 target_behavior_report",
+    "iter_006 checkpoint_stability_report",
+    "iter_006 reward_static_validation",
+    "iter_006 semantic_noop_report",
+    "iter_006 controller_decision",
+    "iter_006 revision_metadata",
+    "iter_007 target_behavior_report (negative edge evidence)",
+    "iter_002 target_behavior_report (negative edge evidence for near_pad_bonus + success_bonus increase)",
+    "environment_summary.json",
+    "target_summary.json"
+  ],
+  "strategy_rationale": "The search has converged on iter_006 as the best provisional anchor: 40% success-like terminal rate, 0% timeout, 60% unsafe. The fuel_penalty halving from -0.1 to -0.05 (iter_005->iter_006) was the only successful edit so far, dramatically improving timeout behavior and doubling success rate. All other edits (timeout penalties, angle relaxation, conditional fuel_penalty, near_pad_bonus, success_bonus increase, crash_penalty reduction) caused regression to early failure. The next edit must be conservative: add a small, event-gated near-pad bonus (5-10) that rewards the policy for reaching the pad area with both legs contacting and low lateral velocity, without changing any other component. This directly addresses the current bottleneck: the policy reaches the ground but fails to stabilize on the pad. The bonus must be one-shot to prevent farming, and must not be combined with any other changes. The crash_penalty must remain at -50 (negative edge from iter_007). The fuel_penalty must remain at -0.05 unconditional (positive reference from iter_006). The success_bonus conditions must remain unchanged (negative edges from iter_002, iter_003, iter_004, iter_005 all involved angle relaxation or scale increase).",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true,
+    "checked_reward_static_validation_when_available": true
+  }
+}

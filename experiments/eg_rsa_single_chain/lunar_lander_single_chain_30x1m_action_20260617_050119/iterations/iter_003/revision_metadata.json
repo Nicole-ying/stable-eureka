@@ -1,0 +1,51 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "scale_rebalance",
+  "action_type": "target_behavior_repair",
+  "reason": "Increase success_bonus from 100 to 150 to make terminal success more attractive relative to timeout, without the extreme jump to 200 that caused out_of_bounds behavior in iter_002. Add a time_penalty (-0.1 per step) to discourage timeout and encourage faster landing. Make fuel_penalty conditional on altitude (y > 0.5) to avoid penalizing necessary main engine use near ground, reducing its dominance while preserving the signal to discourage excessive fuel use at high altitude. These changes follow the scale_rebalance mode by reducing auxiliary dominance (conditional fuel_penalty reduces its impact near ground) and increasing terminal success incentive (moderate success_bonus increase) while adding a time_penalty to discourage timeout. This approach avoids the failed pattern from iter_002 (extreme success_bonus increase to 200 + near_pad_bonus + fuel_penalty reduction to -0.05) which caused out_of_bounds behavior.",
+  "preserved_design": [
+    "shaping_reward as progress-delta for distance and vertical speed",
+    "orientation_penalty as small per-step penalty for large angle/angular velocity",
+    "leg_contact_bonus as one-shot event-gated bonus for first both-leg contact",
+    "vertical_speed_penalty as small penalty near ground with high vertical speed",
+    "crash_penalty as -50 for termination"
+  ],
+  "changed_design": [
+    "success_bonus: scale increased from 100 to 150",
+    "fuel_penalty: made conditional on altitude (y > 0.5) to avoid penalizing necessary main engine use near ground, scale remains -0.1",
+    "added time_penalty: small per-step penalty (-0.1) to discourage timeout and encourage faster landing"
+  ],
+  "required_edits_implemented": [
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Penalize or stop paying proxy rewards for timeout-like behavior, especially near the target state.",
+    "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Avoid the failed pattern from iter_002: extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05).",
+    "Avoid the failed pattern from bootstrap: relying solely on progress-delta shaping without stronger terminal success incentives."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not repeat the pattern of extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05) which caused out_of_bounds behavior.",
+    "Do not repeat the pattern of relying solely on progress-delta shaping without stronger terminal success incentives."
+  ],
+  "target_behavior_plan": "The revised reward increases the success_bonus to 150, making terminal success more attractive than timeout without the extreme jump that caused out_of_bounds behavior. The time_penalty (-0.1 per step) provides a small negative signal for each step taken, encouraging the policy to complete the landing faster and avoid timeout. The fuel_penalty is made conditional on altitude (y > 0.5) so that using main engine near ground (where it is necessary for landing) is not penalized, while still discouraging excessive fuel use at high altitude. These changes should increase the success_like_terminal_rate from 0.2 to >=0.5 and decrease timeout_rate from 0.8 to <=0.4.",
+  "action_coverage_plan": "Action coverage is already 100%. No changes needed. The revised reward should maintain or increase main engine usage for controlled descent and landing, especially near ground where fuel_penalty is not applied.",
+  "phase_guidance_plan": "Phase 1 (high altitude, y > 0.5): shaping_reward encourages descending toward pad, fuel_penalty discourages excessive main engine use, time_penalty encourages faster descent. Phase 2 (low altitude, y <= 0.5): shaping_reward continues, fuel_penalty is not applied to avoid penalizing necessary main engine use, time_penalty continues to encourage landing. Phase 3 (touchdown): leg_contact_bonus and success_bonus reward proper landing. The time_penalty provides a consistent incentive to complete the task quickly across all phases.",
+  "payment_mode_plan": "success_bonus is sparse (one-shot at terminal success). time_penalty is dense per-step penalty. fuel_penalty is dense but conditional on altitude. leg_contact_bonus is one-shot. shaping_reward is progress-delta (not repeatable in the same sense). All positive terms are either sparse, event-gated, or progress-delta. No repeatable positive terms without success.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.2 to >=0.5",
+    "timeout_rate": "decrease from 0.8 to <=0.4",
+    "fuel_penalty_mean": "decrease in absolute value from -52.66 to approximately -30.0 (conditional on altitude reduces impact near ground)",
+    "success_bonus_mean": "increase from 0.0 to >0.0 (more episodes trigger success)",
+    "fitness_score": "improve from 16.1, but treat as auxiliary evidence"
+  },
+  "validation_metrics": [
+    "Target behavior report must show final target_success=true or an explicitly improved behavior gap.",
+    "Report fitness_score_std, fitness_score_sem, last-k fitness std, and whether the behavior improvement exceeds evaluator noise."
+  ]
+}

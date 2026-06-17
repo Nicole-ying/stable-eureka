@@ -1,0 +1,46 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy learns to crash quickly because the shaping_reward (-distance_to_pad - vertical_speed) is always negative and dominates the total reward (-138.9 mean). The crash_penalty (-100) is applied on every termination, but since the shaping_reward is already very negative, crashing early yields a higher total reward than surviving longer with accumulating negative shaping. The leg_contact_bonus (+10) is paid every step both legs contact, which can be farmed without completing the task, but the policy still crashes because the negative shaping overwhelms any positive signal. The success_bonus (100) is never achieved because the conditions are too strict and the policy never reaches a state that satisfies them before crashing.",
+  "component_interaction_diagnosis": "shaping_reward (-distance_to_pad - vertical_speed) is always negative and its magnitude grows with episode length, making longer episodes worse. crash_penalty (-100) is a one-time penalty at termination, but the cumulative shaping_reward over a typical 72-step episode is about -139, which is more negative than the crash_penalty. Therefore, the policy prefers to crash early to minimize the shaping penalty. leg_contact_bonus (+10 per step both legs contact) provides a small positive signal, but it is dwarfed by the negative shaping. The success_bonus (100) is never triggered, so it provides no gradient.",
+  "action_coverage_diagnosis": "All four discrete actions (0,1,2,3) are used in the final evaluation, with action 2 (main engine) used only 0.8% of the time. The low main engine usage indicates the policy does not attempt controlled descent. Since coverage is already 100%, the bottleneck is not action coverage but trajectory-phase completion. The policy fails to enter Phase 2 (controlled descent) and Phase 3 (touchdown).",
+  "expert_audit_diagnosis": "Reward scale audit: dense negative budget (-139.87) is 139.87x the positive objective budget (0.0), violating the hard constraint to reduce dense penalties. Reward payment audit: leg_contact_bonus is repeatable positive without success, and crash_terminal/unsafe_terminal are also repeatable positives (though small). Trajectory phase report: 100% unsafe terminal, 0% success-like, with both legs contacting in all episodes but only 20% near pad. The policy reaches the ground but with high speed and off-pad, triggering crash/unsafe. Objective signal alignment: success_bonus never paid.",
+  "target_behavior_diagnosis": "Target behavior gaps: (1) Final policy does not reliably terminate with task success. (2) Unsafe terminations remain too frequent (100%). Required fixes: increase distinction between true terminal success and proxy progress states; add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+  "checkpoint_stability_diagnosis": "No transient peak risk. Final fitness (-120.1) is stable with std 15.5. Success rate is 0% throughout training. The policy consistently learns to crash early. No divergence between reward and behavior.",
+  "expert_search_strategy_diagnosis": "Active parent is single_chain_iter0 (bootstrap). Next search hypothesis: increase success_bonus magnitude and tighten conditions, reduce crash_penalty magnitude, add small penalty for high vertical speed near ground. Required context includes current reward code and schema, target behavior report, checkpoint stability report.",
+  "expert_action_plan_diagnosis": "Action type: target_behavior_repair. Required edits: increase distinction between true terminal success and proxy progress states; add clearer negative feedback for unsafe terminal behavior without overwhelming exploration; condition control incentives on reducing distance/velocity/angle in the correct phase. Forbidden edits: do not preserve design based on transient peak; do not optimize generated_reward; do not spend edit on action coverage (already solved).",
+  "failed_pattern_reuse_check": "No previous failed patterns to avoid. This is the first revision. The current design has not been tried before in a revised form.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "balanced_reward_revision",
+    "edit_scope": "medium",
+    "reason": "The current reward causes the policy to crash early because the dense negative shaping dominates. We need to: (1) Convert the shaping_reward from always-negative to progress-delta (change in distance and speed) so that making progress yields positive reward and regressing yields negative. (2) Reduce the crash_penalty magnitude to -50 to avoid overwhelming exploration. (3) Make the leg_contact_bonus event-gated (one-time when both legs first contact) to prevent farming. (4) Add a small penalty for high vertical speed when near ground to discourage hard landings. (5) Keep the success_bonus at 100 but relax conditions slightly (allow y<0.2 instead of y<0.1) to make it more reachable. These changes address the scale audit, payment audit, and target behavior gaps."
+  },
+  "hard_constraints_for_next_revision": [
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Check whether repeatable positive rewards can be farmed without completing the task.",
+    "Follow next_search_mode=balanced_reward_revision: No single deterministic audit dominates; continue balanced expert revision.",
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.",
+    "Focus on controlled descent, near-ground stability, and terminal touchdown rather than action coverage.",
+    "Condition control incentives on reducing distance/velocity/angle in the correct phase.",
+    "Forbidden edit: Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Forbidden edit: Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Forbidden edit: Do not spend the next edit only trying to increase action coverage; coverage is already solved."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "unsafe_terminal_rate": "decrease from 1.0 to <1.0",
+    "shaping_reward_mean": "become less negative or positive",
+    "leg_contact_bonus_mean": "decrease from 14.0 to ~10.0 (one-time)",
+    "crash_penalty_mean": "decrease from -100.0 to -50.0",
+    "fitness_score": "improve from -117.9"
+  },
+  "validation_metrics": [
+    "Target behavior report must show final target_success=true or an explicitly improved behavior gap.",
+    "Report fitness_score_std, fitness_score_sem, last-k fitness std, and whether the behavior improvement exceeds evaluator noise."
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

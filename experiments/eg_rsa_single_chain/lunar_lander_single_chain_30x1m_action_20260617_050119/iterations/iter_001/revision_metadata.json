@@ -1,0 +1,49 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "balanced_reward_revision",
+  "action_type": "target_behavior_repair",
+  "reason": "Convert shaping_reward from always-negative to progress-delta to provide positive feedback for progress. Reduce crash_penalty to -50 to avoid overwhelming exploration. Make leg_contact_bonus one-shot event-gated to prevent farming. Add vertical_speed_penalty near ground to discourage hard landings. Relax success_bonus y threshold to 0.2 for reachability.",
+  "preserved_design": [
+    "success_bonus as large sparse reward for true safe landing",
+    "fuel_penalty as small per-step penalty",
+    "orientation_penalty as small per-step penalty"
+  ],
+  "changed_design": [
+    "shaping_reward: from always-negative to progress-delta (change in distance and vertical speed)",
+    "crash_penalty: scale reduced from -100 to -50",
+    "leg_contact_bonus: from repeatable per-step to one-shot event-gated (first time both legs contact)",
+    "added vertical_speed_penalty: small penalty when near ground and vertical speed is high",
+    "success_bonus: relaxed y threshold from 0.1 to 0.2"
+  ],
+  "required_edits_implemented": [
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements.",
+    "Focus on controlled descent, near-ground stability, and terminal touchdown rather than action coverage.",
+    "Condition control incentives on reducing distance/velocity/angle in the correct phase."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Do not spend the next edit only trying to increase action coverage; coverage is already solved."
+  ],
+  "rejected_patterns_avoided": [],
+  "target_behavior_plan": "The revised reward provides positive progress-delta feedback for reducing distance and vertical speed, making longer useful episodes more rewarding than early crashes. The reduced crash_penalty (-50) still discourages crashing but does not dominate. The one-shot leg_contact_bonus rewards first ground contact without farming. The vertical_speed_penalty near ground encourages soft landing. The success_bonus with relaxed y threshold is more reachable.",
+  "action_coverage_plan": "Action coverage is already 100%. No changes needed. The revised reward should increase main engine usage (action 2) for controlled descent.",
+  "phase_guidance_plan": "Phase 1: progress-delta on distance and vertical speed encourages descending toward pad. Phase 2: progress-delta on vertical speed and distance, plus vertical_speed_penalty near ground, encourages controlled descent. Phase 3: success_bonus and one-shot leg_contact_bonus reward proper touchdown.",
+  "payment_mode_plan": "leg_contact_bonus is now event-gated (one-shot) to prevent farming. All other positive terms are either sparse (success_bonus) or progress-delta (shaping_reward). No repeatable positive terms without success.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "unsafe_terminal_rate": "decrease from 1.0 to <1.0",
+    "shaping_reward_mean": "become less negative or positive",
+    "leg_contact_bonus_mean": "decrease from 14.0 to ~10.0",
+    "crash_penalty_mean": "decrease from -100.0 to -50.0",
+    "fitness_score": "improve from -117.9"
+  },
+  "validation_metrics": [
+    "Target behavior report must show final target_success=true or an explicitly improved behavior gap.",
+    "Report fitness_score_std, fitness_score_sem, last-k fitness std, and whether the behavior improvement exceeds evaluator noise."
+  ]
+}

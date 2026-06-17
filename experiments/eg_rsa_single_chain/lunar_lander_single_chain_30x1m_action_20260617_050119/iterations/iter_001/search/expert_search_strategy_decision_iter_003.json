@@ -1,0 +1,79 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_001",
+  "active_parent_candidate_id": "iter_001",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "bootstrap",
+      "reason": "Bootstrap candidate with 100% unsafe terminal rate and no success signal. Replaced by iter_001 as provisional anchor."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "provisional_anchor",
+      "reason": "Best candidate so far: 20% success-like terminal rate, 0% unsafe, 80% timeout. Shows clear behavioral improvement over bootstrap. High fitness variance and transient peak risk, but remains the best provisional anchor."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "scale_rebalance_attempt",
+      "reason": "Rejected child of iter_001. Fitness score dropped significantly (-232.78 vs parent). Success-like terminal rate remained at 0.2 but out_of_bounds_rate increased to 0.2. The edit (increasing success_bonus to 200, reducing fuel_penalty, adding near_pad_bonus) did not improve behavior and introduced new failure mode. Close this branch."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "scale_rebalance_that_increases_success_bonus_and_adds_near_pad_bonus_while_reducing_fuel_penalty",
+      "reason": "This edit increased success_bonus to 200, reduced fuel_penalty to -0.05, and added near_pad_bonus. It resulted in worse fitness, increased out_of_bounds rate, and no improvement in success rate. The policy learned to go out of bounds instead of landing. Avoid repeating this combination of changes."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "single_chain_iter0",
+    "iter_002"
+  ],
+  "promising_family_ids": [
+    "provisional_anchor"
+  ],
+  "next_search_hypothesis": "The current reward (iter_001) achieves 20% success-like terminal rate but 80% timeout. The policy learns to slowly descend using main engine (55% action 2) but does not complete the landing. The shaping_reward (progress-delta) provides weak positive signal, but the fuel_penalty (-0.1 per m_power) accumulates over long episodes, making timeout episodes worse than success. The success_bonus (100) is never triggered in final evaluation. The next edit should: (1) Increase the success_bonus to 150 to make terminal success more attractive without the extreme jump to 200 that caused out_of_bounds behavior. (2) Add a small time_penalty (-0.1 per step) to discourage timeout and encourage faster landing. (3) Keep fuel_penalty at -0.1 but consider making it conditional on being far from pad (y > 0.5) to avoid penalizing necessary main engine use near ground. (4) Keep shaping_reward, orientation_penalty, leg_contact_bonus, vertical_speed_penalty, and crash_penalty unchanged. The hypothesis is that a moderate success_bonus increase combined with a small time_penalty will push the policy to complete landings rather than timeout, without introducing out_of_bounds behavior.",
+  "required_context_for_reward_revision": [
+    "iter_001 reward_code",
+    "iter_001 reward_schema",
+    "iter_001 target_behavior_report",
+    "iter_001 checkpoint_stability_report",
+    "iter_001 reward_static_validation",
+    "iter_001 semantic_noop_report",
+    "iter_001 controller_decision",
+    "iter_001 revision_metadata",
+    "iter_002 target_behavior_report",
+    "iter_002 checkpoint_stability_report",
+    "iter_002 controller_decision",
+    "iter_002 revision_metadata",
+    "retrieved_memory.json (both transitions)",
+    "environment_summary.json",
+    "target_summary.json"
+  ],
+  "strategy_rationale": "No candidate satisfies the target behavior contract (verified_elite = null). iter_001 is the best candidate with 20% success-like terminal rate and 0% unsafe, but 80% timeout and high fitness variance prevent it from being verified elite. iter_002 was a failed child that introduced out_of_bounds behavior. The provisional anchor is iter_001. The next edit should build on iter_001's progress-delta shaping and one-shot leg_contact_bonus, but add stronger incentives for terminal success (moderate success_bonus increase to 150) and a time_penalty to discourage timeout. The fuel_penalty should remain at -0.1 but be made conditional on altitude to avoid penalizing necessary main engine use near ground. This approach avoids the failed pattern from iter_002 (extreme success_bonus increase + near_pad_bonus) while addressing the core timeout issue.",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true,
+    "checked_reward_static_validation_when_available": true
+  },
+  "candidate_ids_available": [
+    "iter_001",
+    "iter_002",
+    "single_chain_iter0"
+  ],
+  "resolved_active_parent_dir": "C:\\Users\\Administrator\\stable-eureka\\experiments\\eg_rsa_single_chain\\lunar_lander_single_chain_30x1m_action_20260617_050119\\iterations\\iter_001",
+  "resolved_anchor_dir": "C:\\Users\\Administrator\\stable-eureka\\experiments\\eg_rsa_single_chain\\lunar_lander_single_chain_30x1m_action_20260617_050119\\iterations\\iter_001",
+  "fallback_used": {
+    "active_parent": false,
+    "anchor": false
+  }
+}

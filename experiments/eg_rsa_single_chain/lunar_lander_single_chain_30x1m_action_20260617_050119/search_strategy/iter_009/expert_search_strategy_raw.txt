@@ -1,0 +1,129 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_006",
+  "active_parent_candidate_id": "iter_006",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "iter_006",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Best candidate so far: 40% success-like terminal rate, 0% timeout, 60% unsafe. The policy reaches the ground with both legs contacting (60%) but fails to stabilize on the pad (0% stable_touchdown). The crash_penalty (-50) is the dominant component but is necessary. The next edit should add phase-specific guidance for the final touchdown phase without reducing crash_penalty or adding timeout penalties."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Original parent of the promising family. Achieved 20% success, 80% timeout. Fuel_penalty dominance was addressed by halving to -0.05 in iter_006. Keep as reference for the family."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed pattern: extreme success_bonus increase (to 200) + near_pad_bonus + fuel_penalty reduction (to -0.05) caused out_of_bounds behavior. Closed branch."
+    },
+    {
+      "candidate_id": "iter_003",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed pattern: moderate success_bonus increase (to 150) + conditional fuel_penalty + time_penalty (-0.1/step) caused complete regression to early failure. Closed branch."
+    },
+    {
+      "candidate_id": "iter_004",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed pattern: relaxed angle condition + conditional fuel_penalty + timeout_penalty (-0.05) + near_pad_bonus (5) caused regression to early failure. Closed branch."
+    },
+    {
+      "candidate_id": "iter_005",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Failed pattern: gentle timeout_penalty (-0.02) + relaxed angle condition + conditional fuel_penalty caused regression to early failure. Closed branch."
+    },
+    {
+      "candidate_id": "iter_007",
+      "status": "close",
+      "family_id": "iter_006_family",
+      "reason": "Failed pattern: crash_penalty halved from -50 to -25 caused complete regression to early failure (100% unsafe, 0% success). Negative edge: crash_penalty reduction is harmful."
+    },
+    {
+      "candidate_id": "iter_008",
+      "status": "close",
+      "family_id": "iter_006_family",
+      "reason": "Failed pattern: added near_pad_bonus (5) caused regression to timeout-dominated behavior (100% timeout, 0% success, 0% leg contact). The near_pad_bonus alone was insufficient and may have interacted with the shaping_reward to encourage hovering."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "extreme_success_bonus_increase_plus_near_pad_bonus_plus_fuel_penalty_reduction",
+      "reason": "Increasing success_bonus to 200, adding near_pad_bonus (5), and reducing fuel_penalty to -0.05 caused out_of_bounds behavior. Do not combine large success_bonus increases with intermediate bonuses."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_003",
+      "avoid_pattern": "moderate_success_bonus_increase_plus_conditional_fuel_penalty_plus_time_penalty",
+      "reason": "Increasing success_bonus to 150, making fuel_penalty conditional on altitude, and adding time_penalty (-0.1/step) caused complete regression to early failure. Do not add per-step timeout penalties."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_004",
+      "avoid_pattern": "relaxed_angle_plus_conditional_fuel_penalty_plus_timeout_penalty_plus_near_pad_bonus",
+      "reason": "Relaxing angle condition to 0.2, making fuel_penalty conditional, adding timeout_penalty (-0.05/step), and adding near_pad_bonus (5) caused regression to early failure. Do not relax success conditions or add timeout penalties."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_005",
+      "avoid_pattern": "gentle_timeout_penalty_plus_relaxed_angle_plus_conditional_fuel_penalty",
+      "reason": "Adding gentle timeout_penalty (-0.02/step), relaxing angle condition to 0.2, and making fuel_penalty conditional caused regression to early failure. Even very small timeout penalties are harmful."
+    },
+    {
+      "from": "iter_006",
+      "to": "iter_007",
+      "avoid_pattern": "crash_penalty_halving",
+      "reason": "Reducing crash_penalty from -50 to -25 caused complete regression to early failure (100% unsafe, 0% success). The crash_penalty at -50 is necessary to discourage crashes and should not be reduced."
+    },
+    {
+      "from": "iter_006",
+      "to": "iter_008",
+      "avoid_pattern": "near_pad_bonus_alone",
+      "reason": "Adding near_pad_bonus (5) alone caused regression to timeout-dominated behavior (100% timeout, 0% success, 0% leg contact). The near_pad_bonus was insufficient and may have interacted with the shaping_reward to encourage hovering. Do not add intermediate bonuses without also addressing the Phase 3 bottleneck more directly."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "iter_002",
+    "iter_003",
+    "iter_004",
+    "iter_005",
+    "iter_007",
+    "iter_008"
+  ],
+  "promising_family_ids": [
+    "iter_001_family"
+  ],
+  "next_search_hypothesis": "The policy under iter_006 achieves 40% success-like terminal rate, 0% timeout, but 60% unsafe terminal rate. The policy reaches the ground with both legs contacting (60% both_leg_contact_rate) but fails to stabilize on the pad (0% stable_touchdown_rate, 0% near_pad_rate). The final states show the lander is far from the pad (|x| > 0.25) with high angle (up to 0.57 rad) or high lateral velocity (up to -0.099). The crash_penalty (-50) is the dominant component (dominance_ratio 4.53) but is necessary to discourage crashes. The next edit should add phase-specific guidance for the final touchdown phase: a small bonus for being near the pad (|x|<0.1, y<0.2) with both legs contacting and low lateral velocity (|vx|<0.1), but NOT a timeout penalty, NOT a success_bonus scale increase, NOT an angle relaxation, and NOT a conditional fuel_penalty. The bonus should be event-gated (one-shot) to prevent farming. The scale should be small (e.g., 5-10) to bridge the gap between near-success and true success without causing the out_of_bounds behavior seen in iter_002. However, the negative edge from iter_006 to iter_008 shows that adding a near_pad_bonus (5) alone caused regression to timeout-dominated behavior. Therefore, the next hypothesis must be more targeted: instead of a generic near_pad_bonus, add a bonus that specifically rewards the transition from Phase 2 (controlled descent) to Phase 3 (touchdown) by conditioning on both low altitude (y < 0.2) AND low vertical speed (|vy| < 0.1) AND both legs contacting, which directly incentivizes the policy to complete the landing rather than hovering near the pad. The bonus should be event-gated (one-shot) and have a scale of 10 (matching the leg_contact_bonus) to provide a clear stepping stone to the success_bonus (100). All other components remain unchanged from iter_006.",
+  "required_context_for_reward_revision": [
+    "iter_006 reward_code",
+    "iter_006 reward_schema",
+    "iter_006 target_behavior_report",
+    "iter_006 checkpoint_stability_report",
+    "iter_006 reward_static_validation",
+    "iter_006 semantic_noop_report",
+    "iter_006 revision_metadata",
+    "iter_008 target_behavior_report (to understand why near_pad_bonus alone failed)",
+    "iter_008 checkpoint_stability_report",
+    "retrieved_memory (negative edges from iter_006 to iter_007 and iter_008)",
+    "environment_summary.json",
+    "target_summary.json"
+  ],
+  "strategy_rationale": "The search has converged on iter_006 as the best candidate (40% success, 0% timeout, 60% unsafe). All children of iter_001 (iter_002 through iter_005) and children of iter_006 (iter_007 and iter_008) have failed. The common failure pattern across all failed children is the addition of some form of per-step timeout penalty (ranging from -0.02 to -0.1) or the reduction of the crash_penalty. The only successful edit was the fuel_penalty halving from -0.1 to -0.05 (iter_005 to iter_006), which improved success rate from 20% to 40% and eliminated timeout. The current bottleneck is Phase 3 (touchdown): the policy reaches the ground with both legs contacting (60%) but fails to stabilize on the pad (0% stable_touchdown, 0% near_pad). The next edit must add phase-specific guidance for the final touchdown phase without adding any per-step timeout penalty, without reducing the crash_penalty, without relaxing the success_bonus conditions, and without making the fuel_penalty conditional. The hypothesis is that a touchdown-phase bonus (10) conditioned on low altitude (y < 0.2), low vertical speed (|vy| < 0.1), and both legs contacting will directly incentivize the policy to complete the landing rather than hovering near the pad. This is different from the failed near_pad_bonus in iter_008 because it adds a vertical speed condition (|vy| < 0.1) to ensure the policy is actually landing, not just hovering near the pad. The bonus is event-gated (one-shot) to prevent farming. The scale is 10 (matching the leg_contact_bonus) to provide a clear stepping stone to the success_bonus (100).",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true,
+    "checked_reward_static_validation_when_available": true
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "scale_rebalance",
+  "action_type": "target_behavior_repair",
+  "reason": "Increase success_bonus from 100 to 200 to make terminal success more attractive relative to timeout. Add a small near-pad bonus (10) when both legs contact and the lander is near the pad (|x|<0.1, y<0.2) to bridge the gap between near-success and true success. Reduce fuel_penalty scale from -0.1 to -0.05 to reduce its dominance (dominance_ratio 4.22, dense_to_objective_ratio 65.13) while preserving the signal to discourage excessive fuel use. These changes follow the scale_rebalance mode by reducing auxiliary dominance and increasing terminal success incentive.",
+  "preserved_design": [
+    "shaping_reward as progress-delta for distance and vertical speed",
+    "orientation_penalty as small per-step penalty for large angle/angular velocity",
+    "leg_contact_bonus as one-shot event-gated bonus for first both-leg contact",
+    "vertical_speed_penalty as small penalty near ground with high vertical speed",
+    "crash_penalty as -50 for termination"
+  ],
+  "changed_design": [
+    "success_bonus: scale increased from 100 to 200",
+    "fuel_penalty: scale reduced from -0.1 to -0.05",
+    "added near_pad_bonus: small bonus (10) when both legs contact and near pad (|x|<0.1, y<0.2) to bridge near-success to true success"
+  ],
+  "required_edits_implemented": [
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Penalize or stop paying proxy rewards for timeout-like behavior, especially near the target state.",
+    "Prefer reward edits that improve success/timeout behavior rather than chasing small noisy fitness gains.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Avoid remembered failed pattern: relying solely on progress-delta shaping without stronger terminal success incentives."
+  ],
+  "rejected_patterns_avoided": [
+    "Do not repeat the pattern of relying solely on progress-delta shaping without stronger terminal success incentives."
+  ],
+  "target_behavior_plan": "The revised reward increases the success_bonus to 200, making terminal success much more attractive than timeout. The near_pad_bonus (10) provides a small positive signal when the lander is near the pad with both legs contacting, bridging the gap between near-success and true success. The fuel_penalty is halved to reduce its dominance, so the policy is less penalized for using main engine to descend and land. These changes should increase the success_like_terminal_rate from 0.2 to >=0.5 and decrease timeout_rate from 0.8 to <=0.4.",
+  "action_coverage_plan": "Action coverage is already 100%. No changes needed. The revised reward should maintain or increase main engine usage for controlled descent and landing.",
+  "phase_guidance_plan": "Phase 1: shaping_reward (progress-delta) encourages descending toward pad. Phase 2: shaping_reward and reduced fuel_penalty encourage controlled descent. Phase 3: near_pad_bonus and success_bonus reward proper touchdown. The near_pad_bonus provides intermediate feedback for reaching the pad area with leg contact, which should help the policy learn to complete the landing.",
+  "payment_mode_plan": "success_bonus is sparse (one-shot at terminal success). near_pad_bonus is event-gated (one-shot when both legs contact and near pad, using a flag to prevent repeatability). leg_contact_bonus is already one-shot. shaping_reward is progress-delta (not repeatable in the same sense). All positive terms are either sparse, event-gated, or progress-delta. No repeatable positive terms without success.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.2 to >=0.5",
+    "timeout_rate": "decrease from 0.8 to <=0.4",
+    "fuel_penalty_mean": "decrease in absolute value from -52.66 to approximately -26.33",
+    "success_bonus_mean": "increase from 0.0 to >0.0",
+    "fitness_score": "improve from 16.1, but treat as auxiliary evidence"
+  },
+  "validation_metrics": [
+    "Target behavior report must show final target_success=true or an explicitly improved behavior gap.",
+    "Report fitness_score_std, fitness_score_sem, last-k fitness std, and whether the behavior improvement exceeds evaluator noise."
+  ]
+}
