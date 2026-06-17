@@ -1,32 +1,20 @@
 """Compact prompt compiler for expert reward reflection.
 
-Raw evidence may be saved on disk for human inspection, but the LLM should only
-receive a small, task-relevant compact prompt. The goal is to prevent prompt
-inflation across long 30+ iteration searches while preserving the information a
-human reward-design expert actually needs.
+This module does not mechanically truncate prompts. Its job is to remove noisy raw
+artifacts from the LLM input while preserving the information that must be exact:
+complete elite reward code, the current parent reward code, and every reward
+component with its formula/expression.
 """
 
+import ast
 import hashlib
 import re
-from typing import Any, Dict, List, Optional
-
-
-def _clip(text: str, max_chars: int, label: str) -> str:
-    text = (text or '').strip()
-    if len(text) <= max_chars:
-        return text
-    return (
-        text[:max_chars]
-        + f"\n\n[TRUNCATED {label}: kept first {max_chars} chars. Raw file is saved on disk but not sent to LLM.]"
-    )
+import textwrap
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def normalize_reward_code(code: str) -> str:
-    """Normalize reward code for exact duplicate detection.
-
-    This is deliberately conservative: it catches identical or formatting-only
-    duplicates without pretending to solve semantic equivalence.
-    """
+    """Normalize reward code for exact duplicate detection."""
     code = code or ''
     code = re.sub(r'#.*', '', code)
     code = re.sub(r'\s+', ' ', code)
@@ -37,14 +25,12 @@ def reward_code_hash(code: str) -> str:
     return hashlib.sha256(normalize_reward_code(code).encode('utf-8')).hexdigest()[:16]
 
 
-def compact_task_card(task_description: str, env_code: str = '', max_chars: int = 900) -> str:
-    """Return a short task card. Do not send full env code after bootstrap."""
+def compact_task_card(task_description: str, env_code: str = '') -> str:
+    """Return a concise task card without sending full env code after bootstrap."""
     task = (task_description or '').strip()
     lines = [line.strip() for line in task.splitlines() if line.strip()]
     summary = ' '.join(lines[:6]) if lines else 'Task description unavailable.'
 
-    # Keep only one hint about the environment interface. Full env_code is noisy
-    # and should not be repeatedly sent to the LLM in long searches.
     interface_hint = ''
     if env_code:
         compute_match = re.search(r'def\s+compute_reward\s*\(([^)]*)\)', env_code)
@@ -54,7 +40,7 @@ def compact_task_card(task_description: str, env_code: str = '', max_chars: int 
         elif step_match:
             interface_hint = f"\nEnvironment step interface hint: step({step_match.group(1).strip()})"
 
-    return _clip(summary + interface_hint, max_chars, 'task card')
+    return summary + interface_hint
 
 
 def _final_metric(summary: Dict[str, Any], key: str, default: str = 'NA') -> str:
@@ -64,22 +50,150 @@ def _final_metric(summary: Dict[str, Any], key: str, default: str = 'NA') -> str
     return str(value)
 
 
-def build_elite_chain_summary(history: List[Dict[str, Any]], max_records: int = 6) -> str:
+def _label(record: Dict[str, Any]) -> str:
+    return f"iter_{int(record.get('iteration', -1)):03d}_sample_{record.get('sample')}"
+
+
+def _safe_unparse(node: ast.AST) -> str:
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return '<unparse_failed>'
+
+
+def _extract_assignments_with_conditions(code: str) -> Dict[str, List[Tuple[str, str]]]:
+    """Extract variable assignments and the condition path where they occur.
+
+    This is not a validator. It is a lightweight manifest builder to help the
+    reflection prompt show every reward component formula instead of vague
+    "main design" summaries.
+    """
+    assignments: Dict[str, List[Tuple[str, str]]] = {}
+
+    try:
+        tree = ast.parse(textwrap.dedent(code))
+    except SyntaxError:
+        return assignments
+
+    def visit_statements(statements: List[ast.stmt], conditions: List[str]):
+        for stmt in statements:
+            if isinstance(stmt, ast.Assign):
+                expr = _safe_unparse(stmt.value)
+                condition = ' and '.join(conditions) if conditions else 'always / current execution path'
+                for target in stmt.targets:
+                    if isinstance(target, ast.Name):
+                        assignments.setdefault(target.id, []).append((condition, expr))
+            elif isinstance(stmt, ast.AugAssign) and isinstance(stmt.target, ast.Name):
+                expr = f"{stmt.target.id} {type(stmt.op).__name__}= {_safe_unparse(stmt.value)}"
+                condition = ' and '.join(conditions) if conditions else 'always / current execution path'
+                assignments.setdefault(stmt.target.id, []).append((condition, expr))
+            elif isinstance(stmt, ast.If):
+                test = _safe_unparse(stmt.test)
+                visit_statements(stmt.body, conditions + [test])
+                visit_statements(stmt.orelse, conditions + [f'not ({test})'])
+            elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit_statements(stmt.body, conditions)
+            elif isinstance(stmt, (ast.For, ast.While, ast.With, ast.Try)):
+                for field in ('body', 'orelse', 'finalbody'):
+                    body = getattr(stmt, field, None)
+                    if isinstance(body, list):
+                        visit_statements(body, conditions)
+
+    visit_statements(tree.body, [])
+    return assignments
+
+
+def _find_return_component_dict(code: str) -> Dict[str, str]:
+    try:
+        tree = ast.parse(textwrap.dedent(code))
+    except SyntaxError:
+        return {}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Return):
+            continue
+        value = node.value
+        if isinstance(value, ast.Tuple) and len(value.elts) >= 2:
+            maybe_dict = value.elts[1]
+        else:
+            maybe_dict = value
+        if isinstance(maybe_dict, ast.Dict):
+            components = {}
+            for key_node, value_node in zip(maybe_dict.keys, maybe_dict.values):
+                if key_node is None:
+                    continue
+                if isinstance(key_node, ast.Constant):
+                    key = str(key_node.value)
+                else:
+                    key = _safe_unparse(key_node)
+                components[key] = _safe_unparse(value_node)
+            return components
+    return {}
+
+
+def extract_component_manifest(code: str) -> List[Dict[str, str]]:
+    """Extract every returned reward component and its formula/expression."""
+    assignments = _extract_assignments_with_conditions(code)
+    returned_components = _find_return_component_dict(code)
+    manifest: List[Dict[str, str]] = []
+
+    if returned_components:
+        for component, returned_expr in returned_components.items():
+            assignment_rows = assignments.get(returned_expr, [])
+            if assignment_rows:
+                formula = ' ; '.join([f'if {cond}: {expr}' for cond, expr in assignment_rows])
+            else:
+                formula = returned_expr
+            manifest.append({
+                'component': component,
+                'returned_expression': returned_expr,
+                'formula': formula,
+            })
+        return manifest
+
+    # Fallback: expose likely reward variables if the function did not return a
+    # component dictionary. This should be rare because coding instructions ask
+    # for individual components.
+    for name, rows in assignments.items():
+        if 'reward' in name or 'bonus' in name or 'penalty' in name or 'cost' in name:
+            formula = ' ; '.join([f'if {cond}: {expr}' for cond, expr in rows])
+            manifest.append({
+                'component': name,
+                'returned_expression': name,
+                'formula': formula,
+            })
+    return manifest
+
+
+def render_component_manifest(code: str) -> str:
+    manifest = extract_component_manifest(code)
+    if not manifest:
+        return 'Component manifest could not be extracted automatically. Use the full reward code below as the source of truth.'
+
+    lines = [
+        '| component | returned expression | formula / condition path |',
+        '|---|---|---|',
+    ]
+    for item in manifest:
+        formula = item['formula'].replace('\n', ' ')
+        lines.append(f"| {item['component']} | `{item['returned_expression']}` | `{formula}` |")
+    return '\n'.join(lines)
+
+
+def build_elite_chain_summary(history: List[Dict[str, Any]]) -> str:
     elites = [record for record in history if record.get('is_elite')]
     if not elites:
         return 'No elite has been confirmed yet.'
 
-    elites = elites[-max_records:]
     lines = [
         '| elite | parent | fitness | success_like | episode_length | code_hash |',
         '|---|---|---:|---:|---:|---|',
     ]
     for record in elites:
         summary = record.get('final_eval_summary', {}) or {}
-        label = f"iter_{int(record.get('iteration', -1)):03d}_sample_{record.get('sample')}"
         lines.append(
             '| {label} | {parent} | {fitness} | {success} | {ep_len} | {code_hash} |'.format(
-                label=label,
+                label=_label(record),
                 parent=record.get('parent') or 'None',
                 fitness=f"{float(record.get('fitness', 0.0)):.3f}",
                 success=_final_metric(summary, 'success_like_rate'),
@@ -90,11 +204,30 @@ def build_elite_chain_summary(history: List[Dict[str, Any]], max_records: int = 
     return '\n'.join(lines)
 
 
-def build_failed_children_summary(
-    history: List[Dict[str, Any]],
-    parent_label: Optional[str],
-    max_records: int = 8,
-) -> str:
+def build_elite_reward_code_section(history: List[Dict[str, Any]]) -> str:
+    elites = [record for record in history if record.get('is_elite')]
+    if not elites:
+        return 'No elite reward code has been confirmed yet.'
+
+    blocks = []
+    for record in elites:
+        code = record.get('reward_code', '')
+        blocks.extend([
+            f"## {_label(record)} full elite reward code",
+            f"fitness={float(record.get('fitness', 0.0)):.3f}, parent={record.get('parent') or 'None'}, code_hash={record.get('code_hash', 'NA')}",
+            '',
+            'Component manifest:',
+            render_component_manifest(code),
+            '',
+            '```python',
+            code.strip(),
+            '```',
+            '',
+        ])
+    return '\n'.join(blocks)
+
+
+def build_failed_children_summary(history: List[Dict[str, Any]], parent_label: Optional[str]) -> str:
     if not parent_label:
         return 'No parent-specific child search history yet.'
 
@@ -102,19 +235,17 @@ def build_failed_children_summary(
     if not children:
         return f'No recorded children from {parent_label} yet.'
 
-    children = children[-max_records:]
-    lines = [
+    blocks = [
         f'Children searched from current parent {parent_label}:',
-        '| child | status | fitness | success_like | episode_length | code_hash | avoid note |',
-        '|---|---|---:|---:|---:|---|---|',
+        '| child | status | fitness | success_like | episode_length | code_hash |',
+        '|---|---|---:|---:|---:|---|',
     ]
     for record in children:
         summary = record.get('final_eval_summary', {}) or {}
-        label = f"iter_{int(record.get('iteration', -1)):03d}_sample_{record.get('sample')}"
         status = 'elite' if record.get('is_elite') else 'failed_or_non_elite_child'
-        lines.append(
-            '| {label} | {status} | {fitness} | {success} | {ep_len} | {code_hash} | do not repeat this exact code hash; diagnose changed components before reusing the same family |'.format(
-                label=label,
+        blocks.append(
+            '| {label} | {status} | {fitness} | {success} | {ep_len} | {code_hash} |'.format(
+                label=_label(record),
                 status=status,
                 fitness=f"{float(record.get('fitness', 0.0)):.3f}",
                 success=_final_metric(summary, 'success_like_rate'),
@@ -122,7 +253,17 @@ def build_failed_children_summary(
                 code_hash=record.get('code_hash', 'NA'),
             )
         )
-    return '\n'.join(lines)
+
+    blocks.append('')
+    blocks.append('Child component manifests. These are included to avoid repeating failed reward designs without sending noisy raw evidence:')
+    for record in children:
+        code = record.get('reward_code', '')
+        blocks.extend([
+            '',
+            f"## {_label(record)} component manifest, status={'elite' if record.get('is_elite') else 'failed_or_non_elite_child'}",
+            render_component_manifest(code),
+        ])
+    return '\n'.join(blocks)
 
 
 def build_duplicate_guard(history: List[Dict[str, Any]], parent_label: Optional[str]) -> str:
@@ -131,14 +272,13 @@ def build_duplicate_guard(history: List[Dict[str, Any]], parent_label: Optional[
         code_hash = record.get('code_hash')
         if not code_hash:
             continue
-        label = f"iter_{int(record.get('iteration', -1)):03d}_sample_{record.get('sample')}"
         relation = 'child_of_current_parent' if parent_label and record.get('parent') == parent_label else 'history'
-        hashes.append(f'- {code_hash}: {label}, {relation}, fitness={float(record.get("fitness", 0.0)):.3f}')
+        hashes.append(f'- {code_hash}: {_label(record)}, {relation}, fitness={float(record.get("fitness", 0.0)):.3f}')
 
     if not hashes:
         return 'No previous reward hashes yet.'
 
-    return 'Do not regenerate rewards with these exact normalized code hashes:\n' + '\n'.join(hashes[-20:])
+    return 'Do not regenerate rewards with these exact normalized code hashes:\n' + '\n'.join(hashes)
 
 
 def build_compact_reflection_prompt(
@@ -151,41 +291,43 @@ def build_compact_reflection_prompt(
     parent_reward_code: str,
     parent_label: str,
     reward_history: List[Dict[str, Any]],
-    max_total_chars: int = 15000,
 ) -> str:
-    """Build a bounded expert prompt.
+    """Build expert prompt without raw-noise files and without truncation.
 
-    The prompt intentionally excludes raw expert_memory_context, raw iteration
-    evidence, full evals, full history code, previous LLM responses, and full env
-    code. Those artifacts may remain on disk, but they must not enter the LLM
-    prompt.
+    The prompt excludes raw expert_memory_context, full evals, previous LLM
+    responses, and full env code after bootstrap. It preserves all elite reward
+    function code and all component formulas/manifests needed for expert analysis.
     """
-    parent_reward_code = _clip(parent_reward_code, 5200, 'current parent reward code')
-    component_feedback = _clip(component_feedback, 3600, 'component feedback')
-
     blocks = [
         '# Expert reward reflection input',
-        'Use only the compact evidence below. Raw evidence exists on disk but is intentionally not provided to avoid noise and prompt inflation.',
+        'Use only the relevant evidence below. Raw evidence files are intentionally not provided because they add noise. Do not ask for extra files.',
         '',
         '## Task card',
         compact_task_card(task_description, env_code),
         '',
         '## Elite chain summary',
-        _clip(build_elite_chain_summary(reward_history), 1800, 'elite chain summary'),
+        build_elite_chain_summary(reward_history),
+        '',
+        '## Full elite reward functions and component formulas',
+        build_elite_reward_code_section(reward_history),
         '',
         '## Failed / non-elite children from current parent',
-        _clip(build_failed_children_summary(reward_history, parent_label), 2200, 'children from current parent'),
+        build_failed_children_summary(reward_history, parent_label),
         '',
         '## Duplicate guard',
-        _clip(build_duplicate_guard(reward_history, parent_label), 1600, 'duplicate guard'),
+        build_duplicate_guard(reward_history, parent_label),
         '',
         '## Current iteration compact component feedback',
-        component_feedback,
+        component_feedback.strip(),
         '',
         '## Current parent reward code to modify',
         f'Parent: {parent_label}',
+        '',
+        'Current parent component manifest:',
+        render_component_manifest(parent_reward_code),
+        '',
         '```python',
-        parent_reward_code,
+        parent_reward_code.strip(),
         '```',
         '',
         '## Reflection rules',
@@ -196,5 +338,4 @@ def build_compact_reflection_prompt(
         'First output the complete component diagnosis table. Then output exactly one Python code block containing the revised compute_reward function. Do not output or request extra files.',
     ]
 
-    prompt = '\n'.join(blocks)
-    return _clip(prompt, max_total_chars, 'entire compact reflection prompt') + '\n'
+    return '\n'.join(blocks) + '\n'
