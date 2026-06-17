@@ -15,7 +15,8 @@ from stable_eureka.openai_generator import OpenAIGenerator
 from stable_eureka.utils import (read_from_file,
                                  get_code_from_response, append_and_save_to_txt,
                                  indent_code, save_to_txt, save_to_json,
-                                 make_env, reflection_component_to_str, read_from_json)
+                                 make_env, reflection_component_to_str, read_from_json,
+                                 reward_history_to_str, summarize_final_eval)
 from stable_eureka.rl_trainer import RLTrainer
 from stable_eureka.rl_evaluator import RLEvaluator
 from gymnasium.envs.registration import register
@@ -89,8 +90,12 @@ class StableEureka:
         self._best_reward = ('', -float('inf'), None, None)  # (reward code, fitness value, iteration, sample)
 
         self._record_results: Dict = {}
+        self._reward_history = []
 
         (self._experiment_path / 'code').mkdir(parents=True, exist_ok=True)  # Code folder
+        self._reward_history_path = self._experiment_path / 'code' / 'reward_history'
+        self._reward_history_path.mkdir(parents=True, exist_ok=True)
+
         for iteration in range(self._config['eureka']['iterations']):
             for sample in range(self._config['eureka']['samples']):
                 (self._experiment_path / 'code' / f'iteration_{iteration}' / f'sample_{sample}').mkdir(parents=True,
@@ -309,24 +314,66 @@ class StableEureka:
             best_reward_code = reward_codes[best_idx]
             self._record_results[iteration] = (best_reward_code, best_fitness)
 
+            previous_elite_iteration = self._best_reward[2]
+            previous_elite_sample = self._best_reward[3]
+            previous_elite_fitness = self._best_reward[1]
+            is_new_elite = best_fitness > previous_elite_fitness
+
+            reward_code_filename = f'iter_{iteration:03d}_sample_{best_idx}_reward.py'
+            reward_code_path = self._reward_history_path / reward_code_filename
+            save_to_txt(reward_code_path, best_reward_code)
+
+            parent_name = None
+            if previous_elite_iteration is not None and previous_elite_sample is not None:
+                parent_name = f'iter_{previous_elite_iteration:03d}_sample_{previous_elite_sample}'
+
+            history_record = {
+                'iteration': int(iteration),
+                'sample': int(best_idx),
+                'parent': parent_name,
+                'is_elite': bool(is_new_elite),
+                'fitness': float(best_fitness),
+                'final_eval_summary': summarize_final_eval(best_eval),
+                'reward_code_path': str(reward_code_path.relative_to(self._experiment_path)),
+                'reward_code': best_reward_code,
+            }
+            self._reward_history.append(history_record)
+            save_to_json(self._reward_history_path / 'reward_history.json',
+                         {'records': self._reward_history})
+
             # create the reward reflection prompt
             reward_reflection = reflection_component_to_str(best_eval)
-            reward_reflection_prompt = (self._prompts['reward_reflection_init'] + reward_reflection + '\n' +
-                                        self._prompts['reward_reflection_end'] +
-                                        'Stable-Eureka best iteration  (you should modify it!): \n' +
-                                        best_reward_code + '\n')
+            reward_history = reward_history_to_str(self._reward_history)
+
+            if is_new_elite or self._best_reward[0] == '':
+                parent_reward_code = best_reward_code
+                parent_label = f'iter_{iteration:03d}_sample_{best_idx}'
+            else:
+                parent_reward_code = self._best_reward[0]
+                parent_label = f'iter_{previous_elite_iteration:03d}_sample_{previous_elite_sample}'
+
+            reward_reflection_prompt = (
+                self._prompts['reward_reflection_init'] +
+                '\n\n[REWARD HISTORY]\n' + reward_history +
+                '\n\n[CURRENT ITERATION TRAINING FEEDBACK]\n' + reward_reflection + '\n' +
+                self._prompts['reward_reflection_end'] +
+                '\n\n[CURRENT PARENT REWARD CODE TO MODIFY: ' + parent_label + ']\n' +
+                '```python\n' + parent_reward_code.strip() + '\n```\n'
+            )
 
             self._prompts['reward_reflection'] = reward_reflection_prompt
+            save_to_txt(self._experiment_path / 'code' / f'iteration_{iteration}' / 'reflection_input.txt',
+                        reward_reflection_prompt)
 
             # update the best reward tuple
-            if best_fitness > self._best_reward[1]:
+            if is_new_elite:
                 logger.info(f"New best reward found with fitness score of: {best_fitness}, "
-                            f"previous best: {self._best_reward[1]}")
+                            f"previous best: {previous_elite_fitness}")
                 logger.info(f"Reward code:\n{best_reward_code}")
                 self._best_reward = (best_reward_code, best_fitness, iteration, best_idx)
 
                 save_to_json(self._experiment_path / 'code' / 'best_reward.json',
-                             {'reward': best_reward_code, 'fitness': best_fitness, 'iteration': iteration,
+                             {'reward': best_reward_code, 'fitness': float(best_fitness), 'iteration': iteration,
                               'sample': best_idx})
 
             save_to_json(self._experiment_path / 'code' / 'best_iteration_rewards.json',
