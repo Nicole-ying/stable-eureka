@@ -1,10 +1,36 @@
-Please analyze the policy feedback and provide an improved reward function to better solve the task. Tips for analyzing feedback:
-1. If a reward component's values are nearly identical, or it increases when it should decrease (minimize) and vice versa, consider the following options:
-    a. Change its scale or temperature parameter.
-    b. Re-write the component.
-    c. Discard the component.
-2. If a component's magnitude is significantly larger, re-scale it.
-3. You want to maximize the fitness score as it is the ground truth evaluator.
-4. You want to maximize positive reward components values during training and minimize negative reward components values.
-5. If the fitness score is not improving during training, try to change the reward function.
-Analyze each existing reward component first, then write the new reward function code proposal.
+Before writing the next reward function, you must perform the following expert reasoning steps. The final answer must still contain exactly one Python code block with the new compute_reward function.
+
+Required reasoning order:
+
+1. Learned policy behavior
+- State what the policy learned: safe landing, early crash, hover timeout, out-of-bounds, reward hacking, or mixed behavior.
+- Compare this behavior with the task objective.
+
+2. Complete reward component manifest
+For every component in the current reward code, including small or inactive components, produce a table with:
+component | exact expression | condition | coefficient/scale | payment timing | intended behavior | actual value after training | diagnosis
+
+Payment timing must be classified as one of:
+per-step / per-step cumulative / progress-delta / one-shot / terminal / terminal-gated / unknown.
+
+Do not omit any component. Do not write a short main-design summary. The exact expression and trigger condition matter.
+
+3. Component-by-component diagnosis
+For each component, explain:
+- Did it actually trigger or contribute?
+- Did it dominate other useful signals?
+- Is its payment timing correct?
+- Is it too weak, too strong, unreachable, repeatable when it should be one-shot, terminal when it should be dense, or dense when it should be terminal?
+- Does historical evidence show this modification family already failed?
+
+4. Decision rules
+- Preserve components that are working and have reasonable magnitude.
+- Fix dead components before inventing new ones.
+- Do not generalize from one penalty type to another: per-step cumulative penalties and terminal penalties are not interchangeable.
+- Avoid adding per-step time/timeout penalties unless the component analysis explicitly proves they are needed.
+- Avoid adding positive bonuses that can be farmed or triggered before the intended event.
+- Prefer one causal modification at a time unless the diagnosis shows multiple coupled bugs.
+
+5. New reward design
+After the above reasoning, write the revised compute_reward function. Every changed component must map to a specific diagnosis in the manifest.
+
