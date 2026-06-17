@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import ast
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
+
+
+SUCCESS_NAMES = {"success", "success_flag", "safe_landing", "landed", "is_success"}
+OBJECTIVE_NAMES = {"objective_bonus", "reward_success", "success_bonus", "terminal_reward"}
+INIT_VALUES = {"0", "0.0", "False", "None"}
 
 
 def validate_reward_static(
@@ -10,20 +16,33 @@ def validate_reward_static(
 ) -> Dict[str, Any]:
     """Static checks for common reward-payment failure modes.
 
-    This validator is intentionally conservative: it only blocks patterns that are
-    strongly associated with reward hacking in the 20x1M LunarLander run, while
-    reporting softer concerns as warnings.
+    The validator is evidence, not the expert brain.  It should surface likely
+    reward-design risks without deciding the search direction.  Context-aware AST
+    extraction is used so zero-initialisation lines do not hide the real guarded
+    assignment inside if/else blocks.
     """
     code = reward_code or ""
+    reward_schema = reward_schema or {}
     errors: List[str] = []
     warnings: List[str] = []
 
-    success_expr = _extract_assignment_expression(code, "success")
-    objective_expr = _extract_assignment_expression(code, "objective_bonus")
-    reward_expr = _extract_assignment_expression(code, "reward")
+    ast_report = _assignment_context_report(code)
+    success_assignment = _select_assignment(ast_report, SUCCESS_NAMES)
+    objective_assignment = _select_assignment(ast_report, OBJECTIVE_NAMES)
+    reward_assignment = _select_assignment(ast_report, {"reward"})
+
+    success_expr = success_assignment.get("rhs", "")
+    objective_expr = objective_assignment.get("rhs", "")
+    reward_expr = reward_assignment.get("rhs", "")
+    objective_context = " and ".join(objective_assignment.get("guards", []) or [])
+    success_context = " and ".join(success_assignment.get("guards", []) or [])
+    objective_full_context = " ".join([objective_context, objective_expr])
+    success_full_context = " ".join([success_context, success_expr])
 
     has_one_shot_state = bool(re.search(r"self\._[A-Za-z0-9_]*(success|objective|terminal)[A-Za-z0-9_]*", code))
-    objective_uses_success = "success" in objective_expr or "success_flag" in objective_expr
+    objective_mentions_success = any(name in objective_full_context for name in SUCCESS_NAMES)
+    objective_terminal_guarded = "terminated" in objective_full_context or "done" in objective_full_context
+    success_terminal_guarded = "terminated" in success_full_context or "done" in success_full_context
     objective_direct_success = bool(re.search(r"objective_bonus\s*=\s*[0-9.]+\s+if\s+success\s+else\s+0", code))
     objective_direct_success_flag = bool(re.search(r"objective_bonus\s*=\s*[0-9.]+\s+if\s+success_flag\s+else\s+0", code))
 
@@ -37,13 +56,13 @@ def validate_reward_static(
             "objective_bonus depends on success_flag without a visible one-shot guard; this can repeat many times per episode."
         )
 
-    if objective_uses_success and success_expr and "terminated" not in success_expr and not has_one_shot_state:
+    if objective_mentions_success and not objective_terminal_guarded and not success_terminal_guarded and not has_one_shot_state:
         errors.append(
-            "success used by objective_bonus is a non-terminal state predicate and is not visibly one-shot guarded."
+            "objective/success reward appears tied to a non-terminal success predicate without a visible one-shot guard."
         )
-    elif objective_uses_success and success_expr and "terminated" not in success_expr:
+    elif objective_mentions_success and not objective_terminal_guarded and not success_terminal_guarded:
         warnings.append(
-            "success used by objective_bonus is not terminal-conditioned; the one-shot guard may prevent farming but terminal alignment should still be checked."
+            "objective/success reward is not visibly terminal-conditioned; one-shot state may prevent farming but terminal alignment should be checked."
         )
 
     if _has_repeatable_action_bonus(code):
@@ -54,6 +73,9 @@ def validate_reward_static(
     if "individual_reward" not in code:
         warnings.append("reward_code does not expose individual_reward diagnostics; audits will be less informative.")
 
+    schema_consistency = _schema_code_consistency(reward_schema, code)
+    warnings.extend(schema_consistency.get("warnings", []))
+
     valid = not errors
     return {
         "file_type": "reward_static_validation",
@@ -62,46 +84,70 @@ def validate_reward_static(
         "warnings": warnings,
         "checks": {
             "success_expression": success_expr,
+            "success_assignment_guards": success_assignment.get("guards", []),
             "objective_bonus_expression": objective_expr,
+            "objective_bonus_assignment_guards": objective_assignment.get("guards", []),
             "reward_expression": reward_expr,
             "has_one_shot_state": has_one_shot_state,
-            "objective_uses_success": objective_uses_success,
+            "objective_mentions_success": objective_mentions_success,
+            "objective_terminal_guarded": objective_terminal_guarded,
+            "success_terminal_guarded": success_terminal_guarded,
             "objective_direct_success": objective_direct_success,
             "objective_direct_success_flag": objective_direct_success_flag,
+            "schema_code_consistency": schema_consistency,
+            "assignment_contexts": ast_report.get("assignments", []),
         },
     }
 
 
-def _extract_assignment_expression(code: str, name: str) -> str:
-    """Extract the LAST (non-initialization) assignment to *name*.
+def _assignment_context_report(code: str) -> Dict[str, Any]:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        return {"valid_ast": False, "parse_error": str(exc), "assignments": []}
 
-    Reward codes often initialise a variable to 0.0 and then reassign it inside
-    conditional blocks.  The first match is usually the dummy init, not the real
-    reward logic, so we return the assignment whose RHS is most interesting
-    (longest / most complex).
-    """
-    pattern = re.compile(r"^\s*" + re.escape(name) + r"\s*=\s*(.+)$", re.MULTILINE)
-    matches = pattern.findall(code)
-    if not matches:
-        return ""
-    # Pick the match with the longest non-trivial right-hand side — this is
-    # almost always the semantic assignment rather than the zero-initialisation.
-    best = max(matches, key=lambda m: (len(m.strip()), 1 if m.strip() in {"0", "0.0", "0.0;", "False", "None"} else 0))
-    expr = best.strip()
-    if expr.endswith(":"):
-        expr = expr[:-1].strip()
-    return expr[:500]
+    assignments: List[Dict[str, Any]] = []
+
+    def visit(node: ast.AST, guards: List[str]) -> None:
+        if isinstance(node, ast.If):
+            test = _unparse(node.test)
+            for child in node.body:
+                visit(child, guards + [test])
+            for child in node.orelse:
+                visit(child, guards + ["not (" + test + ")"])
+            return
+        if isinstance(node, ast.Assign):
+            rhs = _unparse(node.value)
+            for target in node.targets:
+                name = _target_name(target)
+                if name:
+                    assignments.append({"name": name, "rhs": rhs, "guards": guards, "lineno": getattr(node, "lineno", None)})
+        for child in ast.iter_child_nodes(node):
+            visit(child, guards)
+
+    visit(tree, [])
+    return {"valid_ast": True, "assignments": assignments}
+
+
+def _select_assignment(report: Dict[str, Any], names: set[str]) -> Dict[str, Any]:
+    candidates = [a for a in report.get("assignments", []) if str(a.get("name")) in names]
+    if not candidates:
+        return {}
+
+    def score(item: Dict[str, Any]) -> Tuple[int, int, int, int]:
+        rhs = str(item.get("rhs", "")).strip()
+        guards = item.get("guards", []) or []
+        non_init = 0 if rhs in INIT_VALUES else 1
+        terminal = 1 if "terminated" in " ".join(guards + [rhs]) else 0
+        success = 1 if any(tok in " ".join(guards + [rhs]) for tok in SUCCESS_NAMES) else 0
+        return (non_init, terminal, success, len(rhs) + 30 * len(guards))
+
+    return max(candidates, key=score)
 
 
 def _has_repeatable_action_bonus(code: str) -> bool:
-    """Heuristic: any positive reward term that pays per-step without a one-shot gate.
-
-    Looks for reward variables that get a positive value inside an unguarded
-    per-step branch (no self._ flag, no terminal/event gate visible nearby).
-    """
-    # Find all reward variable names: reward_XXX that are assigned positive values
+    """Heuristic: positive per-step control bonuses without visible event/phase gate."""
     reward_vars = set(re.findall(r"(reward_\w+)\s*=", code))
-    # Also include known patterns from LLM-generated code
     bonus_patterns = [
         r"reward_main_engine\s*=\s*([0-9.]+)",
         r"reward_near_pad\s*=\s*([0-9.]+)",
@@ -115,17 +161,90 @@ def _has_repeatable_action_bonus(code: str) -> bool:
         if m and float(m.group(1)) > 0 and not has_one_shot:
             return True
 
-    # Also check generic reward_ variables assigned positive values without gate
     for var in reward_vars:
-        # Find the context around each assignment
         for m in re.finditer(re.escape(var) + r"\s*=\s*([0-9.]+)", code):
             val = float(m.group(1))
             if val <= 0:
                 continue
-            # Check 3 lines before for a one-shot guard
-            start = max(0, m.start() - 200)
+            start = max(0, m.start() - 220)
             context = code[start:m.end()]
-            if "self._" not in context and "terminated" not in context:
+            if "self._" not in context and "terminated" not in context and "progress" not in context:
                 return True
-
     return False
+
+
+def _schema_code_consistency(reward_schema: Dict[str, Any], code: str) -> Dict[str, Any]:
+    component_names = _schema_component_names(reward_schema)
+    diagnostic_keys = _extract_individual_reward_keys(code)
+    component_set = set(component_names)
+    key_set = set(diagnostic_keys)
+    missing_from_code = sorted(component_set - key_set)
+    extra_in_code = sorted(key_set - component_set)
+    warnings: List[str] = []
+    if component_names and diagnostic_keys and missing_from_code:
+        warnings.append(
+            "reward_schema declares components not exposed in individual_reward diagnostics: " + ", ".join(missing_from_code[:12])
+        )
+    if component_names and diagnostic_keys and extra_in_code:
+        warnings.append(
+            "reward_code exposes individual_reward keys not declared in reward_schema: " + ", ".join(extra_in_code[:12])
+        )
+    return {
+        "schema_component_names": component_names,
+        "individual_reward_keys": diagnostic_keys,
+        "missing_schema_components_in_code": missing_from_code,
+        "extra_code_components_not_in_schema": extra_in_code,
+        "warnings": warnings,
+    }
+
+
+def _schema_component_names(reward_schema: Dict[str, Any]) -> List[str]:
+    names: List[str] = []
+    for container in ["component_catalog", "components", "active_reward_terms", "diagnostic_terms"]:
+        value = reward_schema.get(container)
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            name = None
+            if isinstance(item, dict):
+                name = item.get("id") or item.get("name")
+            elif isinstance(item, str):
+                name = item
+            if name and name not in names:
+                names.append(str(name))
+    return names
+
+
+def _extract_individual_reward_keys(code: str) -> List[str]:
+    keys: List[str] = []
+    for match in re.finditer(r"individual_reward\[['\"]([^'\"]+)['\"]\]", code):
+        key = match.group(1)
+        if key not in keys:
+            keys.append(key)
+    dict_match = re.search(r"individual_reward\s*=\s*\{(?P<body>.*?)\}\s*", code, re.S)
+    if dict_match:
+        body = dict_match.group("body")
+        for match in re.finditer(r"['\"]([^'\"]+)['\"]\s*:", body):
+            key = match.group(1)
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
+def _target_name(target: ast.AST) -> str:
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Subscript):
+        root = _target_name(target.value)
+        sub = _unparse(target.slice)
+        return f"{root}[{sub}]" if root else ""
+    if isinstance(target, ast.Attribute):
+        return _unparse(target)
+    return ""
+
+
+def _unparse(node: ast.AST) -> str:
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return ""
