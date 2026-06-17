@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping
@@ -43,12 +42,7 @@ class JsonAgent:
         return parsed
 
     def _generate_with_json_repair(self, prompt: str) -> str:
-        """Generate from LLM with JSON self-correction on parse failure.
-
-        On parse failure the original task context, broken output, and specific
-        error are all sent back so the LLM knows exactly what it was trying to
-        produce and can fix the formatting while preserving the semantic content.
-        """
+        """Generate from LLM with JSON self-correction on parse failure."""
         raw = self.llm_client.generate(prompt)
 
         for attempt in range(1, self.max_json_retries + 1):
@@ -67,37 +61,39 @@ class JsonAgent:
     def _build_repair_prompt(
         original_task: str, broken_output: str, exc: Exception
     ) -> str:
-        """Build a repair prompt with full context: task + broken output + error."""
-        # Show only the structural part of the original task (JSON schema / rules),
-        # not the full evidence dump, to keep the repair prompt manageable.
-        # Extract the key sections: rules, required JSON shape, and forbidden patterns.
+        """Build a repair prompt with structural context and parse diagnostics."""
         structural_hint = _extract_structural_sections(original_task)
-
-        # Truncate broken output to last 16KB to fit context while keeping enough
-        # content for the LLM to understand what it was producing.
-        tail = broken_output[-16000:] if len(broken_output) > 16000 else broken_output
+        tail = broken_output[-24000:] if len(broken_output) > 24000 else broken_output
+        error_detail = _format_parse_error(exc)
 
         return (
             f"{structural_hint}\n\n"
             "---\n\n"
             "Your previous response to the task above could not be parsed as valid JSON.\n\n"
-            f"Parse error at line {exc.lineno}, column {exc.colno}: {exc.msg}\n"
-            f"Character offset {exc.pos}\n\n"
-            "Please fix ONLY the JSON formatting error (missing comma, unclosed bracket, "
-            "trailing text, etc.).  Keep ALL the semantic content, reward formulas, "
+            f"{error_detail}\n\n"
+            "Please fix ONLY the JSON formatting error. Keep the semantic content, reward formulas, "
             "component names, and numeric values exactly as you intended them.\n\n"
-            "Return ONLY the corrected valid JSON.  No markdown fences, no explanations.\n\n"
+            "Return ONLY the corrected valid JSON. No markdown fences, no explanations.\n\n"
             "--- BEGIN YOUR BROKEN RESPONSE ---\n"
             f"{tail}\n"
             "--- END YOUR BROKEN RESPONSE ---\n"
         )
 
 
+def _format_parse_error(exc: Exception) -> str:
+    line = getattr(exc, "lineno", None)
+    col = getattr(exc, "colno", None)
+    msg = getattr(exc, "msg", None) or str(exc)
+    pos = getattr(exc, "pos", None)
+    if line is not None and col is not None:
+        return f"Parse error at line {line}, column {col}: {msg}\nCharacter offset {pos}"
+    return f"Parse error: {msg}"
+
+
 def _extract_structural_sections(prompt: str) -> str:
-    """Pull the task rules, JSON shape, and constraints from a long prompt."""
+    """Pull task rules, JSON shape, and constraints from a long prompt."""
     parts: list[str] = []
 
-    # Known section markers in EG-RSA prompts.
     markers = [
         ("Rules:", "\n\n"),
         ("Required JSON shape:", "\n}"),
@@ -116,7 +112,6 @@ def _extract_structural_sections(prompt: str) -> str:
         parts.append(prompt[idx:end_idx].strip())
 
     if not parts:
-        # Fallback: take the first 2KB and last 1KB as structural context.
         parts.append(prompt[:2000].strip())
         if len(prompt) > 3000:
             parts.append("...\n" + prompt[-1000:].strip())
