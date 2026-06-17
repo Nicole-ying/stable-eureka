@@ -73,28 +73,59 @@ def validate_reward_static(
 
 
 def _extract_assignment_expression(code: str, name: str) -> str:
+    """Extract the LAST (non-initialization) assignment to *name*.
+
+    Reward codes often initialise a variable to 0.0 and then reassign it inside
+    conditional blocks.  The first match is usually the dummy init, not the real
+    reward logic, so we return the assignment whose RHS is most interesting
+    (longest / most complex).
+    """
     pattern = re.compile(r"^\s*" + re.escape(name) + r"\s*=\s*(.+)$", re.MULTILINE)
-    match = pattern.search(code)
-    if not match:
+    matches = pattern.findall(code)
+    if not matches:
         return ""
-    expr = match.group(1).strip()
+    # Pick the match with the longest non-trivial right-hand side — this is
+    # almost always the semantic assignment rather than the zero-initialisation.
+    best = max(matches, key=lambda m: (len(m.strip()), 1 if m.strip() in {"0", "0.0", "0.0;", "False", "None"} else 0))
+    expr = best.strip()
     if expr.endswith(":"):
         expr = expr[:-1].strip()
     return expr[:500]
 
 
 def _has_repeatable_action_bonus(code: str) -> bool:
-    suspicious_names = [
-        "action_0_bonus",
-        "action_bonus",
-        "main_engine_bonus",
-        "main_engine_usage",
-        "controlled_descent_bonus",
+    """Heuristic: any positive reward term that pays per-step without a one-shot gate.
+
+    Looks for reward variables that get a positive value inside an unguarded
+    per-step branch (no self._ flag, no terminal/event gate visible nearby).
+    """
+    # Find all reward variable names: reward_XXX that are assigned positive values
+    reward_vars = set(re.findall(r"(reward_\w+)\s*=", code))
+    # Also include known patterns from LLM-generated code
+    bonus_patterns = [
+        r"reward_main_engine\s*=\s*([0-9.]+)",
+        r"reward_near_pad\s*=\s*([0-9.]+)",
+        r"action_0_bonus\s*=\s*([0-9.]+)",
+        r"controlled_descent_bonus\s*=\s*([0-9.]+)",
     ]
-    for name in suspicious_names:
-        expr = _extract_assignment_expression(code, name)
-        if not expr:
-            continue
-        if "if" in expr and "self._" not in code:
+    has_one_shot = bool(re.search(r"self\._[A-Za-z]", code))
+
+    for pat in bonus_patterns:
+        m = re.search(pat, code)
+        if m and float(m.group(1)) > 0 and not has_one_shot:
             return True
+
+    # Also check generic reward_ variables assigned positive values without gate
+    for var in reward_vars:
+        # Find the context around each assignment
+        for m in re.finditer(re.escape(var) + r"\s*=\s*([0-9.]+)", code):
+            val = float(m.group(1))
+            if val <= 0:
+                continue
+            # Check 3 lines before for a one-shot guard
+            start = max(0, m.start() - 200)
+            context = code[start:m.end()]
+            if "self._" not in context and "terminated" not in context:
+                return True
+
     return False

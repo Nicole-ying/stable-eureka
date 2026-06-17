@@ -1,0 +1,101 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_001",
+  "active_parent_candidate_id": "iter_001",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "bootstrap",
+      "reason": "Bootstrap candidate with 100% unsafe terminal rate and no success signal. All subsequent edits from this family have failed to produce target behavior. The bootstrap itself is a weak baseline and should not be used as parent."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "iter_001_family",
+      "reason": "Provisional anchor: best fitness score (-67.8) and the only candidate that achieved action coverage (actions 1,2,3 used) and near-pad approach behavior. The progress-delta reward and relaxed success condition were effective for guidance. However, the success bonus fires in non-terminal states (proxy-success farming) and the crash penalty heuristic misclassifies normal flight. This candidate is the most promising base for further refinement."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Rejected child of iter_001. The edit made success terminal-only and fixed crash penalty, but removed all non-terminal positive incentives, causing the policy to collapse back to early failure. This negative edge should not be repeated."
+    },
+    {
+      "candidate_id": "iter_003",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Rejected child of iter_001. Similar edit to iter_002 but preserved near-pad bonus. Still resulted in fitness regression and no success. The crash penalty heuristic remained flawed (both legs not in contact -> crash). This negative edge should not be repeated."
+    },
+    {
+      "candidate_id": "iter_004",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Rejected child of iter_001. Nearly identical to iter_003 with minor code differences. Same failure mode: crash penalty still misclassifies normal flight, success bonus still fires in non-terminal states. No improvement."
+    },
+    {
+      "candidate_id": "iter_005",
+      "status": "close",
+      "family_id": "iter_001_family",
+      "reason": "Rejected child of iter_001. Nearly identical to iter_003/iter_004. Same failure mode. No improvement."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "Making success bonus terminal-only while removing all non-terminal positive incentives (progress-delta, near-pad bonus) causes policy collapse. The agent needs dense guidance to learn the approach phase.",
+      "reason": "iter_002 removed progress-delta and near-pad bonus, resulting in fitness regression from -67.8 to -119.0. The policy lost all approach behavior."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_003",
+      "avoid_pattern": "Fixing crash penalty heuristic to 'both legs not in contact -> crash' on termination still misclassifies normal flight as crashes. The crash penalty should only apply on actual environment termination (game_over or out-of-bounds), not on leg contact state.",
+      "reason": "iter_003 kept the flawed crash penalty heuristic, causing the agent to be penalized for being airborne. Fitness regressed from -67.8 to -101.3."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_004",
+      "avoid_pattern": "Same as iter_003: crash penalty heuristic still misclassifies normal flight. The success bonus condition (both legs contact + near pad) fires in non-terminal states, creating proxy-success farming.",
+      "reason": "iter_004 is nearly identical to iter_003 with the same failure modes. Fitness regressed to -101.3."
+    },
+    {
+      "from": "iter_001",
+      "to": "iter_005",
+      "avoid_pattern": "Same as iter_003/iter_004: crash penalty heuristic still misclassifies normal flight. Success bonus still fires in non-terminal states.",
+      "reason": "iter_005 is nearly identical to iter_003/iter_004. Fitness regressed to -101.3."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "single_chain_iter0",
+    "iter_002",
+    "iter_003",
+    "iter_004",
+    "iter_005"
+  ],
+  "promising_family_ids": [
+    "iter_001_family"
+  ],
+  "next_search_hypothesis": "The iter_001 reward design successfully guided the agent to approach the pad and use all necessary actions (1,2,3), but the success bonus fires in non-terminal states (proxy-success farming) and the crash penalty heuristic misclassifies normal flight as crashes. The next edit should: (1) Fix the crash penalty to only apply on actual environment termination (game_over or out-of-bounds), not on leg contact state. Use the 'terminated' signal from the environment, which is already passed to compute_reward. In LunarLander-v2, termination occurs only on crash, out-of-bounds, or lander not awake. A successful landing does NOT terminate the episode. Therefore, if terminated is True, it is always a failure. The crash penalty should be -100 when terminated is True, regardless of leg contact state. This is simpler and correct. (2) Make the success bonus truly terminal-aligned: only pay when the episode terminates with success. However, since successful landings do not terminate, the success bonus should be paid on the step when the lander achieves a stable touchdown (both legs contact, near pad, low speed, upright) and the episode is about to end. But since the environment does not terminate on success, the agent must learn to achieve the success state and then wait for timeout or crash? This is a fundamental issue: the environment does not provide a terminal signal for success. Therefore, the success bonus must be paid as a one-shot event when the success condition is first met, and then the agent should be encouraged to maintain that state until timeout. Alternatively, we can use a success_flag to ensure the bonus is paid only once per episode. (3) Keep the progress-delta reward and near-pad bonus as dense guidance. (4) Remove the main engine bonus (it is redundant with progress-delta and may cause raw action bonus risk). (5) Ensure the success condition is reachable: both legs contact, distance < 0.15, abs(vy) < 0.5, abs(angle) < 0.2. This is the same as iter_001's success condition but now paid only once per episode via success_flag.",
+  "required_context_for_reward_revision": [
+    "iter_001 reward_code",
+    "iter_001 reward_schema",
+    "iter_001 target_behavior_report",
+    "iter_001 checkpoint_stability_report",
+    "iter_001 revision_metadata",
+    "iter_001 expert_audit_pack (from retrieved_memory)",
+    "iter_002 expert_audit_pack (from retrieved_memory) as negative example",
+    "environment_summary.json",
+    "target_summary.json"
+  ],
+  "strategy_rationale": "The search has converged on iter_001 as the only candidate with positive behavior signals (action coverage, near-pad approach, fitness improvement over bootstrap). All subsequent edits (iter_002-005) regressed fitness and failed to produce success. The negative edges show that making success terminal-only without fixing the crash penalty and without preserving dense guidance causes policy collapse. The next edit must: (1) Fix the crash penalty to use the environment's termination signal correctly (terminated=True always means failure in LunarLander-v2). (2) Make the success bonus one-shot per episode using a success_flag, paid when the success condition is first met (not on termination). (3) Preserve the progress-delta reward and near-pad bonus for dense guidance. (4) Remove the main engine bonus to avoid raw action bonus risk. (5) Keep the no-op penalty to discourage inaction. The hypothesis is that with a correct crash penalty (only on actual termination) and a one-shot success bonus (paid on first achievement of success condition), the agent will learn to approach the pad, achieve the success state, and maintain it until timeout, resulting in positive success_like_terminal_rate.",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true
+  },
+  "agent_name": "ExpertSearchStrategist"
+}

@@ -1,0 +1,43 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy learned to do nothing (action 0, 93%) because the dense distance penalty (-2 * distance) dominates the reward, making any movement costly. The crash penalty (-100) applies to all terminations, including timeouts, so the agent is punished equally for failing early or trying longer. The success bonus (100) is never reached because the condition is too strict (requires near-pad, low speeds, small angle) and the agent never gets close enough. The main engine (action 2) is never used because it incurs a fuel penalty without any compensating benefit, and the distance penalty makes moving toward the pad unattractive.",
+  "component_interaction_diagnosis": "The distance shaping (-2 * distance) is the dominant component by absolute return (-142.7), but it is always negative, so the agent minimizes it by staying near the starting position (which is far from pad). The crash penalty (-100) is applied on every termination, making all episodes equally bad. The success bonus (0.0) never fires. The fuel penalty (-0.03 per main engine use) further discourages using action 2. The time penalty (-0.1 per step) is small but adds up over ~72 steps. The net effect is that the agent receives a large negative reward regardless of behavior, so it defaults to the cheapest action (no-op).",
+  "action_coverage_diagnosis": "Action 2 (main engine) is unused. This action is necessary for controlled descent and hovering. The current reward makes it unattractive because: (1) it incurs a fuel penalty, (2) it moves the lander, increasing the distance penalty, and (3) there is no positive incentive to use it. The other actions (0, 1, 3) are used but only action 0 dominates. The policy has not learned to use the main engine to approach the pad.",
+  "expert_audit_diagnosis": "Reward scale audit: dense negative budget (-307.1) is 307x the positive objective budget (0.0). This means the agent is punished heavily for any movement, making exploration costly. Reward payment audit: repeatable positive terms (crash_terminal, unsafe_terminal) are actually negative, but the audit flags that positive terms exist without success. The trajectory phase report shows failure_phase='action_coverage_incomplete' because action 2 is unused. The objective signal alignment audit shows success_like_terminal_rate=0.0, meaning the reward's success signal is never triggered.",
+  "target_behavior_diagnosis": "Target behavior gaps: (1) Final policy does not reliably terminate with task success (0% success). (2) Unsafe terminations remain too frequent (100% unsafe). The required fixes are: increase distinction between true success and proxy progress, and add clearer negative feedback for unsafe behavior without overwhelming exploration.",
+  "checkpoint_stability_diagnosis": "Checkpoint stability report shows no transient peak risk (best fitness -117.5, final -120.8, gap 3.3). Success rate is 0% throughout. The last 3 checkpoints show stable but poor behavior. No risk of chasing a transient peak.",
+  "expert_search_strategy_diagnosis": "Active parent is single_chain_iter0 (bootstrap). Next search hypothesis: the reward fails to distinguish success from failure, crash penalty applies to all terminations, success condition is too strict, and no-op is dominant. Required context: single_chain_iter0. The strategy recommends: remove crash penalty from non-crash terminations, relax success condition, increase distance shaping weight, add penalty for no-op.",
+  "expert_action_plan_diagnosis": "Action plan requires: increase distinction between true success and proxy progress, add clearer negative feedback for unsafe behavior, treat fitness as auxiliary, use final checkpoint behavior as main diagnosis, do not chase small fitness gains. Forbidden edits: do not preserve design due to transient peak, do not optimize generated_reward. Required focus: create reachable incentives for unused necessary actions without causing no-action collapse.",
+  "failed_pattern_reuse_check": "The previous pattern of unused discrete actions (action 2) is being addressed directly. The pattern of passive dominant action (no-op) is being addressed by adding a small penalty for no-op and creating incentives for using the main engine. The reward scale audit risk (dense penalty dominates) is being addressed by converting the distance penalty into a progress-delta reward. The reward payment audit risk (repeatable positive without success) is addressed by making the success bonus reachable and event-gated. No rejected patterns are being repeated.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "action_coverage_repair",
+    "edit_scope": "medium",
+    "reason": "Action 2 (main engine) is unused but necessary for landing. The current reward structure makes movement costly and success unreachable. A medium edit is needed to: (1) convert distance penalty to progress-delta reward, (2) relax success condition to be reachable, (3) add a small no-op penalty to encourage engine use, (4) remove crash penalty from non-crash terminations, (5) add a small bonus for using the main engine when far from pad."
+  },
+  "hard_constraints_for_next_revision": [
+    "Reduce absolute dense penalties or convert them into progress-delta feedback so longer useful attempts are not worse than early failure.",
+    "Check whether repeatable positive rewards can be farmed without completing the task.",
+    "Follow next_search_mode=action_coverage_repair: Some discrete actions are unused, so the next revision must first decide whether they are necessary.",
+    "Create reachable incentives for unused necessary actions without causing no-action collapse.",
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "unsafe_terminal_rate": "decrease from 1.0 to <1.0",
+    "action_2_usage": "increase from 0.0 to >0.0",
+    "action_0_usage": "decrease from 0.93 to <0.8",
+    "dense_negative_budget": "decrease from -307 to >-200",
+    "dense_to_objective_ratio": "decrease from 307 to <100"
+  },
+  "validation_metrics": [
+    "final_success_like_terminal_rate >= 0.5",
+    "timeout_rate <= 0.4",
+    "transient_peak_risk == false",
+    "fitness_score_std contextual: score gain should exceed noise or behavior should improve"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

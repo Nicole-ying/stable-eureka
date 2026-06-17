@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
@@ -15,11 +17,15 @@ class JsonAgent:
     on every run from the provided sandbox inputs. This is the intended EG-RSA
     bootstrap behavior: do not hard-code environment_understanding,
     target_alignment_contract, or reward_schema contents.
+
+    On JSON parse failure, the error is sent back to the LLM for a single
+    self-correction attempt before giving up.
     """
 
     name: str
     llm_client: Any
     prompt_template: str
+    max_json_retries: int = field(default=2)
 
     def build_prompt(self, inputs: Mapping[str, str]) -> str:
         prompt = self.prompt_template
@@ -29,9 +35,90 @@ class JsonAgent:
 
     def run(self, inputs: Mapping[str, str], output_path: str | Path, raw_output_path: str | Path) -> Dict[str, Any]:
         prompt = self.build_prompt(inputs)
-        raw = self.llm_client.generate(prompt)
+        raw = self._generate_with_json_repair(prompt)
         write_text(raw_output_path, raw)
         parsed = extract_json_object(raw)
         parsed.setdefault("agent_name", self.name)
         write_json(output_path, parsed)
         return parsed
+
+    def _generate_with_json_repair(self, prompt: str) -> str:
+        """Generate from LLM with JSON self-correction on parse failure.
+
+        On parse failure the original task context, broken output, and specific
+        error are all sent back so the LLM knows exactly what it was trying to
+        produce and can fix the formatting while preserving the semantic content.
+        """
+        raw = self.llm_client.generate(prompt)
+
+        for attempt in range(1, self.max_json_retries + 1):
+            try:
+                extract_json_object(raw)
+                return raw
+            except (json.JSONDecodeError, ValueError) as exc:
+                if attempt >= self.max_json_retries:
+                    break
+                repair_prompt = self._build_repair_prompt(prompt, raw, exc)
+                raw = self.llm_client.generate(repair_prompt)
+
+        return raw
+
+    @staticmethod
+    def _build_repair_prompt(
+        original_task: str, broken_output: str, exc: Exception
+    ) -> str:
+        """Build a repair prompt with full context: task + broken output + error."""
+        # Show only the structural part of the original task (JSON schema / rules),
+        # not the full evidence dump, to keep the repair prompt manageable.
+        # Extract the key sections: rules, required JSON shape, and forbidden patterns.
+        structural_hint = _extract_structural_sections(original_task)
+
+        # Truncate broken output to last 16KB to fit context while keeping enough
+        # content for the LLM to understand what it was producing.
+        tail = broken_output[-16000:] if len(broken_output) > 16000 else broken_output
+
+        return (
+            f"{structural_hint}\n\n"
+            "---\n\n"
+            "Your previous response to the task above could not be parsed as valid JSON.\n\n"
+            f"Parse error at line {exc.lineno}, column {exc.colno}: {exc.msg}\n"
+            f"Character offset {exc.pos}\n\n"
+            "Please fix ONLY the JSON formatting error (missing comma, unclosed bracket, "
+            "trailing text, etc.).  Keep ALL the semantic content, reward formulas, "
+            "component names, and numeric values exactly as you intended them.\n\n"
+            "Return ONLY the corrected valid JSON.  No markdown fences, no explanations.\n\n"
+            "--- BEGIN YOUR BROKEN RESPONSE ---\n"
+            f"{tail}\n"
+            "--- END YOUR BROKEN RESPONSE ---\n"
+        )
+
+
+def _extract_structural_sections(prompt: str) -> str:
+    """Pull the task rules, JSON shape, and constraints from a long prompt."""
+    parts: list[str] = []
+
+    # Known section markers in EG-RSA prompts.
+    markers = [
+        ("Rules:", "\n\n"),
+        ("Required JSON shape:", "\n}"),
+        ("Allowed recommended_next_action", "\n\n"),
+        ("hard_constraints_for_next_revision", "\n\n"),
+    ]
+    for start_tag, end_tag in markers:
+        idx = prompt.find(start_tag)
+        if idx < 0:
+            continue
+        end_idx = prompt.find(end_tag, idx + len(start_tag))
+        if end_idx < 0:
+            end_idx = min(idx + 3000, len(prompt))
+        else:
+            end_idx += len(end_tag)
+        parts.append(prompt[idx:end_idx].strip())
+
+    if not parts:
+        # Fallback: take the first 2KB and last 1KB as structural context.
+        parts.append(prompt[:2000].strip())
+        if len(prompt) > 3000:
+            parts.append("...\n" + prompt[-1000:].strip())
+
+    return "\n\n".join(parts)

@@ -1,0 +1,71 @@
+{
+  "components": [
+    {
+      "name": "success_bonus",
+      "description": "One-shot terminal-aligned success bonus. Only paid when episode terminates with both legs contact, near pad, low vertical speed, and upright orientation.",
+      "value": 100.0,
+      "condition": "terminated and state[6]==1 and state[7]==1 and distance_to_pad < 0.15 and abs(state[3]) < 0.5 and abs(state[4]) < 0.2"
+    },
+    {
+      "name": "progress_delta_reward",
+      "description": "Reward for reducing distance to pad. Computed as previous_distance - current_distance, capped at +5 per step.",
+      "value": "max(prev_distance - distance_to_pad, 0) capped at 5.0",
+      "condition": "always active, uses internal state to track previous distance"
+    },
+    {
+      "name": "near_pad_bonus",
+      "description": "Small bonus for being near the pad with low vertical speed, to encourage stable approach without farming.",
+      "value": 1.0,
+      "condition": "distance_to_pad < 0.3 and abs(state[3]) < 0.5"
+    },
+    {
+      "name": "vertical_speed_shaping",
+      "description": "Reward for low vertical speed (negative means descending). Encourages controlled descent.",
+      "value": "-abs(state[3]) * 1.0",
+      "condition": "always active"
+    },
+    {
+      "name": "angle_shaping",
+      "description": "Reward for upright orientation.",
+      "value": "-abs(state[4]) * 2.0",
+      "condition": "always active"
+    },
+    {
+      "name": "fuel_penalty",
+      "description": "Mild penalty for using main engine (m_power) and side engines (s_power).",
+      "value": "-0.03 * m_power - 0.01 * s_power",
+      "condition": "always active"
+    },
+    {
+      "name": "time_penalty",
+      "description": "Small per-step penalty to encourage fast landing.",
+      "value": -0.1,
+      "condition": "always active"
+    },
+    {
+      "name": "horizontal_velocity_penalty",
+      "description": "Small penalty for high horizontal speed to encourage staying above pad.",
+      "value": "-abs(state[2]) * 0.5",
+      "condition": "always active"
+    },
+    {
+      "name": "noop_penalty",
+      "description": "Small penalty for selecting action 0 (do nothing) to encourage engine use.",
+      "value": -0.5,
+      "condition": "action == 0"
+    },
+    {
+      "name": "main_engine_bonus",
+      "description": "Bonus for using main engine (action 2) when far from pad (distance > 0.5) to encourage approaching the pad.",
+      "value": 0.5,
+      "condition": "action == 2 and distance_to_pad > 0.5"
+    },
+    {
+      "name": "crash_penalty",
+      "description": "Large penalty if terminated due to actual crash (game_over) or out-of-bounds. Not applied on timeout or other terminations.",
+      "value": -100.0,
+      "condition": "terminated and (game_over or abs(state[0]) >= 1.0)"
+    }
+  ],
+  "total_reward_formula": "success_bonus + progress_delta_reward + near_pad_bonus + vertical_speed_shaping + angle_shaping + fuel_penalty + time_penalty + horizontal_velocity_penalty + noop_penalty + main_engine_bonus + crash_penalty"
+}

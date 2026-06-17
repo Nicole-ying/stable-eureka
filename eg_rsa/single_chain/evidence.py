@@ -71,7 +71,30 @@ class EvidenceBuilder:
             "source_dir": str(base),
             "candidate_id": reward_trace.get("candidate_id", base.name),
             "primary_metrics": primary_metrics,
-            "reward_design_metrics": primary_metrics,
+            "reward_design_metrics": {
+                "generated_minus_fitness_gap": round(
+                    _num(final_eval.get("reward", reward_trace.get("proxy_metrics", {}).get("generated_reward")))
+                    - _num(final_eval.get("fitness_score", reward_trace.get("primary_metrics", {}).get("fitness_score"))),
+                    4,
+                ),
+                "objective_bonus_mean": round(_num(component_means.get("objective_bonus")), 4),
+                "success_flag_mean": round(_num(component_means.get("success_flag")), 4),
+                "num_positive_components": sum(
+                    1 for v in component_means.values() if isinstance(v, (int, float)) and v > 1e-6
+                ),
+                "num_negative_components": sum(
+                    1 for v in component_means.values() if isinstance(v, (int, float)) and v < -1e-6
+                ),
+                "dominant_component_name": dominant_components[0]["name"] if dominant_components else None,
+                "dominant_component_abs_return": dominant_components[0]["abs_return"] if dominant_components else None,
+                "dominance_ratio": round(
+                    dominant_components[0]["abs_return"] / max(dominant_components[1]["abs_return"], 1e-9)
+                    if len(dominant_components) > 1 and dominant_components[0]["abs_return"] > 0
+                    else 0.0,
+                    2,
+                ),
+                "total_component_count": len(component_means),
+            },
             "policy_peak_metrics": _policy_peak_metrics(checkpoint_stability),
             "target_behavior_report": target_behavior_report,
             "checkpoint_stability_report": checkpoint_stability,

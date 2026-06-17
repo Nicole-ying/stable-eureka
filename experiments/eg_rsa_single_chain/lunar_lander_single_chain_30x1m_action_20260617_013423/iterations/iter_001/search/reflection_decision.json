@@ -1,0 +1,50 @@
+{
+  "file_type": "reflection_decision",
+  "causal_diagnosis": "The policy in iter_001 learned to approach the pad and use actions 1,2,3 because the progress-delta reward and relaxed success bonus (both legs contact + distance < 0.15) provided positive reinforcement for being near the pad. However, the success bonus fires in non-terminal states (mean success=0.8 per episode) while evaluator success_like_terminal_rate is 0.0, indicating proxy-success farming. The crash penalty heuristic (both legs not in contact -> crash) misclassifies normal flight as crashes, penalizing the agent for being airborne. The main engine bonus (+0.1) is too small to overcome the crash penalty. The agent terminates every episode as unsafe (unsafe_terminal_rate=1.0) because the crash penalty fires on every termination where legs are not in contact, which includes timeouts and normal flight termination. The net effect is that the agent collects large proxy-success rewards (80.0 mean) but never achieves true terminal success.",
+  "component_interaction_diagnosis": "The reward_success component (mean 80.0) fires multiple times per episode because the condition 'both legs contact and distance < 0.15' is a non-terminal state that can be achieved repeatedly when the lander passes near the pad. This creates a repeatable proxy-success payment that can be farmed without episode completion. The crash penalty heuristic (both legs not in contact -> crash) applies -100 when the lander is airborne, which is incorrect and punishes normal flight. The main engine bonus (+0.1) is negligible compared to the crash penalty (-100) and the vertical speed penalty (-abs(vy)*1.0, mean -65.9). The progress-delta reward (+1.2 mean) is small relative to other components. The net effect is that the agent receives a large positive reward for passing near the pad with leg contact, but then gets penalized heavily when it leaves that state or when the episode terminates without true success.",
+  "action_coverage_diagnosis": "Action 0 (do nothing) remains unused (coverage_ratio=0.75). However, since all other actions (1,2,3) are used and the success_like_terminal_rate is still 0.0, the failure is not primarily due to missing action coverage. The agent already uses the main engine (action 2, 18.4%) and orientation engines (actions 1 and 3, ~40% each). The bottleneck is that the reward structure allows the agent to collect large proxy-success rewards without completing the task, and the crash penalty misclassifies normal flight as crashes. Therefore, the focus should shift from action-coverage repair to trajectory-phase guidance and objective alignment. Action 0 is not necessary for success; the agent can succeed using actions 1,2,3.",
+  "expert_audit_diagnosis": "Reward scale audit: objective_positive_budget=80.8, dense_to_objective_ratio=1.9, no scale risk. Reward payment audit: repeatable positive terms (progress_delta, reward_main_engine) exist while success-like rate is near zero; raw_action_bonus risk detected for reward_main_engine. Objective signal alignment audit: reward_success (80.0) and success (0.8) are positive while evaluator success_like_terminal_rate is 0.0, indicating misalignment. Trajectory phase report: failure_phase='action_coverage_incomplete' but all necessary actions are used; the true bottleneck is trajectory-phase guidance. Hard constraints: do not increase raw per-step action bonuses, tighten success-like bonuses to be event-gated and aligned with evaluator success.",
+  "target_behavior_diagnosis": "Target behavior report: target_success=false, quality_label='target_behavior_gap', success_like_terminal_rate=0.0, unsafe_terminal_rate=1.0. Required fixes: increase distinction between true terminal success and proxy progress states, add clearer negative feedback for unsafe terminal behavior without overwhelming exploration. The policy does not reliably terminate with task success; unsafe terminations remain too frequent.",
+  "checkpoint_stability_diagnosis": "Checkpoint stability report: available, best_checkpoint_is_diagnostic_only=true, best_fitness=-68.06, final_fitness=-68.06, best_success_like_terminal_rate=0.0, final_success_like_terminal_rate=0.0, transient_peak_risk=false, final_uncertainty_risk=false, unstable_last_k_risk=false. No transient peak risk; the final checkpoint is stable but has zero success rate.",
+  "expert_search_strategy_diagnosis": "Expert search strategy decision: active_parent_role='provisional_anchor', active_parent_candidate_id='iter_001'. Next search hypothesis: fix crash penalty to use environment termination signal (terminated=True always means failure in LunarLander-v2), make success bonus one-shot per episode using success_flag, preserve progress-delta and near-pad bonus, remove main engine bonus, keep no-op penalty. Negative edges: iter_002-005 all regressed fitness by removing non-terminal positive incentives or keeping flawed crash penalty. Closed branches: iter_002, iter_003, iter_004, iter_005. Promising family: iter_001_family.",
+  "expert_action_plan_diagnosis": "Expert action plan: action_type='target_behavior_repair', search_mode='action_coverage_repair', edit_scope='medium'. Required edits: increase distinction between true terminal success and proxy progress states, add clearer negative feedback for unsafe terminal behavior, make completion/objective bonuses one-shot or terminal-aligned, remove repeatable proxy-success payment modes, keep dense progress signals bounded, add diagnostics for success_flag/objective_bonus. Forbidden edits: do not increase raw per-step action or engine bonuses, do not let objective_bonus exceed roughly one terminal event per episode, do not define success only as a non-terminal state predicate. Required focus: create reachable incentives for unused necessary actions without causing no-action collapse, align reward-defined success/objective bonuses with evaluator success-like behavior.",
+  "failed_pattern_reuse_check": "The failed pattern from iter_002 (making success terminal-only without ensuring reachability, removing all non-terminal positive incentives) is being avoided. The current edit will keep the progress-delta reward and near-pad guidance from iter_001, fix the crash penalty, make success terminal-aligned but with a reachable condition, and add a smaller non-terminal stable-contact bonus to maintain guidance without farming. The pattern of proxy-success farming (non-terminal success bonus) is being fixed by making success terminal-aligned. The pattern of misclassified crash penalty is being fixed by only applying crash penalty on actual environment termination. The pattern of removing all non-terminal positive incentives (iter_002) is avoided by preserving progress-delta and near-pad bonus.",
+  "search_decision": {
+    "recommended_next_action": "revise_reward",
+    "next_search_mode": "action_coverage_repair",
+    "edit_scope": "medium",
+    "reason": "The current reward has three critical flaws: (1) The crash penalty heuristic misclassifies normal flight as crashes, (2) The success bonus fires in non-terminal states creating proxy-success farming, (3) The main engine bonus is too small to overcome the crash penalty. A medium edit is needed to fix these issues while preserving the progress-delta guidance and action coverage improvements from iter_001. The search mode is action_coverage_repair as recommended by expert_memory_context, but the focus is on trajectory-phase guidance since all necessary actions are already used."
+  },
+  "hard_constraints_for_next_revision": [
+    "Do not simply increase raw per-step action bonuses; condition them on progress, phase, stability, or event milestones.",
+    "Check whether repeatable positive rewards can be farmed without completing the task.",
+    "Tighten success-like bonuses so they are event-gated and aligned with evaluator success, not merely proxy contact states.",
+    "Follow next_search_mode=action_coverage_repair: Some discrete actions are unused, so the next revision must first decide whether they are necessary.",
+    "Create reachable incentives for unused necessary actions without causing no-action collapse.",
+    "Align reward-defined success/objective bonuses with evaluator success-like behavior.",
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect.",
+    "Do not increase raw per-step action or engine bonuses.",
+    "Do not let objective_bonus exceed roughly one terminal event per episode.",
+    "Do not define success only as a non-terminal state predicate if it pays a large reward repeatedly.",
+    "Avoid remembered failed pattern: iter_002 removed all non-terminal positive incentives causing policy collapse.",
+    "Avoid remembered failed pattern: iter_003/004/005 kept flawed crash penalty heuristic misclassifying normal flight."
+  ],
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "unsafe_terminal_rate": "decrease from 1.0 to <1.0",
+    "reward_success_mean": "decrease from 80.0 to <100.0 (one-shot per episode)",
+    "success_mean": "decrease from 0.8 to <1.0 (one-shot per episode)",
+    "crash_terminal_mean": "decrease from 1.0 to <1.0 (only actual crashes)",
+    "action_0_usage": "may remain 0.0 (not necessary for success)"
+  },
+  "validation_metrics": [
+    "final_success_like_terminal_rate >= 0.5",
+    "timeout_rate <= 0.4",
+    "transient_peak_risk == false",
+    "success_flag_mean <= 1.2",
+    "objective_bonus_mean <= 120.0",
+    "generated_minus_fitness_gap <= 500.0"
+  ],
+  "agent_name": "ExpertRewardRevisionAgent"
+}

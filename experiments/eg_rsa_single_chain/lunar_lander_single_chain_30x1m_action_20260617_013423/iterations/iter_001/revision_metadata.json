@@ -1,0 +1,56 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "action_coverage_repair",
+  "action_type": "target_behavior_repair",
+  "reason": "The current reward fails to incentivize using the main engine (action 2) and makes success unreachable. The distance penalty is always negative, so the agent stays still. The crash penalty applies to all terminations, making exploration costly. The success condition is too strict. This edit converts the distance penalty to a progress-delta reward, relaxes the success condition, adds a small no-op penalty, removes the crash penalty from non-crash terminations, and adds a small bonus for using the main engine when far from the pad.",
+  "preserved_design": [
+    "Success bonus as a large one-shot reward for true success.",
+    "Fuel penalty to discourage waste.",
+    "Time penalty to encourage timely landing.",
+    "Angle shaping to encourage upright orientation.",
+    "Vertical speed shaping to encourage controlled descent.",
+    "Horizontal velocity penalty to discourage drifting."
+  ],
+  "changed_design": [
+    "Convert distance penalty (-2*distance) to progress-delta reward: reward for reducing distance to pad, capped at +5 per step.",
+    "Relax success condition: remove strict speed/angle thresholds, only require both legs contact and near pad (distance < 0.15).",
+    "Add small no-op penalty (-0.5) when action 0 is selected, to encourage engine use.",
+    "Remove crash penalty from non-crash terminations: only apply -100 if terminated due to crash (game_over) or out-of-bounds, not for timeouts or other terminations.",
+    "Add small bonus (+0.1) for using main engine (action 2) when distance > 0.5, to encourage approaching the pad."
+  ],
+  "required_edits_implemented": [
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Treat fitness_score as auxiliary evidence; optimize the reward function for stable target behavior, not for a transient score peak.",
+    "Use final checkpoint behavior and target_behavior_report as the main diagnosis for the next reward edit.",
+    "Do not chase small auxiliary fitness gains when fitness_score_std or last-k variance is high; prefer clear behavior improvements."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not preserve a reward design merely because a transient checkpoint reached high fitness.",
+    "Do not optimize generated_reward as a framework objective; use it only to diagnose what the policy learned to collect."
+  ],
+  "rejected_patterns_avoided": [
+    "Unused discrete actions: action 2 is now incentivized via no-op penalty and main engine bonus.",
+    "Passive dominant action: no-op penalty reduces attractiveness of action 0.",
+    "Reward scale audit risk: dense penalties reduced by converting distance to progress-delta.",
+    "Reward payment audit risk: success bonus is event-gated and one-shot, not repeatable."
+  ],
+  "target_behavior_plan": "Relax success condition to make it reachable: both legs contact and distance < 0.15. This will allow the agent to experience success and learn from it. The progress-delta reward will guide the agent toward the pad. The no-op penalty will encourage using engines. The crash penalty is only applied on actual crashes, not on timeouts, so the agent can explore without being punished for not crashing.",
+  "action_coverage_plan": "Action 2 (main engine) is incentivized by: (1) no-op penalty makes doing nothing costly, (2) main engine bonus (+0.1) when far from pad encourages using it to approach, (3) progress-delta reward rewards moving toward the pad, which requires using the main engine. Action 0 is penalized (-0.5) to reduce its dominance. Actions 1 and 3 remain useful for orientation.",
+  "phase_guidance_plan": "Phase 1 (approach): progress-delta reward guides the agent toward the pad. Main engine bonus encourages using action 2 when far. Phase 2 (descent): vertical speed shaping and angle shaping guide controlled descent. Phase 3 (touchdown): relaxed success condition provides a clear terminal reward. The no-op penalty ensures the agent doesn't just settle.",
+  "payment_mode_plan": "Success bonus is event-gated (one-shot, only when both legs contact and near pad). Progress-delta reward is per-step but capped at +5 to prevent farming. No-op penalty is per-step. Main engine bonus is per-step but only when distance > 0.5. Crash penalty is terminal-only. All other terms are per-step shaping signals.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "unsafe_terminal_rate": "decrease from 1.0 to <1.0",
+    "action_2_usage": "increase from 0.0 to >0.0",
+    "action_0_usage": "decrease from 0.93 to <0.8",
+    "dense_negative_budget": "decrease from -307 to >-200",
+    "dense_to_objective_ratio": "decrease from 307 to <100"
+  },
+  "validation_metrics": [
+    "final_success_like_terminal_rate >= 0.5",
+    "timeout_rate <= 0.4",
+    "transient_peak_risk == false",
+    "fitness_score_std contextual: score gain should exceed noise or behavior should improve"
+  ]
+}

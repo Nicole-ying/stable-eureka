@@ -1,0 +1,62 @@
+{
+  "file_type": "expert_search_strategy_decision",
+  "verified_elite_candidate_id": null,
+  "provisional_anchor_candidate_id": "iter_001",
+  "active_parent_candidate_id": "iter_001",
+  "active_parent_role": "provisional_anchor",
+  "frontier_updates": [
+    {
+      "candidate_id": "single_chain_iter0",
+      "status": "close",
+      "family_id": "single_chain",
+      "reason": "Bootstrap candidate with no target success and dominated by no-op action. Replaced by iter_001 as parent."
+    },
+    {
+      "candidate_id": "iter_001",
+      "status": "keep",
+      "family_id": "single_chain",
+      "reason": "Best fitness score and improved action coverage (uses main engine). However, success bonus fires in non-terminal states (proxy-success farming) and crash penalty misclassifies normal flight. Needs further repair but is the best anchor."
+    },
+    {
+      "candidate_id": "iter_002",
+      "status": "close",
+      "family_id": "single_chain",
+      "reason": "Rejected due to fitness regression. Edit introduced terminal-aligned success but removed all positive objective budget and caused action coverage to drop (main engine unused). The specific edit pattern (making success terminal-only without ensuring reachability) is a negative edge."
+    }
+  ],
+  "negative_edges": [
+    {
+      "from": "iter_001",
+      "to": "iter_002",
+      "avoid_pattern": "Making success bonus terminal-only without ensuring the agent can actually reach the success condition, combined with removing all non-terminal positive incentives, leads to fitness collapse and loss of main engine usage.",
+      "reason": "The edit from iter_001 to iter_002 made success terminal-aligned but also removed the non-terminal success bonus that was providing positive reinforcement. The agent lost the incentive to approach the pad and reverted to using only orientation engines."
+    }
+  ],
+  "closed_branch_candidate_ids": [
+    "single_chain_iter0",
+    "iter_002"
+  ],
+  "promising_family_ids": [
+    "single_chain"
+  ],
+  "next_search_hypothesis": "The agent in iter_001 learned to approach the pad and use the main engine because the non-terminal success bonus (both legs contact + distance < 0.15) provided positive reinforcement for being near the pad. However, this created proxy-success farming (success fires 0.8 per episode but terminal success rate is 0.0). The fix should: (1) Keep the non-terminal progress-delta reward and near-pad bonus to guide the agent toward the pad, (2) Make the success bonus terminal-aligned but ensure the condition is reachable by also requiring low vertical speed and upright angle at termination, (3) Fix the crash penalty to only apply on actual environment termination (game_over or out-of-bounds), not on leg contact state, (4) Add a small bonus for stable contact (both legs contact + low speed + near pad) that is not terminal but is smaller than the terminal success bonus, to maintain guidance without farming.",
+  "required_context_for_reward_revision": [
+    "iter_001 reward_code",
+    "iter_001 reward_schema",
+    "iter_001 target_behavior_report",
+    "iter_001 checkpoint_stability_report",
+    "iter_001 expert_audit_pack (before edit)",
+    "iter_002 reward_code (as negative example)",
+    "iter_002 expert_audit_pack (after edit)",
+    "environment_summary.json",
+    "target_summary.json"
+  ],
+  "strategy_rationale": "No candidate has achieved target success (success_like_terminal_rate = 0.0 for all). The best candidate is iter_001 with improved fitness and action coverage, but it has proxy-success farming and misclassified crash penalty. The edit to iter_002 attempted to fix these but went too far by removing all non-terminal positive incentives, causing regression. The next edit should take a balanced approach: keep the progress-delta and near-pad guidance from iter_001, fix the crash penalty to only apply on actual termination, make the success bonus terminal-aligned but with a reachable condition, and add a smaller non-terminal stable-contact bonus to maintain guidance without farming. The active parent is iter_001 because it has the best behavior evidence and the edit to iter_002 is a negative edge that should not be repeated.",
+  "self_check": {
+    "selected_ids_exist_in_candidate_ids": true,
+    "did_not_treat_generated_reward_as_objective": true,
+    "did_not_treat_peak_checkpoint_as_verified_quality": true,
+    "used_complete_reward_code_when_available": true
+  },
+  "agent_name": "ExpertSearchStrategist"
+}

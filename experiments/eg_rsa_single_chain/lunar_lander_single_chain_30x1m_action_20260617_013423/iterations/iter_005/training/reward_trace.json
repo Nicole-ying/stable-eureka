@@ -1,0 +1,575 @@
+{
+  "file_type": "reward_trace",
+  "candidate_id": "iter_005",
+  "generation": 5,
+  "creation_type": "llm_reward_revision",
+  "primary_metrics": {
+    "fitness_score": -101.25987022190645,
+    "selection_metric": "fitness_score_auxiliary"
+  },
+  "proxy_metrics": {
+    "generated_reward": -50.64524876177311,
+    "generated_minus_fitness_gap": 50.61462146013334
+  },
+  "behavior_metrics": {
+    "episode_length": 74.4,
+    "success_like_terminal_rate": 0.0,
+    "unsafe_terminal_rate": 1.0,
+    "out_of_bounds_rate": 0.0,
+    "action_distribution": {
+      "1": 0.46774193548387094,
+      "3": 0.45698924731182794,
+      "2": 0.07526881720430108
+    },
+    "action_space_report": {
+      "space_type": "Discrete",
+      "used_action_keys": [
+        "1",
+        "2",
+        "3"
+      ],
+      "n": 4,
+      "start": 0,
+      "expected_action_keys": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "unused_action_keys": [
+        "0"
+      ],
+      "coverage_ratio": 0.75
+    }
+  },
+  "component_returns": {
+    "angle": -1.0359299671836197,
+    "crash": 0.0,
+    "crash_terminal": 1.0,
+    "distance_to_pad": 72.6525584522443,
+    "fitness_score": -101.25987022190645,
+    "fuel_used": 74.4,
+    "horizontal_speed": 1.2363176535356133,
+    "objective_bonus": 40.0,
+    "out_of_bounds": 0.0,
+    "out_of_bounds_terminal": 0.0,
+    "progress_delta": 1.1292115978602397,
+    "reward_angle": -3.150063562649302,
+    "reward_crash": 0.0,
+    "reward_distance": 1.1292115978602397,
+    "reward_fuel": -0.8560000000000004,
+    "reward_horizontal": -15.924181532799604,
+    "reward_main_engine": 2.5,
+    "reward_near_pad": 0.6,
+    "reward_noop": 0.0,
+    "reward_success": 40.0,
+    "reward_time": -7.439999999999989,
+    "reward_vertical": -67.50421616206566,
+    "safe_landing_terminal": 0.0,
+    "success": 0.4,
+    "success_flag": 0.4,
+    "success_like_terminal": 0.0,
+    "timeout_terminal": 0.0,
+    "unsafe_terminal": 1.0,
+    "vertical_speed": -66.06712400585414
+  },
+  "alignment_flags": {
+    "hovering_risk": false,
+    "proxy_reward_behavior_misalignment_risk": false,
+    "terminal_hacking_risk": false
+  },
+  "environment_understanding_summary": "Land the lander on the landing pad at (0,0) as fast as possible with minimal fuel consumption.",
+  "target_alignment_summary": "Land the lander on the landing pad at (0,0) as fast as possible with minimal fuel consumption.",
+  "reward_schema_summary": {
+    "components": [
+      {
+        "name": "success_bonus",
+        "description": "Awarded only on terminal success: both legs contact, near pad (distance < 0.15), low vertical speed (abs(vy) < 0.5), upright (abs(angle) < 0.2). One-shot per episode.",
+        "value": 100.0,
+        "condition": "terminated and state[6]==1 and state[7]==1 and distance_to_pad < 0.15 and abs(state[3]) < 0.5 and abs(state[4]) < 0.2"
+      },
+      {
+        "name": "progress_delta_reward",
+        "description": "Reward for reducing distance to pad. Computed as previous_distance - current_distance, capped at +5 per step.",
+        "value": "max(prev_distance - distance_to_pad, 0) capped at 5.0",
+        "condition": "always active, uses internal state to track previous distance"
+      },
+      {
+        "name": "vertical_speed_shaping",
+        "description": "Reward for low vertical speed (negative means descending). Encourages controlled descent.",
+        "value": "-abs(state[3]) * 1.0",
+        "condition": "always active"
+      },
+      {
+        "name": "angle_shaping",
+        "description": "Reward for upright orientation.",
+        "value": "-abs(state[4]) * 2.0",
+        "condition": "always active"
+      },
+      {
+        "name": "fuel_penalty",
+        "description": "Mild penalty for using main engine (m_power) and side engines (s_power).",
+        "value": "-0.03 * m_power - 0.01 * s_power",
+        "condition": "always active"
+      },
+      {
+        "name": "time_penalty",
+        "description": "Small per-step penalty to encourage fast landing.",
+        "value": -0.1,
+        "condition": "always active"
+      },
+      {
+        "name": "horizontal_velocity_penalty",
+        "description": "Small penalty for high horizontal speed to encourage staying above pad.",
+        "value": "-abs(state[2]) * 0.5",
+        "condition": "always active"
+      },
+      {
+        "name": "noop_penalty",
+        "description": "Small penalty for selecting action 0 (do nothing) to encourage engine use.",
+        "value": -0.5,
+        "condition": "action == 0"
+      },
+      {
+        "name": "main_engine_bonus",
+        "description": "Bonus for using main engine (action 2) when far from pad (distance > 0.5) to encourage approaching the pad.",
+        "value": 0.5,
+        "condition": "action == 2 and distance_to_pad > 0.5"
+      },
+      {
+        "name": "near_pad_bonus",
+        "description": "Small bonus for being near the pad (distance < 0.3) with low vertical speed (abs(vy) < 0.5) to encourage stable approach.",
+        "value": 1.0,
+        "condition": "distance_to_pad < 0.3 and abs(state[3]) < 0.5"
+      },
+      {
+        "name": "crash_penalty",
+        "description": "Large penalty if terminated due to crash (game_over) or out-of-bounds. Not applied on timeout or other terminations.",
+        "value": -100.0,
+        "condition": "terminated and (game_over or abs(state[0]) >= 1.0)"
+      }
+    ],
+    "total_reward_formula": "success_bonus + progress_delta_reward + vertical_speed_shaping + angle_shaping + fuel_penalty + time_penalty + horizontal_velocity_penalty + noop_penalty + main_engine_bonus + near_pad_bonus + crash_penalty"
+  },
+  "trajectory_examples": [
+    {
+      "episode_id": 0,
+      "length": 82,
+      "return_generated": -115.32153055071831,
+      "return_fitness": -149.96430788773642,
+      "final_state": [
+        0.5634366273880005,
+        -0.25619620084762573,
+        1.1072441339492798,
+        -0.21513913571834564,
+        -0.21444080770015717,
+        0.8081591725349426,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unsafe_terminal",
+      "component_returns": {
+        "angle": -2.354952002875507,
+        "crash": 0.0,
+        "crash_terminal": 1.0,
+        "distance_to_pad": 84.57729372823279,
+        "fitness_score": -149.96430788773642,
+        "fuel_used": 82.0,
+        "horizontal_speed": 55.971165180206306,
+        "objective_bonus": 0.0,
+        "out_of_bounds": 0.0,
+        "out_of_bounds_terminal": 0.0,
+        "progress_delta": 0.9174569302974629,
+        "reward_angle": -4.709904005751014,
+        "reward_crash": 0.0,
+        "reward_distance": 0.9174569302974629,
+        "reward_fuel": -0.8200000000000005,
+        "reward_horizontal": -27.985582590103153,
+        "reward_main_engine": 0.0,
+        "reward_near_pad": 0.0,
+        "reward_noop": 0.0,
+        "reward_success": 0.0,
+        "reward_time": -8.199999999999987,
+        "reward_vertical": -74.52350110858679,
+        "safe_landing_terminal": 0.0,
+        "success": 0.0,
+        "success_flag": 0.0,
+        "success_like_terminal": 0.0,
+        "timeout_terminal": 0.0,
+        "unsafe_terminal": 1.0,
+        "vertical_speed": -73.3267688130339
+      },
+      "action_histogram": {
+        "1": 43,
+        "3": 39
+      }
+    },
+    {
+      "episode_id": 1,
+      "length": 52,
+      "return_generated": -77.83207303285599,
+      "return_fitness": -98.9224212966267,
+      "final_state": [
+        0.20292511582374573,
+        -0.04286262020468712,
+        0.3077276051044464,
+        -0.007276673335582018,
+        -0.06208476424217224,
+        -1.3927010297775269,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unsafe_terminal",
+      "component_returns": {
+        "angle": -0.45490457210689783,
+        "crash": 0.0,
+        "crash_terminal": 1.0,
+        "distance_to_pad": 42.397958165704665,
+        "fitness_score": -98.9224212966267,
+        "fuel_used": 52.0,
+        "horizontal_speed": 19.91429452896118,
+        "objective_bonus": 0.0,
+        "out_of_bounds": 0.0,
+        "out_of_bounds_terminal": 0.0,
+        "progress_delta": 1.2018604665757289,
+        "reward_angle": -0.9098091442137957,
+        "reward_crash": 0.0,
+        "reward_distance": 1.2018604665757289,
+        "reward_fuel": -0.5200000000000002,
+        "reward_horizontal": -9.95714726448059,
+        "reward_main_engine": 0.0,
+        "reward_near_pad": 1.0,
+        "reward_noop": 0.0,
+        "reward_success": 0.0,
+        "reward_time": -5.1999999999999975,
+        "reward_vertical": -63.44697730839252,
+        "safe_landing_terminal": 0.0,
+        "success": 0.0,
+        "success_flag": 0.0,
+        "success_like_terminal": 0.0,
+        "timeout_terminal": 0.0,
+        "unsafe_terminal": 1.0,
+        "vertical_speed": -63.44697730839252
+      },
+      "action_histogram": {
+        "1": 27,
+        "3": 25
+      }
+    },
+    {
+      "episode_id": 2,
+      "length": 88,
+      "return_generated": -101.29036751389503,
+      "return_fitness": -49.313422081139166,
+      "final_state": [
+        -0.643730878829956,
+        -0.0695389062166214,
+        -0.5215991735458374,
+        -0.3526545763015747,
+        -0.06316402554512024,
+        -3.1936168670654297,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unsafe_terminal",
+      "component_returns": {
+        "angle": 0.13458872336195782,
+        "crash": 0.0,
+        "crash_terminal": 1.0,
+        "distance_to_pad": 91.18770246289536,
+        "fitness_score": -49.313422081139166,
+        "fuel_used": 88.0,
+        "horizontal_speed": -63.47139835357666,
+        "objective_bonus": 0.0,
+        "out_of_bounds": 0.0,
+        "out_of_bounds_terminal": 0.0,
+        "progress_delta": 0.8527241642448492,
+        "reward_angle": -5.110772896441631,
+        "reward_crash": 0.0,
+        "reward_distance": 0.8527241642448492,
+        "reward_fuel": -1.380000000000001,
+        "reward_horizontal": -31.73569917678833,
+        "reward_main_engine": 12.5,
+        "reward_near_pad": 0.0,
+        "reward_noop": 0.0,
+        "reward_success": 0.0,
+        "reward_time": -8.799999999999985,
+        "reward_vertical": -67.61661971509457,
+        "safe_landing_terminal": 0.0,
+        "success": 0.0,
+        "success_flag": 0.0,
+        "success_like_terminal": 0.0,
+        "timeout_terminal": 0.0,
+        "unsafe_terminal": 1.0,
+        "vertical_speed": -65.91511148512365
+      },
+      "action_histogram": {
+        "3": 32,
+        "1": 31,
+        "2": 25
+      }
+    },
+    {
+      "episode_id": 3,
+      "length": 66,
+      "return_generated": 25.804555416107178,
+      "return_fitness": -117.86066398948414,
+      "final_state": [
+        0.06968145072460175,
+        -0.04281884804368019,
+        2.8187761458298155e-08,
+        1.4871599773869093e-07,
+        0.00030928850173950195,
+        -1.275999323979704e-07,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unsafe_terminal",
+      "component_returns": {
+        "angle": -0.9863522411324084,
+        "crash": 0.0,
+        "crash_terminal": 1.0,
+        "distance_to_pad": 58.22352114967822,
+        "fitness_score": -117.86066398948414,
+        "fuel_used": 66.0,
+        "horizontal_speed": 6.826242045933732,
+        "objective_bonus": 100.0,
+        "out_of_bounds": 0.0,
+        "out_of_bounds_terminal": 0.0,
+        "progress_delta": 1.3391458925439401,
+        "reward_angle": -1.9739416362717748,
+        "reward_crash": 0.0,
+        "reward_distance": 1.3391458925439401,
+        "reward_fuel": -0.6600000000000004,
+        "reward_horizontal": -3.413121022966866,
+        "reward_main_engine": 0.0,
+        "reward_near_pad": 1.0,
+        "reward_noop": 0.0,
+        "reward_success": 100.0,
+        "reward_time": -6.5999999999999925,
+        "reward_vertical": -63.88752796421689,
+        "safe_landing_terminal": 0.0,
+        "success": 1.0,
+        "success_flag": 1.0,
+        "success_like_terminal": 0.0,
+        "timeout_terminal": 0.0,
+        "unsafe_terminal": 1.0,
+        "vertical_speed": -63.8875276667849
+      },
+      "action_histogram": {
+        "3": 33,
+        "1": 33
+      }
+    },
+    {
+      "episode_id": 4,
+      "length": 84,
+      "return_generated": 15.413171872496605,
+      "return_fitness": -90.23853585454592,
+      "final_state": [
+        -0.13385352492332458,
+        -0.04285703971982002,
+        4.273583797953506e-08,
+        1.0559715235558542e-07,
+        0.0005247163353487849,
+        -1.709906030100683e-07,
+        1.0,
+        1.0
+      ],
+      "terminal_classification": "unsafe_terminal",
+      "component_returns": {
+        "angle": -1.5180297431652434,
+        "crash": 0.0,
+        "crash_terminal": 1.0,
+        "distance_to_pad": 86.87631675471049,
+        "fitness_score": -90.23853585454592,
+        "fuel_used": 84.0,
+        "horizontal_speed": -13.058715133846498,
+        "objective_bonus": 100.0,
+        "out_of_bounds": 0.0,
+        "out_of_bounds_terminal": 0.0,
+        "progress_delta": 1.334870535639217,
+        "reward_angle": -3.0458901305682957,
+        "reward_crash": 0.0,
+        "reward_distance": 1.334870535639217,
+        "reward_fuel": -0.9000000000000006,
+        "reward_horizontal": -6.529357609659087,
+        "reward_main_engine": 0.0,
+        "reward_near_pad": 1.0,
+        "reward_noop": 0.0,
+        "reward_success": 100.0,
+        "reward_time": -8.399999999999986,
+        "reward_vertical": -68.04645471403757,
+        "safe_landing_terminal": 0.0,
+        "success": 1.0,
+        "success_flag": 1.0,
+        "success_like_terminal": 0.0,
+        "timeout_terminal": 0.0,
+        "unsafe_terminal": 1.0,
+        "vertical_speed": -63.759234755935694
+      },
+      "action_histogram": {
+        "3": 41,
+        "1": 40,
+        "2": 3
+      }
+    }
+  ],
+  "model_selection": {
+    "file_type": "model_selection",
+    "primary_metric": "fitness_score",
+    "selected_model_source": "final_checkpoint",
+    "selected_score": -101.25987022190645,
+    "final_score": -101.25987022190645,
+    "used_best_checkpoint": false,
+    "peak_checkpoint_is_diagnostic_only": true,
+    "checkpoint_stability_report": {
+      "file_type": "checkpoint_stability_report",
+      "available": true,
+      "best_checkpoint_is_diagnostic_only": true,
+      "best_fitness": -100.4368222279673,
+      "final_fitness": -100.4368222279673,
+      "final_fitness_std": 37.4080751333488,
+      "best_final_fitness_gap": 0.0,
+      "best_success_like_terminal_rate": 0.0,
+      "final_success_like_terminal_rate": 0.0,
+      "success_rate_drop": 0.0,
+      "best_generated_reward": -49.38585014045238,
+      "final_generated_reward": -49.38585014045238,
+      "best_timestep": 1000000.0,
+      "final_timestep": 1000000.0,
+      "last_k_eval": {
+        "k": 3,
+        "fitness_mean": -110.2742684426067,
+        "fitness_std": 7.531323004576311,
+        "success_like_terminal_rate_mean": 0.0
+      },
+      "transient_peak_risk": false,
+      "reward_behavior_divergence": false,
+      "final_uncertainty_risk": true,
+      "unstable_last_k_risk": false,
+      "hard_constraints": [
+        "Do not over-trust small fitness differences when fitness variance is high; require behavior improvement or more robust evaluation."
+      ]
+    }
+  },
+  "target_behavior_report": {
+    "file_type": "target_behavior_report",
+    "target_behavior_contract": {
+      "file_type": "target_behavior_contract",
+      "contract_name": "LunarLanderTargetBehaviorContract",
+      "environment_name": "LunarLander-v2",
+      "success_terminal": [
+        "safe_landing_terminal or success_like_terminal is observed",
+        "episode terminates by task completion, not by time limit"
+      ],
+      "failure_terminal": [
+        "crash_terminal",
+        "unsafe_terminal",
+        "out_of_bounds_terminal",
+        "timeout_terminal"
+      ],
+      "proxy_success_risks": [
+        "near-pad state without terminal safe landing",
+        "both-leg contact or stable contact that continues until timeout",
+        "dense distance/velocity/contact reward farming without task completion"
+      ],
+      "forbidden_local_optima": [
+        "near_pad_timeout",
+        "stable_contact_timeout",
+        "hovering_or_settling_until_time_limit"
+      ],
+      "minimum_behavior_evidence": [
+        "success_like_terminal_rate",
+        "timeout_rate",
+        "unsafe_terminal_rate",
+        "final_state samples",
+        "trajectory terminal_classification"
+      ],
+      "state_assumptions": {
+        "state_format": "[x, y, vx, vy, angle, angular_velocity, leg1_contact, leg2_contact]",
+        "near_pad_threshold": {
+          "abs_x": 0.1,
+          "abs_y": 0.05
+        },
+        "stable_contact_threshold": {
+          "abs_vx": 0.05,
+          "abs_vy": 0.05,
+          "abs_angle": 0.2
+        }
+      }
+    },
+    "target_success": false,
+    "quality_label": "target_behavior_gap",
+    "evidence_confidence": "low",
+    "primary_behavior_criteria": {
+      "success_like_terminal_rate": 0.0,
+      "timeout_rate": 0.0,
+      "unsafe_terminal_rate": 1.0,
+      "out_of_bounds_rate": 0.0
+    },
+    "auxiliary_scores": {
+      "fitness_score": -101.25987022190645,
+      "fitness_score_std": 33.08496805262246,
+      "fitness_score_sem": 14.79604751981453,
+      "generated_reward": -50.64524876177311,
+      "generated_reward_std": 59.49010067050933,
+      "episode_length": 74.4,
+      "episode_length_std": 13.46996659238619,
+      "num_eval_episodes": 5
+    },
+    "auxiliary_score_stability": {
+      "fitness_score_std": 33.08496805262246,
+      "fitness_score_sem": 14.79604751981453,
+      "fitness_relative_std": 0.32673326541025816,
+      "high_fitness_uncertainty": false,
+      "low_sample_warning": true
+    },
+    "behavior_diagnostics": {
+      "final_reaches_time_limit": false,
+      "dense_proxy_timeout_risk": false,
+      "near_pad_timeout_rate": 0.0,
+      "both_legs_contact_timeout_rate": 0.0,
+      "stable_contact_timeout_rate": 0.0,
+      "near_pad_timeout_risk": false
+    },
+    "target_behavior_gaps": [
+      "Final policy does not reliably terminate with task success.",
+      "Unsafe or out-of-bounds terminations remain too frequent."
+    ],
+    "required_reward_fixes": [
+      "Increase the distinction between true terminal success and proxy progress states.",
+      "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration."
+    ],
+    "interpretation": "Use this report as the main reward-quality evidence. Fitness is an auxiliary evaluator with uncertainty; generated reward is only a diagnostic of what the policy learned to collect."
+  },
+  "checkpoint_stability_report": {
+    "file_type": "checkpoint_stability_report",
+    "available": true,
+    "best_checkpoint_is_diagnostic_only": true,
+    "best_fitness": -100.4368222279673,
+    "final_fitness": -100.4368222279673,
+    "final_fitness_std": 37.4080751333488,
+    "best_final_fitness_gap": 0.0,
+    "best_success_like_terminal_rate": 0.0,
+    "final_success_like_terminal_rate": 0.0,
+    "success_rate_drop": 0.0,
+    "best_generated_reward": -49.38585014045238,
+    "final_generated_reward": -49.38585014045238,
+    "best_timestep": 1000000.0,
+    "final_timestep": 1000000.0,
+    "last_k_eval": {
+      "k": 3,
+      "fitness_mean": -110.2742684426067,
+      "fitness_std": 7.531323004576311,
+      "success_like_terminal_rate_mean": 0.0
+    },
+    "transient_peak_risk": false,
+    "reward_behavior_divergence": false,
+    "final_uncertainty_risk": true,
+    "unstable_last_k_risk": false,
+    "hard_constraints": [
+      "Do not over-trust small fitness differences when fitness variance is high; require behavior improvement or more robust evaluation."
+    ]
+  }
+}

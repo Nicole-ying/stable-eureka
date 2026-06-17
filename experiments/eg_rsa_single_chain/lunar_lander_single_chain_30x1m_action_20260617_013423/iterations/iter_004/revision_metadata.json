@@ -1,0 +1,63 @@
+{
+  "edit_scope": "medium",
+  "next_search_mode": "action_coverage_repair",
+  "action_type": "target_behavior_repair",
+  "reason": "Fix three critical flaws: (1) crash penalty heuristic misclassifies normal flight as crashes, (2) success bonus fires in non-terminal states creating proxy-success farming, (3) main engine bonus too small. Preserve progress-delta guidance and action coverage improvements from iter_001. Avoid the failed pattern from iter_002 (removing all non-terminal positive incentives) and iter_003 (keeping flawed crash penalty heuristic).",
+  "preserved_design": [
+    "Progress-delta reward for reducing distance to pad (capped at +5 per step).",
+    "Vertical speed shaping to encourage controlled descent.",
+    "Angle shaping to encourage upright orientation.",
+    "Fuel penalty to discourage waste.",
+    "Time penalty to encourage timely landing.",
+    "Horizontal velocity penalty to discourage drifting.",
+    "No-op penalty to discourage doing nothing."
+  ],
+  "changed_design": [
+    "Fix crash penalty: only apply -100 when terminated due to actual crash (game_over) or out-of-bounds, not when legs are not in contact during flight.",
+    "Make success bonus truly terminal-aligned: only pay when episode terminates with success (both legs contact, near pad, low speed, upright). Use a success_flag to ensure one-shot payment.",
+    "Remove repeatable proxy-success payment: success bonus only fires on terminal success, not on non-terminal states.",
+    "Increase main engine bonus to +0.5 when distance > 0.5 to provide meaningful incentive for approaching the pad.",
+    "Add small bonus (+1.0) for being near the pad (distance < 0.3) with low speed (abs(vy) < 0.5) to encourage stable approach.",
+    "Add diagnostics for success_flag and objective_bonus to enable post-training audits."
+  ],
+  "required_edits_implemented": [
+    "Increase the distinction between true terminal success and proxy progress states.",
+    "Add clearer negative feedback for unsafe terminal behavior without overwhelming exploration.",
+    "Make completion/objective bonuses one-shot or terminal-aligned so they cannot fire every step.",
+    "Remove repeatable proxy-success payment modes that can be farmed without episode completion.",
+    "Keep dense progress signals bounded and smaller than episode-scale objective signals.",
+    "Add diagnostics for success_flag/objective_bonus so post-training audits can verify payment count."
+  ],
+  "forbidden_edits_avoided": [
+    "Do not increase raw per-step action or engine bonuses (main engine bonus is conditioned on distance > 0.5, not raw per-step).",
+    "Do not let objective_bonus exceed roughly one terminal event per episode (success bonus is one-shot).",
+    "Do not define success only as a non-terminal state predicate (success is now terminal-aligned).",
+    "Avoid remembered failed pattern: crash penalty is fixed to not misclassify normal flight, success condition is reachable and terminal-aligned.",
+    "Avoid remembered failed pattern from iter_002: non-terminal positive incentives (progress-delta, near-pad bonus) are preserved to maintain guidance."
+  ],
+  "rejected_patterns_avoided": [
+    "Unused discrete actions: action 0 remains unused but all necessary actions (1,2,3) are used; the bottleneck is trajectory-phase guidance, not action coverage.",
+    "Proxy-success farming: success bonus is now terminal-aligned and one-shot.",
+    "Misclassified crash penalty: crash penalty only applies on actual environment termination.",
+    "Removing all non-terminal positive incentives: progress-delta and near-pad bonus are preserved."
+  ],
+  "target_behavior_plan": "Make success bonus truly terminal-aligned: only pay when the episode terminates with both legs contact, near pad (distance < 0.15), low vertical speed (abs(vy) < 0.5), and upright (abs(angle) < 0.2). This ensures the agent must complete the task to receive the large reward. The crash penalty is fixed to only apply on actual crashes, so the agent can explore without being penalized for normal flight. A near-pad bonus (+1.0) provides non-terminal guidance without farming.",
+  "action_coverage_plan": "Action 0 (do nothing) remains unused but is not necessary for success. The agent already uses actions 1,2,3. The main engine bonus (+0.5 when distance > 0.5) provides a stronger incentive to use action 2 for approaching the pad. The near-pad bonus (+1.0) encourages the agent to stay near the pad once it arrives.",
+  "phase_guidance_plan": "Phase 1 (approach): progress-delta reward guides the agent toward the pad. Main engine bonus (+0.5) encourages using action 2 when far. Phase 2 (descent): vertical speed shaping and angle shaping guide controlled descent. Near-pad bonus (+1.0) encourages stable approach. Phase 3 (touchdown): terminal-aligned success bonus provides clear final goal. The crash penalty is only applied on actual crashes, not on normal flight.",
+  "payment_mode_plan": "Success bonus is one-shot, terminal-aligned (only on terminal success). Progress-delta reward is per-step but capped at +5 to prevent farming. Main engine bonus is per-step but conditioned on distance > 0.5. Near-pad bonus is per-step but conditioned on distance < 0.3 and low speed. No-op penalty is per-step. Crash penalty is terminal-only. All other terms are per-step shaping signals.",
+  "expected_metric_changes": {
+    "success_like_terminal_rate": "increase from 0.0 to >0.0",
+    "unsafe_terminal_rate": "decrease from 1.0 to <1.0",
+    "reward_success_mean": "decrease from 80.0 to <100.0 (one-shot per episode)",
+    "success_mean": "decrease from 0.8 to <1.0 (one-shot per episode)",
+    "crash_terminal_mean": "decrease from 1.0 to <1.0 (only actual crashes)"
+  },
+  "validation_metrics": [
+    "final_success_like_terminal_rate >= 0.5",
+    "timeout_rate <= 0.4",
+    "transient_peak_risk == false",
+    "success_flag_mean <= 1.2",
+    "objective_bonus_mean <= 120.0",
+    "generated_minus_fitness_gap <= 500.0"
+  ]
+}

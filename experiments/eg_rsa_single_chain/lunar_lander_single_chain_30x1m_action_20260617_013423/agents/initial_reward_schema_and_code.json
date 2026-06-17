@@ -1,0 +1,102 @@
+{
+  "file_type": "expert_initial_reward_schema_and_code",
+  "environment_name": "LunarLander-v2",
+  "expert_blueprint": {
+    "intended_behavior_phases": [
+      "Phase 1: Stabilize and approach the landing pad from above.",
+      "Phase 2: Descend with controlled vertical speed while maintaining horizontal alignment.",
+      "Phase 3: Final touchdown with minimal vertical velocity and upright orientation."
+    ],
+    "component_scale_reasoning": {
+      "objective_success_bonus": "Large positive reward (+100) for successful landing (both legs contact, upright, low speed) to provide clear final goal signal.",
+      "progress_shaping": "Moderate shaping rewards for reducing distance to pad, reducing vertical speed, and maintaining upright angle. These are scaled to be reachable (e.g., distance reduction gives up to ~10 per step) to guide learning without dominating.",
+      "fuel_penalty": "Mild penalty (-0.03 per main engine use, -0.01 per side engine use) to discourage waste but not discourage necessary braking.",
+      "crash_penalty": "Large negative reward (-100) for crashes to strongly avoid failure.",
+      "out_of_bounds_penalty": "Large negative reward (-100) for leaving viewport.",
+      "time_penalty": "Small per-step penalty (-0.1) to encourage timely landing without being harsh.",
+      "angle_regularizer": "Small penalty for large angle deviations to encourage upright posture.",
+      "velocity_regularizer": "Small penalty for high horizontal velocity to encourage centered landing."
+    },
+    "active_objective_signal": "Yes, a success bonus when both legs contact ground and lander is near pad with low speed.",
+    "reachable_progress_feedback": "Yes, continuous shaping based on distance to pad, vertical speed, and angle.",
+    "mild_regularizers": "Yes, fuel penalty, time penalty, angle penalty, horizontal velocity penalty.",
+    "diagnostics": "Includes distance_to_pad, vertical_speed, horizontal_speed, angle, fuel_used, crash, success, and individual component values."
+  },
+  "reward_schema": {
+    "components": [
+      {
+        "name": "success_bonus",
+        "description": "Awarded when both legs contact ground, lander is near pad (distance < 0.1), vertical speed low (<0.5), horizontal speed low (<0.5), and angle small (<0.1 rad).",
+        "value": 100.0,
+        "condition": "state[6]==1 and state[7]==1 and distance_to_pad < 0.1 and abs(state[3]) < 0.5 and abs(state[2]) < 0.5 and abs(state[4]) < 0.1"
+      },
+      {
+        "name": "distance_shaping",
+        "description": "Reward for reducing distance to pad. Computed as -distance_to_pad * 2.0, so moving closer increases reward.",
+        "value": "-distance_to_pad * 2.0",
+        "condition": "always active"
+      },
+      {
+        "name": "vertical_speed_shaping",
+        "description": "Reward for low vertical speed (negative means descending). Encourages controlled descent. Computed as -abs(state[3]) * 1.0.",
+        "value": "-abs(state[3]) * 1.0",
+        "condition": "always active"
+      },
+      {
+        "name": "angle_shaping",
+        "description": "Reward for upright orientation. Computed as -abs(state[4]) * 2.0.",
+        "value": "-abs(state[4]) * 2.0",
+        "condition": "always active"
+      },
+      {
+        "name": "fuel_penalty",
+        "description": "Mild penalty for using main engine (m_power) and side engines (s_power).",
+        "value": "-0.03 * m_power - 0.01 * s_power",
+        "condition": "always active"
+      },
+      {
+        "name": "time_penalty",
+        "description": "Small per-step penalty to encourage fast landing.",
+        "value": -0.1,
+        "condition": "always active"
+      },
+      {
+        "name": "horizontal_velocity_penalty",
+        "description": "Small penalty for high horizontal speed to encourage staying above pad.",
+        "value": "-abs(state[2]) * 0.5",
+        "condition": "always active"
+      },
+      {
+        "name": "crash_penalty",
+        "description": "Large penalty if terminated due to crash (game_over) or out-of-bounds.",
+        "value": -100.0,
+        "condition": "terminated and (game_over or abs(state[0]) >= 1.0)"
+      }
+    ],
+    "total_reward_formula": "success_bonus + distance_shaping + vertical_speed_shaping + angle_shaping + fuel_penalty + time_penalty + horizontal_velocity_penalty + crash_penalty"
+  },
+  "reward_code": "def compute_reward(self, state, m_power, s_power, terminated):\n    # Initialize diagnostics\n    distance_to_pad = 0.0\n    vertical_speed = 0.0\n    horizontal_speed = 0.0\n    angle = 0.0\n    fuel_used = 0.0\n    crash = 0.0\n    success = 0.0\n    reward_distance = 0.0\n    reward_vertical = 0.0\n    reward_angle = 0.0\n    reward_fuel = 0.0\n    reward_time = 0.0\n    reward_horizontal = 0.0\n    reward_crash = 0.0\n    reward_success = 0.0\n\n    # Compute distance to pad (pad at (0,0))\n    distance_to_pad = (state[0]**2 + state[1]**2)**0.5\n    vertical_speed = state[3]\n    horizontal_speed = state[2]\n    angle = state[4]\n    fuel_used = m_power + s_power\n\n    # Success bonus: both legs contact, near pad, low speeds, upright\n    if state[6] == 1.0 and state[7] == 1.0 and distance_to_pad < 0.1 and abs(vertical_speed) < 0.5 and abs(horizontal_speed) < 0.5 and abs(angle) < 0.1:\n        reward_success = 100.0\n        success = 1.0\n\n    # Distance shaping: encourage moving closer to pad\n    reward_distance = -distance_to_pad * 2.0\n\n    # Vertical speed shaping: encourage low vertical speed\n    reward_vertical = -abs(vertical_speed) * 1.0\n\n    # Angle shaping: encourage upright orientation\n    reward_angle = -abs(angle) * 2.0\n\n    # Fuel penalty: mild penalty for engine use\n    reward_fuel = -0.03 * m_power - 0.01 * s_power\n\n    # Time penalty: small per-step penalty\n    reward_time = -0.1\n\n    # Horizontal velocity penalty: discourage drifting\n    reward_horizontal = -abs(horizontal_speed) * 0.5\n\n    # Crash penalty: large penalty if terminated due to crash or out-of-bounds\n    if terminated:\n        # Check if crash (game_over) or out-of-bounds\n        # We can infer crash from terminated and not success (since success also sets terminated? Actually success does not set terminated, but landing sets legs contact but not terminated unless crash/out-of-bounds/not awake)\n        # In LunarLander, successful landing does not terminate; termination only on crash/out-of-bounds/not awake.\n        # So if terminated, it's a failure.\n        reward_crash = -100.0\n        crash = 1.0\n\n    # Total reward\n    reward = reward_success + reward_distance + reward_vertical + reward_angle + reward_fuel + reward_time + reward_horizontal + reward_crash\n\n    # Individual reward dictionary\n    individual_reward = {\n        'distance_to_pad': distance_to_pad,\n        'vertical_speed': vertical_speed,\n        'horizontal_speed': horizontal_speed,\n        'angle': angle,\n        'fuel_used': fuel_used,\n        'crash': crash,\n        'success': success,\n        'reward_success': reward_success,\n        'reward_distance': reward_distance,\n        'reward_vertical': reward_vertical,\n        'reward_angle': reward_angle,\n        'reward_fuel': reward_fuel,\n        'reward_time': reward_time,\n        'reward_horizontal': reward_horizontal,\n        'reward_crash': reward_crash\n    }\n\n    return float(reward), individual_reward",
+  "expected_behavior": "The agent should learn to descend towards the landing pad, maintain upright orientation, control vertical and horizontal speeds, and use the main engine primarily for braking. It should avoid crashes and out-of-bounds. The shaping rewards guide it to reduce distance, vertical speed, and angle, while the success bonus provides a clear final objective. The mild fuel penalty discourages wasteful engine use but does not prevent necessary braking. The time penalty encourages faster landing. The agent should not hover indefinitely because the time penalty and distance shaping push it to descend.",
+  "known_risks": [
+    "The success bonus may be too large relative to shaping, causing the agent to ignore shaping and only try to achieve success, potentially leading to risky behavior near the ground.",
+    "The distance shaping may encourage the agent to move quickly towards the pad without controlling speed, leading to crashes.",
+    "The vertical speed shaping may cause the agent to descend too slowly if the weight is too high, or too fast if too low.",
+    "The angle shaping may cause the agent to prioritize angle over position, leading to drifting away from pad.",
+    "The crash penalty is only applied when terminated, which may not provide enough gradient for the agent to avoid crashes early in learning.",
+    "The fuel penalty may discourage engine use even when necessary, especially if the agent is learning to brake.",
+    "The time penalty may encourage the agent to rush and crash."
+  ],
+  "self_check": {
+    "function_signature": "def compute_reward(self, state, m_power, s_power, terminated):",
+    "return_type": "float, dict",
+    "diagnostics_initialized": true,
+    "no_external_calls": true,
+    "no_custom_helpers": true,
+    "active_objective_signal": true,
+    "reachable_progress_feedback": true,
+    "mild_regularizers": true,
+    "component_scale_reasoning": true,
+    "all_variables_initialized_before_branches": true
+  },
+  "agent_name": "ExpertRewardDesignerAgent"
+}
