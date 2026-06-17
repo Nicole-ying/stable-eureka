@@ -14,12 +14,11 @@ def validate_reward_static(
     reward_code: str,
     reward_schema: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    """Static checks for common reward-payment failure modes.
+    """Static checks for common reward-payment and evidence-contract failures.
 
-    The validator is evidence, not the expert brain.  It should surface likely
-    reward-design risks without deciding the search direction.  Context-aware AST
-    extraction is used so zero-initialisation lines do not hide the real guarded
-    assignment inside if/else blocks.
+    This validator is not the expert search brain.  It enforces structural I/O
+    contracts and surfaces reward-design risks.  Search decisions still belong to
+    the LLM expert strategist.
     """
     code = reward_code or ""
     reward_schema = reward_schema or {}
@@ -74,6 +73,7 @@ def validate_reward_static(
         warnings.append("reward_code does not expose individual_reward diagnostics; audits will be less informative.")
 
     schema_consistency = _schema_code_consistency(reward_schema, code)
+    errors.extend(schema_consistency.get("errors", []))
     warnings.extend(schema_consistency.get("warnings", []))
 
     valid = not errors
@@ -180,20 +180,24 @@ def _schema_code_consistency(reward_schema: Dict[str, Any], code: str) -> Dict[s
     key_set = set(diagnostic_keys)
     missing_from_code = sorted(component_set - key_set)
     extra_in_code = sorted(key_set - component_set)
+    errors: List[str] = []
     warnings: List[str] = []
     if component_names and diagnostic_keys and missing_from_code:
-        warnings.append(
-            "reward_schema declares components not exposed in individual_reward diagnostics: " + ", ".join(missing_from_code[:12])
+        errors.append(
+            "reward_schema component ids are not exposed in individual_reward diagnostics: " + ", ".join(missing_from_code[:12])
         )
     if component_names and diagnostic_keys and extra_in_code:
-        warnings.append(
-            "reward_code exposes individual_reward keys not declared in reward_schema: " + ", ".join(extra_in_code[:12])
+        errors.append(
+            "individual_reward exposes keys not declared by reward_schema component ids: " + ", ".join(extra_in_code[:12])
         )
+    if component_names and not diagnostic_keys:
+        warnings.append("reward_schema declares components but individual_reward keys could not be extracted statically.")
     return {
         "schema_component_names": component_names,
         "individual_reward_keys": diagnostic_keys,
         "missing_schema_components_in_code": missing_from_code,
         "extra_code_components_not_in_schema": extra_in_code,
+        "errors": errors,
         "warnings": warnings,
     }
 
