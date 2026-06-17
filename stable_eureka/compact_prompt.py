@@ -7,6 +7,7 @@ kept complete.
 
 import ast
 import hashlib
+import os
 import re
 import textwrap
 from typing import Any, Dict, List, Optional
@@ -20,6 +21,26 @@ def normalize_reward_code(code: str) -> str:
 
 def reward_code_hash(code: str) -> str:
     return hashlib.sha256(normalize_reward_code(code).encode('utf-8')).hexdigest()[:16]
+
+
+def reward_code_from_record(record: Dict[str, Any]) -> str:
+    if record.get('reward_code'):
+        return record['reward_code']
+    path_text = record.get('reward_code_path') or ''
+    if not path_text:
+        return ''
+    if os.path.isfile(path_text):
+        with open(path_text, 'r', encoding='utf-8') as f:
+            return f.read()
+    name = os.path.basename(path_text)
+    if not name:
+        return ''
+    for root, _, files in os.walk(os.getcwd()):
+        if name in files:
+            full_path = os.path.join(root, name)
+            with open(full_path, 'r', encoding='utf-8') as f:
+                return f.read()
+    return ''
 
 
 def _label(record: Dict[str, Any]) -> str:
@@ -108,7 +129,7 @@ def elite_reward_codes(history: List[Dict[str, Any]]) -> str:
         return 'No elite reward code has been confirmed yet.'
     blocks = []
     for r in elites:
-        code = r.get('reward_code', '')
+        code = reward_code_from_record(r)
         blocks += [
             f"## {_label(r)} full elite reward code",
             f"fitness={float(r.get('fitness', 0.0)):.3f}, parent={r.get('parent') or 'None'}, code_hash={r.get('code_hash', 'NA')}",
@@ -131,7 +152,7 @@ def children_from_parent(history: List[Dict[str, Any]], parent_label: Optional[s
     for r in children:
         s = r.get('final_eval_summary', {})
         status = 'elite' if r.get('is_elite') else 'failed_or_non_elite_child'
-        code = r.get('reward_code', '')
+        code = reward_code_from_record(r)
         blocks += [
             f"## {_label(r)} | {status} | fitness={float(r.get('fitness', 0.0)):.3f} | success_like={_metric(s, 'success_like_rate')} | episode_length={_metric(s, 'episode_length')} | hash={r.get('code_hash', 'NA')}",
             'Component manifest:',
