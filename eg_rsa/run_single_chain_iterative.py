@@ -10,12 +10,12 @@ from typing import Any, Dict, Optional
 import yaml
 
 from eg_rsa.llm.client_factory import build_llm_client
-from eg_rsa.run_single_chain import run as run_bootstrap
+from eg_rsa.run_single_chain import run as run_bootstrap, _extract_code_block
 from eg_rsa.single_chain.agents import JsonAgent
-from eg_rsa.single_chain.controller import SearchController, write_controller_decision
+from eg_rsa.single_chain.controller import write_controller_decision
+from eg_rsa.single_chain.controller_v2 import SearchController
 from eg_rsa.single_chain.evidence import EvidenceBuilder
-from eg_rsa.single_chain.expert_memory import build_expert_memory_context
-from eg_rsa.single_chain.expert_priors import get_expert_priors
+from eg_rsa.single_chain.expert_memory import build_memory_context_md
 from eg_rsa.single_chain.expert_search_strategy import run_expert_search_strategy
 from eg_rsa.single_chain.json_tools import read_json, read_text, write_json, write_text
 from eg_rsa.single_chain.memory_manager import MemoryManager
@@ -61,17 +61,8 @@ def run_iterative(
     memory = MemoryManager(memory_path, top_k=int(memory_cfg.get("retrieve_top_k", 5)))
     controller = SearchController(config)
 
-    expert_priors = get_expert_priors()
-    write_json(run_dir / "expert_reward_design_priors.json", expert_priors)
-    expert_blueprint = _load_expert_blueprint(run_dir)
-    write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
-
-    env_understanding = _read_json_with_fallback(run_dir / "agents" / "environment_understanding.json", run_dir / "agents" / "task_model.json")
-    target_contract = _read_json_with_fallback(run_dir / "agents" / "target_alignment_contract.json", run_dir / "agents" / "task_model.json")
-    env_summary = _environment_summary(env_understanding)
-    target_summary = _target_summary(target_contract)
-    write_json(run_dir / "environment_understanding_summary.json", env_summary)
-    write_json(run_dir / "target_alignment_summary.json", target_summary)
+    # Load full environment reference for LLM #4 context (generated at bootstrap).
+    task_model_md = read_text(run_dir / "agents" / "task_model.md")
 
     next_iteration_start = _next_iteration_index(run_dir)
 
@@ -111,6 +102,10 @@ def run_iterative(
     for next_iteration in range(next_iteration_start, total_iterations):
         pre_strategy_parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
         pre_strategy_memory = memory.retrieve(pre_strategy_parent_evidence)
+        pre_strategy_md = build_memory_context_md(
+            current_evidence=pre_strategy_parent_evidence,
+            retrieved_memory=pre_strategy_memory,
+        )
         selected_parent_dir, selected_anchor_dir, strategy_decision = run_expert_search_strategy(
             llm_client=llm_client,
             prompt_path=PROMPT_DIR / "expert_search_strategy_prompt.txt",
@@ -118,9 +113,8 @@ def run_iterative(
             parent_dir=parent_dir,
             best_dir=best_dir,
             next_iteration=next_iteration,
-            retrieved_memory=pre_strategy_memory,
-            environment_summary=env_summary,
-            target_summary=target_summary,
+            environment_summary={"markdown_text": task_model_md},
+            target_summary={"markdown_text": pre_strategy_md},
         )
         parent_dir = selected_parent_dir
         best_dir = selected_anchor_dir
@@ -135,39 +129,45 @@ def run_iterative(
 
         parent_evidence = EvidenceBuilder.build(parent_dir, output_path=parent_dir / "iteration_evidence.json")
         retrieved = memory.retrieve(parent_evidence)
-        write_json(search_dir / "retrieved_memory.json", {"items": retrieved})
-        expert_memory_context = build_expert_memory_context(
-            current_evidence=parent_evidence,
-            best_evidence=best_evidence,
-            retrieved_memory=retrieved,
-            output_path=search_dir / "expert_memory_context.json",
-        )
-        expert_memory_context["expert_search_strategy_decision"] = strategy_decision
-        write_json(search_dir / "expert_memory_context.with_strategy.json", expert_memory_context)
-
-        current_reward_schema = read_json(parent_dir / "reward" / "reward_schema.json")
         current_reward_code = read_text(parent_dir / "reward" / "reward_code.py")
 
-        expert_revision_prompt = read_text(PROMPT_DIR / "expert_reward_revision_prompt.txt")
-        revision_bundle = JsonAgent("ExpertRewardRevisionAgent", llm_client, expert_revision_prompt).run(
-            {
-                "expert_reward_design_priors_json": as_json_text(expert_priors),
-                "expert_reward_design_blueprint_json": as_json_text(expert_blueprint),
-                "expert_memory_context_json": as_json_text(expert_memory_context),
-                "environment_understanding_summary_json": as_json_text(env_summary),
-                "target_alignment_contract_summary_json": as_json_text(target_summary),
-                "current_reward_schema_json": as_json_text(current_reward_schema),
-                "current_reward_code": current_reward_code,
-                "iteration_evidence_json": as_json_text(parent_evidence),
-                "best_iteration_evidence_json": as_json_text(best_evidence),
-                "retrieved_memory_json": as_json_text({"items": retrieved}),
-            },
-            search_dir / "expert_reward_revision_bundle.json",
-            search_dir / "expert_reward_revision_raw.txt",
+        # Build the 4 Markdown inputs for LLM #4.
+        diagnostics_md = EvidenceBuilder.build_diagnostics_md(
+            parent_dir, output_path=search_dir / "iteration_diagnostics.md",
         )
-        reflection, revision = _normalize_revision_bundle(revision_bundle)
-        write_json(search_dir / "reflection_decision.json", reflection)
-        write_json(search_dir / "revised_reward_schema_and_code.json", revision)
+        memory_context_md = build_memory_context_md(
+            current_evidence=parent_evidence,
+            retrieved_memory=retrieved,
+            strategy_decision=strategy_decision,
+            output_path=search_dir / "expert_memory_context.md",
+        )
+
+        # LLM #4: ExpertRewardRevisionAgent — Markdown in, Markdown out.
+        revision_prompt_tmpl = read_text(PROMPT_DIR / "expert_reward_revision_prompt.txt")
+        revision_prompt = (
+            revision_prompt_tmpl
+            .replace("{{task_model_md}}", task_model_md)
+            .replace("{{current_reward_code}}", current_reward_code)
+            .replace("{{iteration_diagnostics}}", diagnostics_md)
+            .replace("{{expert_memory_context}}", memory_context_md)
+        )
+        revision_md = llm_client.generate(revision_prompt)
+        write_text(search_dir / "expert_reward_revision_raw.md", revision_md)
+        write_text(search_dir / "expert_reward_revision.md", revision_md)
+
+        # Extract code blocks from revision output.
+        new_reward_code = _extract_code_block(revision_md, "python") or current_reward_code
+        new_reward_schema_raw = _extract_code_block(revision_md, "json") or "[]"
+        try:
+            new_reward_schema = json.loads(new_reward_schema_raw)
+        except (json.JSONDecodeError, TypeError):
+            new_reward_schema = []
+
+        revision = {
+            "reward_schema": new_reward_schema,
+            "reward_code": new_reward_code,
+        }
+        reflection = {"file_type": "reflection_decision", "source": "markdown_revision"}
 
         if reflection.get("search_decision", {}).get("recommended_next_action") == "stop_success":
             write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped at iteration {next_iteration - 1}: stop_success\n")
@@ -181,8 +181,8 @@ def run_iterative(
             config,
             candidate_dir,
             revision,
-            env_summary,
-            target_summary,
+            {"markdown_text": task_model_md},
+            {"markdown_text": task_model_md},
             llm_client,
             next_iteration,
             parent_reward_code=current_reward_code,
@@ -210,6 +210,7 @@ def run_iterative(
             reflection=reflection,
             revision=revision,
             output_copy_path=candidate_dir / "memory_transition.json",
+            controller_decision=decision,
         )
 
         if decision.get("accepted_as_elite"):
@@ -236,79 +237,6 @@ def run_iterative(
 
     write_text(run_dir / "ITERATIVE_DONE.txt", "single-chain iterative search finished\n")
     return run_dir
-
-
-def _normalize_revision_bundle(bundle: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, Any]]:
-    reflection = bundle.get("reflection_decision")
-    if not isinstance(reflection, dict):
-        reflection = {
-            "file_type": "reflection_decision",
-            "agent_name": "ExpertRewardRevisionAgent",
-            "source": "expert_reward_revision_bundle_fallback",
-            "causal_diagnosis": bundle.get("causal_diagnosis", ""),
-            "component_interaction_diagnosis": bundle.get("component_interaction_diagnosis", ""),
-            "failed_pattern_reuse_check": bundle.get("failed_pattern_reuse_check", ""),
-            "search_decision": bundle.get("search_decision", {}),
-            "hard_constraints_for_next_revision": bundle.get("hard_constraints_for_next_revision", []),
-            "expected_metric_changes": bundle.get("expected_metric_changes", {}),
-            "validation_metrics": bundle.get("validation_metrics", []),
-        }
-    reflection["search_decision"] = _normalize_search_decision(reflection.get("search_decision"))
-    reflection.setdefault("file_type", "reflection_decision")
-    reflection.setdefault("agent_name", "ExpertRewardRevisionAgent")
-
-    revision = bundle.get("revised_reward_schema_and_code")
-    if not isinstance(revision, dict):
-        revision = bundle
-    revision.setdefault("file_type", "revised_reward_schema_and_code")
-    return reflection, revision
-
-
-def _normalize_search_decision(value: Any) -> Dict[str, Any]:
-    if isinstance(value, dict):
-        value.setdefault("recommended_next_action", "revise_reward")
-        return value
-    if isinstance(value, str):
-        return {
-            "recommended_next_action": "revise_reward",
-            "reason": value,
-            "schema_normalized_from": "string",
-        }
-    return {
-        "recommended_next_action": "revise_reward",
-        "reason": "missing_or_invalid_search_decision",
-        "schema_normalized_from": type(value).__name__,
-    }
-
-
-def _read_json_with_fallback(primary: Path, fallback: Path) -> Dict[str, Any]:
-    if primary.exists():
-        return read_json(primary)
-    return read_json(fallback)
-
-
-def _load_expert_blueprint(run_dir: Path) -> Dict[str, Any]:
-    for path in [
-        run_dir / "expert_reward_design_blueprint.json",
-        run_dir / "agents" / "expert_reward_design_blueprint.json",
-        run_dir / "agents" / "initial_reward_schema_and_code.json",
-    ]:
-        if path.exists():
-            try:
-                data = read_json(path)
-                if "expert_blueprint" in data:
-                    return data.get("expert_blueprint") or {}
-                return data
-            except Exception:
-                pass
-    return {
-        "file_type": "expert_reward_design_blueprint",
-        "fallback": True,
-        "initial_reward_hard_constraints": [
-            "Separate objective, progress, regularizers, and diagnostics.",
-            "Use expert_memory_context to avoid repeating rejected edit patterns.",
-        ],
-    }
 
 
 def _materialize_revision(
@@ -381,8 +309,11 @@ def _candidate_dir_for_evidence(run_dir: Path, evidence: Dict[str, Any]) -> Opti
 
 
 def _environment_summary(data: Dict[str, Any]) -> Dict[str, Any]:
+    md = data.get("markdown_text", "")
     return {
         "file_type": "environment_understanding_summary",
+        "markdown_text": md,
+        # Legacy fields for backward compat — extracted from JSON task_model if available.
         "environment_name": data.get("environment_name"),
         "task_goal": data.get("task_goal") or data.get("primary_objective"),
         "reward_function_interface": data.get("reward_function_interface"),
@@ -397,8 +328,11 @@ def _environment_summary(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _target_summary(data: Dict[str, Any]) -> Dict[str, Any]:
+    md = data.get("markdown_text", "")
     return {
         "file_type": "target_alignment_contract_summary",
+        "markdown_text": md,
+        # Legacy fields for backward compat.
         "environment_name": data.get("environment_name"),
         "primary_objective": data.get("primary_objective"),
         "objective_decomposition": data.get("objective_decomposition") or data.get("intended_behavior_phases"),

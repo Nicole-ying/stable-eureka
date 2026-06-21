@@ -202,8 +202,20 @@ def _schema_code_consistency(reward_schema: Dict[str, Any], code: str) -> Dict[s
     }
 
 
-def _schema_component_names(reward_schema: Dict[str, Any]) -> List[str]:
+def _schema_component_names(reward_schema: Any) -> List[str]:
     names: List[str] = []
+    if isinstance(reward_schema, list):
+        for item in reward_schema:
+            name = None
+            if isinstance(item, dict):
+                name = item.get("id") or item.get("name")
+            elif isinstance(item, str):
+                name = item
+            if name and name not in names:
+                names.append(str(name))
+        return names
+    if not isinstance(reward_schema, dict):
+        return names
     for container in ["component_catalog", "components", "active_reward_terms", "diagnostic_terms"]:
         value = reward_schema.get(container)
         if not isinstance(value, list):

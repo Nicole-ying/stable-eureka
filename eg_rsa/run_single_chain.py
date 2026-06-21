@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,6 @@ import yaml
 
 from eg_rsa.llm.client_factory import build_llm_client
 from eg_rsa.single_chain.agents import JsonAgent
-from eg_rsa.single_chain.expert_priors import get_expert_priors
 from eg_rsa.single_chain.json_tools import read_text, write_json, write_text
 from eg_rsa.single_chain.reward_guard import prepare_guarded_reward_env
 from eg_rsa.single_chain.trainer import SingleChainPPOTrainer
@@ -70,45 +70,55 @@ def run(config_path: str) -> Path:
     write_text(prompts_out / "expert_reward_designer_prompt.txt", reward_designer_prompt)
     write_text(prompts_out / "reward_repair_prompt.txt", repair_prompt)
 
-    expert_priors = get_expert_priors()
-    write_json(run_dir / "expert_reward_design_priors.json", expert_priors)
-
     agents_dir = run_dir / "agents"
     raw_dir = agents_dir / "raw_llm_outputs"
 
-    task_model = JsonAgent("TaskModelAgent", llm_client, task_model_prompt).run(
-        sandbox_inputs,
-        agents_dir / "task_model.json",
-        raw_dir / "task_model_raw.txt",
-    )
+    # ---- LLM #1: TaskModelAgent — Markdown reference document ----
+    task_model_prompt_text = JsonAgent("TaskModelAgent", llm_client, task_model_prompt).build_prompt(sandbox_inputs)
+    task_model_md = llm_client.generate(task_model_prompt_text)
+    write_text(raw_dir / "task_model_raw.txt", task_model_md)
 
-    initial_reward = JsonAgent("ExpertRewardDesignerAgent", llm_client, reward_designer_prompt).run(
-        {
-            **sandbox_inputs,
-            "task_model_json": as_json_text(task_model),
-            "expert_reward_design_priors_json": as_json_text(expert_priors),
-        },
-        agents_dir / "initial_reward_schema_and_code.json",
-        raw_dir / "initial_reward_schema_and_code_raw.txt",
-    )
+    task_model_path_md = agents_dir / "task_model.md"
+    write_text(task_model_path_md, task_model_md)
+    write_text(run_dir / "task_model.md", task_model_md)
 
-    expert_blueprint = initial_reward.get("expert_blueprint") or {}
-    write_json(run_dir / "task_model.json", task_model)
-    write_json(run_dir / "expert_reward_design_blueprint.json", expert_blueprint)
+    task_model_compat = {"file_type": "task_model", "markdown_text": task_model_md}
+    write_json(agents_dir / "task_model.json", task_model_compat)
+    write_json(run_dir / "task_model.json", task_model_compat)
 
-    # Compatibility outputs for older analysis utilities and iterative resume code.
-    write_json(agents_dir / "environment_understanding.json", _environment_compat_from_task_model(task_model))
-    write_json(agents_dir / "target_alignment_contract.json", _target_compat_from_task_model(task_model))
+    # ---- LLM #2: ExpertRewardDesignerAgent — Markdown with code blocks ----
+    designer_prompt_text = reward_designer_prompt.replace("{{task_model_md}}", task_model_md)
+    designer_md = llm_client.generate(designer_prompt_text)
+    write_text(raw_dir / "initial_reward_design_raw.txt", designer_md)
 
-    reward_schema = initial_reward.get("reward_schema") or {}
-    reward_code = initial_reward.get("reward_code") or ""
+    # Save full design document.
+    write_text(agents_dir / "expert_reward_design.md", designer_md)
+    write_text(run_dir / "expert_reward_design.md", designer_md)
+
+    # Extract code blocks from Markdown.
+    reward_code = _extract_code_block(designer_md, "python") or ""
+    reward_schema_raw = _extract_code_block(designer_md, "json") or "[]"
+    try:
+        reward_schema = json.loads(reward_schema_raw)
+    except (json.JSONDecodeError, TypeError):
+        reward_schema = []
+
+    # Compatibility outputs for downstream consumers.
+    write_json(agents_dir / "environment_understanding.json", _environment_compat_from_task_model(task_model_compat))
+    write_json(agents_dir / "target_alignment_contract.json", _target_compat_from_task_model(task_model_compat))
+    write_json(agents_dir / "initial_reward_schema_and_code.json", {
+        "reward_schema": reward_schema,
+        "reward_code": reward_code,
+        "expert_blueprint": {"markdown_text": designer_md},
+    })
+    write_json(run_dir / "expert_reward_design_blueprint.json", {"markdown_text": designer_md})
     env_cls, reward_schema, reward_code, guard_summary = prepare_guarded_reward_env(
         config=config,
         output_dir=run_dir,
         reward_schema=reward_schema,
         reward_code=reward_code,
-        environment_understanding=task_model,
-        target_alignment_contract=task_model,
+        environment_understanding=task_model_compat,
+        target_alignment_contract=task_model_compat,
         llm_client=llm_client,
         repair_dir=agents_dir / "reward_repairs",
     )
@@ -117,8 +127,8 @@ def run(config_path: str) -> Path:
         config=config,
         output_dir=run_dir / "training",
         env_cls=env_cls,
-        environment_understanding=task_model,
-        target_alignment_contract=task_model,
+        environment_understanding=task_model_compat,
+        target_alignment_contract=task_model_compat,
         reward_schema=reward_schema,
     )
     reward_trace = trainer.train()
@@ -127,20 +137,25 @@ def run(config_path: str) -> Path:
     return run_dir
 
 
+def _extract_code_block(markdown: str, language: str) -> str | None:
+    """Extract the first fenced code block of the given language from Markdown."""
+    pattern = rf"```{language}\s*\n(.*?)```"
+    match = re.search(pattern, markdown, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    # Fallback: try any ```<lang> block when language is "python"
+    if language == "python":
+        match = re.search(r"```python\s*\n(.*?)```", markdown, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
 def _environment_compat_from_task_model(task_model: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "file_type": "environment_understanding",
         "source": "task_model_compat",
-        "environment_name": task_model.get("environment_name"),
-        "task_goal": task_model.get("primary_objective"),
-        "reward_function_interface": task_model.get("reward_function_interface"),
-        "state_space": task_model.get("state_space_summary"),
-        "action_space": task_model.get("action_space_summary"),
-        "termination_modes": task_model.get("failure_or_stop_signals_available_to_reward"),
-        "success_like_ending": task_model.get("success_signals_available_to_reward"),
-        "failure_like_endings": task_model.get("failure_or_stop_signals_available_to_reward"),
-        "behavior_trajectory_prior": task_model.get("intended_behavior_phases"),
-        "reward_design_risks": task_model.get("dangerous_local_optima"),
+        "markdown_text": task_model.get("markdown_text", ""),
     }
 
 
@@ -148,18 +163,7 @@ def _target_compat_from_task_model(task_model: Dict[str, Any]) -> Dict[str, Any]
     return {
         "file_type": "target_alignment_contract",
         "source": "task_model_compat",
-        "environment_name": task_model.get("environment_name"),
-        "primary_objective": task_model.get("primary_objective"),
-        "objective_decomposition": task_model.get("intended_behavior_phases"),
-        "behavior_trajectory_alignment": task_model.get("intended_behavior_phases"),
-        "metric_priority": task_model.get("primary_selection_metric"),
-        "primary_selection_metric": task_model.get("primary_selection_metric", "fitness_score"),
-        "proxy_metrics": task_model.get("proxy_metrics"),
-        "diagnostic_metrics": task_model.get("diagnostic_metrics"),
-        "success_criteria": task_model.get("success_signals_available_to_reward"),
-        "failure_modes": task_model.get("dangerous_local_optima"),
-        "bad_local_optima": task_model.get("dangerous_local_optima"),
-        "reward_generator_constraints": task_model.get("reward_design_constraints"),
+        "markdown_text": task_model.get("markdown_text", ""),
     }
 
 

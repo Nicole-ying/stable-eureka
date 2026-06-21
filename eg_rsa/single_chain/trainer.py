@@ -99,9 +99,16 @@ class SingleChainPPOTrainer:
 
         return DummyVecEnv([make_fn(i) for i in range(int(n_envs))])
 
+    @staticmethod
+    def _linear_schedule(initial_value: float) -> Any:
+        def schedule(progress_remaining: float) -> float:
+            return float(progress_remaining) * float(initial_value)
+        return schedule
+
     def _ppo_kwargs(self, train_env: DummyVecEnv) -> Dict[str, Any]:
         algo_params = self.rl_cfg.get("algo_params", {})
         architecture = self.rl_cfg.get("architecture") or {}
+        use_schedule = bool(self.train_cfg.get("use_linear_schedule", False))
         policy_kwargs = None
         if architecture:
             policy_kwargs = {
@@ -110,18 +117,26 @@ class SingleChainPPOTrainer:
                 "share_features_extractor": architecture.get("share_features_extractor", False),
             }
 
+        lr = algo_params.get("learning_rate", 3e-4)
+        clip = algo_params.get("clip_range", 0.2)
+        ent = algo_params.get("ent_coef", 0.0)
+        if use_schedule:
+            lr = self._linear_schedule(lr)
+            clip = self._linear_schedule(clip)
+            # ent_coef must stay a float — SB3 multiplies it directly with tensors
+
         return {
             "policy": algo_params.get("policy", "MlpPolicy"),
             "env": train_env,
             "policy_kwargs": policy_kwargs,
-            "learning_rate": algo_params.get("learning_rate", 3e-4),
+            "learning_rate": lr,
             "n_steps": algo_params.get("n_steps", 2048),
             "batch_size": algo_params.get("batch_size", 64),
             "n_epochs": algo_params.get("n_epochs", 10),
             "gamma": algo_params.get("gamma", 0.99),
             "gae_lambda": algo_params.get("gae_lambda", 0.95),
-            "clip_range": algo_params.get("clip_range", 0.2),
-            "ent_coef": algo_params.get("ent_coef", 0.0),
+            "clip_range": clip,
+            "ent_coef": ent,
             "vf_coef": algo_params.get("vf_coef", 0.5),
             "max_grad_norm": algo_params.get("max_grad_norm", 0.5),
             "seed": self.train_cfg.get("seed", None),

@@ -121,7 +121,7 @@ def build_search_board_context(
                 "Decide provisional_anchor_candidate_id for the best promising but not fully verified direction.",
                 "Decide active_parent_candidate_id whose full reward code should be revised next.",
                 "Mark closed_branch_candidate_ids and negative_edges to avoid repeated bad edits.",
-                "State the next_search_hypothesis in behavior and reward-payment terms.",
+                "Assess the current search state — what problem does the best reward have?",
             ],
         },
     }

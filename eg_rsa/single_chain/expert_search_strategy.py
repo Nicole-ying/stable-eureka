@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from .agents import JsonAgent
-from .json_tools import write_json
+from .json_tools import write_json, write_text
 from .search_board import build_search_board_context, resolve_candidate_dir, write_search_board
 
 
@@ -20,7 +20,6 @@ def run_expert_search_strategy(
     parent_dir: str | Path,
     best_dir: str | Path,
     next_iteration: int,
-    retrieved_memory: List[Dict[str, Any]],
     environment_summary: Dict[str, Any],
     target_summary: Dict[str, Any],
 ) -> Tuple[Path, Path, Dict[str, Any]]:
@@ -44,17 +43,20 @@ def run_expert_search_strategy(
     write_search_board(strategy_dir / "search_board_context.json", board)
 
     prompt = Path(prompt_path).read_text(encoding="utf-8")
-    raw_decision = JsonAgent("ExpertSearchStrategist", llm_client, prompt).run(
-        {
-            "search_board_context_json": as_json_text(board),
-            "retrieved_memory_json": as_json_text({"items": retrieved_memory or []}),
-            "environment_understanding_summary_json": as_json_text(environment_summary),
-            "target_alignment_contract_summary_json": as_json_text(target_summary),
-        },
-        strategy_dir / "expert_search_strategy_decision.json",
-        strategy_dir / "expert_search_strategy_raw.txt",
+    # Build replacement map for the 3 placeholders
+    filled_prompt = (
+        prompt
+        .replace("{{search_board_context_json}}", as_json_text(board))
+        .replace("{{task_model_md}}", environment_summary.get("markdown_text", ""))
+        .replace("{{expert_memory_context_md}}", target_summary.get("markdown_text", ""))
     )
-    decision = normalize_strategy_decision(raw_decision, board)
+    strategy_md = llm_client.generate(filled_prompt)
+    write_text(strategy_dir / "expert_search_strategy_raw.md", strategy_md)
+    write_text(strategy_dir / "expert_search_strategy.md", strategy_md)
+
+    # Parse the Markdown output for the key decision fields
+    decision = _parse_strategy_markdown(strategy_md, board)
+    write_json(strategy_dir / "expert_search_strategy_decision.json", decision)
 
     active_parent_id = decision.get("active_parent_candidate_id")
     selected_parent_dir = resolve_candidate_dir(run_dir, active_parent_id) or parent_dir
@@ -74,6 +76,38 @@ def run_expert_search_strategy(
     return selected_parent_dir, selected_anchor_dir, decision
 
 
+def _parse_strategy_markdown(md: str, board: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract structured decision from Markdown output (JSON code block at end)."""
+    import json as _json
+    candidate_ids = set(board.get("candidate_ids", []) or [])
+
+    # Try to extract JSON code block
+    match = re.search(r"```json\s*\n(.*?)```", md, re.DOTALL)
+    if match:
+        try:
+            raw = _json.loads(match.group(1))
+            if isinstance(raw, dict):
+                return normalize_strategy_decision(raw, board)
+        except (_json.JSONDecodeError, TypeError):
+            pass
+
+    # Fallback: parse Markdown sections
+    decision: Dict[str, Any] = {}
+    patterns = [
+        (r"\*\*Active Parent.*?\*\*\s*[-*]\s*candidate_id:\s*(\S+)", "active_parent_candidate_id"),
+        (r"\*\*Verified Elite.*?\*\*\s*[-*]\s*candidate_id:\s*(\S+)", "verified_elite_candidate_id"),
+        (r"\*\*Provisional Anchor.*?\*\*\s*[-*]\s*candidate_id:\s*(\S+)", "provisional_anchor_candidate_id"),
+    ]
+    for pat, key in patterns:
+        m = re.search(pat, md, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if val.lower() != "null":
+                decision[key] = val
+
+    return normalize_strategy_decision(decision, board)
+
+
 def normalize_strategy_decision(decision: Dict[str, Any], board: Dict[str, Any]) -> Dict[str, Any]:
     candidate_ids = set(board.get("candidate_ids", []) or [])
     if not isinstance(decision, dict):
@@ -88,8 +122,7 @@ def normalize_strategy_decision(decision: Dict[str, Any], board: Dict[str, Any])
         "negative_edges": decision.get("negative_edges") if isinstance(decision.get("negative_edges"), list) else [],
         "closed_branch_candidate_ids": [_id for _id in (decision.get("closed_branch_candidate_ids") or []) if _id in candidate_ids],
         "promising_family_ids": decision.get("promising_family_ids") if isinstance(decision.get("promising_family_ids"), list) else [],
-        "next_search_hypothesis": decision.get("next_search_hypothesis") or "Continue reward search from the most informative available parent.",
-        "required_context_for_reward_revision": decision.get("required_context_for_reward_revision") if isinstance(decision.get("required_context_for_reward_revision"), list) else [],
+        "search_state_assessment": decision.get("search_state_assessment") or "Continue reward search from the most informative available parent.",
         "strategy_rationale": decision.get("strategy_rationale") or "Strategy decision normalized by framework.",
         "self_check": decision.get("self_check") if isinstance(decision.get("self_check"), dict) else {},
         "candidate_ids_available": sorted(candidate_ids),

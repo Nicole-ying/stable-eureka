@@ -57,11 +57,34 @@ class MemoryManager:
         reflection: Dict[str, Any],
         revision: Dict[str, Any],
         output_copy_path: str | Path | None = None,
+        controller_decision: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         before_metrics = before_evidence.get("primary_metrics", {})
         after_metrics = after_evidence.get("primary_metrics", {})
         delta = _metric_delta(before_metrics, after_metrics)
-        accepted = delta.get("fitness_score", 0.0) > 0.0
+
+        # Trust the controller's decision, not a naive fitness>0 heuristic.
+        decision = controller_decision or {}
+        accepted_as_elite = bool(decision.get("accepted_as_elite"))
+        accepted_as_parent = bool(decision.get("accepted_as_parent"))
+        rejected = bool(decision.get("rejected"))
+
+        gate = decision.get("expert_acceptance_gate", {}) or {}
+        elite_status = gate.get("elite_status", "verified_elite" if accepted_as_elite else "not_elite")
+        gate_reasons = gate.get("reasons", []) or []
+        gate_advisory = gate.get("advisory_reasons", []) or []
+        rejection_reasons = decision.get("rejection_reasons", []) or []
+        risk = gate.get("risk_metrics", {}) or {}
+        plan = gate.get("expert_action_plan", {}) or {}
+
+        reuse_policy = "positive_reference"
+        if rejected:
+            reuse_policy = "negative_constraint"
+        elif accepted_as_parent and not accepted_as_elite:
+            reuse_policy = "positive_reference_parent_only"
+        elif elite_status == "provisional_search_anchor":
+            reuse_policy = "provisional_anchor"
+
         record = {
             "memory_type": "reward_transition",
             "iteration_from": iteration_from,
@@ -76,11 +99,23 @@ class MemoryManager:
             "reflection_diagnosis": reflection.get("diagnosis", {}),
             "edit_summary": revision.get("edit_summary", {}),
             "acceptance": {
-                "accepted_as_elite": accepted,
-                "reason": "fitness_score improved" if accepted else "fitness_score did not improve",
+                "accepted_as_elite": accepted_as_elite,
+                "accepted_as_parent": accepted_as_parent,
+                "rejected": rejected,
+                "elite_status": elite_status,
+                "rejection_reasons": rejection_reasons,
+                "gate_reasons": gate_reasons,
+                "gate_advisory": gate_advisory,
+                "fitness_delta": delta.get("fitness_score", 0.0),
+                "success_rate_delta": delta.get("success_like_terminal_rate", 0.0),
+                "target_success": risk.get("target_success"),
+                "transient_peak_risk": risk.get("transient_peak_risk"),
             },
-            "reuse_policy": "positive_reference" if accepted else "negative_constraint",
-            "lesson": _build_rule_lesson(before_evidence, after_evidence, reflection, revision, delta, accepted),
+            "reuse_policy": reuse_policy,
+            "lesson": _build_rule_lesson(
+                before_evidence, after_evidence, reflection, revision,
+                delta, accepted_as_elite, rejected, elite_status, gate_reasons, plan,
+            ),
         }
         with self.memory_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -150,15 +185,33 @@ def _build_rule_lesson(
     reflection: Dict[str, Any],
     revision: Dict[str, Any],
     delta: Dict[str, float],
-    accepted: bool,
+    accepted_as_elite: bool,
+    rejected: bool,
+    elite_status: str,
+    gate_reasons: List[str],
+    plan: Dict[str, Any],
 ) -> str:
     before_behavior = before_evidence.get("behavior_summary", {}).get("dominant_behavior", "unknown")
     after_behavior = after_evidence.get("behavior_summary", {}).get("dominant_behavior", "unknown")
     edit_scope = revision.get("edit_summary", {}).get("edit_scope", "unknown")
     changed = revision.get("edit_summary", {}).get("changed_design") or revision.get("edit_summary", {}).get("changed_active_terms") or []
-    verdict = "improved" if accepted else "did not improve"
-    return (
-        f"A {edit_scope} reward revision from behavior '{before_behavior}' to '{after_behavior}' {verdict} "
-        f"fitness_score by {delta.get('fitness_score', 0.0):.3f}. Changed design summary: {changed}. "
-        f"Original diagnosis: {reflection.get('diagnosis', {}).get('main_problem', 'unknown')}."
-    )
+    fit_delta = delta.get("fitness_score", 0.0)
+    succ_delta = delta.get("success_like_terminal_rate", 0.0)
+    action_type = plan.get("action_type", "balanced_reward_revision")
+
+    if rejected:
+        verdict = f"REJECTED (elite_status={elite_status})"
+    elif accepted_as_elite:
+        verdict = f"ACCEPTED as {elite_status}"
+    else:
+        verdict = f"PARENT-ONLY (not elite, status={elite_status})"
+
+    parts = [
+        f"A {edit_scope} reward revision ({action_type}) from behavior '{before_behavior}' to '{after_behavior}' {verdict}.",
+        f"fitness_score delta={fit_delta:.3f}, success_rate delta={succ_delta:.3f}.",
+        f"Changed design: {changed}.",
+        f"Original diagnosis: {reflection.get('diagnosis', {}).get('main_problem', 'unknown')}.",
+    ]
+    if gate_reasons:
+        parts.append(f"Gate reasons: {'; '.join(gate_reasons[:3])}.")
+    return " ".join(parts)

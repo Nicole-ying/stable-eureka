@@ -150,7 +150,10 @@ def reward_payment_audit(evidence: Dict[str, Any], reward_schema: Dict[str, Any]
         hints.append("Reward payment audit: repeatable positive terms exist while success-like rate remains near zero.")
         hard_constraints.append("Check whether repeatable positive rewards can be farmed without completing the task.")
 
-    schema_components = reward_schema.get("component_catalog") or reward_schema.get("components") or []
+    if isinstance(reward_schema, list):
+        schema_components = reward_schema
+    else:
+        schema_components = reward_schema.get("component_catalog") or reward_schema.get("components") or []
     declared_payment_modes = []
     for comp in schema_components:
         if isinstance(comp, dict) and comp.get("payment_mode"):

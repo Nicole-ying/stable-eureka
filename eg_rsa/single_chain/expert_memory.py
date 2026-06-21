@@ -114,6 +114,91 @@ def build_expert_memory_context(
     return context
 
 
+def build_memory_context_md(
+    current_evidence: Dict[str, Any],
+    retrieved_memory: List[Dict[str, Any]] | None = None,
+    strategy_decision: Dict[str, Any] | None = None,
+    output_path: str | Path | None = None,
+) -> str:
+    """Build a Markdown memory context for LLM #4 consumption.
+
+    Replaces the old JSON expert_memory_context for the Revision Agent.
+    """
+    retrieved_memory = retrieved_memory or []
+    strategy = strategy_decision or {}
+
+    lines = [
+        "# Memory Context",
+        "",
+    ]
+
+    # -- Strategy guidance --
+    if strategy:
+        lines.extend([
+            "## Search Strategy",
+            "",
+            f"- Active parent: {strategy.get('active_parent_candidate_id', 'N/A')}",
+            f"- Search state: {strategy.get('search_state_assessment', 'N/A')}",
+        ])
+        closed = strategy.get("closed_branch_candidate_ids", []) or []
+        if closed:
+            lines.append(f"- Closed branches (do not revisit): {closed}")
+        negative = strategy.get("negative_edges", []) or []
+        if negative:
+            lines.extend(["", "### Negative Edges (avoid these edit patterns)", ""])
+            for ne in negative[:5]:
+                lines.append(f"- {ne.get('from','?')} → {ne.get('to','?')}: {ne.get('avoid_pattern','')[:200]}")
+        lines.append("")
+
+    # -- Hard constraints from past failures --
+    # Build from retrieved memory and expert context
+    hard_constraints: list[str] = []
+    for item in retrieved_memory:
+        acc = item.get("acceptance", {}) or {}
+        reuse = item.get("reuse_policy", "")
+        lesson = item.get("lesson", "")
+        if reuse in ("negative_constraint", "positive_reference_parent_only") and lesson:
+            hard_constraints.append(f"- ❌ Avoid: {lesson[:300]}")
+        elif reuse == "provisional_anchor":
+            hard_constraints.append(f"- ✅ Preserve direction (provisional anchor): {lesson[:300]}")
+
+    if hard_constraints:
+        lines.extend([
+            "## Hard Constraints (from past iterations)",
+            "",
+            *hard_constraints[:8],
+            "",
+        ])
+
+    # -- Failed patterns --
+    behavior = current_evidence.get("behavior_summary", {}) or {}
+    action_id = str((behavior.get("dominant_action", {}) or {}).get("action", ""))
+    action_prob = _num((behavior.get("dominant_action", {}) or {}).get("probability", 0))
+    success_rate = _num((behavior.get("success_like_terminal_rate", 0)))
+
+    if action_id in ("0", "0.0") and action_prob >= 0.90 and success_rate <= 0.01:
+        lines.extend([
+            "## Current Behavioral Pattern",
+            "",
+            "- Dominant action is 0 (do nothing) at >90% — passive policy detected",
+            "- Reward likely dominated by penalties; any action incurs cost",
+            "",
+        ])
+
+    unused = (behavior.get("action_space_report", {}) or {}).get("unused_action_keys", [])
+    if unused:
+        lines.append(f"- Unused actions: {unused} — check if any are necessary for success")
+
+    # -- Best reference --
+    best_ref = _best_reference(current_evidence) if False else None   # skip; handled by strategy
+    # (The "best reference" info is now in the strategy section above.)
+
+    markdown = "\n".join(lines)
+    if output_path is not None:
+        Path(output_path).write_text(markdown, encoding="utf-8")
+    return markdown
+
+
 def _component_balance_report(components: Dict[str, Any], dominant: List[Dict[str, Any]]) -> Dict[str, Any]:
     vals = []
     for k, v in components.items():

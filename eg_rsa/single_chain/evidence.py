@@ -135,6 +135,168 @@ class EvidenceBuilder:
             write_json(output_path, evidence)
         return evidence
 
+    @staticmethod
+    def build_diagnostics_md(run_or_iter_dir: str | Path, output_path: str | Path | None = None) -> str:
+        """Build a Markdown diagnostics report for LLM consumption.
+
+        This is the primary input for the Reward Revision Agent.
+        """
+        base = Path(run_or_iter_dir)
+        training_dir = base / "training" if (base / "training").exists() else base
+        reward_dir = base / "reward" if (base / "reward").exists() else base.parent / "reward"
+
+        final_eval = _read_json_if_exists(training_dir / "final_eval.json")
+        reward_trace = _read_json_if_exists(training_dir / "reward_trace.json")
+        if not reward_trace and (base / "reward_trace.json").exists():
+            reward_trace = _read_json_if_exists(base / "reward_trace.json")
+        component_metrics = _read_json_if_exists(training_dir / "component_metrics.json")
+        trajectory_summary = _read_json_if_exists(training_dir / "trajectory_summary.json")
+        evals = _read_json_if_exists(training_dir / "evals.json")
+        checkpoint_stability = _read_json_if_exists(training_dir / "checkpoint_stability_report.json")
+        if not checkpoint_stability and evals:
+            checkpoint_stability = build_checkpoint_stability_report(evals)
+        target_behavior_report = _read_json_if_exists(training_dir / "target_behavior_report.json")
+
+        component_means = (
+            final_eval.get("component_means")
+            or component_metrics.get("component_means")
+            or reward_trace.get("component_returns")
+            or {}
+        )
+        episodes = trajectory_summary.get("episodes") or reward_trace.get("trajectory_examples") or []
+        if not target_behavior_report and final_eval:
+            target_behavior_report = build_target_behavior_report(
+                metrics=final_eval,
+                trajectories=episodes,
+                max_episode_steps=None,
+                fitness_score_auxiliary=final_eval.get("fitness_score"),
+            )
+
+        fitness = _num(final_eval.get("fitness_score", reward_trace.get("primary_metrics", {}).get("fitness_score")))
+        generated = _num(final_eval.get("reward", reward_trace.get("proxy_metrics", {}).get("generated_reward")))
+        ep_len = _num(final_eval.get("episode_length", reward_trace.get("behavior_metrics", {}).get("episode_length")))
+        success_rate = _num(final_eval.get("success_like_terminal_rate", reward_trace.get("behavior_metrics", {}).get("success_like_terminal_rate")))
+        unsafe_rate = _num(final_eval.get("unsafe_terminal_rate", reward_trace.get("behavior_metrics", {}).get("unsafe_terminal_rate")))
+        oob_rate = _num(final_eval.get("out_of_bounds_rate", reward_trace.get("behavior_metrics", {}).get("out_of_bounds_rate")))
+        timeout_rate = _num(target_behavior_report.get("primary_behavior_criteria", {}).get("timeout_rate")) if target_behavior_report else 0.0
+        action_dist = final_eval.get("action_distribution") or reward_trace.get("behavior_metrics", {}).get("action_distribution", {})
+        action_report = final_eval.get("action_space_report") or reward_trace.get("behavior_metrics", {}).get("action_space_report", {})
+
+        # --- Build Markdown ---
+        lines = [
+            "# Training Diagnostics",
+            "",
+            "## Component Returns (per-episode mean)",
+            "",
+            "| Component | Mean | % of |Abs| Total | Status |",
+            "|-----------|------|------|--------|",
+        ]
+        total_abs = sum(abs(v) for v in component_means.values() if isinstance(v, (int, float))) or 1.0
+        for name in sorted(component_means.keys(), key=lambda k: abs(component_means.get(k, 0.0)), reverse=True):
+            val = _num(component_means.get(name))
+            pct = abs(val) / total_abs * 100 if total_abs > 0 else 0
+            if abs(val) < 1e-9:
+                status = "never fires"
+            elif abs(val) / total_abs > 0.5 and pct > 30:
+                status = "**DOMINANT**"
+            elif abs(val) / total_abs > 0.3:
+                status = "major"
+            else:
+                status = "normal"
+            lines.append(f"| {name} | {val:.2f} | {pct:.0f}% | {status} |")
+
+        lines.extend([
+            "",
+            "## Terminal Outcome Distribution",
+            "",
+            "| Outcome | Rate |",
+            "|---------|------|",
+            f"| Success (landed) | {success_rate:.1%} |",
+            f"| Crash | {unsafe_rate:.1%} |",
+            f"| Out of bounds | {oob_rate:.1%} |",
+            f"| Timeout | {timeout_rate:.1%} |",
+            "",
+            "## Behavior Summary",
+            "",
+            f"- Average episode length: {ep_len:.0f} steps",
+            f"- Success rate: {success_rate:.1%}",
+        ])
+
+        dom_action = ""
+        dom_prob = 0.0
+        for action, prob in action_dist.items():
+            if _num(prob) > dom_prob:
+                dom_prob = _num(prob)
+                dom_action = str(action)
+        dom_action_label = "passive_no_action" if dom_action == "0" and dom_prob > 0.9 else "active"
+        lines.append(f"- Dominant action: {dom_action} ({dom_prob:.1%}) — {dom_action_label}")
+        unused = action_report.get("unused_action_keys", [])
+        if unused:
+            lines.append(f"- Unused actions: {unused}")
+
+        # Target behavior
+        if target_behavior_report:
+            tb = target_behavior_report
+            lines.extend([
+                "",
+                "## Target Behavior Check",
+                "",
+                f"- Target satisfied: {'Yes' if tb.get('target_success') else '**No**'}",
+            ])
+            for gap in tb.get("target_behavior_gaps", [])[:3]:
+                lines.append(f"- Gap: {str(gap)[:200]}")
+            for fix in tb.get("required_reward_fixes", [])[:3]:
+                lines.append(f"- Suggested fix: {str(fix)[:200]}")
+
+        # Checkpoint stability
+        if checkpoint_stability:
+            cs = checkpoint_stability
+            lines.extend([
+                "",
+                "## Checkpoint Stability",
+                "",
+                f"- Final fitness: {_num(cs.get('final_fitness', fitness)):.2f}",
+                f"- Best checkpoint fitness: {_num(cs.get('best_fitness', fitness)):.2f}",
+                f"- Transient peak risk: {'**Yes**' if cs.get('transient_peak_risk') else 'No'}",
+                f"- Final uncertainty risk: {'**Yes**' if cs.get('final_uncertainty_risk') else 'No'}",
+            ])
+
+        # Alignment
+        gap = generated - fitness
+        lines.extend([
+            "",
+            "## Reward-Behavior Alignment",
+            "",
+            f"- True fitness score: {fitness:.2f}",
+            f"- Agent-generated reward: {generated:.2f}",
+            f"- Gap (generated - fitness): {gap:.2f}",
+        ])
+        if gap > 100:
+            lines.append("- ⚠️ Large gap: agent collects much more reward than true fitness suggests.")
+            lines.append("  Possible proxy misalignment or reward farming.")
+
+        # Trajectory examples
+        lines.extend([
+            "",
+            "## Trajectory Examples",
+        ])
+        for ep in episodes[:3]:
+            comp = ep.get("component_returns", {})
+            top_comp = sorted([(k, v) for k, v in comp.items() if isinstance(v, (int, float))], key=lambda kv: abs(kv[1]), reverse=True)[:3]
+            top_str = ", ".join([f"{k}={v:.1f}" for k, v in top_comp])
+            fs = ep.get("final_state") or []
+            fs_str = f"x={_num(fs[0]):.2f} y={_num(fs[1]):.2f} vy={_num(fs[3]):.2f}" if len(fs) >= 4 else "N/A"
+            lines.append(f"- Ep {ep.get('episode_id','?')}: len={ep.get('length','?')}, "
+                         f"return={_num(ep.get('return_generated')):.1f}, "
+                         f"terminal={ep.get('terminal_classification','?')}, "
+                         f"final: {fs_str}, "
+                         f"top: {top_str}")
+
+        markdown = "\n".join(lines)
+        if output_path is not None:
+            Path(output_path).write_text(markdown, encoding="utf-8")
+        return markdown
+
 
 def _read_json_if_exists(path: Path) -> Dict[str, Any]:
     if not path.exists():
@@ -226,9 +388,17 @@ def _summarize_evals(evals: Dict[str, Any]) -> Dict[str, Any]:
     return summary
 
 
-def _schema_digest(schema: Dict[str, Any]) -> Dict[str, Any]:
+def _schema_digest(schema: Any) -> Dict[str, Any]:
     if not schema:
         return {}
+    if isinstance(schema, list):
+        return {
+            "component_ids": [c.get("id") for c in schema if isinstance(c, dict)],
+            "active_reward_terms": [c.get("id") for c in schema if isinstance(c, dict) and c.get("type") in ("active", "active_objective", "objective")],
+            "diagnostic_terms": [c.get("id") for c in schema if isinstance(c, dict) and c.get("type") in ("diagnostic", "regularizer")],
+            "dormant_terms": [c.get("id") for c in schema if isinstance(c, dict) and c.get("type") == "dormant"],
+            "design_principle": [c.get("description") for c in schema if isinstance(c, dict) and c.get("description")][:3],
+        }
     return {
         "version": schema.get("version") or schema.get("schema_version"),
         "design_principle": schema.get("design_principle"),
