@@ -112,6 +112,7 @@ def normalize_strategy_decision(decision: Dict[str, Any], board: Dict[str, Any])
     candidate_ids = set(board.get("candidate_ids", []) or [])
     if not isinstance(decision, dict):
         decision = {}
+    revision_brief = decision.get("revision_brief") or {}
     out = {
         "file_type": "expert_search_strategy_decision",
         "verified_elite_candidate_id": _valid_or_none(decision.get("verified_elite_candidate_id"), candidate_ids),
@@ -124,6 +125,11 @@ def normalize_strategy_decision(decision: Dict[str, Any], board: Dict[str, Any])
         "promising_family_ids": decision.get("promising_family_ids") if isinstance(decision.get("promising_family_ids"), list) else [],
         "search_state_assessment": decision.get("search_state_assessment") or "Continue reward search from the most informative available parent.",
         "strategy_rationale": decision.get("strategy_rationale") or "Strategy decision normalized by framework.",
+        "revision_brief": {
+            "required_direction": revision_brief.get("required_direction", "") or "",
+            "forbidden_edit_types": revision_brief.get("forbidden_edit_types") if isinstance(revision_brief.get("forbidden_edit_types"), list) else [],
+            "success_criteria": revision_brief.get("success_criteria", "") or "",
+        },
         "self_check": decision.get("self_check") if isinstance(decision.get("self_check"), dict) else {},
         "candidate_ids_available": sorted(candidate_ids),
     }

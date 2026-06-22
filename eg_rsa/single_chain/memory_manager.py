@@ -193,25 +193,57 @@ def _build_rule_lesson(
 ) -> str:
     before_behavior = before_evidence.get("behavior_summary", {}).get("dominant_behavior", "unknown")
     after_behavior = after_evidence.get("behavior_summary", {}).get("dominant_behavior", "unknown")
-    edit_scope = revision.get("edit_summary", {}).get("edit_scope", "unknown")
-    changed = revision.get("edit_summary", {}).get("changed_design") or revision.get("edit_summary", {}).get("changed_active_terms") or []
     fit_delta = delta.get("fitness_score", 0.0)
     succ_delta = delta.get("success_like_terminal_rate", 0.0)
     action_type = plan.get("action_type", "balanced_reward_revision")
+
+    # Use structured edit_summary if available, fall back to generic
+    edit_summary = revision.get("edit_summary", {}) or {}
+    edit_scope = edit_summary.get("edit_scope", "unknown")
+    what_changed = edit_summary.get("what_changed", "") or ""
+    changed_design = edit_summary.get("changed_design", []) or edit_summary.get("changed_active_terms", []) or []
+
+    # Use structured diagnosis if available
+    diagnosis = reflection.get("diagnosis", {}) or {}
+    main_problem = diagnosis.get("main_problem", "")
+    evidence = diagnosis.get("evidence", "")
+    causal_chain = reflection.get("causal_chain", "")
+    expected_outcome = reflection.get("expected_outcome", "")
 
     if rejected:
         verdict = f"REJECTED (elite_status={elite_status})"
     elif accepted_as_elite:
         verdict = f"ACCEPTED as {elite_status}"
     else:
-        verdict = f"PARENT-ONLY (not elite, status={elite_status})"
+        verdict = f"PARENT-ONLY (status={elite_status})"
 
-    parts = [
-        f"A {edit_scope} reward revision ({action_type}) from behavior '{before_behavior}' to '{after_behavior}' {verdict}.",
-        f"fitness_score delta={fit_delta:.3f}, success_rate delta={succ_delta:.3f}.",
-        f"Changed design: {changed}.",
-        f"Original diagnosis: {reflection.get('diagnosis', {}).get('main_problem', 'unknown')}.",
-    ]
+    # Build a more informative lesson
+    parts = []
+
+    # What was the diagnosis?
+    if main_problem:
+        parts.append(f"Diagnosis: {main_problem[:300]}.")
+    elif not main_problem and causal_chain:
+        parts.append(f"Diagnosis: {causal_chain[:300]}.")
+
+    # What changed?
+    if what_changed:
+        parts.append(f"Edit: {what_changed[:300]}.")
+    elif changed_design:
+        parts.append(f"Changed design: {changed_design}.")
+
+    # What was the outcome?
+    parts.append(f"Outcome: {verdict}.")
+    parts.append(f"fitness_score delta={fit_delta:.3f}, success_rate delta={succ_delta:.3f}.")
+
+    # Behavior change
+    parts.append(f"Behavior: '{before_behavior}' → '{after_behavior}'.")
+
+    # Expected outcome vs actual (for rejected edits, this is the key learning signal)
+    if expected_outcome and rejected:
+        parts.append(f"Expected: {expected_outcome[:200]}.")
+
     if gate_reasons:
         parts.append(f"Gate reasons: {'; '.join(gate_reasons[:3])}.")
+
     return " ".join(parts)

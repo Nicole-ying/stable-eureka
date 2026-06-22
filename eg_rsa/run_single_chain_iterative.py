@@ -163,11 +163,20 @@ def run_iterative(
         except (json.JSONDecodeError, TypeError):
             new_reward_schema = []
 
+        # Parse structured diagnosis and edit summary from the Markdown revision output.
+        parsed_revision = _parse_revision_markdown(revision_md)
         revision = {
             "reward_schema": new_reward_schema,
             "reward_code": new_reward_code,
+            "edit_summary": parsed_revision.get("edit_summary", {}),
         }
-        reflection = {"file_type": "reflection_decision", "source": "markdown_revision"}
+        reflection = {
+            "file_type": "reflection_decision",
+            "source": "markdown_revision",
+            "diagnosis": parsed_revision.get("diagnosis", {}),
+            "causal_chain": parsed_revision.get("causal_chain", ""),
+            "expected_outcome": parsed_revision.get("expected_outcome", ""),
+        }
 
         if reflection.get("search_decision", {}).get("recommended_next_action") == "stop_success":
             write_text(run_dir / "ITERATIVE_DONE.txt", f"Stopped at iteration {next_iteration - 1}: stop_success\n")
@@ -186,6 +195,13 @@ def run_iterative(
             llm_client,
             next_iteration,
             parent_reward_code=current_reward_code,
+            memory_context={
+                "markdown_text": memory_context_md,
+                "negative_edges": strategy_decision.get("negative_edges", []),
+                "hard_constraints_for_next_revision": strategy_decision.get(
+                    "revision_brief", {}
+                ).get("forbidden_edit_types", []),
+            },
         )
 
         candidate_evidence = EvidenceBuilder.build(candidate_dir, output_path=candidate_dir / "iteration_evidence.json")
@@ -239,6 +255,116 @@ def run_iterative(
     return run_dir
 
 
+def _parse_revision_markdown(md: str) -> Dict[str, Any]:
+    """Extract structured diagnosis and edit summary from the LLM's Markdown revision output.
+
+    The ExpertRewardRevisionAgent outputs Markdown with sections:
+    ## Diagnosis (Root Cause, Evidence, Causal Chain)
+    ## Edit (What Changed, Why, Expected Outcome)
+
+    This parser extracts those into structured dicts for memory storage.
+    """
+    import re
+
+    result: Dict[str, Any] = {
+        "edit_summary": {},
+        "diagnosis": {},
+        "causal_chain": "",
+        "expected_outcome": "",
+    }
+
+    if not md or not isinstance(md, str):
+        return result
+
+    # --- Extract Diagnosis section ---
+    diag_section = _md_section(md, "Diagnosis")
+    if diag_section:
+        root_cause = _md_field(diag_section, "Root Cause")
+        evidence = _md_field(diag_section, "Evidence")
+        causal = _md_field(diag_section, "Causal Chain")
+        result["diagnosis"] = {
+            "main_problem": root_cause or "",
+            "evidence": evidence or "",
+        }
+        result["causal_chain"] = causal or ""
+
+    # --- Extract Edit section ---
+    edit_section = _md_section(md, "Edit")
+    if edit_section:
+        what_changed = _md_field(edit_section, "What Changed")
+        why_changed = _md_field(edit_section, "Why")
+        expected = _md_field(edit_section, "Expected Outcome")
+        result["expected_outcome"] = expected or ""
+
+        # Parse "What Changed" into structured form: "component: from X to Y"
+        changed_components = []
+        if what_changed:
+            # Try to extract component-level changes
+            comp_pattern = r'(?:^|\n)\s*(?:\*\s*|\-\s*|\d+\.\s*)?(?:`)?(\w[\w_]*)(?:`)?\s*:?\s*(?:from|changed|modified|updated|adjusted|increased|decreased|removed|added|replaced).*?(?:$|(?=\n\s*(?:\*|\-|\d+\.|\w+:)))'
+            for m in re.finditer(r'([\w_]+)\s*:?\s*(.*?)(?:$|\n)', what_changed, re.MULTILINE):
+                line = m.group(0).strip()
+                if len(line) > 5 and any(kw in line.lower() for kw in ('change', 'from', 'to', 'remov', 'add', 'increas', 'decreas', 'modif', 'adjust', 'replac', 'convert')):
+                    changed_components.append(line[:200])
+
+        edit_scope = "targeted"
+        if any(kw in what_changed.lower() for kw in ('remov', 'delet')) if what_changed else False:
+            edit_scope = "component_removal"
+        if any(kw in what_changed.lower() for kw in ('add', 'new component', 'introduc')) if what_changed else False:
+            edit_scope = "component_addition"
+
+        result["edit_summary"] = {
+            "edit_scope": edit_scope,
+            "what_changed": what_changed or "",
+            "why": why_changed or "",
+            "changed_design": changed_components if changed_components else [what_changed[:300]] if what_changed else [],
+            "changed_active_terms": changed_components,
+        }
+
+    return result
+
+
+def _md_section(md: str, section_name: str) -> str:
+    """Extract a named Markdown section (## Section Name) from the document."""
+    import re
+    # Match from "## Section Name" until next "## " heading of same level.
+    # Uses ##(?!#) to match exactly "##" not followed by a third # (avoids matching ###).
+    pattern = rf'(?:^|\n)##(?!#)\s+{re.escape(section_name)}\s*\n(.*?)(?=\n##(?!#)\s+\w|\Z)'
+    match = re.search(pattern, md, re.DOTALL | re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _md_field(section_text: str, field_name: str) -> str:
+    """Extract a named field from a Markdown section.
+
+    Looks for patterns like:
+    ### Root Cause
+    **Root Cause**: text
+    - Root Cause: text
+    Root Cause: text
+    """
+    import re
+    patterns = [
+        # Pattern 1: ### Field Name heading — capture until next ### or ## heading (but not ####)
+        rf'(?:^|\n)\s*###(?!#)\s+{re.escape(field_name)}\s*\n\s*(.*?)(?=\n\s*###(?!#)\s+\w|\n\s*##(?!#)\s+\w|\n\s*$|\Z)',
+        # Pattern 2: **Field Name**: bold label — capture until next ** or heading
+        rf'(?:^|\n)\s*\*\*{re.escape(field_name)}\*\*\s*:?\s*(.*?)(?=\n\s*\*\*|\n\s*#|\n\s*$|\Z)',
+        # Pattern 3: - Field Name: list item — capture until next list item or heading
+        rf'(?:^|\n)\s*[\-\*]\s+{re.escape(field_name)}\s*:?\s*(.*?)(?=\n\s*[\-\*]\s+\w|\n\s*#|\Z)',
+        # Pattern 4: Field Name: plain text label — capture until next label or heading
+        rf'(?:^|\n)\s*{re.escape(field_name)}\s*:?\s*(.*?)(?=\n\s*\w+\s*:|\n\s*#|\Z)',
+    ]
+    for pat in patterns:
+        match = re.search(pat, section_text, re.DOTALL | re.IGNORECASE)
+        if match:
+            value = match.group(1).strip()
+            # Trim trailing partial sentences (stop at double newline or next field)
+            cutoff = re.search(r'\n\s*\n|\n\s*[\-\*]\s+\w|\n\s*\w+\s*:', value)
+            if cutoff:
+                value = value[:cutoff.start()].strip()
+            return value[:500]  # Cap at 500 chars
+    return ""
+
+
 def _materialize_revision(
     config: Dict[str, Any],
     next_dir: Path,
@@ -248,6 +374,7 @@ def _materialize_revision(
     llm_client: Any,
     iteration: int,
     parent_reward_code: str | None = None,
+    memory_context: Dict[str, Any] | None = None,
 ) -> None:
     reward_schema = revision.get("reward_schema") or {}
     reward_code = revision.get("reward_code") or ""
@@ -261,6 +388,7 @@ def _materialize_revision(
         llm_client=llm_client,
         repair_dir=next_dir / "search" / "reward_repairs",
         reference_reward_code=parent_reward_code,
+        memory_context=memory_context,
     )
 
     write_json(next_dir / "environment_understanding_summary.json", env_summary)

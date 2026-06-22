@@ -120,83 +120,161 @@ def build_memory_context_md(
     strategy_decision: Dict[str, Any] | None = None,
     output_path: str | Path | None = None,
 ) -> str:
-    """Build a Markdown memory context for LLM #4 consumption.
+    """Build a structured Markdown memory context for the Revision Agent.
 
-    Replaces the old JSON expert_memory_context for the Revision Agent.
+    Designed for LLM readability: short sections, bullet lists, clear ❌/✅ markers.
     """
     retrieved_memory = retrieved_memory or []
     strategy = strategy_decision or {}
 
     lines = [
-        "# Memory Context",
+        "# Memory Context — Read Before Editing",
+        "",
+        "Below are patterns learned from past iterations. Violating these will waste training budget.",
         "",
     ]
 
-    # -- Strategy guidance --
+    # -- Revision Brief from Search Strategy (highest priority) --
+    revision_brief = strategy.get("revision_brief", {}) or {}
+    if revision_brief:
+        lines.append("## 🎯 Revision Brief (from Search Strategist)")
+        lines.append("")
+        req_dir = revision_brief.get("required_direction", "")
+        if req_dir:
+            lines.append(f"**Required direction**: {req_dir}")
+            lines.append("")
+        forbidden = revision_brief.get("forbidden_edit_types", []) or []
+        if forbidden:
+            lines.append("**FORBIDDEN edit types**:")
+            for fb in forbidden:
+                lines.append(f"- ❌ {fb}")
+            lines.append("")
+        succ = revision_brief.get("success_criteria", "")
+        if succ:
+            lines.append(f"**Success criteria**: {succ}")
+            lines.append("")
+
+    # -- Strategy state --
     if strategy:
-        lines.extend([
-            "## Search Strategy",
-            "",
-            f"- Active parent: {strategy.get('active_parent_candidate_id', 'N/A')}",
-            f"- Search state: {strategy.get('search_state_assessment', 'N/A')}",
-        ])
-        closed = strategy.get("closed_branch_candidate_ids", []) or []
-        if closed:
-            lines.append(f"- Closed branches (do not revisit): {closed}")
+        lines.append("## Search State")
+        search_assessment = strategy.get("search_state_assessment", "")
+        if search_assessment:
+            lines.append(f"{search_assessment[:600]}")
+            lines.append("")
         negative = strategy.get("negative_edges", []) or []
         if negative:
-            lines.extend(["", "### Negative Edges (avoid these edit patterns)", ""])
-            for ne in negative[:5]:
-                lines.append(f"- {ne.get('from','?')} → {ne.get('to','?')}: {ne.get('avoid_pattern','')[:200]}")
-        lines.append("")
+            lines.append("### Known Bad Edit Patterns")
+            lines.append("")
+            lines.append("| From | To | Severity | Pattern |")
+            lines.append("|------|----|----------|---------|")
+            for ne in negative[:8]:
+                tier = ne.get("tier", "SOFT")
+                pattern = ne.get("avoid_pattern", "")[:150]
+                lines.append(f"| {ne.get('from','?')} | {ne.get('to','?')} | {tier} | {pattern} |")
+            lines.append("")
 
-    # -- Hard constraints from past failures --
-    # Build from retrieved memory and expert context
-    hard_constraints: list[str] = []
-    for item in retrieved_memory:
-        acc = item.get("acceptance", {}) or {}
-        reuse = item.get("reuse_policy", "")
-        lesson = item.get("lesson", "")
-        if reuse in ("negative_constraint", "positive_reference_parent_only") and lesson:
-            hard_constraints.append(f"- ❌ Avoid: {lesson[:300]}")
-        elif reuse == "provisional_anchor":
-            hard_constraints.append(f"- ✅ Preserve direction (provisional anchor): {lesson[:300]}")
-
-    if hard_constraints:
-        lines.extend([
-            "## Hard Constraints (from past iterations)",
-            "",
-            *hard_constraints[:8],
-            "",
-        ])
-
-    # -- Failed patterns --
+    # -- Behavioral diagnosis --
     behavior = current_evidence.get("behavior_summary", {}) or {}
+    metrics = current_evidence.get("primary_metrics", {}) or {}
+    success_rate = _num(behavior.get("success_like_terminal_rate", metrics.get("success_like_terminal_rate")))
+    episode_len = _num(metrics.get("episode_length"))
+    oob_rate = _num(metrics.get("out_of_bounds_rate", behavior.get("out_of_bounds_rate")))
+    unsafe_rate = _num(metrics.get("unsafe_terminal_rate", behavior.get("unsafe_terminal_rate")))
+
+    lines.append("## Current Policy Behavior")
+    lines.append("")
+    lines.append(f"- Success rate: {success_rate:.1%}")
+    lines.append(f"- Episode length: {episode_len:.0f} steps")
+    lines.append(f"- Out-of-bounds rate: {oob_rate:.1%}")
+    lines.append(f"- Unsafe terminal rate: {unsafe_rate:.1%}")
+    dominant_behavior = behavior.get("dominant_behavior", "unknown")
+    lines.append(f"- Dominant behavior: {dominant_behavior}")
+    lines.append("")
+
     action_id = str((behavior.get("dominant_action", {}) or {}).get("action", ""))
     action_prob = _num((behavior.get("dominant_action", {}) or {}).get("probability", 0))
-    success_rate = _num((behavior.get("success_like_terminal_rate", 0)))
-
-    if action_id in ("0", "0.0") and action_prob >= 0.90 and success_rate <= 0.01:
-        lines.extend([
-            "## Current Behavioral Pattern",
-            "",
-            "- Dominant action is 0 (do nothing) at >90% — passive policy detected",
-            "- Reward likely dominated by penalties; any action incurs cost",
-            "",
-        ])
+    if action_id in ("0", "0.0") and action_prob >= 0.90:
+        lines.append("⚠️ **Action collapse**: policy uses action 0 >90% of the time. Penalty-dominated reward.")
+        lines.append("")
 
     unused = (behavior.get("action_space_report", {}) or {}).get("unused_action_keys", [])
     if unused:
-        lines.append(f"- Unused actions: {unused} — check if any are necessary for success")
+        lines.append(f"⚠️ **Unused actions**: {unused} — these are NEVER selected. If any is required for success, the reward must incentivize it.")
+        lines.append("")
 
-    # -- Best reference --
-    best_ref = _best_reference(current_evidence) if False else None   # skip; handled by strategy
-    # (The "best reference" info is now in the strategy section above.)
+    # -- Component balance --
+    comp = current_evidence.get("component_summary", {}) or {}
+    comp_means = comp.get("component_means", {}) or {}
+    dominant = comp.get("dominant_components_by_abs_return", []) or []
+    if dominant:
+        lines.append("## Reward Component Balance")
+        lines.append("")
+        lines.append("| Component | Abs Return |")
+        lines.append("|-----------|-----------|")
+        for d in dominant[:5]:
+            name = d.get("name", "?")
+            val = d.get("abs_return", 0)
+            lines.append(f"| {name} | {val:.1f} |")
+        lines.append("")
+        if len(dominant) >= 2:
+            top_val = _num(dominant[0].get("abs_return"))
+            second_val = _num(dominant[1].get("abs_return"))
+            if top_val > 3.0 * max(second_val, 1e-9):
+                lines.append(f"⚠️ **{dominant[0].get('name', '?')}** dominates the reward budget ({top_val:.0f} vs {second_val:.0f}). The policy is optimizing this component, not the task.")
+                lines.append("")
+
+    # -- Past iteration lessons --
+    negative_lessons = []
+    positive_lessons = []
+    for item in retrieved_memory:
+        reuse = item.get("reuse_policy", "")
+        lesson = item.get("lesson", "")
+        if not lesson:
+            continue
+        edit = item.get("edit_summary", {}) or {}
+        what = edit.get("what_changed", "") or ""
+        if reuse in ("negative_constraint",):
+            negative_lessons.append((lesson, what))
+        elif reuse in ("provisional_anchor", "positive_reference"):
+            positive_lessons.append((lesson, what))
+
+    if negative_lessons:
+        lines.append("## ❌ Failed Edits — DO NOT REPEAT")
+        lines.append("")
+        for i, (lesson, what) in enumerate(negative_lessons[:5]):
+            # Extract the core lesson more concisely
+            short = _summarize_memory_lesson(lesson, what)
+            lines.append(f"{i+1}. {short}")
+        lines.append("")
+
+    if positive_lessons:
+        lines.append("## ✅ Successful Directions — PRESERVE")
+        lines.append("")
+        for i, (lesson, what) in enumerate(positive_lessons[:3]):
+            short = _summarize_memory_lesson(lesson, what)
+            lines.append(f"{i+1}. {short}")
+        lines.append("")
 
     markdown = "\n".join(lines)
     if output_path is not None:
         Path(output_path).write_text(markdown, encoding="utf-8")
     return markdown
+
+
+def _summarize_memory_lesson(lesson: str, what_changed: str) -> str:
+    """Extract a concise summary from a verbose memory lesson string."""
+    # If we have a structured what_changed, use it directly
+    if what_changed and len(what_changed) > 10:
+        return what_changed[:300]
+    # Otherwise extract key parts from the lesson
+    # Remove redundant prefixes
+    for prefix in ["A ", "An "]:
+        if lesson.startswith(prefix):
+            # Try to extract: "A X reward revision from behavior A to B VERDICT. ..."
+            parts = lesson.split(". ")
+            if len(parts) >= 2:
+                return ". ".join(parts[1:3])[:300] if len(parts) >= 3 else parts[1][:300]
+    return lesson[:300]
 
 
 def _component_balance_report(components: Dict[str, Any], dominant: List[Dict[str, Any]]) -> Dict[str, Any]:

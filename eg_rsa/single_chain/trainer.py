@@ -29,11 +29,22 @@ INTERNAL_INFO_KEYS = {
 
 
 class SingleChainEvalCallback(BaseCallback):
-    def __init__(self, trainer: "SingleChainPPOTrainer", eval_freq: int, verbose: int = 0):
+    def __init__(
+        self,
+        trainer: "SingleChainPPOTrainer",
+        eval_freq: int,
+        verbose: int = 0,
+        early_stop_patience: int = 3,
+        early_stop_min_timesteps: int = 200000,
+    ):
         super().__init__(verbose=verbose)
         self.trainer = trainer
         self.eval_freq = max(1, int(eval_freq))
         self.history: Dict[str, List[Any]] = defaultdict(list)
+        self.early_stop_patience = int(early_stop_patience)
+        self.early_stop_min_timesteps = int(early_stop_min_timesteps)
+        self._consecutive_hopeless = 0
+        self._best_fitness = float("-inf")
 
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq != 0:
@@ -50,7 +61,62 @@ class SingleChainEvalCallback(BaseCallback):
         write_json(self.trainer.output_dir / "evals.json", dict(self.history))
         write_json(self.trainer.output_dir / "trajectory_summary_last_eval.json", {"episodes": trajectories})
         write_json(self.trainer.output_dir / "checkpoint_stability_report.json", build_checkpoint_stability_report(dict(self.history)))
+
+        # Early stopping check: if the policy is hopeless after min_timesteps, stop.
+        if self.num_timesteps >= self.early_stop_min_timesteps:
+            if self._is_hopeless(metrics):
+                self._consecutive_hopeless += 1
+                if self._consecutive_hopeless >= self.early_stop_patience:
+                    if self.verbose > 0:
+                        print(f"Early stopping at {self.num_timesteps} steps: {self._consecutive_hopeless} consecutive hopeless evals.")
+                    write_json(self.trainer.output_dir / "early_stop_reason.json", {
+                        "stopped_at_timesteps": int(self.num_timesteps),
+                        "consecutive_hopeless_evals": self._consecutive_hopeless,
+                        "reason": "Policy shows no learning progress — 100% failure with no improvement trend.",
+                    })
+                    return False
+            else:
+                self._consecutive_hopeless = 0
+
         return True
+
+    def _is_hopeless(self, metrics: Dict[str, Any]) -> bool:
+        """Determine if the current policy shows zero learning progress."""
+        success_rate = float(metrics.get("success_like_terminal_rate", 0.0))
+        oob_rate = float(metrics.get("out_of_bounds_rate", 0.0))
+        unsafe_rate = float(metrics.get("unsafe_terminal_rate", 0.0))
+
+        # Losing success is definitely hopeless
+        if len(self.history.get("success_like_terminal_rate", [])) >= 2:
+            prev_success = self.history["success_like_terminal_rate"][-2]
+            if prev_success > 0.0 and success_rate <= 0.0:
+                return True
+
+        # Cold start failure: 100% OOB or crash persists across 3+ consecutive evals
+        if success_rate <= 0.0:
+            oob_vals = self.history.get("out_of_bounds_rate", [])
+            unsafe_vals = self.history.get("unsafe_terminal_rate", [])
+            if len(oob_vals) >= 3 and len(unsafe_vals) >= 3:
+                last3_fail = [(oob_vals[i] + unsafe_vals[i]) >= 0.95 for i in range(-3, 0)]
+                if all(last3_fail):
+                    return True
+
+            # Fitness stalled: all values negative with no improvement trend
+            fitness_vals = self.history.get("fitness_score", [])
+            if len(fitness_vals) >= 3 and max(fitness_vals) < 0:
+                recent = fitness_vals[-3:]
+                older = fitness_vals[:-3] if len(fitness_vals) > 3 else fitness_vals[:1]
+                if max(recent) <= max(older):
+                    return True
+
+        # Action collapse with no success
+        action_dist = metrics.get("action_distribution", {})
+        if action_dist:
+            max_prob = max(action_dist.values()) if action_dist else 0.0
+            if max_prob >= 0.95 and success_rate <= 0.0:
+                return True
+
+        return False
 
 
 class SingleChainPPOTrainer:
@@ -155,10 +221,20 @@ class SingleChainPPOTrainer:
         num_evals = int(self.eval_cfg.get("num_evals", 5))
         eval_freq = max(1, total_timesteps // max(1, n_envs) // max(1, num_evals))
 
+        # Early stopping config
+        early_stop_cfg = self.train_cfg.get("early_stop", {}) or {}
+        early_stop_patience = int(early_stop_cfg.get("patience", 3))
+        early_stop_min_timesteps = int(early_stop_cfg.get("min_timesteps", max(200000, total_timesteps // 4)))
+
         train_env = self._make_vec_env(n_envs=n_envs, seed=seed)
         model = PPO(**self._ppo_kwargs(train_env))
 
-        callback = SingleChainEvalCallback(self, eval_freq=eval_freq)
+        callback = SingleChainEvalCallback(
+            self,
+            eval_freq=eval_freq,
+            early_stop_patience=early_stop_patience,
+            early_stop_min_timesteps=early_stop_min_timesteps,
+        )
         model.learn(total_timesteps=total_timesteps, tb_log_name="single_chain", callback=callback)
         model.save(self.output_dir / "final_model")
         model.save(self.output_dir / "model")

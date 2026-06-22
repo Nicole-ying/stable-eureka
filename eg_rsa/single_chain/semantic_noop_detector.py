@@ -3,8 +3,9 @@ from __future__ import annotations
 import ast
 import difflib
 import math
+import re
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -235,3 +236,227 @@ def _num(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+# --- Pattern-based edit repetition detection ---
+
+# Known anti-pattern fingerprints extracted from failed memory entries.
+# Each pattern has a name, code-level signatures to match against new code,
+# and a severity level.
+FAILED_PATTERN_SIGNATURES: List[Dict[str, Any]] = [
+    {
+        "pattern_id": "boundary_or_position_penalty_without_centering",
+        "description": "Penalizing horizontal position (state[0]) without providing a positive centering signal",
+        "severity": "HARD",
+        "code_signatures": [
+            r"abs\(.*\b(state\[0\]|x_pos|x\b).*\).*\s*[>\-]",
+            r"out.of.bounds.*-",
+        ],
+        "structural_check": "penalty_on_x_without_centering",
+    },
+    {
+        "pattern_id": "reduced_crash_penalty_during_timeout",
+        "description": "Reducing crash penalty magnitude when timeout is the dominant failure mode",
+        "severity": "STRONG",
+        "code_signatures": [
+            r"crash_penalty\s*=\s*-(?:50|25|10|5|0)\b(?!\d)",
+        ],
+    },
+    {
+        "pattern_id": "removed_all_progress_signals",
+        "description": "Removing all dense progress signals and replacing with a single one-shot bonus",
+        "severity": "STRONG",
+        "code_signatures": [],
+        "structural_check": "count_progress_signals",
+    },
+]
+
+# Component categories used for structural analysis
+PROGRESS_COMPONENT_KEYWORDS = [
+    "stability", "descent", "progress", "approach", "centering",
+    "distance", "velocity", "height", "alignment", "orientation",
+]
+
+
+def _build_dynamic_patterns(
+    memory_context: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Build pattern signatures dynamically from memory context.
+
+    These are informational — they document known failure modes but don't have
+    code-level signatures for automated detection. HARD blocks come from
+    the hand-crafted FAILED_PATTERN_SIGNATURES.
+    """
+    if not memory_context:
+        return []
+
+    dynamic: List[Dict[str, Any]] = []
+    negative_edges = memory_context.get("negative_edges") or []
+    if not isinstance(negative_edges, list):
+        return []
+
+    for edge in negative_edges:
+        tier = str(edge.get("tier", "")).upper()
+        if tier not in ("HARD", "STRONG"):
+            continue
+        avoid = str(edge.get("avoid_pattern", ""))
+        if not avoid or len(avoid) < 10:
+            continue
+
+        # Dynamic patterns serve as documentation for the pattern_repeat_report.
+        # The `from_memory` flag tells consumers this came from live experiment data.
+        dynamic.append({
+            "pattern_id": f"memory_edge_{edge.get('from','?')}_to_{edge.get('to','?')}",
+            "description": avoid[:200],
+            "severity": "STRONG",
+            "code_signatures": [],
+            "structural_check": "",
+            "from_memory": True,
+        })
+
+    return dynamic
+
+
+def detect_pattern_repeat(
+    new_code: str,
+    memory_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Detect if the new code repeats a known failed edit pattern.
+
+    This is an additional layer beyond AST/probe-based noop detection.
+    It checks structural edit patterns that are known to fail, even if
+    the code text differs significantly.
+
+    Args:
+        new_code: The newly generated reward code.
+        memory_context: Optional memory context with negative_edges and hard_constraints.
+
+    Returns:
+        Dict with 'pattern_repeat_detected', 'matched_patterns', and 'should_block'.
+    """
+    if not new_code or not new_code.strip():
+        return _clean_pattern_report()
+
+    code_lower = new_code.lower()
+    matched: List[Dict[str, Any]] = []
+
+    # Build dynamic patterns from memory context's negative edges
+    dynamic_patterns = _build_dynamic_patterns(memory_context)
+    all_patterns = list(FAILED_PATTERN_SIGNATURES) + dynamic_patterns
+
+    for pattern in all_patterns:
+        sig_matches = []
+        for sig in pattern.get("code_signatures", []):
+            if re.search(sig, new_code, re.IGNORECASE):
+                sig_matches.append(sig)
+        structural_match = False
+        structural_detail = ""
+        structural_check = pattern.get("structural_check", "")
+        if structural_check == "count_progress_signals":
+            # Check if the code has zero positive progress-like components
+            progress_count = _count_progress_signals(new_code)
+            if progress_count == 0:
+                structural_match = True
+                structural_detail = f"No progress-like signals detected in code (expected at least 1)"
+        elif structural_check == "penalty_on_x_without_centering":
+            # Check if state[0] is used in a penalty context AND no centering signal exists
+            has_x_penalty = bool(re.search(r'(?:abs\(|-\s*\(?\s*\d).*\b(?:state\[0\]|x_pos|x\b)', new_code, re.IGNORECASE))
+            has_centering = bool(re.search(r'centering|approach.*pad|stay.*center|near.*pad|abs.*x.*<\s*\d.*reward|reward.*abs.*x', new_code, re.IGNORECASE))
+            if has_x_penalty and not has_centering:
+                structural_match = True
+                structural_detail = "Penalizes horizontal position but has no positive centering/proximity signal"
+        elif structural_check.startswith("keyword_check:"):
+            # Dynamic keyword check from memory context
+            # Higher threshold for HARD patterns, lower for STRONG
+            kw_list = structural_check[len("keyword_check:"):].split("|")
+            kw_list = [kw for kw in kw_list if kw]  # filter empty
+            if not kw_list:
+                continue
+            match_count = sum(1 for kw in kw_list if kw and kw in code_lower)
+            # Require at least 60% keyword match + minimum of 2 matches
+            min_matches = max(2, int(len(kw_list) * 0.6))
+            if match_count >= min_matches:
+                structural_match = True
+                structural_detail = f"Code contains {match_count}/{len(kw_list)} keywords from forbidden pattern: {', '.join(kw_list[:5])}"
+        # Dynamic patterns from memory are always included as informational context.
+        # They document known failure modes but rely on human/code review for enforcement.
+        is_dynamic_memory_pattern = pattern.get("from_memory") or pattern["pattern_id"].startswith("memory_")
+        has_no_checks = not sig_matches and not structural_match
+
+        if is_dynamic_memory_pattern and has_no_checks:
+            matched.append({
+                "pattern_id": pattern["pattern_id"],
+                "description": pattern["description"],
+                "severity": "STRONG",
+                "signature_matches": [],
+                "structural_match": False,
+                "structural_detail": "Pattern from experiment memory — review before training",
+                "from_memory": True,
+            })
+        elif sig_matches or structural_match:
+            matched.append({
+                "pattern_id": pattern["pattern_id"],
+                "description": pattern["description"],
+                "severity": pattern["severity"],
+                "signature_matches": sig_matches,
+                "structural_match": structural_match,
+                "structural_detail": structural_detail,
+            })
+
+    # Check against memory context hard constraints
+    memory_matches = []
+    if memory_context:
+        hard_constraints = memory_context.get("hard_constraints_for_next_revision", []) or []
+        for constraint in hard_constraints:
+            constraint_lower = str(constraint).lower()
+            # Check if the new code might violate known constraints
+            if "do not" in constraint_lower or "avoid" in constraint_lower or "forbidden" in constraint_lower:
+                # Extract key phrases and check against code
+                keywords = [w for w in constraint_lower.split() if len(w) >= 5]
+                matching_keywords = [kw for kw in keywords if kw in code_lower]
+                if len(matching_keywords) >= 3:
+                    memory_matches.append({
+                        "constraint": str(constraint)[:300],
+                        "matching_keywords": matching_keywords,
+                    })
+
+    has_hard_violation = any(m["severity"] == "HARD" for m in matched)
+    has_pattern_repeat = len(matched) > 0
+
+    return {
+        "file_type": "pattern_repeat_report",
+        "pattern_repeat_detected": has_pattern_repeat,
+        "matched_patterns": matched,
+        "memory_constraint_matches": memory_matches,
+        "should_block": has_hard_violation,
+        "hard_constraints": [
+            f"Pattern repeat detected: {m['description']}"
+            for m in matched if m["severity"] == "HARD"
+        ],
+        "warnings": [
+            f"Possible pattern repeat: {m['description']}"
+            for m in matched if m["severity"] != "HARD"
+        ],
+    }
+
+
+def _count_progress_signals(code: str) -> int:
+    """Count likely progress signal components in reward code."""
+    count = 0
+    for kw in PROGRESS_COMPONENT_KEYWORDS:
+        pattern = rf'{kw}\w*\s*[=+]'
+        if re.search(pattern, code, re.IGNORECASE):
+            count += 1
+    return max(0, count)
+
+
+def _clean_pattern_report() -> Dict[str, Any]:
+    return {
+        "file_type": "pattern_repeat_report",
+        "pattern_repeat_detected": False,
+        "matched_patterns": [],
+        "memory_constraint_matches": [],
+        "should_block": False,
+        "hard_constraints": [],
+        "warnings": [],
+    }

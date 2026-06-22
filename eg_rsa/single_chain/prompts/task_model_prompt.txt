@@ -10,21 +10,28 @@ Output a pure Markdown document with the following sections:
 
 # Environment Overview
 - Environment name
-- Task objective
+- Task objective (one sentence)
 - Reward function interface signature (inferred from step.py)
+- Max episode steps and what happens at timeout
 
 # Action Space
 For each discrete action, list:
 - Action ID and name
 - Physical/mechanical effect inferred from step.py code (force direction and magnitude)
 - When this action should be used
+- What happens if this action is NEVER used (which task phase becomes impossible)
 
 # State Space
 For each state dimension, list:
-- Index
-- Physical meaning (inferred from step.py state construction code and task_description)
-- Data type (float or bool)
-- Approximate value range
+- Index, physical meaning, data type, approximate value range
+- Whether this dimension is CONSTRAINED (must stay within bounds) or FREE
+
+# Spatial Constraints and Boundaries
+- What are the spatial limits of the environment? (x min/max, y min/max, etc.)
+- What happens when the agent exceeds them? (out-of-bounds, wall collision, wrap-around?)
+- Is there a target zone the agent must reach? Describe its location and size.
+- **This section is MANDATORY.** Even if step.py doesn't explicitly check ALL boundaries,
+  document every spatial limit found in the code.
 
 # Termination Outcomes Classification
 Carefully read ALL code paths in step.py that cause the episode to end.
@@ -32,6 +39,7 @@ For each outcome, give:
 - Exact code-level condition (extracted from step.py)
 - Classification: success / failure / neutral (timeout truncation)
 - Physical meaning
+- Approximate frequency under random policy (rare / common)
 
 ⚠️ CRITICAL: Even if step.py does not explicitly write TimeLimit logic,
 you MUST consider "timeout truncation" as a distinct outcome —
@@ -40,30 +48,50 @@ the episode reaches max_episode_steps without succeeding or failing.
 # Expected Trajectory Phases
 From start to task completion, what sequential phases should the agent go through.
 For each phase, describe:
-- Expected agent state
+- Expected agent state (position, velocity, orientation)
 - Which actions are needed to progress
 - The goal of this phase
+- What goes wrong if this phase is skipped or incomplete
 
 # Necessary Behaviors
-List of behaviors the agent must learn to complete the task.
+List of behaviors the agent must learn to complete the task. For each:
+- Which actions and state conditions are involved
+- Why random exploration alone won't discover it
 
 # Dangerous Local Optima and Reward Hacking Risks
-Infer what behaviors "look OK" (would earn non-terrible reward under a poorly designed reward function)
-but do NOT actually complete the task. For each:
-- What behavior
-- Why it could fool an imperfect reward function
-- How to distinguish it from genuine success
+Infer what behaviors "look OK" to a poorly designed reward function but do NOT complete
+the task. You MUST cover ALL of these categories:
+
+1. **Spatial boundary violations** — What happens when the agent drifts or flies off-course?
+   Why would a reward WITHOUT a centering/spatial signal fail to prevent this?
+
+2. **Hovering or stagnation** — What if the agent stays in one rewarding state without progressing?
+
+3. **Proxy reward farming** — What state conditions "look like progress" but don't lead to success?
+
+4. **Action collapse** — What if the agent uses only one action? Which action would be most
+   harmful if used exclusively?
+
+5. **Timeout exploitation** — What if the agent reaches near-success but never commits?
+
+For EACH risk, describe: what it looks like, why it fools a reward function, and how to
+distinguish it from genuine success.
 
 # Reward Design Constraints
 Based on the above analysis, summarize the rules that a reward function MUST follow:
 - Which signals are trustworthy (genuine success indicators)
 - Which signals are easily misinterpreted (look like success but are not)
-- Regularization constraints
-- Other environment-specific notes
+- **Spatial constraints the reward MUST address** (e.g., "must include a signal encouraging x≈0")
+- Regularization constraints: what should NOT be penalized
+- Minimum signals needed to avoid known local optima
 
 # Available Signals
-- Success signals available to the reward function
-- Failure or stop signals available to the reward function
+- Success signals available to the reward function (exact self.xxx attributes)
+- Failure or stop signals available
+- State-derived signals computable from the state vector
+- Any caveats about signal reliability
+
+---
 
 Expert reward design rules:
 - Separate primary objective, training proxy, and diagnostics.
@@ -75,7 +103,9 @@ Expert reward design rules:
 - Ground trajectory evidence in intended_behavior_phases and required_action_by_phase.
 - Infer the mechanical effect (force direction and magnitude) of each action from step.py code, and document it in the Action Space section.
 - The Termination Outcomes Classification MUST include "timeout truncation" as a distinct outcome. Do not omit it.
-- In Dangerous Local Optima and Reward Design Constraints, clearly distinguish "trustworthy success signals" from "signals easily misinterpreted as success".
+- The "Spatial Constraints and Boundaries" section IS MANDATORY when step.py contains any position/boundary checks.
+- In Dangerous Local Optima, ALWAYS include "spatial boundary violations" and "drifting off-target" as categories.
+- Clearly distinguish "trustworthy success signals" from "signals easily misinterpreted as success".
 
 ---
 

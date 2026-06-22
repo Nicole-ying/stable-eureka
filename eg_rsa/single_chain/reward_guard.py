@@ -10,7 +10,7 @@ from eg_rsa.single_chain.json_tools import read_text, write_json, write_text
 from eg_rsa.single_chain.reward_runtime import smoke_test_reward_env, validate_reward_runtime_safety
 from eg_rsa.single_chain.reward_static_validator import validate_reward_static
 from eg_rsa.single_chain.reward_validation import write_reward_code_files
-from eg_rsa.single_chain.semantic_noop_detector import detect_semantic_noop_edit
+from eg_rsa.single_chain.semantic_noop_detector import detect_pattern_repeat, detect_semantic_noop_edit
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +32,7 @@ def prepare_guarded_reward_env(
     repair_dir: str | Path,
     max_repair_attempts: int | None = None,
     reference_reward_code: str | None = None,
+    memory_context: Dict[str, Any] | None = None,
 ) -> Tuple[Any, Dict[str, Any], str, Dict[str, Any]]:
     """Write, validate, smoke-test, and optionally repair reward code.
 
@@ -57,15 +58,24 @@ def prepare_guarded_reward_env(
         write_json(reward_dir / "reward_schema.json", current_schema)
         validation = write_reward_code_files(current_code, reward_dir)
         semantic_report = detect_semantic_noop_edit(reference_reward_code, current_code)
+        pattern_report = detect_pattern_repeat(current_code, memory_context=memory_context)
         static_validation = validate_reward_static(current_code, current_schema)
         runtime_safety = validate_reward_runtime_safety(current_code)
         runtime_safety["reward_static_validation"] = static_validation
         runtime_safety["semantic_noop_report"] = semantic_report
+        runtime_safety["pattern_repeat_report"] = pattern_report
+        # Block HARD-level pattern repeats — they waste training budget on proven failures
+        pattern_blocks = bool(pattern_report.get("should_block", False))
         runtime_and_static_valid = bool(
             runtime_safety.get("valid")
             and static_validation.get("valid")
             and semantic_report.get("valid", True)
+            and not pattern_blocks
         )
+        if pattern_blocks:
+            pattern_hints = pattern_report.get("hard_constraints", [])
+            if pattern_hints:
+                runtime_safety["pattern_block_reason"] = pattern_hints
         runtime_safety["valid"] = runtime_and_static_valid
         write_json(reward_dir / "runtime_safety_report.json", runtime_safety)
         write_json(reward_dir / "reward_static_validation.json", static_validation)
@@ -95,11 +105,14 @@ def prepare_guarded_reward_env(
             "static_validation_valid": bool(static_validation.get("valid")),
             "semantic_noop_valid": bool(semantic_report.get("valid", True)),
             "semantic_noop_edit": bool(semantic_report.get("semantic_noop_edit", False)),
+            "pattern_repeat_detected": bool(pattern_report.get("pattern_repeat_detected", False)),
+            "pattern_repeat_blocked": bool(pattern_report.get("should_block", False)),
             "smoke_test_valid": bool(smoke_report.get("valid")),
             "validation": validation,
             "runtime_safety": runtime_safety,
             "reward_static_validation": static_validation,
             "semantic_noop_report": semantic_report,
+            "pattern_repeat_report": pattern_report,
             "smoke_test": smoke_report,
         }
         attempts.append(attempt_report)

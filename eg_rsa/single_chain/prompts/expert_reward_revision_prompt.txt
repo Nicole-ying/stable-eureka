@@ -18,100 +18,112 @@ Your task: diagnose why the current reward failed and make ONE precise edit.
 
 {{iteration_diagnostics}}
 
-## 4. Memory Context (expert_memory_context.md)
+## 4. Memory Context
 
 {{expert_memory_context}}
 
 ---
 
-# Reward Revision Expert Knowledge
+# Operating Mode — DETERMINE THIS FIRST
 
-The following is framework-built-in methodology for iterative reward debugging.
+Check the diagnostics. Your edit strategy depends on which mode you're in:
 
-## Your Role
+**COLD START mode** — if success_like_terminal_rate is 0% AND the dominant failure is early
+(out-of-bounds, crash, or very short episodes < 150 steps):
 
-You are a debugger, not a redesigner. The current reward has been trained and produced data.
-Your job is to find the root cause and apply a single, targeted fix.
+  The reward is fundamentally missing something. The agent cannot even APPROACH success.
+  Your job: identify the MISSING signal and ADD it.
 
-## Diagnostic Order
+  In cold start mode:
+  - ADDING a new progress signal IS allowed and EXPECTED when none exists for a required behavior
+  - Look for: missing spatial centering, missing descent guidance, missing stability feedback
+  - The "don't add new components" rule does NOT apply — the reward is structurally incomplete
+  - Focus on the most basic missing behavior first (can the agent even stay on the screen?)
 
-Read the diagnostics and answer these questions in order:
+**FINE-TUNE mode** — if success_like_terminal_rate > 0% OR the agent reaches the task vicinity
+(episode_length > 300, near the target state):
 
-1. Look at the Component Returns table. Which component dominates the total return?
-   Which component is always zero? Does the terminal objective ever fire?
+  The reward structure is viable but needs balancing. Your job: fix component interactions.
 
-2. Look at the Terminal Outcome Distribution. Which outcome does the agent reach most often?
-   Why is it reaching that outcome instead of success?
+  In fine-tune mode:
+  - Prefer editing existing components over adding new ones
+  - Fix scale imbalances, farming vulnerabilities, and semantic errors
+  - Only add a new component if a specific phase is unreachable with current signals
 
-3. Look at the Behavior Summary and Trajectory Examples. What is the agent actually doing?
-   Compare against the dangerous behaviors listed in task_model.md.
+---
 
-4. Trace the reward: WHY is the agent choosing this behavior given the current reward structure?
-   Which components reward the bad behavior or penalize the good behavior?
+# Diagnostic Order
+
+Answer these questions in your Diagnosis section:
+
+1. **What does the agent actually do?** Look at behavior_summary, trajectory examples, and
+   terminal outcome distribution. What percentage reaches each outcome?
+
+2. **Which component dominates the return?** Check component_means. If one component has
+   abs_return > 3× the next largest, it IS dominating training regardless of your intent.
+
+3. **Why is the agent choosing this behavior?** Trace the reward: which components REWARD
+   the observed behavior? Which components PENALIZE the behavior you want?
+
+4. **What is missing or broken?**
+   - Missing: a required behavior has zero reward signal
+   - Broken: a component fires under wrong conditions, has wrong scale, or can be farmed
+   - Semantic error: terminal condition doesn't match the environment document
 
 ## Common Failure Patterns
 
-These patterns emerge across environments. When you recognize one:
+- **Spatial drift / OOB**: Agent flies off-screen. Root cause: NO signal rewards staying near
+  the target zone. Fix: ADD a centering progress signal (approach x=0, or penalty for |x| > margin).
+- **Reward farming**: A positive component fires every step, dominates return, but success=0.
+  Fix: convert to delta form or one-shot gating.
+- **Timeout hovering**: Agent reaches target vicinity but never completes the task. Dense progress
+  signals pay more than the one-shot terminal bonus. Fix: reduce farmable progress OR increase
+  terminal objective scale OR add timeout penalty near the ground.
+- **Action collapse**: Agent uses only 1-2 actions at >90% probability. Fix: add positive signal
+  that REQUIRES the unused action, or check if penalties make all actions costly.
+- **Penalty dominance**: Most components are negative → agent learns passivity.
+  Fix: convert penalties to delta-form progress signals where possible.
+- **Single component dominance**: One auxiliary term > 3× terminal objective. The agent optimizes
+  the auxiliary, not the task. Fix: reduce that component's scale or convert to one-shot.
 
-- **Reward farming**: A positive component fires repeatedly, dominates total return,
-  but success=0. It lacks protection (one-shot, event-gating, or delta form).
-- **Semantic error**: The terminal objective condition does not match the environment's
-  true success flag as defined in task_model.md.
-- **Weak shaping**: All progress signals together contribute < 5% of total return.
-  The agent receives almost no guidance.
-- **Penalty dominance**: Nearly all non-diagnostic components are negative.
-  The agent learns passivity — doing nothing is the optimal strategy.
+## Editing Rules (mode-dependent)
 
-## Editing Principles
+In BOTH modes:
+- Edit only what needs to change. If the terminal condition is correct, don't touch it.
+- Record your hypothesis: what you changed, why, what you expect, what evidence will confirm/refute.
+- One conceptual change per iteration. If you must co-edit two components, explain why they're coupled.
 
-- Prefer editing 1 component. If you must edit multiple, explain why they must be co-edited
-- If the root cause is unclear: edit the dominant component (largest contributor)
-- Record your hypothesis: what you changed, why, what you expect to change, what evidence
-  will confirm or refute it
-- Direction guide:
-  - Condition too strict → relax it
-  - Scale too strong → reduce it
-  - Farmable form (unconditional per-step positive) → convert to delta or one-shot
-  - Always-zero component → relax condition or remove it
+In COLD START mode:
+- ADD the missing structural signal. Do not tune scales of existing components that are not the problem.
+- If the agent can't stay on screen, fixing the fuel penalty won't help. Add centering.
 
-### Removing components (cleanup — does NOT count as an edit)
+In FINE-TUNE mode:
+- Fix the dominant problem component. Don't add new ones to work around it.
+- Do NOT tune multiple scales at once.
+- If the agent already succeeds sometimes, make SMALL adjustments only.
 
-You may REMOVE components that meet ALL of these criteria:
-1. They contribute < 1% of total episode return (effectively dead)
-2. They serve no diagnostic purpose (their value is obvious from other components)
-3. Removing them simplifies the reward structure without losing useful signal
+## Anti-Patterns (NEVER do these)
 
-This is cleanup, not editing. You can remove multiple dead components in one revision.
-But you MUST explain why each removed component was unnecessary.
-
-Excess components create untestable interactions. 3 components have 3 pairwise
-interactions; 8 components have 28. If the reward feels cluttered, clean up.
-
-## Anti-Patterns
-
-- Do NOT add a new component to fix a problem caused by an existing one. Fix the existing one.
-- Do NOT tune multiple scales at once. One at a time.
-- Do NOT add penalties to suppress behavior that a positive signal could redirect.
-- Do NOT repeat edit patterns listed as forbidden in expert_memory_context.md.
-- If the agent already succeeds in some episodes, make small adjustments only.
+- NEVER remove a critical signal (crash penalty, terminal bonus) without replacing its function
+- NEVER add a penalty to suppress behavior that a positive signal could redirect
+- NEVER change more than 3 components in one edit
+- NEVER repeat edit patterns listed as ❌ Avoid in the Memory Context
 
 ---
 
 # Code Rules
 
-- `self` IS the environment instance. All `self.xxx` described in task_model.md
-  are directly accessible in your code.
 - Keep the function signature: `def compute_reward(self, state, m_power, s_power, terminated):`
 - Return `float(reward), individual_reward`
-- Initialize all diagnostic variables to 0.0 before any branch
-- Use hasattr/self attributes for your own internal state
+- Initialize all variables to 0.0 before any branch
+- Use `hasattr`/`self._attr` for internal state
 - No files, network, subprocess, eval, exec, open
 
 ---
 
 # Output Format
 
-Output a pure Markdown document. No JSON.
+Output a pure Markdown document.
 
 ## Diagnosis
 
@@ -119,21 +131,27 @@ Output a pure Markdown document. No JSON.
 (One sentence: what is the fundamental problem?)
 
 ### Evidence
-(Quote specific numbers from iteration_diagnostics.md)
+(Quote specific numbers from the diagnostics.)
 
 ### Causal Chain
-(Why does the current reward produce the observed behavior?)
+(Why does the current reward produce the observed behavior? Trace cause → effect.)
+
+### Mode
+COLD_START or FINE_TUNE — based on the criteria above.
 
 ## Edit
 
 ### What Changed
-(Which component? What specifically changed — condition, form, or scale? From X to Y.)
+(Which component? What specifically changed — condition, form, or scale? From X to Y.
+Be EXACT: "Changed stability_delta from per-step delta to one-shot: 50.0 on first
+time instability < 0.5" NOT "Made stability better.")
 
 ### Why
-(How does this fix the root cause?)
+(How does this fix the root cause? Connect to the causal chain.)
 
 ### Expected Outcome
-(What should change in the next training run? Be specific and verifiable.)
+(What should change in the next training run? Be specific and verifiable.
+Example: "success_rate should increase from 0% to >10%, OOB should drop below 50%")
 
 ```python
 def compute_reward(self, state, m_power, s_power, terminated):
