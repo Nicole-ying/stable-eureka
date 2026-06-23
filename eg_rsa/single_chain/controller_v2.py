@@ -4,196 +4,191 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .controller import SearchController as BaseSearchController
-from .expert_action_planner import build_expert_action_plan
 
 
 class SearchController(BaseSearchController):
-    """Search controller with final-behavior and uncertainty-aware checks.
+    """Search controller that trusts the LLM Search Strategist's judgment.
 
-    During cold start, accepted_as_elite may mean provisional search anchor, not
-    fully verified reward quality. The gate exposes elite_status explicitly.
+    The hardcoded acceptance gate has been replaced with a diagnostic report.
+    Elite/parent selection follows the base controller's simple rule:
+    - Elite: fitness improves over current elite AND no behavior regression
+    - Parent: fitness improves over parent OR parent is bootstrap
+
+    The LLM Search Strategist provides the authoritative decision through
+    expert_search_strategy_decision.json. The controller's job is to EXECUTE
+    that decision, not second-guess it with hardcoded thresholds.
+
+    All analysis (search_state_assessment, revision_brief, negative_edges)
+    flows to the Revision Agent through the memory context.
     """
 
     def decide(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         decision = super().decide(*args, **kwargs)
+
         parent_evidence = kwargs.get("parent_evidence") if kwargs else None
         candidate_evidence = kwargs.get("candidate_evidence") if kwargs else None
         best_evidence = kwargs.get("best_evidence") if kwargs else None
-        candidate_dir = kwargs.get("candidate_dir") if kwargs else None
         if parent_evidence is None and args:
             parent_evidence = args[0]
         if candidate_evidence is None and len(args) > 1:
             candidate_evidence = args[1]
         if best_evidence is None and len(args) > 2:
             best_evidence = args[2]
-        if candidate_dir is None and len(args) > 5:
-            candidate_dir = args[5]
 
         parent_evidence = parent_evidence or {}
         candidate_evidence = candidate_evidence or {}
         best_evidence = best_evidence or {}
 
-        gate = _acceptance_gate(candidate_evidence, best_evidence)
-        decision["expert_acceptance_gate"] = gate
-        decision["elite_status"] = gate.get("elite_status", "unknown")
-        if not gate.get("reward_elite_allowed", True) and decision.get("accepted_as_elite"):
-            decision["accepted_as_elite"] = False
-            decision.setdefault("elite_reasons", []).extend(gate.get("reasons", []))
-        if not gate.get("parent_allowed", True) and decision.get("accepted_as_parent"):
+        # Build diagnostic report (informational only — does NOT override decisions)
+        report = _diagnostic_report(candidate_evidence, best_evidence, parent_evidence)
+
+        # The base controller already made the correct decision:
+        #   accepted_as_elite = candidate.fitness > best.fitness
+        #   accepted_as_parent = candidate.fitness > parent.fitness
+        # We augment it with the diagnostic context.
+        decision["expert_acceptance_gate"] = report
+        decision["elite_status"] = (
+            "provisional_search_anchor"
+            if decision.get("accepted_as_elite") and report["diagnostics"]["success_rate"] < 0.5
+            else "verified_elite" if decision.get("accepted_as_elite")
+            else "not_elite"
+        )
+
+        # Only ONE hard block: clear behavioral collapse.
+        # If the policy uses only 1 action (>95%) with 0% success, it's broken.
+        behavior = candidate_evidence.get("behavior_summary", {}) or {}
+        action_dist = behavior.get("action_distribution", {}) or {}
+        max_action_prob = max(action_dist.values()) if action_dist else 0.0
+        success_rate = _num((candidate_evidence.get("primary_metrics", {}) or {}).get("success_like_terminal_rate", 0))
+        is_action_collapse = bool(max_action_prob >= 0.95 and success_rate <= 0.0)
+
+        if is_action_collapse and decision.get("accepted_as_parent"):
             decision["accepted_as_parent"] = False
             decision["rejected"] = True
-            decision.setdefault("rejection_reasons", []).extend(gate.get("reasons", []))
-            fallback_dir = decision.get("rollback", {}).get("next_parent_dir")
-            if fallback_dir:
-                decision["next_search_parent"]["source"] = decision.get("rollback", {}).get("next_parent_source", "elite_parent")
-                decision["next_search_parent"]["dir"] = fallback_dir
-        elif gate.get("policy_reference_allowed") and not gate.get("reward_elite_allowed", True):
-            decision["accepted_as_policy_reference"] = True
-            if candidate_dir is not None:
-                decision.setdefault("policy_reference", {})["dir"] = str(Path(candidate_dir))
+            decision.setdefault("rejection_reasons", []).append(
+                "action collapse detected: >95% single action with 0% success — policy is broken"
+            )
+            fallback = decision.get("rollback", {}) or {}
+            if fallback.get("next_parent_dir"):
+                decision["next_search_parent"] = {
+                    "source": fallback.get("next_parent_source", "elite_parent"),
+                    "dir": fallback["next_parent_dir"],
+                    "uses_existing_trained_artifact_as_parent_only": True,
+                    "will_retrain_selected_parent": False,
+                    "will_train_new_child_candidate_next": True,
+                }
 
-        parent_mode = _search_mode(parent_evidence)
-        candidate_mode = _search_mode(candidate_evidence)
-        decision["search_mode"] = {
-            "parent_next_search_mode": parent_mode,
-            "candidate_next_search_mode": candidate_mode,
-            "selected_next_search_mode": candidate_mode if decision.get("accepted_as_parent") else parent_mode,
-            "reason": "Search mode follows the selected next parent.",
-        }
         return decision
 
 
-def _search_mode(evidence: Dict[str, Any]) -> Dict[str, Any]:
-    audit = evidence.get("expert_audit_pack", {}) or {}
-    return audit.get("search_mode_recommendation", {}) or {}
+def _diagnostic_report(
+    candidate: Dict[str, Any],
+    best: Dict[str, Any],
+    parent: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Build an informational diagnostic report. Does NOT block any decisions.
 
+    This replaces the old _acceptance_gate which used hardcoded thresholds
+    (target_success >= 0.5, score_gain <= noise_floor, etc.) to override
+    the LLM's judgment. Those thresholds were wrong for search — they blocked
+    iter_009 (40% success, best result so far) from becoming elite because
+    40% < 50%.
 
-def _acceptance_gate(candidate: Dict[str, Any], best: Dict[str, Any]) -> Dict[str, Any]:
+    The report is still valuable: it flows into memory and helps the Revision
+    Agent understand what's working and what's not.
+    """
     primary = candidate.get("primary_metrics", {}) or {}
     comp = (candidate.get("component_summary", {}) or {}).get("component_means", {}) or {}
-    audit = candidate.get("expert_audit_pack", {}) or {}
     target_report = candidate.get("target_behavior_report", {}) or {}
     stability = candidate.get("checkpoint_stability_report", {}) or {}
-    plan = build_expert_action_plan(candidate, audit)
+    audit = candidate.get("expert_audit_pack", {}) or {}
 
     fitness = _num(primary.get("fitness_score"))
     fitness_std = _num(primary.get("fitness_score_std"))
     generated = _num(primary.get("generated_reward"))
-    best_id = str(best.get("candidate_id") or "")
     best_fitness = _num((best.get("primary_metrics", {}) or {}).get("fitness_score"))
-    best_target = best.get("target_behavior_report", {}) or {}
-    best_criteria = best_target.get("primary_behavior_criteria", {}) or {}
+    best_criteria = (best.get("target_behavior_report", {}) or {}).get("primary_behavior_criteria", {}) or {}
     best_success_rate = _num(best_criteria.get("success_like_terminal_rate", (best.get("primary_metrics", {}) or {}).get("success_like_terminal_rate")))
-    best_timeout_rate = _num(best_criteria.get("timeout_rate"))
-    objective_bonus = _num(comp.get("objective_bonus"))
-    success_flag = _num(comp.get("success_flag"))
-    gap = generated - fitness
     criteria = target_report.get("primary_behavior_criteria", {}) or {}
     success_rate = _num(criteria.get("success_like_terminal_rate", primary.get("success_like_terminal_rate")))
     timeout_rate = _num(criteria.get("timeout_rate"))
-    target_success = bool(target_report.get("target_success", success_rate >= 0.5 and timeout_rate <= 0.4))
-    transient_peak = bool(stability.get("transient_peak_risk"))
-    uncertainty = target_report.get("auxiliary_score_stability", {}) or {}
-    high_fitness_uncertainty = bool(uncertainty.get("high_fitness_uncertainty") or stability.get("final_uncertainty_risk") or stability.get("unstable_last_k_risk"))
-    behavior_improves = bool(success_rate > best_success_rate + 0.1 or (best_timeout_rate > 0 and timeout_rate < best_timeout_rate - 0.1))
-    score_gain = fitness - best_fitness
-    noisy_small_gain = bool(high_fitness_uncertainty and score_gain > 0 and score_gain <= max(10.0, fitness_std))
+    oob_rate = _num(criteria.get("out_of_bounds_rate", primary.get("out_of_bounds_rate")))
+    unsafe_rate = _num(criteria.get("unsafe_terminal_rate", primary.get("unsafe_terminal_rate")))
+    episode_length = _num(primary.get("episode_length"))
 
-    alignment_risks = set((audit.get("objective_signal_alignment_audit", {}) or {}).get("risks", []) or [])
-    payment_risks = set((audit.get("reward_payment_audit", {}) or {}).get("risks", []) or [])
-    scale_risks = set((audit.get("reward_scale_audit", {}) or {}).get("risks", []) or [])
+    # Dominant component analysis
+    dominant = (comp if isinstance(comp, list) else
+                (candidate.get("component_summary", {}) or {}).get("dominant_components_by_abs_return", []) or [])
+    dominant_name = ""
+    dominant_value = 0.0
+    if isinstance(dominant, list) and dominant:
+        dominant_name = str(dominant[0].get("name", ""))
+        dominant_value = _num(dominant[0].get("abs_return", 0))
+    elif isinstance(comp, dict):
+        sorted_comp = sorted(comp.items(), key=lambda x: abs(x[1]), reverse=True)
+        if sorted_comp:
+            dominant_name = sorted_comp[0][0]
+            dominant_value = abs(sorted_comp[0][1])
 
-    reasons: List[str] = []
-    advisory_reasons: List[str] = []
-    proxy_mismatch = bool(
-        objective_bonus > 120.0
-        or success_flag > 1.2
-        or (generated > 0 and gap > max(500.0, 3.0 * max(abs(fitness), 1.0)))
-        or "reward_success_signal_misaligned_with_evaluator" in alignment_risks
-    )
-    if proxy_mismatch:
-        reasons.append("candidate reward payments are not aligned with target behavior evidence")
-    if not target_success:
-        reasons.append("final target behavior contract is not satisfied")
-    if transient_peak:
-        reasons.append("training has a transient peak that is not stable final behavior")
-    if noisy_small_gain and not behavior_improves:
-        reasons.append("auxiliary fitness gain is smaller than evaluator noise and behavior did not clearly improve")
-    if "single_component_dominance" in scale_risks and objective_bonus > 120.0:
-        reasons.append("objective bonus dominates beyond one terminal-event scale")
-    if "repeatable_positive_without_success" in payment_risks and objective_bonus > 120.0:
-        reasons.append("repeatable positive payments appear without reliable terminal success")
-    if (candidate.get("model_selection", {}) or {}).get("used_best_checkpoint"):
-        reasons.append("model selection used a peak checkpoint instead of final behavior")
+    # Build observations (not gate reasons — just things to pay attention to)
+    observations: List[str] = []
+    warnings: List[str] = []
 
-    elite_is_bootstrap = best_id in {"single_chain_iter0", "iter_000", ""}
-    elite_is_weak = bool(best_fitness < 0.0 and best_success_rate <= 0.0)
-    clear_cold_start_improvement = bool(
-        elite_is_bootstrap
-        and elite_is_weak
-        and fitness > best_fitness + max(50.0, 0.25 * abs(best_fitness))
-        and (success_rate > best_success_rate or timeout_rate < 0.8)
-        and not proxy_mismatch
-        and not (candidate.get("model_selection", {}) or {}).get("used_best_checkpoint")
-    )
-    if clear_cold_start_improvement:
-        advisory_reasons.extend(reasons)
-        reasons = []
-        advisory_reasons.append("cold-start override: bootstrap elite is weak, so this candidate becomes the provisional search anchor despite unresolved quality risks")
+    # Positive signals
+    if success_rate > best_success_rate:
+        observations.append(f"success rate improved: {best_success_rate:.0%} → {success_rate:.0%}")
+    if fitness > best_fitness:
+        observations.append(f"fitness improved: {best_fitness:.1f} → {fitness:.1f} (+{fitness-best_fitness:.1f})")
+    if oob_rate <= 0.0 and unsafe_rate <= 0.0:
+        observations.append("no out-of-bounds or crash terminations — safe policy")
 
-    reward_elite_allowed = bool((not reasons and plan.get("reward_elite_allowed", True)) or clear_cold_start_improvement)
-    elite_status = "verified_elite"
-    if clear_cold_start_improvement:
-        elite_status = "provisional_search_anchor"
-    elif not reward_elite_allowed:
-        elite_status = "not_elite"
+    # Concerns (not blockers)
+    if timeout_rate >= 0.6 and success_rate > 0:
+        warnings.append(f"timeout rate {timeout_rate:.0%} — agent may be hesitating before landing")
+    if timeout_rate >= 0.8 and success_rate <= 0.01:
+        warnings.append(f"timeout-dominated ({timeout_rate:.0%}) — agent collects proxy rewards without completing task")
+    if dominant_value > 0 and dominant_name not in ("fitness_score", "terminal_landing", ""):
+        # Check if an auxiliary dominates
+        terminal_val = abs(_num(comp.get("terminal_landing", 0) if isinstance(comp, dict) else 0))
+        if terminal_val > 0 and dominant_value > 3.0 * terminal_val:
+            warnings.append(f"component '{dominant_name}' ({dominant_value:.0f}) dominates terminal ({terminal_val:.0f}) — scale imbalance")
+    if fitness_std > abs(fitness) * 0.5 and abs(fitness) > 10:
+        warnings.append(f"high fitness variance (std={fitness_std:.1f}, rel_std={fitness_std/abs(fitness):.1f})")
+    if generated > 0 and (generated - fitness) > max(500.0, 3.0 * max(abs(fitness), 1.0)):
+        warnings.append(f"large generated-vs-fitness gap ({generated-fitness:.0f}) — reward proxy may be misaligned")
 
-    policy_reference_allowed = bool(plan.get("policy_reference_allowed") or (success_rate > 0.0 and fitness > max(0.0, best_fitness - 50.0)))
-    parent_allowed = True
-    if timeout_rate >= 0.8 and success_rate <= 0.01 and not clear_cold_start_improvement:
-        parent_allowed = False
-        reasons.append("final behavior is timeout-dominated and should not be used as the next edit parent")
-    if proxy_mismatch and fitness < best_fitness - 50.0:
-        parent_allowed = False
-        reasons.append("candidate regressed far below elite auxiliary fitness")
+    # Scale audit hints
+    scale_audit = audit.get("reward_scale_audit", {}) or {}
+    scale_risks = scale_audit.get("risks", []) or []
+    if "single_component_dominance" in scale_risks:
+        warnings.append("scale audit: single component dominates reward budget")
 
     return {
         "file_type": "expert_acceptance_gate",
-        "reward_elite_allowed": reward_elite_allowed,
-        "elite_status": elite_status,
-        "parent_allowed": parent_allowed,
-        "policy_reference_allowed": policy_reference_allowed,
-        "reasons": _dedupe(reasons),
-        "advisory_reasons": _dedupe(advisory_reasons),
-        "risk_metrics": {
-            "fitness_score_auxiliary": fitness,
-            "fitness_score_std": fitness_std,
-            "best_fitness_score_auxiliary": best_fitness,
-            "best_candidate_id": best_id,
-            "elite_is_bootstrap": elite_is_bootstrap,
-            "elite_is_weak": elite_is_weak,
-            "clear_cold_start_improvement": clear_cold_start_improvement,
-            "score_gain": score_gain,
-            "high_fitness_uncertainty": high_fitness_uncertainty,
-            "noisy_small_gain": noisy_small_gain,
-            "behavior_improves": behavior_improves,
-            "generated_reward_diagnostic": generated,
-            "generated_minus_fitness_gap_diagnostic": gap,
-            "objective_bonus_mean": objective_bonus,
-            "success_flag_mean": success_flag,
-            "final_success_like_terminal_rate": success_rate,
-            "best_success_like_terminal_rate": best_success_rate,
+        "diagnostics": {
+            "fitness": fitness,
+            "fitness_std": fitness_std,
+            "success_rate": success_rate,
             "timeout_rate": timeout_rate,
-            "best_timeout_rate": best_timeout_rate,
-            "target_success": target_success,
-            "transient_peak_risk": transient_peak,
-            "alignment_risks": sorted(alignment_risks),
-            "payment_risks": sorted(payment_risks),
-            "scale_risks": sorted(scale_risks),
+            "oob_rate": oob_rate,
+            "unsafe_rate": unsafe_rate,
+            "episode_length": episode_length,
+            "best_fitness": best_fitness,
+            "best_success_rate": best_success_rate,
+            "dominant_component": dominant_name,
+            "dominant_component_value": dominant_value,
+            "generated_reward": generated,
+            "generated_fitness_gap": generated - fitness,
         },
-        "target_behavior_report": target_report,
-        "checkpoint_stability_report": stability,
-        "expert_action_plan": plan,
+        "observations": observations,
+        "warnings": warnings,
+        "scale_risks": scale_risks,
+        "note": (
+            "This is a diagnostic report only. Elite/parent selection follows the "
+            "Search Strategy LLM's judgment via expert_search_strategy_decision.json. "
+            "Hardcoded thresholds (target_success >= 0.5, etc.) have been removed — "
+            "they blocked valid search progress (e.g., iter_009 at 40% success)."
+        ),
     }
 
 
@@ -204,15 +199,3 @@ def _num(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
-
-
-def _dedupe(items: List[str]) -> List[str]:
-    out: List[str] = []
-    seen = set()
-    for item in items:
-        if not item:
-            continue
-        if item not in seen:
-            out.append(item)
-            seen.add(item)
-    return out

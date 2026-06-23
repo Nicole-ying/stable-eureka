@@ -64,18 +64,17 @@ def prepare_guarded_reward_env(
         runtime_safety["reward_static_validation"] = static_validation
         runtime_safety["semantic_noop_report"] = semantic_report
         runtime_safety["pattern_repeat_report"] = pattern_report
-        # Block HARD-level pattern repeats — they waste training budget on proven failures
-        pattern_blocks = bool(pattern_report.get("should_block", False))
+        # Pattern repeats: log as warnings but do NOT block training.
+        # Pattern detection can have false positives (e.g., proximity checks flagged as penalties).
+        # Blocking training on pattern detection wastes iterations and crashes experiments.
+        # Instead, record the patterns so the Search Strategist and Revision Agent can consider them.
+        pattern_warnings = pattern_report.get("hard_constraints", []) + pattern_report.get("warnings", [])
         runtime_and_static_valid = bool(
             runtime_safety.get("valid")
             and static_validation.get("valid")
             and semantic_report.get("valid", True)
-            and not pattern_blocks
         )
-        if pattern_blocks:
-            pattern_hints = pattern_report.get("hard_constraints", [])
-            if pattern_hints:
-                runtime_safety["pattern_block_reason"] = pattern_hints
+        runtime_safety["pattern_repeat_warnings"] = pattern_warnings
         runtime_safety["valid"] = runtime_and_static_valid
         write_json(reward_dir / "runtime_safety_report.json", runtime_safety)
         write_json(reward_dir / "reward_static_validation.json", static_validation)
@@ -156,4 +155,7 @@ def prepare_guarded_reward_env(
         "last_reports": last_reports,
     }
     write_json(output_dir / "reward_guard_summary.json", summary)
-    raise RuntimeError(f"Reward failed guarded validation/smoke test. See {output_dir / 'reward_guard_summary.json'}")
+    # CRITICAL: Do NOT raise RuntimeError here — this crashes the entire experiment.
+    # Instead, return (None, ...) so the caller can skip this candidate gracefully
+    # and try a different edit direction or parent.
+    return None, current_schema, current_code, summary

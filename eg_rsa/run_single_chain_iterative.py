@@ -204,6 +204,23 @@ def run_iterative(
             },
         )
 
+        # Check if reward validation failed and training was skipped
+        reward_trace_path = candidate_dir / "reward_trace.json"
+        training_skipped = False
+        if reward_trace_path.exists():
+            rt = read_json(reward_trace_path)
+            if rt.get("behavior_metrics", {}).get("skip_reason"):
+                training_skipped = True
+
+        if training_skipped:
+            # Log the skip and continue to the next iteration with the same parent
+            write_text(run_dir / "SKIPPED_ITERATIONS.txt",
+                       f"Iteration {next_iteration}: reward validation failed, skipped training\n",
+                       mode="a")
+            consecutive_rejections += 1
+            write_text(run_dir / "CURRENT_PARENT.txt", str(parent_dir) + "\n")
+            continue
+
         candidate_evidence = EvidenceBuilder.build(candidate_dir, output_path=candidate_dir / "iteration_evidence.json")
         decision = controller.decide(
             parent_evidence=parent_evidence,
@@ -394,6 +411,20 @@ def _materialize_revision(
     write_json(next_dir / "environment_understanding_summary.json", env_summary)
     write_json(next_dir / "target_alignment_summary.json", target_summary)
     write_json(next_dir / "revision_metadata.json", revision.get("edit_summary", {}))
+
+    # Graceful fallback: reward validation failed after all repair attempts.
+    # Skip training for this candidate instead of crashing the entire experiment.
+    if env_cls is None:
+        write_json(next_dir / "reward_guard_summary.json", guard_summary)
+        write_json(next_dir / "reward_trace.json", {
+            "file_type": "reward_trace",
+            "candidate_id": f"iter_{iteration:03d}",
+            "generation": iteration,
+            "creation_type": "llm_reward_revision",
+            "primary_metrics": {"fitness_score": float("-inf"), "selection_metric": "fitness_score_auxiliary"},
+            "behavior_metrics": {"success_like_terminal_rate": 0.0, "skip_reason": "reward_validation_failed"},
+        })
+        return
 
     trainer = SingleChainPPOTrainer(
         config=config,
